@@ -1,0 +1,291 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://src/core/nodes/run/territory_prototype.gd" id="1_controller"]
+[ext_resource type="Script" path="res://src/core/nodes/territory/territory_field.gd" id="2_field"]
+[ext_resource type="Script" path="res://src/core/nodes/territory/prototype_overlay.gd" id="3_overlay"]
+[ext_resource type="Script" path="res://src/core/nodes/enemies/debug_grazer.gd" id="4_grazer"]
+[ext_resource type="Resource" path="res://data/territory/phase_a_tuning.tres" id="5_tuning"]
+[ext_resource type="Shader" path="res://assets/shaders/territory_field.gdshader" id="6_territory_shader"]
+
+[sub_resource type="ShaderMaterial" id="TerritoryMaterial"]
+shader = ExtResource("6_territory_shader")
+
+[sub_resource type="StyleBoxFlat" id="StylePanel"]
+bg_color = Color(0.035, 0.046, 0.063, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.22, 0.31, 0.39, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleButton"]
+bg_color = Color(0.08, 0.115, 0.145, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.26, 0.39, 0.48, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleButtonHover"]
+bg_color = Color(0.11, 0.19, 0.21, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.86, 0.68, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="TerritoryPrototype" type="Node2D" node_paths=PackedStringArray("territory_field", "overlay", "grazer", "metrics_label", "performance_label", "status_label", "view_label", "pause_button", "reset_button", "grazer_button", "debug_view_button", "annotations_button")]
+script = ExtResource("1_controller")
+tuning = ExtResource("5_tuning")
+territory_field = NodePath("TerritoryField")
+overlay = NodePath("PrototypeOverlay")
+grazer = NodePath("DebugGrazer")
+metrics_label = NodePath("Interface/SidePanel/Metrics")
+performance_label = NodePath("Interface/SidePanel/Performance")
+status_label = NodePath("Interface/SidePanel/Status")
+view_label = NodePath("Interface/ViewLabel")
+pause_button = NodePath("Interface/SidePanel/PauseButton")
+reset_button = NodePath("Interface/SidePanel/ResetButton")
+grazer_button = NodePath("Interface/SidePanel/GrazerButton")
+debug_view_button = NodePath("Interface/SidePanel/ViewButton")
+annotations_button = NodePath("Interface/SidePanel/LabelsButton")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.014, 0.021, 0.031, 1)
+
+[node name="TopGlow" type="ColorRect" parent="."]
+offset_left = 24.0
+offset_top = 91.0
+offset_right = 984.0
+offset_bottom = 94.0
+mouse_filter = 2
+color = Color(0.24, 0.82, 0.61, 0.75)
+
+[node name="TerritoryField" type="Node2D" parent="."]
+material = SubResource("TerritoryMaterial")
+position = Vector2(24, 104)
+z_index = 1
+script = ExtResource("2_field")
+tuning = ExtResource("5_tuning")
+
+[node name="PrototypeOverlay" type="Node2D" parent="." node_paths=PackedStringArray("territory_field")]
+position = Vector2(24, 104)
+z_index = 2
+script = ExtResource("3_overlay")
+tuning = ExtResource("5_tuning")
+territory_field = NodePath("../TerritoryField")
+
+[node name="DebugGrazer" type="Node2D" parent="." node_paths=PackedStringArray("territory_field")]
+z_index = 3
+script = ExtResource("4_grazer")
+territory_field = NodePath("../TerritoryField")
+tuning = ExtResource("5_tuning")
+
+[node name="Interface" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="Title" type="Label" parent="Interface"]
+offset_left = 24.0
+offset_top = 18.0
+offset_right = 620.0
+offset_bottom = 49.0
+theme_override_colors/font_color = Color(0.76, 1, 0.85, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 25
+text = "ELEMENTAL  //  TERRITORY LAB"
+
+[node name="Subtitle" type="Label" parent="Interface"]
+offset_left = 26.0
+offset_top = 54.0
+offset_right = 670.0
+offset_bottom = 78.0
+theme_override_colors/font_color = Color(0.46, 0.59, 0.67, 1)
+theme_override_font_sizes/font_size = 13
+text = "PHASE A  •  CONTINUOUS FRONTIER AND TERRITORIAL FORCE PROTOTYPE"
+
+[node name="ViewLabel" type="Label" parent="Interface"]
+offset_left = 696.0
+offset_top = 57.0
+offset_right = 984.0
+offset_bottom = 80.0
+theme_override_colors/font_color = Color(0.48, 0.84, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "VIEW  //  TERRITORY"
+horizontal_alignment = 2
+
+[node name="ArenaFooter" type="Label" parent="Interface"]
+offset_left = 24.0
+offset_top = 657.0
+offset_right = 984.0
+offset_bottom = 687.0
+theme_override_colors/font_color = Color(0.42, 0.56, 0.64, 1)
+theme_override_font_sizes/font_size = 12
+text = "LEFT CLICK  BLOOM     •     RIGHT CLICK  SEED     •     G  GRAZER     •     M  DEBUG VIEW     •     R  RESET"
+horizontal_alignment = 1
+
+[node name="SidePanel" type="Panel" parent="Interface"]
+offset_left = 1004.0
+offset_top = 24.0
+offset_right = 1256.0
+offset_bottom = 696.0
+theme_override_styles/panel = SubResource("StylePanel")
+
+[node name="Header" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 16.0
+offset_right = 235.0
+offset_bottom = 43.0
+theme_override_colors/font_color = Color(0.52, 1, 0.73, 1)
+theme_override_font_sizes/font_size = 17
+text = "LIVE FIELD"
+
+[node name="Divider1" type="HSeparator" parent="Interface/SidePanel"]
+offset_left = 16.0
+offset_top = 49.0
+offset_right = 236.0
+offset_bottom = 53.0
+
+[node name="Metrics" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 63.0
+offset_right = 235.0
+offset_bottom = 169.0
+theme_override_colors/font_color = Color(0.78, 0.87, 0.90, 1)
+theme_override_font_sizes/font_size = 13
+text = "FIELD METRICS\nGREEN         0.0%\nHOSTILE       0.0%\nNEUTRAL     100.0%\nMATURE GREEN  0.0%\nGREEN REGIONS  0"
+
+[node name="Legend" type="RichTextLabel" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 177.0
+offset_right = 235.0
+offset_bottom = 228.0
+mouse_filter = 2
+bbcode_enabled = true
+text = "[color=#68e580]■ GREEN[/color]   [color=#e44d58]■ HOSTILE[/color]\n[color=#3b4b5a]■ NEUTRAL[/color]  [color=#777b7e]▰ BASALT[/color]"
+fit_content = true
+
+[node name="Guide" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 235.0
+offset_right = 235.0
+offset_bottom = 325.0
+theme_override_colors/font_color = Color(0.56, 0.68, 0.74, 1)
+theme_override_font_sizes/font_size = 11
+text = "COMPARE BLOOMS IN:\n• open neutral ground\n• the central basalt choke\n• the enclosed Green pocket\n• the weak hostile basin"
+
+[node name="Performance" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 331.0
+offset_right = 235.0
+offset_bottom = 405.0
+theme_override_colors/font_color = Color(0.48, 0.76, 0.90, 1)
+theme_override_font_sizes/font_size = 11
+text = "PERFORMANCE\nFPS  0\nField  0.00 ms avg  /  0.00 peak\nRender  0.00 ms avg  /  0.00 peak"
+
+[node name="StatusHeader" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 411.0
+offset_right = 235.0
+offset_bottom = 431.0
+theme_override_colors/font_color = Color(0.52, 1, 0.73, 1)
+theme_override_font_sizes/font_size = 11
+text = "EVENT LOG"
+
+[node name="Status" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 434.0
+offset_right = 235.0
+offset_bottom = 481.0
+theme_override_colors/font_color = Color(0.72, 0.79, 0.82, 1)
+theme_override_font_sizes/font_size = 10
+text = "Ready."
+autowrap_mode = 2
+
+[node name="GrazerButton" type="Button" parent="Interface/SidePanel"]
+offset_left = 16.0
+offset_top = 492.0
+offset_right = 126.0
+offset_bottom = 528.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.89, 0.94, 0.94, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "GRAZER  [G]"
+
+[node name="PauseButton" type="Button" parent="Interface/SidePanel"]
+offset_left = 130.0
+offset_top = 492.0
+offset_right = 236.0
+offset_bottom = 528.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.89, 0.94, 0.94, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "PAUSE  [SPACE]"
+
+[node name="ViewButton" type="Button" parent="Interface/SidePanel"]
+offset_left = 16.0
+offset_top = 535.0
+offset_right = 126.0
+offset_bottom = 571.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.89, 0.94, 0.94, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "NEXT VIEW  [M]"
+
+[node name="LabelsButton" type="Button" parent="Interface/SidePanel"]
+offset_left = 130.0
+offset_top = 535.0
+offset_right = 236.0
+offset_bottom = 571.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.89, 0.94, 0.94, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "HIDE LABELS  [H]"
+
+[node name="ResetButton" type="Button" parent="Interface/SidePanel"]
+offset_left = 16.0
+offset_top = 578.0
+offset_right = 236.0
+offset_bottom = 618.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.88, 1, 0.91, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "RESET ARENA  [R]"
+
+[node name="Build" type="Label" parent="Interface/SidePanel"]
+offset_left = 17.0
+offset_top = 635.0
+offset_right = 235.0
+offset_bottom = 655.0
+theme_override_colors/font_color = Color(0.30, 0.40, 0.47, 1)
+theme_override_font_sizes/font_size = 9
+text = "GDD PHASE A  //  FIXED-SCREEN LAB"
+horizontal_alignment = 1

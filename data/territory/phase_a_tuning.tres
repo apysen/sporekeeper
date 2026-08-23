@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="TerritoryPrototypeTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/core/models/territory/territory_prototype_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+field_size = Vector2i(112, 63)
+arena_size = Vector2(960, 540)
+simulation_hz = 30.0
+render_hz = 30.0
+max_catch_up_steps = 3
+ownership_threshold = 0.18
+diffusion_rate = 1.45
+sharpening_rate = 0.85
+natural_spread_rate = 0.16
+pressure_advection = 0.78
+pressure_damping = 0.56
+max_pressure_cells = 4.0
+maturation_per_second = 0.028
+neutral_maturity_decay_per_second = 0.2
+maturity_resistance_bonus = 2.4
+mature_threshold = 0.66
+bloom_radius_cells = 13.5
+bloom_mass = 1.9
+bloom_pressure_cells = 4.0
+bloom_hostile_conversion_factor = 1.8
+seed_charge_seconds = 1.35
+seed_radius_cells = 9.5
+seed_mass = 1.12
+seed_pressure_cells = 0.55
+seed_hostile_conversion_factor = 3.2
+grazer_speed_pixels_per_second = 205.0
+grazer_radius_cells = 3.75
+grazer_erosion_per_stamp = 1.65
+grazer_stamp_interval = 0.045
+topology_interval_seconds = 0.5
+small_fragment_cell_limit = 28
+small_fragment_decay_per_second = 0.11
+bloom_support_reference = 0.45
+bloom_support_reach_cells = 6.5
+metrics_interval_seconds = 0.2

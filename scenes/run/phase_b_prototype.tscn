@@ -1,0 +1,1105 @@
+[gd_scene format=3 uid="uid://l5tk1331hh2r"]
+
+[ext_resource type="Script" uid="uid://ciofc5qa24nyt" path="res://src/core/nodes/run/phase_b_prototype.gd" id="1_controller"]
+[ext_resource type="Script" uid="uid://d1uw5v5jqkiud" path="res://src/core/nodes/territory/territory_field.gd" id="2_field"]
+[ext_resource type="Script" uid="uid://nuttrlsbrksy" path="res://src/core/nodes/territory/prototype_overlay.gd" id="3_overlay"]
+[ext_resource type="Script" uid="uid://62m5bm78sii0" path="res://src/core/nodes/player/phase_b_player.gd" id="4_player"]
+[ext_resource type="Script" uid="uid://cb667b3kv5sg8" path="res://src/core/nodes/combat/phase_b_combat_director.gd" id="5_combat"]
+[ext_resource type="Script" uid="uid://dsf82wv3j6wir" path="res://src/core/nodes/progression/phase_b_progression.gd" id="6_progression"]
+[ext_resource type="Resource" path="res://data/territory/phase_a_tuning.tres" id="7_territory_tuning"]
+[ext_resource type="Shader" uid="uid://boydds61d0rmy" path="res://assets/shaders/territory_field.gdshader" id="9_territory_shader"]
+[ext_resource type="AudioStream" uid="uid://devviiastanh0" path="res://assets/music/forest.wav" id="10_forest_music"]
+[ext_resource type="Script" uid="uid://cwuy2wawxa2cl" path="res://src/core/nodes/run/phase_b_audio_settings.gd" id="11_audio_settings"]
+[ext_resource type="Script" uid="uid://bbn5l41vmpqxc" path="res://src/core/nodes/waves/phase_b_wave_director.gd" id="12_wave_director"]
+[ext_resource type="Script" uid="uid://dfo6nwwpgk763" path="res://src/core/nodes/elements/phase_b_spore_director.gd" id="13_spore_director"]
+[ext_resource type="Script" uid="uid://yqxu5w6nnq7v" path="res://src/core/nodes/enemies/phase_b_enemy_profile.gd" id="14_enemy_profile"]
+[ext_resource type="AudioStream" uid="uid://bl1c1kpesm7s7" path="res://assets/sfx/shoot.wav" id="15_shoot_sfx"]
+[ext_resource type="AudioStream" uid="uid://dvukkv7doxiqt" path="res://assets/sfx/exp.wav" id="16_xp_sfx"]
+[ext_resource type="AudioStream" uid="uid://cqad5e137mxu8" path="res://assets/sfx/explode.wav" id="17_explosion_sfx"]
+[ext_resource type="AudioStream" uid="uid://c81lnf14x1lou" path="res://assets/sfx/oldgrowth.wav" id="18_old_growth_sfx"]
+[ext_resource type="Script" uid="uid://bp2pqfntwf63n" path="res://src/core/nodes/elements/phase_b_man_eater.gd" id="19_man_eater"]
+[ext_resource type="Script" uid="uid://d228oue1fn11s" path="res://src/core/nodes/run/phase_b_upgrade_slots.gd" id="20_upgrade_slots"]
+[ext_resource type="Texture2D" uid="uid://nknmqellq7dm" path="res://assets/icons/lock.svg" id="21_lock_icon"]
+[ext_resource type="Script" uid="uid://bd2hoddrefwq" path="res://src/core/nodes/elements/phase_b_bloom_director.gd" id="22_bloom_director"]
+[ext_resource type="Script" uid="uid://cjlfkuuruxrrg" path="res://src/core/nodes/elements/phase_b_bramble_director.gd" id="23_bramble_director"]
+[ext_resource type="Script" uid="uid://x2l20t6viy61" path="res://src/core/nodes/elements/phase_b_root_director.gd" id="24_root_director"]
+[ext_resource type="Script" uid="uid://5mjj3pltekkb" path="res://src/core/nodes/elements/phase_b_pruning_director.gd" id="25_pruning_director"]
+[ext_resource type="Script" uid="uid://syv3j1rcmi7v" path="res://src/core/nodes/economy/phase_b_metabolism.gd" id="26_metabolism"]
+[ext_resource type="Script" uid="uid://d1vi2molriepg" path="res://src/core/nodes/progression/phase_b_relic_director.gd" id="27_relic_director"]
+[ext_resource type="Script" uid="uid://box02ugcgrggx" path="res://src/core/nodes/progression/phase_b_evolutions.gd" id="28_evolutions"]
+[ext_resource type="StyleBox" path="res://assets/ui/panel_style.tres" id="30_panel_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/tray_style.tres" id="31_tray_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/slot_style.tres" id="35_slot_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/bar_base_style.tres" id="36_bar_base_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/bar_fill_health.tres" id="37_bar_fill_health"]
+[ext_resource type="StyleBox" path="res://assets/ui/bar_fill_green.tres" id="38_bar_fill_green"]
+[ext_resource type="StyleBox" path="res://assets/ui/bar_fill_xp.tres" id="39_bar_fill_xp"]
+
+[sub_resource type="ShaderMaterial" id="TerritoryMaterial"]
+shader = ExtResource("9_territory_shader")
+shader_parameter/ownership_threshold = 0.18
+shader_parameter/debug_view = 0
+shader_parameter/bramble_enabled = false
+
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "audio_settings", "ambient_music_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "run_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_prompt", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "photosynthesis_button", "meristem_button", "cambium_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "biomass_button", "banner_label", "build_label", "reset_button", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_restart_button", "pause_quit_button")]
+script = ExtResource("1_controller")
+territory_field = NodePath("TerritoryField")
+overlay = NodePath("PrototypeOverlay")
+player = NodePath("Player")
+combat = NodePath("CombatDirector")
+progression = NodePath("GameplayComponents/Progression")
+evolutions = NodePath("GameplayComponents/Evolutions")
+metabolism = NodePath("GameplayComponents/Metabolism")
+relic_director = NodePath("GameplayComponents/RelicDirector")
+wave_director = NodePath("GameplayComponents/WaveDirector")
+spore_director = NodePath("Paths/SporeDirector")
+bloom_director = NodePath("Paths/BloomDirector")
+bramble_director = NodePath("Paths/BrambleDirector")
+root_director = NodePath("Paths/RootDirector")
+man_eater = NodePath("Paths/ManEater")
+pruning_director = NodePath("Paths/PruningDirector")
+audio_settings = NodePath("GameplayComponents/AudioSettings")
+ambient_music_audio = NodePath("AmbientMusic")
+health_bar = NodePath("Interface/SidePanel/HealthBar")
+health_label = NodePath("Interface/SidePanel/HealthLabel")
+territory_bar = NodePath("Interface/SidePanel/TerritoryBar")
+territory_label = NodePath("Interface/SidePanel/TerritoryLabel")
+xp_bar = NodePath("Interface/SidePanel/XPBar")
+xp_label = NodePath("Interface/SidePanel/XPLabel")
+run_label = NodePath("Interface/SidePanel/RunLabel")
+biomass_label = NodePath("Interface/UpgradeTray/BiomassLabel")
+evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
+relics_label = NodePath("Interface/SidePanel/RelicsLabel")
+relic_slots = NodePath("Interface/SidePanel/RelicSlots")
+slots_label = NodePath("Interface/UpgradeTray/Slots")
+upgrade_slots = NodePath("Interface/UpgradeTray/UpgradeSlots")
+choice_panel = NodePath("Interface/ChoicePanel")
+choice_header = NodePath("Interface/ChoicePanel/Header")
+choice_prompt = NodePath("Interface/ChoicePanel/Prompt")
+choice_button_one = NodePath("Interface/ChoicePanel/Choice1")
+choice_button_two = NodePath("Interface/ChoicePanel/Choice2")
+choice_button_three = NodePath("Interface/ChoicePanel/Choice3")
+choice_button_four = NodePath("Interface/ChoicePanel/Choice4")
+choice_reroll_button = NodePath("Interface/ChoicePanel/Reroll")
+photosynthesis_button = NodePath("Interface/MetabolismDrawer/Photosynthesis")
+meristem_button = NodePath("Interface/MetabolismDrawer/Meristem")
+cambium_button = NodePath("Interface/MetabolismDrawer/Cambium")
+overgrow_button = NodePath("Interface/MetabolismDrawer/Overgrow")
+metabolism_label = NodePath("Interface/MetabolismDrawer/MetabolismLabel")
+metabolism_drawer = NodePath("Interface/MetabolismDrawer")
+biomass_button = NodePath("Interface/UpgradeTray/BiomassButton")
+banner_label = NodePath("Interface/Banner")
+build_label = NodePath("Interface/SidePanel/BuildLabel")
+reset_button = NodePath("Interface/SidePanel/ResetButton")
+result_panel = NodePath("Interface/ResultPanel")
+result_header = NodePath("Interface/ResultPanel/Header")
+result_detail = NodePath("Interface/ResultPanel/Detail")
+pause_overlay = NodePath("Interface/PauseOverlay")
+pause_resume_button = NodePath("Interface/PauseOverlay/PausePanel/ResumeButton")
+pause_volume_slider = NodePath("Interface/PauseOverlay/PausePanel/VolumeSlider")
+pause_volume_value = NodePath("Interface/PauseOverlay/PausePanel/VolumeValue")
+pause_music_volume_slider = NodePath("Interface/PauseOverlay/PausePanel/MusicVolumeSlider")
+pause_music_volume_value = NodePath("Interface/PauseOverlay/PausePanel/MusicVolumeValue")
+pause_fullscreen_button = NodePath("Interface/PauseOverlay/PausePanel/FullscreenButton")
+pause_restart_button = NodePath("Interface/PauseOverlay/PausePanel/RestartButton")
+pause_quit_button = NodePath("Interface/PauseOverlay/PausePanel/QuitButton")
+
+[node name="GameplayComponents" type="Node" parent="." unique_id=8230641]
+
+[node name="AudioSettings" type="Node" parent="GameplayComponents" unique_id=928815850]
+script = ExtResource("11_audio_settings")
+
+[node name="Progression" type="Node" parent="GameplayComponents" unique_id=1946342540 node_paths=PackedStringArray("evolutions", "bramble_director", "root_director", "spore_director", "bloom_director", "pruning_director", "metabolism")]
+script = ExtResource("6_progression")
+rerolls_per_run = 20
+evolutions = NodePath("../Evolutions")
+bramble_director = NodePath("../../Paths/BrambleDirector")
+root_director = NodePath("../../Paths/RootDirector")
+spore_director = NodePath("../../Paths/SporeDirector")
+bloom_director = NodePath("../../Paths/BloomDirector")
+pruning_director = NodePath("../../Paths/PruningDirector")
+metabolism = NodePath("../Metabolism")
+offer_bramble_path = false
+offer_root_path = false
+offer_pruning_path = false
+
+[node name="Evolutions" type="Node" parent="GameplayComponents" unique_id=1946342541 node_paths=PackedStringArray("progression")]
+script = ExtResource("28_evolutions")
+progression = NodePath("../Progression")
+
+[node name="Metabolism" type="Node" parent="GameplayComponents" unique_id=1701998321 node_paths=PackedStringArray("progression", "territory_field")]
+script = ExtResource("26_metabolism")
+progression = NodePath("../Progression")
+territory_field = NodePath("../../TerritoryField")
+
+[node name="RelicDirector" type="Node2D" parent="GameplayComponents" unique_id=1884233110 node_paths=PackedStringArray("progression", "territory_field", "overlay", "combat", "player", "wave_director", "bloom_director", "root_director")]
+z_index = 3
+position = Vector2(24, 104)
+script = ExtResource("27_relic_director")
+progression = NodePath("../Progression")
+territory_field = NodePath("../../TerritoryField")
+overlay = NodePath("../../PrototypeOverlay")
+combat = NodePath("../../CombatDirector")
+player = NodePath("../../Player")
+wave_director = NodePath("../WaveDirector")
+bloom_director = NodePath("../../Paths/BloomDirector")
+root_director = NodePath("../../Paths/RootDirector")
+
+[node name="WaveDirector" type="Node" parent="GameplayComponents" unique_id=113256381 node_paths=PackedStringArray("combat")]
+script = ExtResource("12_wave_director")
+combat = NodePath("../../CombatDirector")
+
+[node name="AmbientMusic" type="AudioStreamPlayer" parent="." unique_id=418357875]
+stream = ExtResource("10_forest_music")
+autoplay = true
+bus = &"Music"
+
+[node name="Background" type="ColorRect" parent="." unique_id=423038185]
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.011, 0.018, 0.026, 1)
+
+[node name="TopGlow" type="ColorRect" parent="." unique_id=369195750]
+offset_left = 24.0
+offset_top = 91.0
+offset_right = 984.0
+offset_bottom = 94.0
+mouse_filter = 2
+color = Color(0.24, 0.82, 0.61, 0.75)
+
+[node name="Paths" type="Node2D" parent="." unique_id=1330447761]
+
+[node name="SporeDirector" type="Node" parent="Paths" unique_id=904113277 node_paths=PackedStringArray("evolutions", "territory_field", "overlay", "combat", "progression", "bloom_director", "root_director")]
+script = ExtResource("13_spore_director")
+evolutions = NodePath("../../GameplayComponents/Evolutions")
+territory_field = NodePath("../../TerritoryField")
+overlay = NodePath("../../PrototypeOverlay")
+combat = NodePath("../../CombatDirector")
+progression = NodePath("../../GameplayComponents/Progression")
+bloom_director = NodePath("../BloomDirector")
+root_director = NodePath("../RootDirector")
+
+[node name="BloomDirector" type="Node" parent="Paths" unique_id=167505011 node_paths=PackedStringArray("evolutions", "territory_field", "overlay", "combat", "progression", "root_director", "bramble_director", "pruning_director")]
+script = ExtResource("22_bloom_director")
+evolutions = NodePath("../../GameplayComponents/Evolutions")
+territory_field = NodePath("../../TerritoryField")
+overlay = NodePath("../../PrototypeOverlay")
+combat = NodePath("../../CombatDirector")
+progression = NodePath("../../GameplayComponents/Progression")
+root_director = NodePath("../RootDirector")
+bramble_director = NodePath("../BrambleDirector")
+pruning_director = NodePath("../PruningDirector")
+bloom_interval_seconds = 15.0
+
+[node name="BrambleDirector" type="Node" parent="Paths" unique_id=553017428 node_paths=PackedStringArray("territory_field", "combat", "progression", "overlay")]
+script = ExtResource("23_bramble_director")
+territory_field = NodePath("../../TerritoryField")
+combat = NodePath("../../CombatDirector")
+progression = NodePath("../../GameplayComponents/Progression")
+overlay = NodePath("../../PrototypeOverlay")
+base_resistance_multiplier = 1.0
+base_slow_fraction = 0.1
+slow_per_level = 0.05
+entanglement_potency_per_level = 0.1
+ensnare_per_level = 0.1
+
+[node name="RootDirector" type="Node" parent="Paths" unique_id=684420913 node_paths=PackedStringArray("territory_field", "progression", "relic_director")]
+script = ExtResource("24_root_director")
+territory_field = NodePath("../../TerritoryField")
+progression = NodePath("../../GameplayComponents/Progression")
+relic_director = NodePath("../../GameplayComponents/RelicDirector")
+
+[node name="ManEater" type="Node2D" parent="Paths" unique_id=771204553 node_paths=PackedStringArray("territory_field", "overlay", "combat", "progression")]
+z_index = 3
+position = Vector2(24, 104)
+script = ExtResource("19_man_eater")
+territory_field = NodePath("../../TerritoryField")
+overlay = NodePath("../../PrototypeOverlay")
+combat = NodePath("../../CombatDirector")
+progression = NodePath("../../GameplayComponents/Progression")
+
+[node name="PruningDirector" type="Node2D" parent="Paths" unique_id=1477020933 node_paths=PackedStringArray("evolutions", "territory_field", "overlay", "combat", "progression", "relic_director")]
+z_index = 3
+position = Vector2(24, 104)
+script = ExtResource("25_pruning_director")
+evolutions = NodePath("../../GameplayComponents/Evolutions")
+territory_field = NodePath("../../TerritoryField")
+overlay = NodePath("../../PrototypeOverlay")
+combat = NodePath("../../CombatDirector")
+progression = NodePath("../../GameplayComponents/Progression")
+relic_director = NodePath("../../GameplayComponents/RelicDirector")
+upkeep_cells_per_second = 15.0
+upkeep_escalation_per_second = 5.0
+
+[node name="TerritoryField" type="Node2D" parent="." unique_id=407699690]
+z_index = 1
+material = SubResource("TerritoryMaterial")
+position = Vector2(24, 104)
+script = ExtResource("2_field")
+tuning = ExtResource("7_territory_tuning")
+
+[node name="PrototypeOverlay" type="Node2D" parent="." unique_id=1412417558 node_paths=PackedStringArray("territory_field")]
+z_index = 2
+position = Vector2(24, 104)
+script = ExtResource("3_overlay")
+tuning = ExtResource("7_territory_tuning")
+territory_field = NodePath("../TerritoryField")
+
+[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile")]
+z_index = 3
+position = Vector2(24, 104)
+script = ExtResource("5_combat")
+player = NodePath("../Player")
+territory_field = NodePath("../TerritoryField")
+overlay = NodePath("../PrototypeOverlay")
+audio_settings = NodePath("../GameplayComponents/AudioSettings")
+hunter_profile = NodePath("EnemyProfiles/Hunter")
+grazer_profile = NodePath("EnemyProfiles/Grazer")
+elite_profile = NodePath("EnemyProfiles/EliteRootbreaker")
+boss_profile = NodePath("EnemyProfiles/BurrowerBoss")
+saboteur_profile = NodePath("EnemyProfiles/Saboteur")
+corruptor_profile = NodePath("EnemyProfiles/Corruptor")
+colonizer_profile = NodePath("EnemyProfiles/Colonizer")
+warden_profile = NodePath("EnemyProfiles/Warden")
+colony_core_profile = NodePath("EnemyProfiles/ColonyCore")
+thornshot_shoot_sfx = ExtResource("15_shoot_sfx")
+xp_collect_sfx = ExtResource("16_xp_sfx")
+plant_explosion_sfx = ExtResource("17_explosion_sfx")
+old_growth_sfx = ExtResource("18_old_growth_sfx")
+
+[node name="EnemyProfiles" type="Node" parent="CombatDirector" unique_id=1786773355]
+
+[node name="Hunter" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=466288190]
+script = ExtResource("14_enemy_profile")
+
+[node name="Grazer" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=339508640]
+script = ExtResource("14_enemy_profile")
+role = 1
+maximum_health = 42.0
+movement_speed = 52.0
+contact_damage = 4.0
+contact_interval_seconds = 0.95
+xp_reward = 3
+body_radius_pixels = 11.0
+territory_behavior = 1
+territory_action_interval_seconds = 0.14
+territory_action_strength = 1.0
+territory_action_radius_multiplier = 1.6
+territory_actions_before_recovery = 14
+territory_recovery_seconds = 2.5
+require_player_territory = true
+
+[node name="Saboteur" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=1216931022]
+script = ExtResource("14_enemy_profile")
+role = 4
+maximum_health = 34.0
+movement_speed = 78.0
+contact_damage = 3.0
+contact_interval_seconds = 0.9
+xp_reward = 4
+target_priority_multiplier = 0.65
+movement_behavior = 1
+territory_behavior = 3
+first_territory_action_delay_seconds = 0.35
+territory_action_interval_seconds = 0.55
+territory_action_strength = 1.0
+territory_action_radius_multiplier = 0.75
+catalyst_search_range_pixels = 520.0
+fresh_maturity_threshold = 0.38
+
+[node name="Corruptor" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=1854604109]
+script = ExtResource("14_enemy_profile")
+role = 5
+maximum_health = 58.0
+movement_speed = 46.0
+contact_damage = 4.0
+contact_interval_seconds = 1.0
+xp_reward = 6
+body_radius_pixels = 12.0
+target_priority_multiplier = 0.8
+territory_behavior = 4
+first_territory_action_delay_seconds = 1.25
+territory_action_interval_seconds = 2.4
+territory_action_strength = 2.5
+territory_action_radius_multiplier = 1.15
+require_player_territory = true
+
+[node name="Colonizer" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=756900572]
+script = ExtResource("14_enemy_profile")
+role = 6
+maximum_health = 74.0
+movement_speed = 40.0
+contact_damage = 2.0
+contact_interval_seconds = 1.1
+xp_reward = 8
+body_radius_pixels = 13.0
+target_priority_multiplier = 0.7
+movement_behavior = 2
+preferred_distance_pixels = 185.0
+territory_behavior = 5
+first_territory_action_delay_seconds = 3.0
+territory_action_interval_seconds = 7.5
+maximum_active_summons = 5
+summon_spacing_pixels = 120.0
+
+[node name="Warden" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=249205415]
+script = ExtResource("14_enemy_profile")
+role = 7
+maximum_health = 96.0
+movement_speed = 38.0
+contact_damage = 4.5
+contact_interval_seconds = 0.95
+xp_reward = 10
+body_radius_pixels = 14.0
+target_priority_multiplier = 0.55
+territory_behavior = 7
+first_territory_action_delay_seconds = 0.75
+territory_action_interval_seconds = 0.85
+territory_action_strength = 0.5
+territory_action_radius_multiplier = 3.0
+
+[node name="ColonyCore" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=406885890]
+script = ExtResource("14_enemy_profile")
+role = 8
+maximum_health = 90.0
+movement_speed = 1.0
+contact_damage = 0.0
+contact_interval_seconds = 1.0
+xp_reward = 7
+body_radius_pixels = 15.0
+target_priority_multiplier = 0.45
+movement_behavior = 3
+territory_behavior = 6
+first_territory_action_delay_seconds = 0.8
+territory_action_interval_seconds = 1.7
+territory_action_strength = 1.0
+territory_action_radius_multiplier = 1.55
+
+[node name="EliteRootbreaker" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=2014301322]
+script = ExtResource("14_enemy_profile")
+role = 2
+maximum_health = 180.0
+movement_speed = 55.0
+contact_damage = 9.0
+contact_interval_seconds = 0.72
+xp_reward = 28
+body_radius_pixels = 16.0
+target_priority_multiplier = 0.55
+
+[node name="BurrowerBoss" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=1490018136]
+script = ExtResource("14_enemy_profile")
+role = 3
+maximum_health = 780.0
+movement_speed = 34.0
+contact_damage = 12.0
+contact_interval_seconds = 0.85
+xp_reward = 100
+body_radius_pixels = 28.0
+target_priority_multiplier = 0.25
+use_boss_navigation = true
+territory_behavior = 2
+first_territory_action_delay_seconds = 4.5
+territory_action_interval_seconds = 4.5
+territory_action_strength = 2.6
+territory_action_radius_multiplier = 2.8
+emit_eruption_signal = true
+
+[node name="Player" type="Node2D" parent="." unique_id=597159367 node_paths=PackedStringArray("territory_field")]
+z_index = 4
+script = ExtResource("4_player")
+territory_field = NodePath("../TerritoryField")
+
+[node name="Interface" type="CanvasLayer" parent="." unique_id=2107645273]
+layer = 8
+
+[node name="Title" type="Label" parent="Interface" unique_id=1449686703]
+offset_left = 24.0
+offset_top = 15.0
+offset_right = 660.0
+offset_bottom = 48.0
+theme_override_colors/font_color = Color(0.76, 1, 0.85, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.75)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 26
+text = "ELEMENTAL  //  LIVING FRONTIER"
+
+[node name="Subtitle" type="Label" parent="Interface" unique_id=1242465191]
+offset_left = 26.0
+offset_top = 53.0
+offset_right = 720.0
+offset_bottom = 79.0
+theme_override_colors/font_color = Color(0.47, 0.62, 0.68, 1)
+theme_override_font_sizes/font_size = 13
+text = "PHASE B  •  GARDENER SURVIVAL RUN  •  WASD / ARROWS TO MOVE  •  ESC PAUSE"
+
+[node name="DebugHelp" type="Label" parent="Interface" unique_id=2105709273]
+offset_left = 683.0
+offset_top = 56.0
+offset_right = 984.0
+offset_bottom = 78.0
+theme_override_colors/font_color = Color(0.4, 0.6, 0.67, 1)
+theme_override_font_sizes/font_size = 10
+text = "F6 +2M   F7 XP   F8 MASTERY   F9 BOSS   F10 RELIC"
+horizontal_alignment = 2
+
+[node name="SidePanel" type="Panel" parent="Interface" unique_id=451346811]
+offset_left = 1004.0
+offset_top = 24.0
+offset_right = 1256.0
+offset_bottom = 709.0
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="Header" type="Label" parent="Interface/SidePanel" unique_id=432911587]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 14.0
+offset_right = 236.0
+offset_bottom = 39.0
+theme_override_colors/font_color = Color(0.51, 1, 0.71, 1)
+theme_override_font_sizes/font_size = 16
+text = "RUN STATE"
+
+[node name="RunLabel" type="Label" parent="Interface/SidePanel" unique_id=70920556]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 43.0
+offset_right = 236.0
+offset_bottom = 75.0
+theme_override_colors/font_color = Color(0.71, 0.84, 0.88, 1)
+theme_override_font_sizes/font_size = 10
+text = "FIRST GERMINATION     12:00
+0 HOSTILES"
+autowrap_mode = 2
+
+[node name="HealthLabel" type="Label" parent="Interface/SidePanel" unique_id=1486879140]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 81.0
+offset_right = 236.0
+offset_bottom = 98.0
+theme_override_colors/font_color = Color(1, 0.67, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "HP  100 / 100"
+
+[node name="HealthBar" type="ProgressBar" parent="Interface/SidePanel" unique_id=57151010]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 100.0
+offset_right = 236.0
+offset_bottom = 115.0
+theme_override_styles/background = ExtResource("36_bar_base_style")
+theme_override_styles/fill = ExtResource("37_bar_fill_health")
+value = 100.0
+show_percentage = false
+
+[node name="TerritoryLabel" type="Label" parent="Interface/SidePanel" unique_id=656613795]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 118.0
+offset_right = 236.0
+offset_bottom = 135.0
+theme_override_colors/font_color = Color(0.5, 0.96, 0.61, 1)
+theme_override_font_sizes/font_size = 10
+text = "GREEN TERRITORY  0.0%"
+
+[node name="TerritoryBar" type="ProgressBar" parent="Interface/SidePanel" unique_id=2141178967]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 137.0
+offset_right = 236.0
+offset_bottom = 152.0
+theme_override_styles/background = ExtResource("36_bar_base_style")
+theme_override_styles/fill = ExtResource("38_bar_fill_green")
+show_percentage = false
+
+[node name="XPLabel" type="Label" parent="Interface/SidePanel" unique_id=223406630]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 155.0
+offset_right = 236.0
+offset_bottom = 172.0
+theme_override_colors/font_color = Color(0.52, 0.83, 1, 1)
+theme_override_font_sizes/font_size = 10
+text = "LEVEL 1     XP 0 / 7"
+
+[node name="XPBar" type="ProgressBar" parent="Interface/SidePanel" unique_id=1113881596]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 174.0
+offset_right = 236.0
+offset_bottom = 189.0
+theme_override_styles/background = ExtResource("36_bar_base_style")
+theme_override_styles/fill = ExtResource("39_bar_fill_xp")
+max_value = 7.0
+show_percentage = false
+
+[node name="Divider" type="HSeparator" parent="Interface/SidePanel" unique_id=290019053]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 194.0
+offset_right = 236.0
+offset_bottom = 198.0
+
+[node name="EvolutionLabel" type="Label" parent="Interface/SidePanel" unique_id=1376313058]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 244.0
+offset_right = 236.0
+offset_bottom = 278.0
+theme_override_colors/font_color = Color(0.58, 0.67, 0.69, 1)
+theme_override_font_sizes/font_size = 10
+autowrap_mode = 2
+
+[node name="BuildLabel" type="Label" parent="Interface/SidePanel" unique_id=600132887]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 286.0
+offset_right = 236.0
+offset_bottom = 304.0
+theme_override_colors/font_color = Color(0.53, 0.73, 0.66, 1)
+theme_override_font_sizes/font_size = 10
+text = "BUILD"
+
+[node name="RelicsLabel" type="Label" parent="Interface/SidePanel" unique_id=600132886]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 306.0
+offset_right = 236.0
+offset_bottom = 324.0
+theme_override_colors/font_color = Color(0.8, 0.65, 1, 1)
+theme_override_font_sizes/font_size = 10
+text = "RELICS"
+autowrap_mode = 2
+
+[node name="RelicSlots" type="Control" parent="Interface/SidePanel" unique_id=1188305471]
+anchors_preset = 0
+offset_left = 16.0
+offset_top = 328.0
+offset_right = 236.0
+offset_bottom = 362.0
+script = ExtResource("20_upgrade_slots")
+slot_count = 6
+slot_size = 33.0
+slot_spacing = 4.0
+level_font_size = 7
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.35
+locked_icon_offset = Vector2(-0.52, -1.26)
+empty_marker_font_size = 13
+title_offset_scale = 0.11
+level_offset_scale = 0.44
+content_offset_x = 0.5
+content_offset_y = -1.0
+slot_texture_style = ExtResource("35_slot_style")
+
+[node name="ResetButton" type="Button" parent="Interface/SidePanel" unique_id=65171965]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 636.0
+offset_right = 236.0
+offset_bottom = 674.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.88, 1, 0.91, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "RESTART RUN  [R]"
+
+[node name="UpgradeTray" type="Panel" parent="Interface" unique_id=1622654852]
+offset_left = 24.0
+offset_top = 651.0
+offset_right = 984.0
+offset_bottom = 708.0
+theme_override_styles/panel = ExtResource("31_tray_style")
+
+[node name="BiomassLabel" type="Label" parent="Interface/UpgradeTray" unique_id=533912317]
+layout_mode = 0
+offset_left = 689.0
+offset_top = 15.0
+offset_right = 747.5034
+offset_bottom = 32.006805
+scale = Vector2(1.47, 1.47)
+theme_override_colors/font_color = Color(0.78, 1, 0.63, 1)
+theme_override_font_sizes/font_size = 10
+text = "0        +0.0/s"
+
+[node name="Slots" type="Label" parent="Interface/UpgradeTray" unique_id=2019162875]
+layout_mode = 0
+offset_left = 17.0
+offset_top = 9.0
+offset_right = 70.0
+offset_bottom = 49.0
+theme_override_colors/font_color = Color(0.53, 0.73, 0.66, 1)
+theme_override_font_sizes/font_size = 10
+text = "UPGRADES"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="BiomassButton" type="Button" parent="Interface/UpgradeTray" unique_id=1904772312]
+layout_mode = 0
+offset_left = 790.0
+offset_top = 9.0
+offset_right = 947.0
+offset_bottom = 47.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.78, 1, 0.63, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "BIOMASS  [B]"
+
+[node name="UpgradeSlots" type="Control" parent="Interface/UpgradeTray" unique_id=1904772311]
+anchors_preset = 0
+offset_left = 76.0
+offset_top = 7.0
+offset_right = 476.0
+offset_bottom = 49.0
+script = ExtResource("20_upgrade_slots")
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.37
+title_offset_scale = 0.21
+level_offset_scale = 0.46
+content_offset_y = -2.0
+slot_texture_style = ExtResource("35_slot_style")
+
+[node name="MetabolismDrawer" type="Panel" parent="Interface" unique_id=771320544]
+visible = false
+offset_left = 24.0
+offset_top = 470.0
+offset_right = 984.0
+offset_bottom = 645.0
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="Header" type="Label" parent="Interface/MetabolismDrawer" unique_id=771320545]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 14.0
+offset_right = 500.0
+offset_bottom = 36.0
+theme_override_colors/font_color = Color(0.51, 1, 0.71, 1)
+theme_override_font_sizes/font_size = 14
+text = "ECOSYSTEM DEVELOPMENT"
+
+[node name="Reserve" type="Label" parent="Interface/MetabolismDrawer" unique_id=771320546]
+layout_mode = 0
+offset_left = 620.0
+offset_top = 14.0
+offset_right = 940.0
+offset_bottom = 36.0
+theme_override_colors/font_color = Color(0.78, 1, 0.63, 1)
+theme_override_font_sizes/font_size = 14
+text = "BIOMASS 0"
+horizontal_alignment = 2
+
+[node name="Photosynthesis" type="Button" parent="Interface/MetabolismDrawer" unique_id=1586179802]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 48.0
+offset_right = 320.0
+offset_bottom = 112.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "PHOTOSYNTHESIS  LV 1
+●○○○○○○○   0 / 10"
+
+[node name="Meristem" type="Button" parent="Interface/MetabolismDrawer" unique_id=1580967168]
+layout_mode = 0
+offset_left = 332.0
+offset_top = 48.0
+offset_right = 632.0
+offset_bottom = 112.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "MERISTEM  LV 1
+●○○○○○○○   0 / 10"
+
+[node name="Cambium" type="Button" parent="Interface/MetabolismDrawer" unique_id=1276774779]
+layout_mode = 0
+offset_left = 644.0
+offset_top = 48.0
+offset_right = 944.0
+offset_bottom = 112.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "CAMBIUM  LV 1
+○○○○○○○○   0 / 10"
+
+[node name="Overgrow" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364626]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 122.0
+offset_right = 320.0
+offset_bottom = 156.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "OVERGROW  0"
+
+[node name="MetabolismLabel" type="Label" parent="Interface/MetabolismDrawer" unique_id=1988530491]
+layout_mode = 0
+offset_left = 332.0
+offset_top = 126.0
+offset_right = 944.0
+offset_bottom = 152.0
+theme_override_colors/font_color = Color(0.66, 0.85, 0.72, 1)
+theme_override_font_sizes/font_size = 9
+text = "METABOLISM  //  6 FREE POINTS"
+
+[node name="Banner" type="Label" parent="Interface" unique_id=771320547]
+modulate = Color(1, 1, 1, 0)
+offset_left = 224.0
+offset_top = 96.0
+offset_right = 824.0
+offset_bottom = 152.0
+theme_override_colors/font_color = Color(0.85, 1, 0.72, 1)
+theme_override_font_sizes/font_size = 26
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ChoicePanel" type="Panel" parent="Interface" unique_id=290580352]
+visible = false
+offset_left = 186.0
+offset_top = 138.0
+offset_right = 822.0
+offset_bottom = 626.0
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="Header" type="Label" parent="Interface/ChoicePanel" unique_id=941029981]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 22.0
+offset_right = 612.0
+offset_bottom = 53.0
+theme_override_colors/font_color = Color(0.69, 1, 0.78, 1)
+theme_override_font_sizes/font_size = 22
+text = "ROOT MEMORY"
+horizontal_alignment = 1
+
+[node name="Prompt" type="Label" parent="Interface/ChoicePanel" unique_id=245217704]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 59.0
+offset_right = 612.0
+offset_bottom = 85.0
+theme_override_colors/font_color = Color(0.51, 0.65, 0.68, 1)
+theme_override_font_sizes/font_size = 11
+text = "Choose one upgrade. The living field is paused."
+horizontal_alignment = 1
+
+[node name="Choice1" type="Button" parent="Interface/ChoicePanel" unique_id=1801632138]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 104.0
+offset_right = 605.0
+offset_bottom = 180.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Thornshot Power  1/5
++28% Thornshot damage"
+
+[node name="Choice2" type="Button" parent="Interface/ChoicePanel" unique_id=1706058646]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 190.0
+offset_right = 605.0
+offset_bottom = 266.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Thornshot Tempo  1/5
+12% faster Thornshot attacks"
+
+[node name="Choice3" type="Button" parent="Interface/ChoicePanel" unique_id=178445218]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 276.0
+offset_right = 605.0
+offset_bottom = 352.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Seed Production  1/5
+One fewer kill required per Seed"
+
+[node name="Choice4" type="Button" parent="Interface/ChoicePanel" unique_id=612884907]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 362.0
+offset_right = 605.0
+offset_bottom = 438.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Root
+Age Green into resistant, high-yield territory."
+
+[node name="Reroll" type="Button" parent="Interface/ChoicePanel" unique_id=884213770]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 448.0
+offset_right = 605.0
+offset_bottom = 478.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.72, 0.86, 0.78, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "REROLL  (3 LEFT)"
+
+[node name="ResultPanel" type="Panel" parent="Interface" unique_id=620631006]
+visible = false
+offset_left = 254.0
+offset_top = 244.0
+offset_right = 754.0
+offset_bottom = 468.0
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="Header" type="Label" parent="Interface/ResultPanel" unique_id=1122508553]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 28.0
+offset_right = 476.0
+offset_bottom = 66.0
+theme_override_colors/font_color = Color(0.57, 1, 0.69, 1)
+theme_override_font_sizes/font_size = 25
+text = "FRONTIER HELD"
+horizontal_alignment = 1
+
+[node name="Detail" type="Label" parent="Interface/ResultPanel" unique_id=760262235]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 86.0
+offset_right = 466.0
+offset_bottom = 177.0
+theme_override_colors/font_color = Color(0.72, 0.82, 0.83, 1)
+theme_override_font_sizes/font_size = 12
+text = "The final invasion broke against a living frontier."
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Hint" type="Label" parent="Interface/ResultPanel" unique_id=1432133498]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 184.0
+offset_right = 466.0
+offset_bottom = 207.0
+theme_override_colors/font_color = Color(0.42, 0.58, 0.59, 1)
+theme_override_font_sizes/font_size = 10
+text = "Press R or use RESTART RUN to begin again."
+horizontal_alignment = 1
+
+[node name="PauseOverlay" type="Control" parent="Interface" unique_id=383098748]
+visible = false
+z_index = 20
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Interface/PauseOverlay" unique_id=1725400433]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.003, 0.008, 0.011, 0.82)
+
+[node name="PausePanel" type="Panel" parent="Interface/PauseOverlay" unique_id=349622250]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -230.0
+offset_top = -285.0
+offset_right = 230.0
+offset_bottom = 285.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="Header" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=752714992]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 436.0
+offset_bottom = 58.0
+theme_override_colors/font_color = Color(0.65, 1, 0.76, 1)
+theme_override_font_sizes/font_size = 25
+text = "FRONTIER PAUSED"
+horizontal_alignment = 1
+
+[node name="Subheader" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1702889251]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 61.0
+offset_right = 436.0
+offset_bottom = 84.0
+theme_override_colors/font_color = Color(0.44, 0.61, 0.64, 1)
+theme_override_font_sizes/font_size = 10
+text = "THE LIVING FIELD IS DORMANT"
+horizontal_alignment = 1
+
+[node name="VolumeLabel" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1837610547]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 102.0
+offset_right = 270.0
+offset_bottom = 124.0
+theme_override_colors/font_color = Color(0.75, 0.88, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "SFX VOLUME"
+
+[node name="VolumeValue" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=828577539]
+layout_mode = 0
+offset_left = 320.0
+offset_top = 102.0
+offset_right = 420.0
+offset_bottom = 124.0
+theme_override_colors/font_color = Color(0.75, 1, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "100%"
+horizontal_alignment = 2
+
+[node name="VolumeSlider" type="HSlider" parent="Interface/PauseOverlay/PausePanel" unique_id=1167653586]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 128.0
+offset_right = 420.0
+offset_bottom = 152.0
+value = 100.0
+
+[node name="MusicVolumeLabel" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1062121371]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 164.0
+offset_right = 270.0
+offset_bottom = 186.0
+theme_override_colors/font_color = Color(0.75, 0.88, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "MUSIC VOLUME"
+
+[node name="MusicVolumeValue" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1582880756]
+layout_mode = 0
+offset_left = 320.0
+offset_top = 164.0
+offset_right = 420.0
+offset_bottom = 186.0
+theme_override_colors/font_color = Color(0.75, 1, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "100%"
+horizontal_alignment = 2
+
+[node name="MusicVolumeSlider" type="HSlider" parent="Interface/PauseOverlay/PausePanel" unique_id=1948950124]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 190.0
+offset_right = 420.0
+offset_bottom = 214.0
+value = 100.0
+
+[node name="Divider" type="HSeparator" parent="Interface/PauseOverlay/PausePanel" unique_id=1990565945]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 231.0
+offset_right = 420.0
+offset_bottom = 235.0
+
+[node name="ResumeButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=723962275]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 250.0
+offset_right = 420.0
+offset_bottom = 298.0
+theme_override_colors/font_color = Color(0.82, 1, 0.87, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "RESUME  [ESC]"
+
+[node name="FullscreenButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=151020111]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 308.0
+offset_right = 420.0
+offset_bottom = 356.0
+theme_override_colors/font_color = Color(0.78, 0.91, 0.94, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "ENTER FULLSCREEN"
+
+[node name="RestartButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=1139312943]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 366.0
+offset_right = 420.0
+offset_bottom = 414.0
+theme_override_colors/font_color = Color(1, 0.88, 0.58, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "RESTART RUN"
+
+[node name="QuitButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=651669992]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 424.0
+offset_right = 420.0
+offset_bottom = 472.0
+theme_override_colors/font_color = Color(1, 0.62, 0.62, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "QUIT TO DESKTOP"
+
+[node name="Hint" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=853834811]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 498.0
+offset_right = 420.0
+offset_bottom = 530.0
+theme_override_colors/font_color = Color(0.38, 0.54, 0.56, 1)
+theme_override_font_sizes/font_size = 10
+text = "Volume changes apply immediately; both sliders cap at 20%."
+horizontal_alignment = 1
