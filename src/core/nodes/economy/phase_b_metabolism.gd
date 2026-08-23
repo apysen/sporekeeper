@@ -26,6 +26,15 @@ signal breakthrough_choice_requested(system_id: int, options: PackedInt32Array)
 signal breakthroughs_changed
 signal production_milestone_reached(per_second: float, milestone_index: int)
 signal overgrown(mass: float, pressure: float, cohesion: float)
+## A release has begun pouring into the border, with the cells it was sampled onto.
+## Carries the three axes separately so what the ground shows can say which one the
+## player actually bought.
+signal injection_started(
+	mass: float,
+	pressure: float,
+	cohesion: float,
+	cells: PackedInt32Array
+)
 signal status_requested(message: String)
 
 enum SystemId {
@@ -57,6 +66,22 @@ enum BreakthroughId {
 @export_range(0.0, 600.0, 1.0) var pressure_unlock_seconds := 90.0
 ## Elapsed run seconds at which Cohesion becomes available to buy.
 @export_range(0.0, 900.0, 1.0) var cohesion_unlock_seconds := 180.0
+
+@export_group("Injection")
+## Seconds a release takes to pour into the border. Spending it in one step made
+## the frontier jump between two frames, which reads as a number changing rather
+## than as the ecosystem growing into the ground.
+@export_range(0.05, 3.0, 0.05) var injection_ramp_seconds := 0.55
+## Steps a release is delivered in across that ramp. The border is redrawn every
+## frame regardless, and the simulation diffuses between steps, so more steps than
+## this buys nothing visible and costs the frame budget.
+@export_range(2, 60, 1) var injection_slice_count := 12
+## Releases that may be pouring at once. A purchase queues one, so a burst of them
+## — or a run that buys without the clock advancing between — would otherwise pile
+## up without bound, and every frame pays for every one still open. Past this the
+## oldest is delivered in full at once, which is what a burst should look like
+## anyway.
+@export_range(1, 64, 1) var maximum_pending_injections := 6
 
 @export_group("Purchases")
 ## Biomass required to advance a system from level 1 to level 2.
@@ -151,6 +176,7 @@ var _pending_breakthrough_options := PackedInt32Array()
 var _elapsed_seconds := 0.0
 var _last_injection_mass := 0.0
 var _injection_count := 0
+var _pending_injections: Array[PendingInjection] = []
 var _pulse_accumulator := 0.0
 var _pulse_charge := 0.0
 var _overgrow_cooldown_remaining := 0.0
@@ -183,6 +209,7 @@ func reset_metabolism() -> void:
 	_milestones_reached = 0
 	_overgrow_count = 0
 	_injection_count = 0
+	_pending_injections.clear()
 	levels_changed.emit()
 	breakthroughs_changed.emit()
 
@@ -193,6 +220,7 @@ func advance(delta: float) -> void:
 	_overgrow_cooldown_remaining = maxf(0.0, _overgrow_cooldown_remaining - delta)
 	_elapsed_seconds += delta
 	_advance_unlocks()
+	_advance_injections(delta)
 	_advance_pulses(delta)
 	_advance_milestones()
 
@@ -321,6 +349,71 @@ func get_last_injection_mass() -> float:
 	return _last_injection_mass
 
 
+class PendingInjection:
+	## A release the ecosystem is still pouring in. Spending the whole budget in one
+	## simulation step made the border jump a visible distance between two frames,
+	## which reads as the number changing rather than as the ecosystem growing. The
+	## same total is delivered, over a short ramp, along the stretch of border it was
+	## sampled onto — so what the player sees is the material arriving.
+	var cells := PackedInt32Array()
+	var mass := 0.0
+	var pressure := 0.0
+	var cohesion := 0.0
+	var elapsed := 0.0
+	var duration := 0.0
+	## How much of the release has already been poured, on a smooth curve, so each
+	## frame delivers the difference and the totals come out exact.
+	var delivered := 0.0
+
+
+func _advance_injections(delta: float) -> void:
+	if _pending_injections.is_empty() or territory_field == null:
+		return
+	for index in range(_pending_injections.size() - 1, -1, -1):
+		var pending: PendingInjection = _pending_injections[index]
+		pending.elapsed += delta
+		var progress := clampf(pending.elapsed / maxf(0.0001, pending.duration), 0.0, 1.0)
+		# Smoothstep: the release starts and finishes gently instead of switching on.
+		var eased := progress * progress * (3.0 - 2.0 * progress)
+		# Delivered in a fixed number of steps rather than once per frame. A release
+		# touches every cell it was sampled onto, so paying that on all 60 frames of
+		# a second cost about a millisecond of the budget at the stress peak while
+		# looking no different: the field's own diffusion smooths between steps.
+		var slice := eased - pending.delivered
+		var quantum := 1.0 / float(maxi(1, injection_slice_count))
+		if slice < quantum and progress < 1.0:
+			continue
+		pending.delivered = eased
+		if slice > 0.0:
+			var applied := territory_field.apply_overgrow(
+				pending.cells,
+				pending.mass * slice,
+				pending.pressure * slice,
+				pending.cohesion * slice
+			)
+			_last_injection_mass += applied.mass_applied
+		if progress >= 1.0:
+			_pending_injections.remove_at(index)
+
+
+func _flush_injection(pending: PendingInjection) -> void:
+	# Everything this release still owes the field, handed over in one step.
+	var remaining := 1.0 - pending.delivered
+	if remaining <= 0.0 or territory_field == null:
+		return
+	pending.delivered = 1.0
+	_last_injection_mass += territory_field.apply_overgrow(
+		pending.cells,
+		pending.mass * remaining,
+		pending.pressure * remaining,
+		pending.cohesion * remaining
+	).mass_applied
+
+
+func get_pending_injection_count() -> int:
+	return _pending_injections.size()
+
+
 func _inject(
 	mass: float,
 	pressure: float,
@@ -332,20 +425,33 @@ func _inject(
 		return
 	var focus := get_injection_focus_fraction() * maxf(0.02, focus_scale)
 	_injection_count += 1
-	if is_equal_approx(focus, 1.0):
-		_last_injection_mass = territory_field.overgrow(mass, pressure, cohesion).mass_applied
-		return
 	# Apical Dominance concentrates the same budget into a narrow slice of the
 	# frontier, which the simulation resolves as protrusions and tendrils. Lateral
 	# Growth does the reverse and spreads it further around the border than an
 	# uninvested run reaches. Both are the same dial, read in both directions.
 	var restored := territory_field.tuning.overgrow_frontier_sample_limit
-	territory_field.tuning.overgrow_frontier_sample_limit = maxi(
-		16,
-		int(round(float(restored) * focus))
-	)
-	_last_injection_mass = territory_field.overgrow(mass, pressure, cohesion).mass_applied
+	if not is_equal_approx(focus, 1.0):
+		territory_field.tuning.overgrow_frontier_sample_limit = maxi(
+			16,
+			int(round(float(restored) * focus))
+		)
+	# Sampled once, against the whole budget, so the ramp keeps feeding the border
+	# the release was aimed at instead of picking a narrower one every frame.
+	var cells := territory_field.sample_overgrow_frontier(mass + pressure)
 	territory_field.tuning.overgrow_frontier_sample_limit = restored
+	if cells.is_empty():
+		return
+	while _pending_injections.size() >= maximum_pending_injections:
+		_flush_injection(_pending_injections[0])
+		_pending_injections.remove_at(0)
+	var pending := PendingInjection.new()
+	pending.cells = cells
+	pending.mass = mass
+	pending.pressure = pressure
+	pending.cohesion = cohesion
+	pending.duration = maxf(0.0001, injection_ramp_seconds)
+	_pending_injections.append(pending)
+	injection_started.emit(mass, pressure, cohesion, cells)
 
 
 func can_overgrow() -> bool:

@@ -690,18 +690,28 @@ func overgrow(
 	var result := OvergrowResult.new()
 	if mass_budget <= 0.0 and pressure_budget <= 0.0 and cohesion_budget <= 0.0:
 		return result
+	var sampled := sample_overgrow_frontier(mass_budget + pressure_budget)
+	if sampled.is_empty():
+		return result
+	return apply_overgrow(sampled, mass_budget, pressure_budget, cohesion_budget)
+
+
+func sample_overgrow_frontier(reach_budget: float) -> PackedInt32Array:
+	# Which stretch of the living border a release reaches, decided by how much it
+	# is carrying. Split out from applying it so a release that is poured in over
+	# several frames scans the field once and then keeps feeding the same border,
+	# rather than re-deciding its own shape every frame.
 	var frontier_cells := PackedInt32Array()
 	for index in range(_cell_count):
 		if _player_frontier_mask[index] != 0:
 			frontier_cells.append(index)
 	if frontier_cells.is_empty():
-		return result
+		return frontier_cells
 	# How far around the border this release reaches is decided by how much material
 	# it is carrying. Spreading a fixed budget across every frontier cell made each
 	# cell's share vanish as the border grew, so a late-game injection did less than
 	# an early one for the same Biomass.
-	var budget := maxf(0.0, mass_budget) + maxf(0.0, pressure_budget)
-	var wanted := maxi(16, int(round(budget * tuning.overgrow_cells_per_mass)))
+	var wanted := maxi(16, int(round(maxf(0.0, reach_budget) * tuning.overgrow_cells_per_mass)))
 	var limit := mini(maxi(16, tuning.overgrow_frontier_sample_limit), wanted)
 	var stride := 1
 	if frontier_cells.size() > limit:
@@ -709,9 +719,18 @@ func overgrow(
 	var sampled := PackedInt32Array()
 	for offset in range(0, frontier_cells.size(), stride):
 		sampled.append(frontier_cells[offset])
+	return sampled
+
+
+func apply_overgrow(
+	sampled: PackedInt32Array,
+	mass_budget: float,
+	pressure_budget: float,
+	cohesion_budget: float
+) -> OvergrowResult:
+	var result := OvergrowResult.new()
 	if sampled.is_empty():
 		return result
-
 	var share := 1.0 / float(sampled.size())
 	var mass_per_cell := mass_budget * share * tuning.overgrow_mass_per_budget
 	var pressure_per_cell := pressure_budget * share * tuning.overgrow_pressure_per_budget
@@ -1178,6 +1197,34 @@ func local_to_cell(local_position: Vector2) -> Vector2:
 	)
 
 
+func describe_frontier_cells(cells: PackedInt32Array) -> Array:
+	# Where a set of frontier cells sits in the arena and which way each one faces,
+	# so what the ecosystem does to its border can be drawn along that border. The
+	# outward direction is the one with the least Plant behind it, which is the same
+	# rule the release itself uses to decide where to push.
+	var positions := PackedVector2Array()
+	var directions := PackedVector2Array()
+	for index in cells:
+		if index < 0 or index >= _cell_count:
+			continue
+		var x := index % _width
+		var y := index / _width
+		var outward := Vector2.ZERO
+		if x > 0:
+			outward.x -= _control[index - 1]
+		if x < _width - 1:
+			outward.x += _control[index + 1]
+		if y > 0:
+			outward.y -= _control[index - _width]
+		if y < _height - 1:
+			outward.y += _control[index + _width]
+		if outward.length_squared() > 0.000001:
+			outward = -outward.normalized()
+		positions.append(cell_to_local(Vector2(float(x), float(y))))
+		directions.append(outward)
+	return [positions, directions]
+
+
 func cell_to_local(cell_position: Vector2) -> Vector2:
 	return Vector2(
 		(cell_position.x + 0.5) / float(_width) * tuning.arena_size.x,
@@ -1205,6 +1252,51 @@ func get_pressure_at_local(local_position: Vector2) -> Vector2:
 	var y := clampi(int(round(cell.y)), 0, _height - 1)
 	var index := y * _width + x
 	return Vector2(_pressure_x[index], _pressure_y[index])
+
+
+func get_obstacle_normal_at_local(local_position: Vector2, reach: int = 2) -> Vector2:
+	# Which way the obstacle at this point faces, so something hitting it can run
+	# along the face instead of simply stopping. Basalt and the arena wall are the
+	# same thing to this: unclaimable ground.
+	#
+	# Taken as the gradient of the blocked mask over a small window — every blocked
+	# neighbour pushes the normal away from itself, weighted by how near it is — so a
+	# flat face gives a square-on normal, an inside corner gives the diagonal, and a
+	# lone clipped cell gives a normal that barely deflects anything.
+	var cell := local_to_cell(local_position)
+	var centre_x := clampi(int(round(cell.x)), 0, _width - 1)
+	var centre_y := clampi(int(round(cell.y)), 0, _height - 1)
+	var normal := Vector2.ZERO
+	for offset_y in range(-reach, reach + 1):
+		var y := centre_y + offset_y
+		if y < 0 or y >= _height:
+			continue
+		for offset_x in range(-reach, reach + 1):
+			var x := centre_x + offset_x
+			if x < 0 or x >= _width:
+				continue
+			if offset_x == 0 and offset_y == 0:
+				continue
+			if _claimable_mask[y * _width + x] != 0:
+				continue
+			var away := Vector2(float(-offset_x), float(-offset_y))
+			var distance := away.length()
+			if distance <= 0.0:
+				continue
+			normal += away / (distance * distance)
+	# The arena's edge is an obstacle too, and it has no cells to sample.
+	var edge := 0.5
+	if local_position.x < edge * tuning.arena_size.x / float(_width):
+		normal += Vector2.RIGHT
+	elif local_position.x > tuning.arena_size.x - edge * tuning.arena_size.x / float(_width):
+		normal += Vector2.LEFT
+	if local_position.y < edge * tuning.arena_size.y / float(_height):
+		normal += Vector2.DOWN
+	elif local_position.y > tuning.arena_size.y - edge * tuning.arena_size.y / float(_height):
+		normal += Vector2.UP
+	if normal.length_squared() < 0.000001:
+		return Vector2.ZERO
+	return normal.normalized()
 
 
 func is_claimable_at_local(local_position: Vector2) -> bool:

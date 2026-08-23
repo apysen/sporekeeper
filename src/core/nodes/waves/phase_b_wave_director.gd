@@ -180,30 +180,6 @@ func is_grazer_surge_wave() -> bool:
 	return get_current_wave_number() % grazer_surge_wave_cycle == 0
 
 
-func get_wave_name() -> String:
-	if is_complete():
-		return "FINAL STAND"
-	if cleanup_started:
-		return "LAST ROOTS"
-	if is_grazer_surge_wave():
-		return "GRAZER SURGE"
-	if final_invasion_started:
-		return "FINAL INVASION"
-	if elapsed_seconds >= warden_intro_seconds:
-		return "SUPPRESSION SIEGE"
-	if elapsed_seconds >= boss_time_seconds:
-		return "BURROWER ERA"
-	if elapsed_seconds >= colonizer_intro_seconds:
-		return "HOSTILE ROOTS"
-	if elapsed_seconds >= corruptor_intro_seconds:
-		return "CORRUPTION FRONT"
-	if elapsed_seconds >= elite_time_seconds:
-		return "HARDENING FRONT"
-	if elapsed_seconds >= saboteur_intro_seconds:
-		return "SABOTAGE FRONT"
-	return "FIRST GERMINATION"
-
-
 func is_complete() -> bool:
 	return elapsed_seconds >= run_duration_seconds
 

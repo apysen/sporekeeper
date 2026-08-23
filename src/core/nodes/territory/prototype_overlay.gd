@@ -59,6 +59,21 @@ class PulseVisual:
 	var color := Color.WHITE
 
 
+class InjectionVisual:
+	## One release of Biomass into the border, drawn along the border it was poured
+	## into. The three axes are drawn as three different actions rather than three
+	## tints of the same flash, because they are three different things: Mass is
+	## material arriving, Pressure is a shove, and Cohesion is the ecosystem knitting
+	## itself back together.
+	var positions := PackedVector2Array()
+	var directions := PackedVector2Array()
+	var mass := 0.0
+	var pressure := 0.0
+	var cohesion := 0.0
+	var age := 0.0
+	var duration := 0.0
+
+
 class SplatterVisual:
 	## Cosmetic layer for one Bloom eruption. Every droplet here is presentation:
 	## the gameplay splats were already submitted to the field as commands, and
@@ -108,6 +123,21 @@ var _tethers: Array[TetherVisual] = []
 ## Tail length as a multiple of the glob's radius.
 @export_range(0.0, 8.0, 0.1) var glob_tail_length_scale := 2.6
 
+
+@export_group("Ecosystem Injections")
+## Material arriving at the border: a bead that swells and settles.
+@export var injection_mass_color := Color(0.62, 1.0, 0.55, 1.0)
+@export_range(1.0, 40.0, 0.5) var injection_mass_radius := 7.5
+## A shove: a chevron that leaves the border and travels outward.
+@export var injection_pressure_color := Color(1.0, 0.85, 0.38, 1.0)
+@export_range(2.0, 120.0, 1.0) var injection_pressure_reach := 34.0
+@export_range(1.0, 20.0, 0.5) var injection_pressure_width := 5.0
+## Knitting: stitches laid along the border, closing as they brighten.
+@export var injection_cohesion_color := Color(0.55, 0.86, 1.0, 1.0)
+@export_range(2.0, 60.0, 0.5) var injection_cohesion_length := 15.0
+@export_range(0.5, 8.0, 0.1) var injection_cohesion_thickness := 2.4
+
+var _injections: Array[InjectionVisual] = []
 var _splatter_random := RandomNumberGenerator.new()
 
 ## Globs currently in the air, refreshed by the Bloom director each frame. These
@@ -150,6 +180,12 @@ func _process(delta: float) -> void:
 					Color("65ffd0")
 				)
 				_blooms.remove_at(index)
+
+		for index in range(_injections.size() - 1, -1, -1):
+			var injection := _injections[index]
+			injection.age += delta
+			if injection.age >= injection.duration:
+				_injections.remove_at(index)
 
 		for index in range(_pulses.size() - 1, -1, -1):
 			var pulse := _pulses[index]
@@ -203,6 +239,8 @@ func _draw() -> void:
 
 	for splatter in _splatters:
 		_draw_splatter(splatter)
+
+	_draw_injections()
 
 	for pulse in _pulses:
 		var progress := clampf(pulse.age / pulse.duration, 0.0, 1.0)
@@ -814,6 +852,7 @@ func damage_nearest_catalyst(
 
 
 func clear_effects() -> void:
+	_injections.clear()
 	_last_germinated_seed_id = -1
 	_seeds.clear()
 	_blooms.clear()
@@ -827,6 +866,99 @@ func toggle_annotations() -> bool:
 	show_annotations = not show_annotations
 	queue_redraw()
 	return show_annotations
+
+
+
+func spawn_injection(
+	positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	mass: float,
+	pressure: float,
+	cohesion: float,
+	duration: float
+) -> void:
+	if positions.is_empty():
+		return
+	var injection := InjectionVisual.new()
+	injection.positions = positions
+	injection.directions = directions
+	injection.mass = maxf(0.0, mass)
+	injection.pressure = maxf(0.0, pressure)
+	injection.cohesion = maxf(0.0, cohesion)
+	injection.duration = maxf(0.05, duration)
+	_injections.append(injection)
+	queue_redraw()
+
+
+func get_injection_visual_count() -> int:
+	return _injections.size()
+
+
+func _draw_injections() -> void:
+	for injection in _injections:
+		var progress := clampf(injection.age / injection.duration, 0.0, 1.0)
+		var fade := 1.0 - progress * progress
+		var total := injection.mass + injection.pressure + injection.cohesion
+		if total <= 0.0:
+			continue
+		for index in range(injection.positions.size()):
+			var origin: Vector2 = injection.positions[index]
+			var outward: Vector2 = (
+				injection.directions[index]
+				if index < injection.directions.size()
+				else Vector2.ZERO
+			)
+			if injection.mass > 0.0:
+				# Material arriving: a bead that swells at the border and settles.
+				var swell := injection_mass_radius * (injection.mass / total)
+				var eased := sin(progress * PI)
+				draw_circle(
+					origin + outward * swell * progress * 0.5,
+					maxf(0.6, swell * eased),
+					Color(injection_mass_color, fade * 0.85),
+					true,
+					-1.0,
+					true
+				)
+			if injection.pressure > 0.0 and outward != Vector2.ZERO:
+				# A shove: a chevron that leaves the border and travels outward, so
+				# the axis reads as motion rather than as a colour.
+				var reach := injection_pressure_reach * (injection.pressure / total)
+				var tip := origin + outward * reach * progress
+				var across := outward.orthogonal() * injection_pressure_width
+				var trail := outward * injection_pressure_width * 1.6
+				var chevron := PackedVector2Array([
+					tip,
+					tip - trail + across,
+					tip - trail * 0.45,
+					tip - trail - across,
+				])
+				draw_colored_polygon(
+					chevron, Color(injection_pressure_color, fade * 0.95)
+				)
+			if injection.cohesion > 0.0 and outward != Vector2.ZERO:
+				# Knitting: short stitches laid *along* the border rather than across
+				# it, brightening as they close. Tangential on purpose — nothing else
+				# in the game draws along the frontier, so the axis owns the read.
+				var along := outward.orthogonal()
+				var stitch := injection_cohesion_length * (injection.cohesion / total)
+				var closing := 1.0 - absf(1.0 - progress * 2.0)
+				var half := along * stitch * (0.35 + 0.65 * closing)
+				draw_line(
+					origin - half,
+					origin + half,
+					Color(injection_cohesion_color, fade * 0.95),
+					injection_cohesion_thickness,
+					true
+				)
+				draw_circle(
+					origin,
+					injection_cohesion_thickness * 0.9,
+					Color(injection_cohesion_color, fade * 0.7),
+					true,
+					-1.0,
+					true
+				)
 
 
 func _spawn_pulse(local_position: Vector2, duration: float, maximum_radius: float, color: Color) -> void:

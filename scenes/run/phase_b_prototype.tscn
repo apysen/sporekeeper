@@ -33,10 +33,15 @@
 [ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/slot_style.tres" id="35_slot_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/bar_base_style.tres" id="36_bar_base_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/bar_fill_health.tres" id="37_bar_fill_health"]
-[ext_resource type="StyleBox" path="res://assets/ui/bar_fill_green.tres" id="38_bar_fill_green"]
-[ext_resource type="StyleBox" path="res://assets/ui/bar_fill_xp.tres" id="39_bar_fill_xp"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_hp_track.tres" id="90_wx_hp_track"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_hp_fill.tres" id="91_wx_hp_fill"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_territory_track.tres" id="92_wx_territory_track"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_territory_fill.tres" id="93_wx_territory_fill"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_xp_track.tres" id="94_wx_xp_track"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_xp_fill.tres" id="95_wx_xp_fill"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_system_track.tres" id="96_wx_system_track"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_system_fill.tres" id="97_wx_system_fill"]
+[ext_resource type="Script" uid="uid://dr7wbvhjdbbha" path="res://src/core/nodes/run/phase_b_metabolism_button.gd" id="98_metabolism_button"]
 
 [sub_resource type="ShaderMaterial" id="TerritoryMaterial"]
 shader = ExtResource("9_territory_shader")
@@ -44,7 +49,7 @@ shader_parameter/ownership_threshold = 0.18
 shader_parameter/debug_view = 0
 shader_parameter/bramble_enabled = false
 
-[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "audio_settings", "ambient_music_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "run_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_prompt", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "photosynthesis_button", "meristem_button", "cambium_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "biomass_button", "banner_label", "build_label", "reset_button", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_restart_button", "pause_quit_button")]
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "audio_settings", "ambient_music_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "run_label", "hostile_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "photosynthesis_button", "meristem_button", "cambium_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "biomass_button", "banner_label", "reset_button", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_restart_button", "pause_quit_button")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -70,6 +75,7 @@ territory_label = NodePath("Interface/SidePanel/TerritoryLabel")
 xp_bar = NodePath("Interface/SidePanel/XPBar")
 xp_label = NodePath("Interface/SidePanel/XPLabel")
 run_label = NodePath("Interface/SidePanel/RunLabel")
+hostile_label = NodePath("Interface/SidePanel/HostileLabel")
 biomass_label = NodePath("Interface/UpgradeTray/BiomassLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
 relics_label = NodePath("Interface/SidePanel/RelicsLabel")
@@ -78,7 +84,6 @@ slots_label = NodePath("Interface/UpgradeTray/Slots")
 upgrade_slots = NodePath("Interface/UpgradeTray/UpgradeSlots")
 choice_panel = NodePath("Interface/ChoicePanel")
 choice_header = NodePath("Interface/ChoicePanel/Header")
-choice_prompt = NodePath("Interface/ChoicePanel/Prompt")
 choice_button_one = NodePath("Interface/ChoicePanel/Choice1")
 choice_button_two = NodePath("Interface/ChoicePanel/Choice2")
 choice_button_three = NodePath("Interface/ChoicePanel/Choice3")
@@ -92,7 +97,6 @@ metabolism_label = NodePath("Interface/MetabolismDrawer/MetabolismLabel")
 metabolism_drawer = NodePath("Interface/MetabolismDrawer")
 biomass_button = NodePath("Interface/UpgradeTray/BiomassButton")
 banner_label = NodePath("Interface/Banner")
-build_label = NodePath("Interface/SidePanel/BuildLabel")
 reset_button = NodePath("Interface/SidePanel/ResetButton")
 result_panel = NodePath("Interface/ResultPanel")
 result_header = NodePath("Interface/ResultPanel/Header")
@@ -416,37 +420,6 @@ territory_field = NodePath("../TerritoryField")
 [node name="Interface" type="CanvasLayer" parent="." unique_id=2107645273]
 layer = 8
 
-[node name="Title" type="Label" parent="Interface" unique_id=1449686703]
-offset_left = 24.0
-offset_top = 15.0
-offset_right = 660.0
-offset_bottom = 48.0
-theme_override_colors/font_color = Color(0.76, 1, 0.85, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.75)
-theme_override_constants/shadow_offset_x = 2
-theme_override_constants/shadow_offset_y = 2
-theme_override_font_sizes/font_size = 26
-text = "ELEMENTAL  //  LIVING FRONTIER"
-
-[node name="Subtitle" type="Label" parent="Interface" unique_id=1242465191]
-offset_left = 26.0
-offset_top = 53.0
-offset_right = 720.0
-offset_bottom = 79.0
-theme_override_colors/font_color = Color(0.47, 0.62, 0.68, 1)
-theme_override_font_sizes/font_size = 13
-text = "PHASE B  •  GARDENER SURVIVAL RUN  •  WASD / ARROWS TO MOVE  •  ESC PAUSE"
-
-[node name="DebugHelp" type="Label" parent="Interface" unique_id=2105709273]
-offset_left = 683.0
-offset_top = 56.0
-offset_right = 984.0
-offset_bottom = 78.0
-theme_override_colors/font_color = Color(0.4, 0.6, 0.67, 1)
-theme_override_font_sizes/font_size = 10
-text = "F6 +2M   F7 XP   F8 MASTERY   F9 BOSS   F10 RELIC"
-horizontal_alignment = 2
-
 [node name="SidePanel" type="Panel" parent="Interface" unique_id=451346811]
 offset_left = 1004.0
 offset_top = 24.0
@@ -454,123 +427,130 @@ offset_right = 1256.0
 offset_bottom = 709.0
 theme_override_styles/panel = ExtResource("30_panel_style")
 
-[node name="Header" type="Label" parent="Interface/SidePanel" unique_id=432911587]
+[node name="DebugHelp" type="Label" parent="Interface/SidePanel" unique_id=2105709273]
 layout_mode = 0
-offset_left = 16.0
-offset_top = 14.0
-offset_right = 236.0
-offset_bottom = 39.0
-theme_override_colors/font_color = Color(0.51, 1, 0.71, 1)
-theme_override_font_sizes/font_size = 16
-text = "RUN STATE"
+offset_left = 87.0
+offset_top = 521.0
+offset_right = 162.0
+offset_bottom = 620.0
+theme_override_colors/font_color = Color(0.4, 0.6, 0.67, 1)
+theme_override_font_sizes/font_size = 10
+text = "DEV CONTROLS
+F6 +2M
+F7 XP
+F8 MASTERY
+F9 BOSS
+F10 RELIC"
+horizontal_alignment = 1
 
 [node name="RunLabel" type="Label" parent="Interface/SidePanel" unique_id=70920556]
 layout_mode = 0
-offset_left = 16.0
-offset_top = 43.0
-offset_right = 236.0
-offset_bottom = 75.0
+offset_left = -980.00006
+offset_top = 9.0
+offset_right = -432.0
+offset_bottom = 54.0
 theme_override_colors/font_color = Color(0.71, 0.84, 0.88, 1)
-theme_override_font_sizes/font_size = 10
-text = "FIRST GERMINATION     12:00
-0 HOSTILES"
+theme_override_font_sizes/font_size = 32
+text = "WAVE 1                    12:00 REMAINING"
+horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 2
+
+[node name="HostileLabel" type="Label" parent="Interface/SidePanel" unique_id=70920557]
+layout_mode = 0
+offset_left = -265.0
+offset_top = 7.0
+offset_right = -85.0
+offset_bottom = 53.0
+theme_override_colors/font_color = Color(1, 0.78, 0.42, 1)
+theme_override_font_sizes/font_size = 33
+text = "0 HOSTILES"
+horizontal_alignment = 1
 
 [node name="HealthLabel" type="Label" parent="Interface/SidePanel" unique_id=1486879140]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 81.0
+offset_top = 12.0
 offset_right = 236.0
-offset_bottom = 98.0
+offset_bottom = 29.0
 theme_override_colors/font_color = Color(1, 0.67, 0.65, 1)
 theme_override_font_sizes/font_size = 10
 text = "HP  100 / 100"
+horizontal_alignment = 1
 
 [node name="HealthBar" type="ProgressBar" parent="Interface/SidePanel" unique_id=57151010]
+texture_filter = 1
 layout_mode = 0
 offset_left = 16.0
-offset_top = 100.0
+offset_top = 31.0
 offset_right = 236.0
-offset_bottom = 115.0
-theme_override_styles/background = ExtResource("36_bar_base_style")
-theme_override_styles/fill = ExtResource("37_bar_fill_health")
+offset_bottom = 63.0
+theme_override_styles/background = ExtResource("90_wx_hp_track")
+theme_override_styles/fill = ExtResource("91_wx_hp_fill")
 value = 100.0
 show_percentage = false
 
 [node name="TerritoryLabel" type="Label" parent="Interface/SidePanel" unique_id=656613795]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 118.0
+offset_top = 66.0
 offset_right = 236.0
-offset_bottom = 135.0
+offset_bottom = 83.0
 theme_override_colors/font_color = Color(0.5, 0.96, 0.61, 1)
 theme_override_font_sizes/font_size = 10
-text = "GREEN TERRITORY  0.0%"
+text = "GREEN TERRITORY  4.9%"
+horizontal_alignment = 1
 
 [node name="TerritoryBar" type="ProgressBar" parent="Interface/SidePanel" unique_id=2141178967]
+texture_filter = 1
 layout_mode = 0
 offset_left = 16.0
-offset_top = 137.0
+offset_top = 85.0
 offset_right = 236.0
-offset_bottom = 152.0
-theme_override_styles/background = ExtResource("36_bar_base_style")
-theme_override_styles/fill = ExtResource("38_bar_fill_green")
+offset_bottom = 117.0
+theme_override_styles/background = ExtResource("92_wx_territory_track")
+theme_override_styles/fill = ExtResource("93_wx_territory_fill")
 show_percentage = false
 
 [node name="XPLabel" type="Label" parent="Interface/SidePanel" unique_id=223406630]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 155.0
+offset_top = 120.0
 offset_right = 236.0
-offset_bottom = 172.0
+offset_bottom = 137.0
 theme_override_colors/font_color = Color(0.52, 0.83, 1, 1)
 theme_override_font_sizes/font_size = 10
 text = "LEVEL 1     XP 0 / 7"
+horizontal_alignment = 1
 
 [node name="XPBar" type="ProgressBar" parent="Interface/SidePanel" unique_id=1113881596]
+texture_filter = 1
 layout_mode = 0
 offset_left = 16.0
-offset_top = 174.0
+offset_top = 139.0
 offset_right = 236.0
-offset_bottom = 189.0
-theme_override_styles/background = ExtResource("36_bar_base_style")
-theme_override_styles/fill = ExtResource("39_bar_fill_xp")
+offset_bottom = 171.0
+theme_override_styles/background = ExtResource("94_wx_xp_track")
+theme_override_styles/fill = ExtResource("95_wx_xp_fill")
 max_value = 7.0
 show_percentage = false
-
-[node name="Divider" type="HSeparator" parent="Interface/SidePanel" unique_id=290019053]
-layout_mode = 0
-offset_left = 16.0
-offset_top = 194.0
-offset_right = 236.0
-offset_bottom = 198.0
 
 [node name="EvolutionLabel" type="Label" parent="Interface/SidePanel" unique_id=1376313058]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 244.0
+offset_top = 270.0
 offset_right = 236.0
-offset_bottom = 278.0
+offset_bottom = 304.0
 theme_override_colors/font_color = Color(0.58, 0.67, 0.69, 1)
 theme_override_font_sizes/font_size = 10
 autowrap_mode = 2
 
-[node name="BuildLabel" type="Label" parent="Interface/SidePanel" unique_id=600132887]
-layout_mode = 0
-offset_left = 16.0
-offset_top = 286.0
-offset_right = 236.0
-offset_bottom = 304.0
-theme_override_colors/font_color = Color(0.53, 0.73, 0.66, 1)
-theme_override_font_sizes/font_size = 10
-text = "BUILD"
-
 [node name="RelicsLabel" type="Label" parent="Interface/SidePanel" unique_id=600132886]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 306.0
+offset_top = 183.0
 offset_right = 236.0
-offset_bottom = 324.0
+offset_bottom = 201.0
 theme_override_colors/font_color = Color(0.8, 0.65, 1, 1)
 theme_override_font_sizes/font_size = 10
 text = "RELICS"
@@ -579,9 +559,9 @@ autowrap_mode = 2
 [node name="RelicSlots" type="Control" parent="Interface/SidePanel" unique_id=1188305471]
 anchors_preset = 0
 offset_left = 16.0
-offset_top = 328.0
+offset_top = 205.0
 offset_right = 236.0
-offset_bottom = 362.0
+offset_bottom = 239.0
 script = ExtResource("20_upgrade_slots")
 slot_count = 6
 slot_size = 33.0
@@ -710,8 +690,43 @@ theme_override_font_sizes/font_size = 10
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-text = "PHOTOSYNTHESIS  LV 1
-●○○○○○○○   0 / 10"
+script = ExtResource("98_metabolism_button")
+
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Photosynthesis" unique_id=1589413697]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 10
+text = "MASS   LV 1
+[ GROW  20 ]   More material"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Photosynthesis" unique_id=1999639706]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -23.0
+offset_right = -12.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/background = ExtResource("96_wx_system_track")
+theme_override_styles/fill = ExtResource("97_wx_system_fill")
+max_value = 1.0
+step = 0.001
+show_percentage = false
 
 [node name="Meristem" type="Button" parent="Interface/MetabolismDrawer" unique_id=1580967168]
 layout_mode = 0
@@ -726,8 +741,45 @@ theme_override_font_sizes/font_size = 10
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-text = "MERISTEM  LV 1
-●○○○○○○○   0 / 10"
+script = ExtResource("98_metabolism_button")
+display_text = "PRESSURE   LV 1
+[ SURGE  20 ]   Push harder"
+
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Meristem" unique_id=998395635]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 10
+text = "PRESSURE   LV 1
+[ SURGE  20 ]   Push harder"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Meristem" unique_id=564813745]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -23.0
+offset_right = -12.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/background = ExtResource("96_wx_system_track")
+theme_override_styles/fill = ExtResource("97_wx_system_fill")
+max_value = 1.0
+step = 0.001
+show_percentage = false
 
 [node name="Cambium" type="Button" parent="Interface/MetabolismDrawer" unique_id=1276774779]
 layout_mode = 0
@@ -742,8 +794,45 @@ theme_override_font_sizes/font_size = 10
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-text = "CAMBIUM  LV 1
-○○○○○○○○   0 / 10"
+script = ExtResource("98_metabolism_button")
+display_text = "COHESION   LV 1
+[ HARDEN  20 ]   Hold together"
+
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Cambium" unique_id=946512971]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 10
+text = "COHESION   LV 1
+[ HARDEN  20 ]   Hold together"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Cambium" unique_id=743392121]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -23.0
+offset_right = -12.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/background = ExtResource("96_wx_system_track")
+theme_override_styles/fill = ExtResource("97_wx_system_fill")
+max_value = 1.0
+step = 0.001
+show_percentage = false
 
 [node name="Overgrow" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364626]
 layout_mode = 0
@@ -768,7 +857,7 @@ offset_right = 944.0
 offset_bottom = 152.0
 theme_override_colors/font_color = Color(0.66, 0.85, 0.72, 1)
 theme_override_font_sizes/font_size = 9
-text = "METABOLISM  //  6 FREE POINTS"
+text = "NEXT ORGAN IN 01:30"
 
 [node name="Banner" type="Label" parent="Interface" unique_id=771320547]
 modulate = Color(1, 1, 1, 0)
@@ -785,39 +874,28 @@ autowrap_mode = 2
 [node name="ChoicePanel" type="Panel" parent="Interface" unique_id=290580352]
 visible = false
 offset_left = 186.0
-offset_top = 138.0
+offset_top = 181.0
 offset_right = 822.0
-offset_bottom = 626.0
+offset_bottom = 612.0
 theme_override_styles/panel = ExtResource("30_panel_style")
 
 [node name="Header" type="Label" parent="Interface/ChoicePanel" unique_id=941029981]
 layout_mode = 0
 offset_left = 24.0
-offset_top = 22.0
+offset_top = 12.0
 offset_right = 612.0
-offset_bottom = 53.0
+offset_bottom = 43.0
 theme_override_colors/font_color = Color(0.69, 1, 0.78, 1)
 theme_override_font_sizes/font_size = 22
-text = "ROOT MEMORY"
-horizontal_alignment = 1
-
-[node name="Prompt" type="Label" parent="Interface/ChoicePanel" unique_id=245217704]
-layout_mode = 0
-offset_left = 24.0
-offset_top = 59.0
-offset_right = 612.0
-offset_bottom = 85.0
-theme_override_colors/font_color = Color(0.51, 0.65, 0.68, 1)
-theme_override_font_sizes/font_size = 11
-text = "Choose one upgrade. The living field is paused."
+text = "CHOOSE ONE"
 horizontal_alignment = 1
 
 [node name="Choice1" type="Button" parent="Interface/ChoicePanel" unique_id=1801632138]
 layout_mode = 0
 offset_left = 31.0
-offset_top = 104.0
+offset_top = 54.0
 offset_right = 605.0
-offset_bottom = 180.0
+offset_bottom = 130.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
 theme_override_font_sizes/font_size = 13
@@ -829,9 +907,9 @@ text = "Thornshot Power  1/5
 [node name="Choice2" type="Button" parent="Interface/ChoicePanel" unique_id=1706058646]
 layout_mode = 0
 offset_left = 31.0
-offset_top = 190.0
+offset_top = 135.0
 offset_right = 605.0
-offset_bottom = 266.0
+offset_bottom = 211.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
 theme_override_font_sizes/font_size = 13
@@ -843,9 +921,9 @@ text = "Thornshot Tempo  1/5
 [node name="Choice3" type="Button" parent="Interface/ChoicePanel" unique_id=178445218]
 layout_mode = 0
 offset_left = 31.0
-offset_top = 276.0
+offset_top = 218.0
 offset_right = 605.0
-offset_bottom = 352.0
+offset_bottom = 294.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
 theme_override_font_sizes/font_size = 13
@@ -857,9 +935,9 @@ One fewer kill required per Seed"
 [node name="Choice4" type="Button" parent="Interface/ChoicePanel" unique_id=612884907]
 layout_mode = 0
 offset_left = 31.0
-offset_top = 362.0
+offset_top = 300.0
 offset_right = 605.0
-offset_bottom = 438.0
+offset_bottom = 376.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.87, 0.96, 0.89, 1)
 theme_override_font_sizes/font_size = 13
@@ -871,15 +949,15 @@ Age Green into resistant, high-yield territory."
 [node name="Reroll" type="Button" parent="Interface/ChoicePanel" unique_id=884213770]
 layout_mode = 0
 offset_left = 31.0
-offset_top = 448.0
+offset_top = 378.0
 offset_right = 605.0
-offset_bottom = 478.0
+offset_bottom = 417.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.72, 0.86, 0.78, 1)
 theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "REROLL  (3 LEFT)"
+text = "REROLL  (20 LEFT)"
 
 [node name="ResultPanel" type="Panel" parent="Interface" unique_id=620631006]
 visible = false
@@ -897,7 +975,7 @@ offset_right = 476.0
 offset_bottom = 66.0
 theme_override_colors/font_color = Color(0.57, 1, 0.69, 1)
 theme_override_font_sizes/font_size = 25
-text = "FRONTIER HELD"
+text = "TERRITORY HELD"
 horizontal_alignment = 1
 
 [node name="Detail" type="Label" parent="Interface/ResultPanel" unique_id=760262235]
@@ -925,7 +1003,6 @@ text = "Press R or use RESTART RUN to begin again."
 horizontal_alignment = 1
 
 [node name="PauseOverlay" type="Control" parent="Interface" unique_id=383098748]
-visible = false
 z_index = 20
 layout_mode = 3
 anchors_preset = 15
@@ -951,9 +1028,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -230.0
-offset_top = -285.0
+offset_top = -235.0
 offset_right = 230.0
-offset_bottom = 285.0
+offset_bottom = 255.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = ExtResource("30_panel_style")
@@ -967,17 +1044,6 @@ offset_bottom = 58.0
 theme_override_colors/font_color = Color(0.65, 1, 0.76, 1)
 theme_override_font_sizes/font_size = 25
 text = "FRONTIER PAUSED"
-horizontal_alignment = 1
-
-[node name="Subheader" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1702889251]
-layout_mode = 0
-offset_left = 24.0
-offset_top = 61.0
-offset_right = 436.0
-offset_bottom = 84.0
-theme_override_colors/font_color = Color(0.44, 0.61, 0.64, 1)
-theme_override_font_sizes/font_size = 10
-text = "THE LIVING FIELD IS DORMANT"
 horizontal_alignment = 1
 
 [node name="VolumeLabel" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1837610547]
@@ -1092,14 +1158,3 @@ theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "QUIT TO DESKTOP"
-
-[node name="Hint" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=853834811]
-layout_mode = 0
-offset_left = 40.0
-offset_top = 498.0
-offset_right = 420.0
-offset_bottom = 530.0
-theme_override_colors/font_color = Color(0.38, 0.54, 0.56, 1)
-theme_override_font_sizes/font_size = 10
-text = "Volume changes apply immediately; both sliders cap at 20%."
-horizontal_alignment = 1

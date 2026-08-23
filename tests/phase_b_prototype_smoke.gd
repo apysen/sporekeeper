@@ -170,7 +170,7 @@ func _run() -> void:
 		is_equal_approx(prototype.wave_director.wave_grace_period_seconds, 5.0)
 		and not prototype.is_wave_grace_period_active()
 		and is_zero_approx(prototype.get_wave_grace_remaining_seconds())
-		and prototype.run_label.text.begins_with("WAVE 01 //"),
+		and prototype.run_label.text.begins_with("WAVE 1"),
 		"wave one begins immediately without a grace countdown"
 	)
 	prototype.advance_run(0.65)
@@ -188,7 +188,7 @@ func _run() -> void:
 		and prototype.is_wave_grace_period_active()
 		and is_equal_approx(prototype.get_wave_grace_remaining_seconds(), 5.0)
 		and prototype.combat.get_active_enemy_count() == 0
-		and prototype.run_label.text.contains("WAVE 02 IN 05s"),
+		and prototype.run_label.text.contains("WAVE 2 IN 05s"),
 		"each later wave also begins with the five-second reinforcement grace"
 	)
 
@@ -257,7 +257,7 @@ func _run() -> void:
 			prototype.combat.get_enemy_territory_erosion_scale(wave_three_grazer_id),
 			1.20
 		)
-		and prototype.run_label.text.contains("WAVE 03"),
+		and prototype.run_label.text.contains("WAVE 3"),
 		"each completed minute advances the visible XP and territory scaling wave"
 	)
 
@@ -1794,6 +1794,151 @@ func _run() -> void:
 		"a thrown Bloom punches a visible hole in a fully mature hostile front"
 	)
 
+	# Basalt and the arena wall are surfaces, not sinks. Thrown paint used to stop
+	# dead the instant it touched one, so the glob simply blinked out at the rock.
+	# It should hit, lose what was driving into the face, and let what was running
+	# along the face carry it down the surface until it pools against it.
+	var wall_width := int(field.tuning.field_size.x)
+	var wall_height := int(field.tuning.field_size.y)
+	var wall_pixels_per_cell := field.tuning.arena_size.x / float(wall_width)
+	var face_x := -1
+	var face_y := -1
+	for probe_y in range(int(wall_height * 0.3), int(wall_height * 0.7)):
+		for probe_x in range(int(wall_width * 0.3), wall_width - 4):
+			if (
+				field._claimable_mask[probe_y * wall_width + probe_x] == 0
+				and field._claimable_mask[probe_y * wall_width + probe_x - 6] != 0
+			):
+				face_x = probe_x
+				face_y = probe_y
+				break
+		if face_x >= 0:
+			break
+	var face_travel := PackedFloat32Array()
+	var face_gap := PackedFloat32Array()
+	for allowed_contacts in [0, prototype.bloom_director.maximum_wall_contacts]:
+		var previous_contacts := prototype.bloom_director.maximum_wall_contacts
+		prototype.bloom_director.maximum_wall_contacts = int(allowed_contacts)
+		prototype.bloom_director.reset_director()
+		prototype.bloom_director._launch_glob(
+			Vector2(
+				(float(face_x) - 7.0 + 0.5) * wall_pixels_per_cell,
+				(float(face_y) + 0.5) * wall_pixels_per_cell
+			),
+			Vector2.RIGHT, 22.0, 0.5, 1.0, 1.6, 0
+		)
+		var thrown = null
+		for candidate in prototype.bloom_director._globs:
+			if candidate.active:
+				thrown = candidate
+				break
+		var contact_point := Vector2.ZERO
+		var ran := 0.0
+		for _step in range(400):
+			var previous_position: Vector2 = thrown.position
+			var contacts_before: int = thrown.wall_contacts
+			prototype.bloom_director.advance(1.0 / 60.0)
+			if thrown.wall_contacts > contacts_before and contact_point == Vector2.ZERO:
+				contact_point = previous_position
+			if contact_point != Vector2.ZERO and thrown.active:
+				ran += thrown.position.distance_to(previous_position)
+			if not thrown.active:
+				break
+		face_travel.append(ran)
+		var rest := field.local_to_cell(thrown.position)
+		var nearest := 999.0
+		for offset_y in range(-6, 7):
+			for offset_x in range(-6, 7):
+				var sample_x := clampi(int(rest.x) + offset_x, 0, wall_width - 1)
+				var sample_y := clampi(int(rest.y) + offset_y, 0, wall_height - 1)
+				if field._claimable_mask[sample_y * wall_width + sample_x] == 0:
+					nearest = minf(nearest, Vector2(offset_x, offset_y).length())
+		face_gap.append(nearest)
+		prototype.bloom_director.maximum_wall_contacts = previous_contacts
+	_check(
+		face_x >= 0 and face_travel[0] <= 0.01 and face_travel[1] > 50.0,
+		"paint thrown at an obstacle runs down its face instead of stopping dead"
+	)
+	_check(
+		face_gap[1] <= 3.0,
+		"paint running down a face stays against it rather than glancing away"
+	)
+
+	# The scene file is the surface this interface is designed on, so what a node
+	# declares has to be the shape the game writes into it. A placeholder describing
+	# an older version of its own line makes the editor lie about the layout being
+	# arranged. Compared by shape rather than by value — digits are normalised — so a
+	# live number moving does not count as a disagreement.
+	var declared_texts := {}
+	var packed_prototype: PackedScene = load("res://scenes/run/phase_b_prototype.tscn")
+	var scene_state := packed_prototype.get_state()
+	for node_index in range(scene_state.get_node_count()):
+		var node_path := str(scene_state.get_node_path(node_index))
+		for property_index in range(scene_state.get_node_property_count(node_index)):
+			if scene_state.get_node_property_name(node_index, property_index) != "text":
+				continue
+			declared_texts[node_path] = str(
+				scene_state.get_node_property_value(node_index, property_index)
+			)
+	# Against a fresh run: the placeholders describe a run's opening state, and by
+	# this point the suite has drafted paths and populated the choice panel.
+	prototype.reset_run()
+	prototype._update_hud()
+	prototype._update_metabolism_controls()
+	var shape_of := func(value: String) -> String:
+		var shaped := ""
+		for character in value:
+			shaped += "#" if character >= "0" and character <= "9" else character
+		return shaped
+	var stale_placeholders := PackedStringArray()
+	for node_path in declared_texts.keys():
+		if node_path.contains("ChoicePanel"):
+			# The draft panel is filled from whatever the run rolls, so its
+			# placeholders can only ever be an example of the shape rather than a
+			# match. Everything else writes a fixed shape and is held to it.
+			continue
+		var declared_node := prototype.get_node_or_null(NodePath(node_path))
+		if declared_node == null or not ("text" in declared_node):
+			continue
+		if shape_of.call(str(declared_node.text)) != shape_of.call(declared_texts[node_path]):
+			stale_placeholders.append(node_path)
+	_check(
+		declared_texts.size() > 20 and stale_placeholders.is_empty(),
+		"every scene placeholder matches the shape the game writes into it"
+	)
+
+	# The same rule for layout, not just wording. A tool script that recomputes a
+	# child's rect at load silently undoes anything placed by hand in the editor,
+	# which is exactly what the drawer's meters did until it was taken out.
+	var moved_by_code := PackedStringArray()
+	for node_index in range(scene_state.get_node_count()):
+		var placed_path := str(scene_state.get_node_path(node_index))
+		var placed_node := prototype.get_node_or_null(NodePath(placed_path)) as Control
+		if placed_node == null:
+			continue
+		for property_index in range(scene_state.get_node_property_count(node_index)):
+			var property_name := str(
+				scene_state.get_node_property_name(node_index, property_index)
+			)
+			if not property_name.begins_with("offset_"):
+				continue
+			var declared_value = scene_state.get_node_property_value(
+				node_index, property_index
+			)
+			if typeof(declared_value) != TYPE_FLOAT:
+				continue
+			var live_value = placed_node.get(property_name)
+			if absf(float(live_value) - float(declared_value)) > 0.51:
+				moved_by_code.append("%s.%s" % [placed_path.get_file(), property_name])
+	_check(
+		moved_by_code.is_empty(),
+		"nothing moves a control the scene placed by hand"
+	)
+	if not moved_by_code.is_empty():
+		print("    moved by code: %s" % ", ".join(moved_by_code))
+	if not stale_placeholders.is_empty():
+		print("    stale placeholders: %s" % ", ".join(stale_placeholders))
+
 	# A Bloom landing on the run's own established Green must not strip it. The
 	# maturity ceiling that keeps newly taken ground rootless was being applied to
 	# every player-held cell a splat touched, so firing a Bloom over your own mature
@@ -2913,7 +3058,7 @@ func _run() -> void:
 		* prototype.wave_director.wave_duration_seconds
 		+ 6.0
 	)
-	var normal_wave_name := prototype.wave_director.get_wave_name()
+	var normal_wave_is_surge := prototype.wave_director.is_grazer_surge_wave()
 	prototype.wave_director.elapsed_seconds = (
 		float(prototype.wave_director.grazer_surge_wave_cycle)
 		* prototype.wave_director.wave_duration_seconds
@@ -2924,8 +3069,7 @@ func _run() -> void:
 		and normal_waves == 9
 		and prototype.wave_director.grazer_pack_cycle > 1
 		and prototype.wave_director.is_grazer_surge_wave()
-		and prototype.wave_director.get_wave_name() == "GRAZER SURGE"
-		and normal_wave_name != "GRAZER SURGE",
+		and not normal_wave_is_surge,
 		"Grazers lead a minority of packs outside the announced surge waves"
 	)
 	prototype.wave_director.reset_director()
@@ -4029,10 +4173,22 @@ func _run() -> void:
 	prototype.territory_field.step_simulation()
 	prototype.territory_field.recalculate_metrics_now()
 	metabolism.try_purchase(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
+	# The release is poured in over a ramp rather than dropped in one step, so the
+	# border grows into the ground instead of jumping a visible distance between two
+	# frames. It still has to arrive, and it still has to be the whole of it.
+	var pouring := metabolism.get_pending_injection_count()
+	var mid_pour := 0.0
+	for pour_step in range(60):
+		metabolism.advance(1.0 / 60.0)
+		if pour_step == 8:
+			mid_pour = metabolism.get_last_injection_mass()
 	_check(
 		metabolism.purchase_pulse_budget > 0.0
-		and metabolism.get_last_injection_mass() > 0.0,
-		"buying a level injects material into the territory the player can see"
+		and pouring == 1
+		and mid_pour > 0.0
+		and metabolism.get_last_injection_mass() > mid_pour
+		and metabolism.get_pending_injection_count() == 0,
+		"buying a level pours material into the territory over a visible ramp"
 	)
 
 	# The three systems are the physical parameters: Mass, Pressure, Cohesion.
@@ -4112,15 +4268,15 @@ func _run() -> void:
 	prototype.progression.reset_progression()
 	prototype.combat.reset_combat()
 	prototype._update_hud()
-	var quiet_run_line := prototype.run_label.text
+	var quiet_hostiles_shown := prototype.hostile_label.visible
 	prototype.combat.spawn_pack(PhaseBCombatDirector.EnemyRole.HUNTER, 3)
 	prototype._update_hud()
-	var threatened_run_line := prototype.run_label.text
+	var threatened_hostiles_shown := prototype.hostile_label.visible
 	prototype.combat.reset_combat()
 	_check(
-		not quiet_run_line.contains("HOSTILES")
-		and threatened_run_line.contains("HOSTILES")
-		and threatened_run_line.contains("3"),
+		not quiet_hostiles_shown
+		and threatened_hostiles_shown
+		and prototype.hostile_label.text.contains("3"),
 		"the hostile count appears only while there are hostiles to warn about"
 	)
 
@@ -4135,11 +4291,13 @@ func _run() -> void:
 	prototype._update_hud()
 	var affordable_line := prototype.biomass_label.text
 	_check(
-		broke_line.begins_with("BIOMASS")
+		not broke_line.contains("
+")
+		and broke_line.contains("/s")
 		and not broke_line.contains("CONSUMPTION")
 		and not broke_line.contains("●")
 		and affordable_line.contains("●"),
-		"the Biomass line carries the reserve, its rate, and a dot only when it can be spent"
+		"the Biomass line is one line of reserve and rate, with a dot only when it can be spent"
 	)
 
 	# Every detailed Biomass decision lives in the drawer, and the drawer is closed
@@ -4893,7 +5051,10 @@ func _run() -> void:
 	prototype.debug_advance_time(
 		prototype.wave_director.final_invasion_time_seconds - prototype.get_elapsed_seconds()
 	)
-	_check(prototype.run_label.text.contains("FINAL INVASION"), "the final invasion phase is announced")
+	_check(
+		prototype.wave_director.final_invasion_started,
+		"the final invasion phase begins on the timeline"
+	)
 	var specialist_schedule_is_authored := true
 	var specialist_schedule: Array[Array] = [
 		[
@@ -4935,7 +5096,10 @@ func _run() -> void:
 		prototype.wave_director.cleanup_time_seconds
 		- prototype.wave_director.final_invasion_time_seconds
 	)
-	_check(prototype.run_label.text.contains("LAST ROOTS"), "the timeline enters its cleanup phase")
+	_check(
+		prototype.wave_director.cleanup_started,
+		"the timeline enters its cleanup phase"
+	)
 	# Leave a hostile standing as the clock runs out: the timeline ending must not
 	# hand the player a win while anything is still alive.
 	prototype.combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.HUNTER)
@@ -4950,7 +5114,6 @@ func _run() -> void:
 		prototype.wave_director.is_complete()
 		and survivors_at_time_out > 0
 		and prototype.get_run_state() == PhaseBPrototype.RunState.RUNNING
-		and prototype.run_label.text.contains("FINAL STAND")
 		and prototype.run_label.text.contains("CLEAR THE FIELD"),
 		"the clock running out leaves the run going while hostiles are still standing"
 	)

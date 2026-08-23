@@ -25,6 +25,15 @@ class Glob:
 	## Which generation of a chained Bloom threw this glob, so a Seed it cracks open
 	## joins that chain instead of restarting it.
 	var chain_depth := 0
+	## Obstacle faces this glob has already run down. Bounded so a lump caught in a
+	## corner settles instead of grinding along the geometry forever.
+	var wall_contacts := 0
+	## The face this glob is currently running down, and how long it stays wetted to
+	## it. A liquid that has touched a surface clings to it: that is what holds paint
+	## against a wall while the rest of its motion carries it along, and without it a
+	## glob simply glances off and flies away.
+	var wall_normal := Vector2.ZERO
+	var wall_cling_remaining := 0.0
 	var radius_cells := 0.0
 	var conversion := 1.0
 	var trail_remaining := 0.0
@@ -141,6 +150,35 @@ class Glob:
 @export_range(0.0, 40.0, 0.1) var neutral_drag_per_second := 2.6
 ## Drag per second over the run's own Green. Paint slides on wet paint.
 @export_range(0.0, 40.0, 0.1) var green_drag_per_second := 0.7
+## Share of its speed a glob keeps each time it runs down an obstacle. Only the
+## motion along the face survives a hit at all; this is the rest of what the impact
+## costs it. High because these faces are meant to be slippery — paint runs down
+## basalt rather than gripping it.
+@export_range(0.0, 1.0, 0.01) var wall_slide_retention := 0.88
+## How much of the motion driving into a face comes back out of it. Paint is not
+## bouncy, so this stays near zero; a little keeps globs from hugging the surface.
+@export_range(0.0, 1.0, 0.01) var wall_restitution := 0.06
+## How hard a wetted glob is held against the face it is running down, in pixels
+## per second squared. This stands in for what gravity does to paint on a wall: it
+## is what keeps the material on the surface while the rest of its motion carries it
+## along, instead of letting it glance off into open ground.
+@export_range(0.0, 4000.0, 10.0) var wall_cling_acceleration := 900.0
+## How much closer together a glob lays its trail while it is running down a face.
+## Material on a surface leaves a continuous streak rather than the spaced droplets
+## of something in free flight, and that streak is most of what a wall hit paints.
+@export_range(0.05, 1.0, 0.05) var wall_streak_spacing_scale := 0.55
+## How long a glob stays wetted to a face after touching it.
+@export_range(0.0, 4.0, 0.05) var wall_cling_seconds := 0.85
+## How square-on a contact has to be before it marks the face at all. A glob that
+## merely grazes a rock leaves its streak and carries on; stamping a splat for every
+## glancing touch costs the frame far more than it shows.
+@export_range(0.0, 1.0, 0.01) var minimum_face_splash_share := 0.22
+## Obstacle faces one glob may run down before it settles. Without a bound a lump
+## caught in a corner can grind along the geometry indefinitely.
+@export_range(0, 12, 1) var maximum_wall_contacts := 4
+## Cells a glob is held off a face after hitting it, so the next step begins in open
+## ground instead of colliding with the same cell again.
+@export_range(0.1, 3.0, 0.1) var wall_clearance_cells := 0.7
 ## Speed in pixels per second below which a glob has run out of throw and lands.
 @export_range(1.0, 400.0, 1.0) var glob_landing_speed := 90.0
 ## How much a landing is stretched along its own travel per pixel per second of
@@ -740,6 +778,9 @@ func _launch_glob(
 		glob.radius_cells = maxf(0.5, radius_pixels / maxf(0.001, pixels_per_cell))
 		glob.conversion = conversion
 		glob.chain_depth = chain_depth
+		glob.wall_contacts = 0
+		glob.wall_normal = Vector2.ZERO
+		glob.wall_cling_remaining = 0.0
 		glob.trail_remaining = glob_trail_spacing
 		glob.travelled = 0.0
 		_globs_launched += 1
@@ -777,16 +818,29 @@ func _advance_globs(delta: float) -> void:
 func _advance_glob(glob: Glob, delta: float) -> void:
 	var step := glob.velocity * delta
 	var next_position := glob.position + step
-	# Basalt and the arena edge stop paint dead: it lands against the obstacle
-	# rather than passing through it or vanishing.
+	# Basalt and the arena edge are surfaces, not sinks. Paint thrown at a wall does
+	# not stop dead and it does not vanish: it hits, loses everything it had driving
+	# into the face, and what it had running along the face carries it down the wall
+	# until it runs out and pools at the foot. A very slippery surface is exactly the
+	# case where almost none of that along-the-face motion is taken away.
 	if (
 		not territory_field.contains_local_point(next_position)
 		or not territory_field.is_claimable_at_local(next_position)
 	):
-		_land_glob(glob)
+		if not _run_down_obstacle(glob, next_position):
+			_land_glob(glob)
 		return
 	glob.position = next_position
 	glob.travelled += step.length()
+
+	# While it is still wetted to a face, it is held against it. This is what makes
+	# the paint run down the wall rather than glance off it: what carries it along
+	# the surface is untouched, but it is not free to leave.
+	if glob.wall_cling_remaining > 0.0:
+		glob.wall_cling_remaining -= delta
+		glob.velocity -= glob.wall_normal * wall_cling_acceleration * delta
+		if glob.wall_cling_remaining <= 0.0:
+			glob.wall_normal = Vector2.ZERO
 
 	# Air drag first, and it is the reason a splatter looks the way it does: it acts
 	# on the droplet's cross-section and is resisted by its Mass, so deceleration
@@ -816,8 +870,19 @@ func _advance_glob(glob: Glob, delta: float) -> void:
 	# travels rather than stamped along a ray decided in advance.
 	glob.trail_remaining -= step.length()
 	if glob.trail_remaining <= 0.0 and glob_trail_spacing > 0.0:
-		glob.trail_remaining = glob_trail_spacing
-		var trail_mass := glob.mass * glob_trail_mass_share
+		# Material running down a face leaves a continuous streak on it, not the
+		# spaced droplets of something in free flight. Without this a glob spent most
+		# of what it carried on the slide and deposited almost nothing.
+		var spacing_scale := 1.0
+		if glob.wall_cling_remaining > 0.0:
+			spacing_scale = wall_streak_spacing_scale
+		glob.trail_remaining = glob_trail_spacing * spacing_scale
+		# Spending a share of the remaining Mass per splat means the closer the
+		# splats are laid the faster the glob bleeds out, so a streak with three
+		# times the marks arrived carrying nothing. What the trail costs is charged
+		# by the distance covered instead, which leaves the material a glob spends
+		# per pixel the same whether it is streaking a face or crossing open ground.
+		var trail_mass := glob.mass * glob_trail_mass_share * spacing_scale
 		if trail_mass > 0.0:
 			glob.mass = maxf(0.0, glob.mass - trail_mass)
 			territory_field.queue_splat(
@@ -830,6 +895,62 @@ func _advance_glob(glob: Glob, delta: float) -> void:
 
 	if glob.velocity.length() <= glob_landing_speed or glob.mass <= 0.0:
 		_land_glob(glob)
+
+
+func _run_down_obstacle(glob: Glob, contact_position: Vector2) -> bool:
+	# Returns false when the glob is spent and should deposit where it lies.
+	if glob.wall_contacts >= maximum_wall_contacts:
+		return false
+	var normal := territory_field.get_obstacle_normal_at_local(contact_position)
+	if normal == Vector2.ZERO:
+		return false
+	var into := glob.velocity.dot(normal)
+	if into >= 0.0:
+		# Already travelling away from the face and still blocked, which means the
+		# normal is not describing what it is caught on. Let it settle.
+		return false
+	# A hit splits along the surface. What was driving into the face has nowhere to
+	# go and is what actually splatters there; what was running along the face is
+	# untouched, and that is the part that carries on down the wall. So a glob
+	# thrown square at a rock still marks it hard, and one that catches it at an
+	# angle mostly keeps going — which is the difference between throwing paint at
+	# a wall and dragging a loaded brush across it.
+	var speed := glob.velocity.length()
+	var head_on := clampf(absf(into) / maxf(1.0, speed), 0.0, 1.0)
+	var splash_mass := glob.mass * head_on
+	if head_on > minimum_face_splash_share and splash_mass > 0.0:
+		glob.mass = maxf(0.0, glob.mass - splash_mass)
+		territory_field.queue_splat(
+			glob.position,
+			splash_mass * landing_mass_scale,
+			absf(into) * landing_pressure_per_speed,
+			glob.radius_cells * landing_spread_scale * head_on * (
+				1.0 + landing_spread_per_root_speed * sqrt(absf(into))
+			),
+			glob.conversion,
+			-normal,
+			minf(1.0 + landing_smear_per_speed * absf(into), maximum_landing_smear),
+			splash_mass * absf(into) * impact_maturity_break,
+			landing_maturity_ceiling,
+			get_landing_maturity_reinforcement()
+		)
+	glob.velocity -= normal * into * (1.0 + wall_restitution)
+	glob.velocity *= wall_slide_retention
+	glob.wall_contacts += 1
+	glob.wall_normal = normal
+	glob.wall_cling_remaining = wall_cling_seconds
+	# Held a hair off the surface so the next step starts in open ground rather than
+	# re-colliding with the same cell forever.
+	var pixels_per_cell := (
+		territory_field.tuning.arena_size.x / float(territory_field.tuning.field_size.x)
+	)
+	var clearance := glob.position + normal * pixels_per_cell * wall_clearance_cells
+	if (
+		territory_field.contains_local_point(clearance)
+		and territory_field.is_claimable_at_local(clearance)
+	):
+		glob.position = clearance
+	return glob.velocity.length() > glob_landing_speed
 
 
 func _land_glob(glob: Glob) -> void:

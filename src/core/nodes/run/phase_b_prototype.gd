@@ -71,6 +71,11 @@ enum ChoiceKind {
 ## Seconds of that time spent fading, so the banner leaves rather than vanishing.
 @export_range(0.1, 6.0, 0.1) var banner_fade_seconds := 1.10
 
+@export_group("Ecosystem Feedback")
+## How much longer the border's answer to a purchase lingers than the release that
+## caused it. A little over one keeps the visual alive to the end of the pour.
+@export_range(0.5, 4.0, 0.05) var injection_visual_duration_scale := 1.35
+
 @export_group("Relic Rewards")
 ## Waves between scheduled relic rewards; every Nth wave puts one on the table.
 ## Zero turns the schedule off and leaves relics to the elite and the boss.
@@ -93,6 +98,8 @@ enum ChoiceKind {
 @export var xp_label: Label
 ## Label that displays wave number, wave name, time remaining, and active hostiles.
 @export var run_label: Label
+## The hostile-count warning, its own node so the panel can place it.
+@export var hostile_label: Label
 ## Label that displays the Biomass economy: Reserve, Production, Consumption, Net.
 @export var biomass_label: Label
 ## Label that displays selected Plant paths, mastery readiness, and active evolution.
@@ -110,8 +117,6 @@ enum ChoiceKind {
 @export var choice_panel: Panel
 ## Heading label for the active upgrade or relic draft.
 @export var choice_header: Label
-## Instruction label shown above the current draft options.
-@export var choice_prompt: Label
 ## Button used for the first authored upgrade or relic choice.
 @export var choice_button_one: Button
 ## Button used for the second authored upgrade or relic choice.
@@ -124,11 +129,11 @@ enum ChoiceKind {
 @export var choice_reroll_button: Button
 ## Allocation control for Photosynthesis. Left click adds a point, right click
 ## takes one back; the bar it draws is the level's automatic progress.
-@export var photosynthesis_button: Button
+@export var photosynthesis_button: PhaseBMetabolismButton
 ## Allocation control for Meristem; see Photosynthesis Button.
-@export var meristem_button: Button
+@export var meristem_button: PhaseBMetabolismButton
 ## Allocation control for Cambium; see Photosynthesis Button.
-@export var cambium_button: Button
+@export var cambium_button: PhaseBMetabolismButton
 ## Button that spends half the Biomass Reserve as one Overgrow injection.
 @export var overgrow_button: Button
 ## Label that reports the Breakthroughs the run holds and its next unlock.
@@ -140,8 +145,6 @@ enum ChoiceKind {
 @export var biomass_button: Button
 ## Large transient banner over the battlefield for major progression events.
 @export var banner_label: Label
-## Caption above the compact build summary in the sidebar.
-@export var build_label: Label
 ## Side-panel button that resets the current run to its initial state.
 @export var reset_button: Button
 ## Panel shown when the run reaches victory or defeat.
@@ -170,7 +173,7 @@ enum ChoiceKind {
 @export var pause_quit_button: Button
 
 var choice_buttons: Array[Button] = []
-var metabolism_buttons: Array[Button] = []
+var metabolism_buttons: Array[PhaseBMetabolismButton] = []
 
 var _run_state := RunState.RUNNING
 var _final_stand_announced := false
@@ -247,6 +250,7 @@ func _ready() -> void:
 		xp_bar,
 		xp_label,
 		run_label,
+		hostile_label,
 		biomass_label,
 		evolution_label,
 		relics_label,
@@ -255,7 +259,6 @@ func _ready() -> void:
 		upgrade_slots,
 		choice_panel,
 		choice_header,
-		choice_prompt,
 		choice_button_one,
 		choice_button_two,
 		choice_button_three,
@@ -281,7 +284,11 @@ func _ready() -> void:
 		pause_quit_button,
 	]
 	for interface_control in required_interface_controls:
-		assert(interface_control != null, "PhaseBPrototype has an unwired Interface reference")
+		assert(
+			interface_control != null,
+			"PhaseBPrototype has an unwired Interface reference at index %d of %d"
+			% [required_interface_controls.find(interface_control), required_interface_controls.size()]
+		)
 
 	_base_natural_spread_rate = territory_field.tuning.natural_spread_rate
 	_base_maturity_resistance_bonus = territory_field.tuning.maturity_resistance_bonus
@@ -332,6 +339,7 @@ func _ready() -> void:
 	for index in range(metabolism_buttons.size()):
 		metabolism_buttons[index].pressed.connect(_buy_metabolism_level.bind(index))
 	overgrow_button.pressed.connect(_press_overgrow)
+	metabolism.injection_started.connect(_on_injection_started)
 	choice_reroll_button.pressed.connect(_reroll_upgrade_choice)
 	progression.rerolls_changed.connect(_on_rerolls_changed)
 	reset_button.pressed.connect(reset_run)
@@ -646,39 +654,20 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 	match kind:
 		ChoiceKind.UPGRADE:
 			choice_header.text = "ROOT MEMORY"
-			choice_prompt.text = "Choose one upgrade. The living field is paused."
 		ChoiceKind.RELIC:
 			choice_header.text = "ELITE RELIC"
-			choice_prompt.text = (
-				"Choose one of three. Relics change rules, not numbers, and cannot "
-				+ "be levelled or replaced."
-			)
 		ChoiceKind.BREAKTHROUGH:
 			var system_id := metabolism.get_pending_breakthrough_system()
 			choice_header.text = "%s BREAKTHROUGH" % (
 				PhaseBMetabolism.get_system_name(system_id).to_upper()
 			)
-			choice_prompt.text = (
-				"Level %d. Choose how this system behaves from here; it changes the "
-				+ "simulation, not the numbers."
-			) % metabolism.get_level(system_id)
 		ChoiceKind.PATH:
 			if progression.is_pending_primary_path_choice():
 				choice_header.text = "PRIMARY PLANT PATH"
-				choice_prompt.text = (
-					"Commit to a path. Your second choice locks the run pairing."
-				)
 			elif progression.has_secondary_path():
 				choice_header.text = "SUPPORT PLANT PATH"
-				choice_prompt.text = (
-					"Your Evolution freed a slot. Choose a path to cover its weakness; "
-					+ "it will not evolve again."
-				)
 			else:
 				choice_header.text = "SECONDARY PLANT PATH"
-				choice_prompt.text = (
-					"Commit to a path. Your second choice locks the run pairing."
-				)
 	for index in range(choice_buttons.size()):
 		var button := choice_buttons[index]
 		if index >= _choice_ids.size():
@@ -858,6 +847,26 @@ func _advance_banner(delta: float) -> void:
 	banner_label.modulate = Color(1.0, 1.0, 1.0, fade)
 
 
+func _on_injection_started(
+	mass: float,
+	pressure: float,
+	cohesion: float,
+	cells: PackedInt32Array
+) -> void:
+	# The border answers a purchase in the axis that was bought. Mass swells, Pressure
+	# shoves outward, Cohesion knits along the frontier — three different actions, so
+	# the player can tell which one they paid for without reading the number.
+	var described := territory_field.describe_frontier_cells(cells)
+	overlay.spawn_injection(
+		described[0],
+		described[1],
+		mass,
+		pressure,
+		cohesion,
+		metabolism.injection_ramp_seconds * injection_visual_duration_scale
+	)
+
+
 func _press_overgrow() -> void:
 	if metabolism.try_overgrow():
 		combat.play_plant_explosion_sfx()
@@ -983,9 +992,10 @@ func _on_biomass_changed(current: float, per_second: float) -> void:
 		return
 	# The reserve and what it is earning, and nothing else. A soft dot appears only
 	# when a decision is actually affordable; everything else lives in the drawer.
+	# One line, matching the tray's own layout: the heading it used to carry cost a
+	# line of the tray and repeated what the column already says.
 	var ready_marker := "   ●" if metabolism.has_affordable_purchase() else ""
-	biomass_label.text = "BIOMASS
-%s        +%.1f/s%s" % [
+	biomass_label.text = "%s        +%.1f/s%s" % [
 		_format_compact(current),
 		per_second,
 		ready_marker,
@@ -1267,9 +1277,9 @@ func _update_hud() -> void:
 		0.0,
 		wave_director.run_duration_seconds - get_elapsed_seconds()
 	)
-	var wave_text := "WAVE %02d" % get_current_wave_number()
+	var wave_text := "WAVE %d" % get_current_wave_number()
 	if is_wave_grace_period_active():
-		wave_text = "WAVE %02d IN %02ds" % [
+		wave_text = "WAVE %d IN %02ds" % [
 			get_current_wave_number(),
 			ceili(get_wave_grace_remaining_seconds()),
 		]
@@ -1281,13 +1291,16 @@ func _update_hud() -> void:
 	# Absence communicates zero: the hostile count is a warning, so it appears only
 	# while there is something to warn about.
 	var hostiles := combat.get_active_enemy_count()
-	run_label.text = "%s // %s\n%s" % [
-		wave_text,
-		wave_director.get_wave_name(),
-		clock_text,
-	]
-	if hostiles > 0:
-		run_label.text += "     ⚠ %d HOSTILES" % hostiles
+	# The wave and the clock, one per line, as the scene lays the label out. The
+	# wave's phase name used to share the first line behind a "//"; the panel is laid
+	# out for two lines now and the name is gone with it.
+	run_label.text = "%s                    %s" % [wave_text, clock_text]
+	# Its own node, so it can be placed and seen in the editor rather than being
+	# concatenated onto a line that has no room for it. The text is always written
+	# and only the visibility is switched, so what the scene declares is the shape
+	# it always carries.
+	hostile_label.text = "%d HOSTILES" % hostiles
+	hostile_label.visible = hostiles > 0
 	var threshold := spore_director.get_seed_kill_threshold()
 	territory_label.tooltip_text = "Seed progress: %d / %d kills" % [
 		spore_director.get_kills_toward_seed(),
@@ -1340,15 +1353,8 @@ func _update_hud() -> void:
 			# Nothing worth announcing until a pairing is actually in reach.
 			evolution_label.text = ""
 			evolution_label.modulate = Color("93aab0")
-	# Build summary: the Paths read as words and the relics as squares beneath, so
-	# the two are never mistaken for one row of identical slots.
-	if build_label != null:
-		build_label.text = "BUILD"
-	relics_label.text = _get_path_pair_label()
-	if progression.has_tertiary_path():
-		relics_label.text += " + %s" % PhaseBProgression.get_path_name(
-			progression.tertiary_path
-		).to_upper()
+	# The relics heading is a fixed word the scene owns; the run's Paths are read
+	# from the slots beneath it rather than from this line.
 	_update_relic_slots()
 	slots_label.text = _format_slots_caption()
 	_update_upgrade_slots()
@@ -1620,14 +1626,20 @@ func _update_metabolism_controls() -> void:
 		var level := metabolism.get_level(system_id)
 		var cost := metabolism.get_level_cost(system_id)
 		var axis := PhaseBMetabolism.get_axis_name(system_id).to_upper()
-		button.text = "%s   LV %d\n%s\n[ %s  %s ]   %s" % [
+		# The wording is a positioned Label owned by the button, not the Button's own
+		# centred text, so the drawer can place it. The meter is placed the same way
+		# and no longer needs a blank line reserved for it.
+		button.set_display_text("%s   LV %d
+[ %s  %s ]   %s" % [
 			axis,
 			level,
-			_build_meter(metabolism.get_level_fraction(system_id)),
 			PhaseBMetabolism.get_purchase_verb(system_id),
 			_format_compact(cost),
 			PhaseBMetabolism.get_axis_summary(system_id),
-		]
+		])
+		var meter := button.get_meter()
+		if meter != null:
+			meter.value = metabolism.get_level_fraction(system_id)
 		var breakthrough := metabolism.get_breakthrough(system_id)
 		var lines := PackedStringArray([
 			"%s — %s" % [
@@ -1726,15 +1738,6 @@ func _get_nearest_breakthrough_system() -> int:
 			best_distance = distance
 			best = system_id
 	return best
-
-
-func _build_meter(fraction: float) -> String:
-	# A fixed-width bar, so the column never changes shape as the value moves.
-	var filled := int(round(clampf(fraction, 0.0, 1.0) * 10.0))
-	var meter := ""
-	for index in range(10):
-		meter += "█" if index < filled else "░"
-	return meter
 
 
 func _format_time(seconds: float) -> String:
