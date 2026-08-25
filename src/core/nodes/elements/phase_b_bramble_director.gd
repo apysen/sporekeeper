@@ -122,7 +122,8 @@ func advance(_delta: float) -> void:
 
 
 func has_path() -> bool:
-	return progression.has_path(PhaseBProgression.PathId.BRAMBLE)
+	# Active, not owned: a Bramble jackpot runs the path for a run that never took it.
+	return progression.has_path_active(PhaseBProgression.PathId.BRAMBLE)
 
 
 func get_resistance_multiplier() -> float:

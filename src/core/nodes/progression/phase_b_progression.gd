@@ -57,6 +57,10 @@ enum UpgradeId {
 	EVOLUTION_BRIAR_PAYLOAD,
 	EVOLUTION_SEASONAL_SURGE,
 	EVOLUTION_ANCIENT_FURY,
+	EVOLUTION_SECOND_FLUSH,
+	EVOLUTION_COMPRESSION,
+	EVOLUTION_SPLINTERSTORM,
+	EVOLUTION_STOOL_REGROWTH,
 }
 
 enum EvolutionStatus {
@@ -73,7 +77,7 @@ enum EvolutionId {
 	SEED_BANK,
 	FLOWERING_SEASON,
 	OLD_GROWTH,
-	COPPICE,
+	PIONEER,
 	REBOUND,
 	DEADFALL,
 	COPPICING,
@@ -86,6 +90,10 @@ enum EvolutionId {
 @export_range(1.0, 3.0, 0.01) var xp_requirement_growth := 1.34
 ## Highest rank obtainable by any individual upgrade line.
 @export_range(1, 10, 1) var maximum_upgrade_level := 5
+## Rank every line of a Path is run at while a Clover jackpot has that Path lit. The
+## jackpot's whole promise is a fully maxed Path, so this tracks the ceiling above
+## rather than being a second number that can drift away from it.
+@export_range(1, 10, 1) var casino_upgrade_level := 5
 ## Maximum number of different upgrade lines that may be started before evolving.
 @export_range(1, 12, 1) var upgrade_slot_count := 6
 ## Extra upgrade-line slots granted by completing the pair Evolution, so the third
@@ -183,6 +191,11 @@ var current_xp := 0
 var rerolls_remaining := 0
 var biomass := 0.0
 var biomass_per_second := 0.0
+## Every unit of Biomass the run has ever earned, which is what Metabolism grows on.
+## Kept apart from the balance on purpose: what is spent or wagered away still counted
+## toward the organism's physical development, so a bad spin costs a stake rather than
+## undoing the run's growth.
+var biomass_earned_total := 0.0
 ## Kept readable here because most of the run asks Progression for the state of
 ## the run. Both are owned by the Evolutions node and read straight back off it.
 var evolution_status: int:
@@ -193,6 +206,9 @@ var active_evolution: int:
 		return evolutions.active_evolution if evolutions != null else EvolutionId.NONE
 
 var _upgrade_levels := PackedInt32Array()
+## Paths currently being run at the casino ceiling, as a set of PathId. Empty for the
+## whole of a run in which nobody pulls the lever.
+var _casino_paths := {}
 var _owned_relics := PackedByteArray()
 var _pending_upgrade_options := PackedInt32Array()
 var _pending_relic_options := PackedInt32Array()
@@ -214,6 +230,7 @@ func _ready() -> void:
 	reset_progression()
 
 func reset_progression() -> void:
+	_casino_paths.clear()
 	primary_path = UNSELECTED_PATH
 	secondary_path = UNSELECTED_PATH
 	tertiary_path = UNSELECTED_PATH
@@ -221,6 +238,7 @@ func reset_progression() -> void:
 	current_xp = 0
 	biomass = 0.0
 	biomass_per_second = 0.0
+	biomass_earned_total = 0.0
 	if evolutions != null:
 		evolutions.reset_evolutions()
 	rerolls_remaining = rerolls_per_run
@@ -370,6 +388,30 @@ func has_path(path_id: int) -> bool:
 		or path_id == tertiary_path
 	)
 
+func get_path_rank_fraction(path_id: int) -> float:
+	## How far into a Path the run actually is, from 0 at not owning it to 1 with every
+	## one of its lines maxed. Presentation asks this: a Path the run has just taken and
+	## a Path it has spent the whole run on should not look identical on the battlefield.
+	##
+	## Read from owned ranks rather than borrowed ones, because it describes the build.
+	## A Clover jackpot lends behaviour for ten seconds and must not repaint the ground
+	## as though the run had bought the Path.
+	if not has_path(path_id):
+		return 0.0
+	var owned := 0
+	var possible := 0
+	for upgrade_id in range(UpgradeId.size()):
+		if _get_upgrade_path(upgrade_id) != path_id:
+			continue
+		owned += get_owned_upgrade_level(upgrade_id)
+		possible += maximum_upgrade_level
+	if possible <= 0:
+		return 1.0
+	# Never zero for a Path the run owns: taking the Path is itself the first thing
+	# worth showing, and a fraction that starts at nothing would hide it until the
+	# first draft landed.
+	return clampf(0.25 + 0.75 * float(owned) / float(possible), 0.0, 1.0)
+
 func has_active_evolution(evolution_id: int) -> bool:
 	return evolutions != null and evolutions.has_active_evolution(evolution_id)
 
@@ -427,7 +469,7 @@ func add_xp(amount: int) -> void:
 func choose_upgrade(upgrade_id: int) -> bool:
 	if _pending_upgrade_options.find(upgrade_id) == -1:
 		return false
-	if get_upgrade_level(upgrade_id) >= maximum_upgrade_level:
+	if get_owned_upgrade_level(upgrade_id) >= maximum_upgrade_level:
 		return false
 	_upgrade_levels[upgrade_id] += 1
 	_pending_upgrade_options.clear()
@@ -469,10 +511,58 @@ func get_pending_upgrade_options() -> PackedInt32Array:
 func has_pending_upgrade_choice() -> bool:
 	return not _pending_upgrade_options.is_empty()
 
-func get_upgrade_level(upgrade_id: int) -> int:
+func get_owned_upgrade_level(upgrade_id: int) -> int:
+	## What the run has actually bought. Drafting, slot occupancy, upgrade text and
+	## evolution readiness all read this rather than the effective level: a Clover
+	## jackpot lends a Path its ceiling for a few seconds and must not be able to
+	## unlock an Evolution or fill a growth-line slot on the way past.
 	if upgrade_id < 0 or upgrade_id >= _upgrade_levels.size():
 		return 0
 	return _upgrade_levels[upgrade_id]
+
+func get_upgrade_level(upgrade_id: int) -> int:
+	## What the mechanics should behave as: the owned level, plus the whole of the
+	## casino ceiling while a Clover jackpot is running that Path.
+	##
+	## Added rather than raised to a floor. A player who has already maxed a line has
+	## bought that ceiling, and a jackpot that merely handed it back what it already
+	## owned would be no reward at all - it would read as the machine paying out nothing
+	## for the Path the run is actually built around. Level 5 becomes 10, level 4 becomes
+	## 9, and an unowned Path still arrives at a full 5.
+	var owned := get_owned_upgrade_level(upgrade_id)
+	if _casino_paths.is_empty():
+		return owned
+	var path := _get_upgrade_path(upgrade_id)
+	if path == UNSELECTED_PATH or not _casino_paths.has(path):
+		return owned
+	return owned + casino_upgrade_level
+
+
+func has_path_active(path_id: int) -> bool:
+	## Whether a Path's mechanics should be running at all - which a Clover jackpot turns
+	## on for a Path the run does not own, because a jackpot that raised the numbers on a
+	## mechanic nobody had switched on would produce nothing at all.
+	##
+	## Deliberately not the same question as has_path. That one is ownership, and stays
+	## ownership: it decides drafting, which lines may be offered, and which relics are
+	## eligible. A jackpot lends a Path's behaviour and never its membership in the build.
+	return has_path(path_id) or _casino_paths.has(path_id)
+
+func set_casino_path_active(path_id: int, active: bool) -> void:
+	## A Clover jackpot runs a Path as though all four of its lines were maxed, whether
+	## or not the run owns the Path at all. It is a loan, not a purchase: nothing is
+	## added to the build, and ownership itself is deliberately not granted, so a relic
+	## that requires the player to have selected the Path keeps requiring it.
+	if active:
+		_casino_paths[path_id] = true
+	else:
+		_casino_paths.erase(path_id)
+
+func is_casino_path_active(path_id: int) -> bool:
+	return _casino_paths.has(path_id)
+
+func clear_casino_paths() -> void:
+	_casino_paths.clear()
 
 func get_required_xp() -> int:
 	return maxi(
@@ -497,10 +587,35 @@ func tick_biomass(
 		* biomass_per_mature_percent
 		* maxf(0.0, root_yield_multiplier)
 	) * get_biomass_production_multiplier()
-	biomass += biomass_per_second * delta
+	var earned := biomass_per_second * delta
+	biomass += earned
+	biomass_earned_total += earned
 	biomass_changed.emit(biomass, biomass_per_second)
 
+func set_biomass_from_network(reserve: float, per_second: float) -> void:
+	# Under the root economy the reserve is not Progression's to accumulate. It is
+	# held by the connected component that produced it, and this mirrors the main
+	# organism's so everything already reading `biomass` keeps working while the two
+	# economies are being compared.
+	biomass = maxf(0.0, reserve)
+	biomass_per_second = per_second
+	biomass_changed.emit(biomass, biomass_per_second)
+
+
+func get_selected_paths() -> PackedInt32Array:
+	# Whichever Paths the run is actually built out of, in one place, so anything that
+	# leans on the build does not have to know how many slots there are.
+	var selected := PackedInt32Array()
+	if primary_path != UNSELECTED_PATH:
+		selected.append(primary_path)
+	if secondary_path != UNSELECTED_PATH:
+		selected.append(secondary_path)
+	return selected
+
+
 func add_biomass(amount: float) -> void:
+	if amount > 0.0:
+		biomass_earned_total += amount
 	biomass = maxf(0.0, biomass + amount)
 	biomass_changed.emit(biomass, biomass_per_second)
 
@@ -758,7 +873,7 @@ func get_slotted_upgrades() -> PackedInt32Array:
 		_upgrade_slot_order.append(upgrade_id)
 	var slotted := PackedInt32Array()
 	for upgrade_id in _upgrade_slot_order:
-		if get_upgrade_level(upgrade_id) > 0:
+		if get_owned_upgrade_level(upgrade_id) > 0:
 			slotted.append(upgrade_id)
 	return slotted
 
@@ -828,13 +943,21 @@ static func get_upgrade_name(upgrade_id: int) -> String:
 			return "Seasonal Surge"
 		UpgradeId.EVOLUTION_ANCIENT_FURY:
 			return "Ancient Fury"
+		UpgradeId.EVOLUTION_SECOND_FLUSH:
+			return "Second Flush"
+		UpgradeId.EVOLUTION_COMPRESSION:
+			return "Compression"
+		UpgradeId.EVOLUTION_SPLINTERSTORM:
+			return "Splinterstorm"
+		UpgradeId.EVOLUTION_STOOL_REGROWTH:
+			return "Stool Regrowth"
 	return "Unknown Upgrade"
 
 func get_upgrade_description(upgrade_id: int) -> String:
 	if evolutions.get_upgrade_evolution(upgrade_id) != EvolutionId.NONE:
 		return evolutions.get_evolution_upgrade_rank_description(
 			upgrade_id,
-			get_upgrade_level(upgrade_id) + 1
+			get_owned_upgrade_level(upgrade_id) + 1
 		)
 	match upgrade_id:
 		UpgradeId.THORNSHOT_POWER:
@@ -1033,7 +1156,7 @@ func _roll_upgrade_options() -> bool:
 		var upgrade_id := (_upgrade_offer_cursor + offset) % UpgradeId.size()
 		if not _is_upgrade_draftable(upgrade_id):
 			continue
-		var level := get_upgrade_level(upgrade_id)
+		var level := get_owned_upgrade_level(upgrade_id)
 		if level >= maximum_upgrade_level:
 			continue
 		if occupied_slots >= get_upgrade_slot_count() and level == 0:
@@ -1116,7 +1239,7 @@ func _has_maxed_path_line(path_id: int) -> bool:
 	for upgrade_id in range(UpgradeId.size()):
 		if (
 			_get_upgrade_path(upgrade_id) == path_id
-			and get_upgrade_level(upgrade_id) >= maximum_upgrade_level
+			and get_owned_upgrade_level(upgrade_id) >= maximum_upgrade_level
 		):
 			return true
 	return false

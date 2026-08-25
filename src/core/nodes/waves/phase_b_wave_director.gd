@@ -90,6 +90,28 @@ signal cleanup_began
 ## Reinforcement-pack cycle used after introduction; every Nth pack includes a Warden.
 @export_range(2, 30, 1) var warden_pack_cycle := 11
 
+@export_group("Late Specialists")
+## Elapsed run time when Grazers begin arriving as the immovable Heavy variant.
+## Late, because it is the answer to a frontier the run has had time to build.
+@export_range(0.0, 1100.0, 1.0) var heavy_grazer_intro_seconds := 330.0
+## Share of Grazer spawns that arrive Heavy once introduced.
+@export_range(0.0, 1.0, 0.01) var heavy_grazer_share := 0.45
+## Elapsed run time when regular packs begin including fast Rushers.
+@export_range(0.0, 1100.0, 1.0) var rusher_intro_seconds := 300.0
+## Reinforcement-pack cycle used after introduction; every Nth pack leads with a Rusher.
+@export_range(2, 30, 1) var rusher_pack_cycle := 6
+## Elapsed run time when Corruptors begin arriving as the escalating Siege variant.
+@export_range(0.0, 1100.0, 1.0) var siege_corruptor_intro_seconds := 420.0
+## Share of Corruptor spawns that arrive as Siege Corruptors once introduced.
+@export_range(0.0, 1.0, 0.01) var siege_corruptor_share := 0.5
+
+@export_group("Escalation")
+## Elapsed run time at which elites may begin carrying rule changes at all. The
+## design note ties this to the run's own progression rather than the clock, and
+## the clock is the honest approximation of it: by here a run has a pairing, a
+## build, and something for a rule change to be a change to.
+@export_range(0.0, 1100.0, 1.0) var elite_modifier_intro_seconds := 300.0
+
 var elapsed_seconds := 0.0
 var announced_wave_number := 1
 var elite_spawned := false
@@ -100,6 +122,10 @@ var cleanup_started := false
 var _spawn_remaining := 0.0
 var _spawn_pack_sequence := 0
 var _grazer_pack_sequence := 0
+## Bumped every time a specialist variant is chosen, so the Heavy and Siege shares
+## alternate deterministically instead of being rolled. A run should not be able to
+## get eight Heavy Grazers in a row because the dice said so.
+var _variant_sequence := 0
 
 
 func _ready() -> void:
@@ -116,7 +142,9 @@ func reset_director() -> void:
 	_spawn_remaining = opening_spawn_delay_seconds
 	_spawn_pack_sequence = 0
 	_grazer_pack_sequence = 0
+	_variant_sequence = 0
 	_apply_enemy_spawn_scaling()
+	combat.set_elite_modifier_pressure(0.0)
 
 
 func advance(delta: float) -> void:
@@ -228,6 +256,16 @@ func _update_enemy_spawning(delta: float) -> void:
 	var role := PhaseBCombatDirector.EnemyRole.HUNTER
 	if _grazer_pack_sequence % maxi(1, grazer_cycle) == 0:
 		role = PhaseBCombatDirector.EnemyRole.GRAZER
+		if _use_late_variant(heavy_grazer_intro_seconds, heavy_grazer_share):
+			role = PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER
+	elif (
+		elapsed_seconds >= rusher_intro_seconds
+		and _grazer_pack_sequence % maxi(2, rusher_pack_cycle) == 0
+	):
+		# The Rusher replaces the Hunter rather than accompanying it. A pack that is
+		# a Hunter plus a faster Hunter is the same pack; a pack that arrives sooner
+		# than the player expected is a different fight.
+		role = PhaseBCombatDirector.EnemyRole.RUSHER
 	_grazer_pack_sequence += 1
 	var pressure_role := role
 	role = _select_regular_role(pressure_role)
@@ -268,6 +306,8 @@ func _select_regular_role(pressure_role: int) -> int:
 		elapsed_seconds >= corruptor_intro_seconds
 		and _spawn_pack_sequence % maxi(2, corruptor_pack_cycle) == 0
 	):
+		if _use_late_variant(siege_corruptor_intro_seconds, siege_corruptor_share):
+			return PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR
 		return PhaseBCombatDirector.EnemyRole.CORRUPTOR
 	if (
 		elapsed_seconds >= saboteur_intro_seconds
@@ -277,10 +317,34 @@ func _select_regular_role(pressure_role: int) -> int:
 	return pressure_role
 
 
+func _use_late_variant(intro_seconds: float, share: float) -> bool:
+	# Deterministic rather than rolled. The share is honoured across successive
+	# spawns without a run being able to draw the same variant eight times because
+	# the dice allowed it, which is the difference between a mix and a streak.
+	if elapsed_seconds < intro_seconds or share <= 0.0:
+		return false
+	if share >= 1.0:
+		return true
+	_variant_sequence += 1
+	var period := maxi(2, int(round(1.0 / share)))
+	return _variant_sequence % period == 0
+
+
+func get_escalation_progress() -> float:
+	# How far the run is into its escalation stage, which is what decides how often
+	# the rules change. Zero until the run is far enough in to have a build worth
+	# changing the rules of, then climbing to one at the final invasion.
+	if elapsed_seconds < elite_modifier_intro_seconds:
+		return 0.0
+	var span := maxf(1.0, final_invasion_time_seconds - elite_modifier_intro_seconds)
+	return clampf((elapsed_seconds - elite_modifier_intro_seconds) / span, 0.0, 1.0)
+
+
 func _apply_enemy_spawn_scaling() -> void:
 	var progress := _pressure_progress()
 	var wave_number := get_current_wave_number()
 	var wave_index := wave_number - 1
+	combat.set_elite_modifier_pressure(get_escalation_progress())
 	combat.set_enemy_scaling(
 		lerpf(1.0, final_health_scale, progress),
 		lerpf(1.0, final_contact_damage_scale, progress),

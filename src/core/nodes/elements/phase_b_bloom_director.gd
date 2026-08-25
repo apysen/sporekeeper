@@ -292,7 +292,7 @@ func advance(delta: float) -> void:
 	_advance_globs(delta)
 	_advance_echo_blooms(delta)
 	_advance_flowering_season(delta)
-	if not progression.has_path(PhaseBProgression.PathId.BLOOM):
+	if not progression.has_path_active(PhaseBProgression.PathId.BLOOM):
 		_bloom_remaining = first_bloom_delay_seconds
 		return
 	_bloom_remaining -= delta

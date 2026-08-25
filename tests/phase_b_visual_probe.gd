@@ -60,10 +60,13 @@ func _run() -> void:
 		48.0,
 		PhaseBCombatDirector.DeathSource.BLOOM
 	)
-	prototype.run_label.text = (
-		"Visual fixture: thorned Green frontier, Briar Pod, full enemy roster, Seed, and Bloom."
-	)
-	prototype.run_label.text = "SUPPRESSION SIEGE     05:00 REMAINING     22 HOSTILES"
+	# The wave and the clock are separate nodes now, so the fixture writes each one
+	# rather than padding a single string. The first of the two writes this used to do
+	# was overwritten on the next line and never reached a frame.
+	prototype.wave_label.text = "SUPPRESSION SIEGE"
+	prototype.clock_label.text = "05:00 REMAINING"
+	prototype.hostile_label.text = "22 HOSTILES"
+	prototype.hostile_label.visible = true
 	await process_frame
 	await process_frame
 

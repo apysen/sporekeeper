@@ -356,13 +356,20 @@ efficiency out of the same ground; Harvest Rate is the only one that spends more
 and it is priced as a trade, buying spikes per second and burn per second in the
 same rank.
 
-Pruning pairs into five Evolutions. Spore plus Pruning becomes Coppice, seeding the
-harvested ground as it is taken so it erupts in batches a moment later. Bloom plus Pruning
+Pruning pairs into five Evolutions. Spore plus Pruning becomes Pioneer, seeding the
+harvested ground as it is taken so it erupts in batches a moment later. It was called
+Coppice, which was one letter from Root plus Pruning's Coppicing and named the wrong
+thing besides: coppicing is regrowth from a cut stool, and this pairing regrows from
+seed on disturbed ground, which is what a pioneer species does. Bloom plus Pruning
 becomes Rebound, where a detonating Bloom collapses the Green around it inward and
 converts that mass into Force rather than new Plant Mass, capped so the collapse
 cannot compound. Bramble plus Pruning becomes Deadfall, turning the thorns torn out
 with the Green into extra spikes. Root plus Pruning becomes Coppicing, paying out
 far more Cuttings for ancient ground and driving the cut ground back much faster.
+
+All ten pairings now carry an optional five-rank Evolution line: Pioneer takes Second
+Flush, Rebound takes Compression, Deadfall takes Splinterstorm, and Coppicing takes
+Stool Regrowth, alongside the six that already had one.
 
 Biomass accrues from Green area and Mature Green area, and the side panel reads
 it as a running economy: Reserve, Production, Consumption, and Net. Nothing is

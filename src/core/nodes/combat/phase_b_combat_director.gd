@@ -28,6 +28,11 @@ signal briar_trap_detonated(local_position: Vector2)
 ## reaching into the combat loop for it.
 signal enemy_rooted(local_position: Vector2)
 signal active_enemy_count_changed(count: int)
+## An elite spawned carrying a rule change. The player has to be able to see which
+## one before it matters, so this is what the battlefield reads to mark it.
+signal elite_modifier_assigned(enemy_id: int, modifier: int)
+## A Volatile elite detonated where it died.
+signal elite_detonated(local_position: Vector2, radius: float)
 
 enum EnemyRole {
 	HUNTER,
@@ -39,6 +44,33 @@ enum EnemyRole {
 	COLONIZER,
 	WARDEN,
 	COLONY_CORE,
+	HEAVY_GRAZER,
+	RUSHER,
+	SIEGE_CORRUPTOR,
+}
+
+## Rule changes an elite can carry. The design note is explicit that a late elite
+## should increasingly change the rules rather than only its stat line, so each of
+## these makes the fight different rather than longer. One per elite, never stacked:
+## two rule changes on one body is a fight the player cannot read.
+enum EliteModifier {
+	NONE,
+	## Cannot be rooted or shoved. Still fully vulnerable to being slowed, which is
+	## what keeps it a rule change rather than an immunity to Bramble.
+	UNSTOPPABLE,
+	## Leaves Hostile territory in its wake, so its path through the organism has to
+	## be fought back through afterwards.
+	BLIGHTED,
+	## Its territory work accelerates for as long as it is left alone.
+	RAVENOUS,
+	## Heals unless the player has damaged it recently. Anything else the run does -
+	## thorns, Blooms, the ring - is deliberately not enough on its own.
+	REGENERATIVE,
+	## Suppresses the maturity of the Green around it, weakening everything the run's
+	## territory effects are read from while it is standing there.
+	DISRUPTIVE,
+	## Detonates on death, damaging nearby enemies and the Green it dies on.
+	VOLATILE,
 }
 
 enum EnemyStateKind {
@@ -126,6 +158,22 @@ class EnemyState:
 	var bramble_horde_count := 0
 	var was_on_bramble := false
 	var movement_speed_multiplier := 1.0
+	## Share of an incoming shove this enemy ignores.
+	var knockback_resistance := 0.0
+	## What each uninterrupted territory action multiplies the next one by, and the
+	## ceiling on the running total.
+	var territory_action_escalation := 1.0
+	var territory_action_escalation_cap := 1.0
+	## The running multiplier itself. It is reset by being hit, which is what makes
+	## "if ignored" the actual condition rather than a timer.
+	var territory_escalation := 1.0
+	## The rule this elite changes, or NONE for everything that changes none.
+	var elite_modifier := EliteModifier.NONE
+	## Seconds left of the window in which Regenerative refuses to heal.
+	var regeneration_block_remaining := 0.0
+	## Where Blighted last soured the ground, so it leaves a trail rather than a
+	## smear: the wake is stamped at intervals along the path, not every frame.
+	var blight_last_position := Vector2.ZERO
 
 class ProjectileState:
 	var active := false
@@ -201,6 +249,52 @@ class PendingEruptionState:
 @export var overlay: TerritoryPrototypeOverlay
 ## Audio bus names and global output caps used by dynamically created combat players.
 @export var audio_settings: PhaseBAudioSettings
+## Presentation options. Optional: without it every number is drawn, which is the
+## behaviour this had before the setting existed.
+@export var display_settings: PhaseBDisplaySettings
+
+@export_group("Damage Numbers")
+## Damage at or above which a hit counts as important, and survives the Important
+## Only setting. Priced as an ability landing rather than a tick: the point of the
+## setting is to drop the stream of small numbers and keep the ones that mean
+## something happened.
+@export_range(0.0, 500.0, 1.0) var important_damage_number_threshold := 25.0
+
+@export_group("Elite Modifiers")
+## Chance an eligible spawn carries a rule change, before run pressure raises it.
+## Zero until the run is far enough in that the player has a build to change the
+## rules of: a modifier met before that is only an unexplained stat line.
+@export_range(0.0, 1.0, 0.01) var elite_modifier_base_chance := 0.0
+## Chance at full run pressure. The wave director raises the live value between the
+## two as the run escalates, which is the doc's "begin introducing more dangerous
+## elites" expressed as a dial rather than a second schedule.
+@export_range(0.0, 1.0, 0.01) var elite_modifier_final_chance := 0.85
+## Roles other than the Elite that may carry a modifier once the run is escalating.
+## Late specialists qualify; the early body of a pack deliberately never does.
+@export var modifier_eligible_late_roles := PackedInt32Array([9, 10, 11])
+## Health per second a Regenerative elite recovers while the player has left it be.
+@export_range(0.0, 200.0, 0.5) var regenerative_health_per_second := 9.0
+## Seconds a Regenerative elite is stopped from healing by one hit from the player.
+@export_range(0.05, 10.0, 0.05) var regenerative_block_seconds := 2.2
+## Arena pixels a Blighted elite travels between the stamps that sour its wake.
+@export_range(2.0, 200.0, 1.0) var blighted_trail_spacing_pixels := 18.0
+## Strength of one of those stamps, on the same scale a Corruptor's action uses.
+@export_range(0.0, 4.0, 0.05) var blighted_trail_strength := 0.55
+## Radius multiplier of a Disruptive elite's maturity suppression.
+@export_range(0.1, 8.0, 0.05) var disruptive_radius_multiplier := 2.4
+## Maturity suppression per second applied by a Disruptive elite standing on Green.
+@export_range(0.0, 4.0, 0.05) var disruptive_suppression_per_second := 0.9
+## Damage a Volatile elite deals to everything near where it died.
+@export_range(0.0, 400.0, 1.0) var volatile_detonation_damage := 46.0
+## Radius of that detonation in arena pixels.
+@export_range(4.0, 400.0, 1.0) var volatile_detonation_radius := 74.0
+## Erosion the detonation inflicts on the Green it dies on, so a Volatile death
+## costs the player ground as well as answering their kill with damage.
+@export_range(0.0, 4.0, 0.05) var volatile_territory_damage := 1.3
+## What each uninterrupted action multiplies the next one by for a Ravenous elite.
+@export_range(1.0, 2.0, 0.01) var ravenous_escalation := 1.16
+## Ceiling on that, as a multiple of the elite's base territory strength.
+@export_range(1.0, 20.0, 0.5) var ravenous_escalation_cap := 5.0
 
 @export_group("Enemy Profiles")
 ## Profile copied into each newly spawned Hunter.
@@ -221,6 +315,16 @@ class PendingEruptionState:
 @export var warden_profile: PhaseBEnemyProfile
 ## Profile copied into each stationary hostile Colony Core created by Colonizers.
 @export var colony_core_profile: PhaseBEnemyProfile
+## Late specialist: large, slow, eats a lot of Green, and cannot be shoved.
+@export var heavy_grazer_profile: PhaseBEnemyProfile
+## Late specialist: a fast Hunter that crosses Bramble before it can take hold.
+@export var rusher_profile: PhaseBEnemyProfile
+## Late specialist: a Corruptor whose conversion accelerates while it is ignored.
+@export var siege_corruptor_profile: PhaseBEnemyProfile
+## How far a colony core may be nudged to find ground it can actually be fought on. A
+## core inside a wall cannot be damaged from any direction, so beyond this the placement
+## is refused outright rather than allowed to strand the run.
+@export_range(0.0, 240.0, 4.0) var colony_core_relocation_pixels := 96.0
 
 @export_group("Thornshot")
 ## Base damage dealt by each Thornshot hit before upgrades and relic multipliers.
@@ -461,6 +565,10 @@ var _navigation_width := 0
 var _navigation_height := 0
 var _navigation_cell_count := 0
 var _navigation_small_target_index := -1
+## Chance an eligible spawn carries a rule change, driven by the wave director.
+var _elite_modifier_chance := 0.0
+## A modifier pinned for the next eligible spawn, for tests and debug keys.
+var _forced_elite_modifier := EliteModifier.NONE
 var _navigation_boss_target_index := -1
 var _navigation_catalyst_target_index := -1
 var _navigation_catalyst_target_position := Vector2(-99999.0, -99999.0)
@@ -781,9 +889,13 @@ func _find_enemy(enemy_id: int) -> EnemyState:
 
 
 func reset_combat() -> void:
+	_elite_modifier_chance = elite_modifier_base_chance
+	_forced_elite_modifier = EliteModifier.NONE
 	for enemy in _enemies:
 		enemy.active = false
 		enemy.state = EnemyStateKind.INACTIVE
+		enemy.elite_modifier = EliteModifier.NONE
+		enemy.territory_escalation = 1.0
 	for projectile in _projectiles:
 		projectile.active = false
 	for pickup in _pickups:
@@ -882,6 +994,12 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	enemy.bramble_horde_count = 0
 	enemy.was_on_bramble = false
 	enemy.movement_speed_multiplier = 1.0
+	enemy.territory_escalation = 1.0
+	enemy.regeneration_block_remaining = 0.0
+	enemy.blight_last_position = local_position
+	enemy.elite_modifier = _roll_elite_modifier(role)
+	if enemy.elite_modifier != EliteModifier.NONE:
+		elite_modifier_assigned.emit(enemy.id, enemy.elite_modifier)
 	if enemy.use_boss_navigation:
 		_navigation_boss_target_index = -1
 		_navigation_refresh_remaining = 0.0
@@ -1666,6 +1784,7 @@ func _update_enemies(delta: float) -> void:
 		if not enemy.active:
 			continue
 		enemy.contact_remaining = maxf(0.0, enemy.contact_remaining - delta)
+		_advance_elite_modifier(enemy, delta)
 		enemy.territory_action_remaining -= delta
 		enemy.hit_flash_remaining = maxf(0.0, enemy.hit_flash_remaining - delta)
 		_update_enemy_bramble_contact(enemy, delta)
@@ -2157,6 +2276,12 @@ func _begin_knockback(enemy: EnemyState, direction: Vector2, distance: float) ->
 	# reading as crowd control.
 	if direction.length_squared() <= 0.000001 or distance <= 0.0:
 		return
+	# What an immovable archetype actually is. Heavy Grazer and Unstoppable both come
+	# through here rather than each refusing the shove somewhere of their own, so
+	# there is one place that decides whether a body moves.
+	distance *= 1.0 - clampf(enemy.knockback_resistance, 0.0, 1.0)
+	if distance <= 0.0:
+		return
 	var duration := maxf(0.01, bramble_repulsion_seconds)
 	enemy.knockback_direction = direction.normalized()
 	enemy.knockback_remaining = duration
@@ -2488,7 +2613,22 @@ func _update_briar_pods(delta: float) -> void:
 
 
 func _perform_enemy_territory_action(enemy: EnemyState) -> void:
-	var scaled_strength := enemy.territory_action_strength * enemy.territory_erosion_scale
+	var scaled_strength := (
+		enemy.territory_action_strength
+		* enemy.territory_erosion_scale
+		* enemy.territory_escalation
+	)
+	# Uninterrupted work compounds. The Siege Corruptor carries this on its profile and
+	# Ravenous grants it to any elite, so "if ignored" is one mechanic with two owners
+	# rather than two mechanics that happen to look alike.
+	var escalation := enemy.territory_action_escalation
+	if enemy.elite_modifier == EliteModifier.RAVENOUS:
+		escalation = maxf(escalation, ravenous_escalation)
+	if escalation > 1.0:
+		enemy.territory_escalation = minf(
+			enemy.territory_escalation * escalation,
+			maxf(1.0, enemy.territory_action_escalation_cap)
+		)
 	# Repulsion answers anything that weakens Green, not erosion alone: grazing,
 	# hostile conversion and spread, maturity suppression, a colony planted in the
 	# territory, and a Saboteur cutting down a catalyst standing on it all count.
@@ -2565,7 +2705,37 @@ func _try_establish_colony_core(colonizer: EnemyState) -> bool:
 			continue
 		if enemy.position.distance_squared_to(colonizer.position) < minimum_spacing_squared:
 			return false
-	return spawn_enemy(EnemyRole.COLONY_CORE, colonizer.position) != -1
+	# A Colonizer holding position against a wall can be overlapping it, and a core
+	# planted there is unkillable rather than merely awkward: every radial source checks
+	# is_growth_path_clear from its centre to the target, and there is no direction from
+	# which a line reaches into solid rock. The run then cannot be won, because clearing
+	# the field is a victory condition.
+	var site := _find_colony_core_site(colonizer.position)
+	if site == Vector2.INF:
+		return false
+	return spawn_enemy(EnemyRole.COLONY_CORE, site) != -1
+
+
+func _find_colony_core_site(wanted: Vector2) -> Vector2:
+	## The nearest place a colony core can stand and still be fought, or Vector2.INF if
+	## there is none nearby. Refusing the placement is deliberate: a Colonizer that finds
+	## nowhere legal should waste its action rather than plant something invincible.
+	var radius := colony_core_profile.body_radius_pixels
+	if territory_field.is_diamond_claimable_at_local(wanted, radius):
+		return wanted
+	# Outward in rings, nearest first, so a core pressed against a wall steps just clear
+	# of it instead of teleporting somewhere the Colonizer never went.
+	var step := maxf(4.0, radius * 0.5)
+	var rings := int(ceil(colony_core_relocation_pixels / step))
+	for ring in range(1, rings + 1):
+		var distance := float(ring) * step
+		var samples := 8 * ring
+		for sample in range(samples):
+			var angle := TAU * float(sample) / float(samples)
+			var candidate := wanted + Vector2.from_angle(angle) * distance
+			if territory_field.is_diamond_claimable_at_local(candidate, radius):
+				return candidate
+	return Vector2.INF
 
 
 func _update_damage_numbers(delta: float) -> void:
@@ -2992,15 +3162,37 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 	if not enemy.active or damage <= 0.0:
 		return
 	var applied_damage := minf(damage, enemy.health)
+	# Being hit is what "interrupted" means. An escalating enemy loses everything it
+	# had built up, which is what makes answering one worth doing at all rather than
+	# only worth doing eventually.
+	enemy.territory_escalation = 1.0
+	if _is_player_damage_source(death_source):
+		# Regenerative is explicit that it must be the protagonist. Thorns, Blooms and
+		# the ring keep working; they just do not stop it healing, which is what makes
+		# it a rule change to a build rather than a larger health pool.
+		enemy.regeneration_block_remaining = regenerative_block_seconds
 	if death_source != DeathSource.DEBUG:
 		enemy.hit_flash_remaining = enemy_hit_flash_seconds
 		enemy.hit_flash_color = _get_damage_feedback_color(death_source)
-		_spawn_damage_number(
-			enemy.position,
-			enemy.radius,
-			applied_damage,
-			enemy.hit_flash_color
+		# What "important" means, decided where the facts are. A hit on an elite or a
+		# boss carries information about a fight the player is actually having; so does
+		# a hit large enough to be an ability landing rather than a tick of damage.
+		var is_important := (
+			enemy.role == EnemyRole.ELITE
+			or enemy.role == EnemyRole.BOSS
+			or enemy.elite_modifier != EliteModifier.NONE
+			or applied_damage >= important_damage_number_threshold
 		)
+		if (
+			display_settings == null
+			or display_settings.should_show_damage_number(is_important)
+		):
+			_spawn_damage_number(
+				enemy.position,
+				enemy.radius,
+				applied_damage,
+				enemy.hit_flash_color
+			)
 	enemy.health -= damage
 	if enemy.health > 0.0:
 		return
@@ -3013,6 +3205,8 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 	_spawn_xp_pickup(death_position, xp_value)
 	if death_source == DeathSource.ROOT_ERUPTION and _ancient_fury_chains_enabled:
 		_queue_chained_eruption(death_position, chain_depth + 1)
+	if enemy.elite_modifier == EliteModifier.VOLATILE:
+		_detonate_volatile(death_position)
 	enemy_killed.emit(death_position, xp_value, role, death_source, chain_depth)
 	if role == EnemyRole.ELITE:
 		elite_defeated.emit()
@@ -3087,6 +3281,134 @@ func _get_damage_feedback_color(death_source: int) -> Color:
 	return Color.WHITE
 
 
+func set_elite_modifier_pressure(progress: float) -> void:
+	# The wave director owns the run's escalation curve, so it says how far along the
+	# run is and this turns that into the chance an eligible spawn changes the rules.
+	_elite_modifier_chance = lerpf(
+		elite_modifier_base_chance,
+		elite_modifier_final_chance,
+		clampf(progress, 0.0, 1.0)
+	)
+
+
+func get_elite_modifier_chance() -> float:
+	return _elite_modifier_chance
+
+
+func get_enemy_elite_modifier(enemy_id: int) -> int:
+	for enemy in _enemies:
+		if enemy.active and enemy.id == enemy_id:
+			return enemy.elite_modifier
+	return EliteModifier.NONE
+
+
+func debug_force_elite_modifier(modifier: int) -> void:
+	# Pins the next eligible spawn's rule change, because a one-in-six roll behind a
+	# probability gate is not something a check can wait for.
+	_forced_elite_modifier = modifier
+
+
+func _roll_elite_modifier(role: int) -> int:
+	if _forced_elite_modifier != EliteModifier.NONE:
+		var forced := _forced_elite_modifier
+		_forced_elite_modifier = EliteModifier.NONE
+		return forced
+	if not _is_modifier_eligible(role):
+		return EliteModifier.NONE
+	if _elite_modifier_chance <= 0.0:
+		return EliteModifier.NONE
+	if randf() > _elite_modifier_chance:
+		return EliteModifier.NONE
+	# One modifier, never two. Two rule changes on one body is a fight the player
+	# cannot read, and the point of these is that they are legible.
+	return randi_range(EliteModifier.UNSTOPPABLE, EliteModifier.VOLATILE)
+
+
+func _is_modifier_eligible(role: int) -> bool:
+	# The Elite is always eligible - it is what the modifiers are named for. The late
+	# specialists become eligible too, because the doc's final escalation stage asks
+	# for more specialised behaviour and not merely more elites. The Boss is excluded:
+	# it already changes the rules by itself, and a Colony Core cannot use any of them.
+	if role == EnemyRole.ELITE:
+		return true
+	return modifier_eligible_late_roles.has(role)
+
+
+func _is_player_damage_source(death_source: int) -> bool:
+	# What the protagonist did, as opposed to what the ecosystem did on their behalf.
+	# Regenerative is the only thing that asks, and it asks precisely this.
+	return (
+		death_source == DeathSource.THORNSHOT
+		or death_source == DeathSource.CUTTING
+		or death_source == DeathSource.DEBUG
+	)
+
+
+func _advance_elite_modifier(enemy: EnemyState, delta: float) -> void:
+	# Everything a modifier does per frame, in one place, so a body carrying none pays
+	# a single comparison for the whole system.
+	if enemy.elite_modifier == EliteModifier.NONE:
+		return
+	enemy.regeneration_block_remaining = maxf(
+		0.0,
+		enemy.regeneration_block_remaining - delta
+	)
+	match enemy.elite_modifier:
+		EliteModifier.UNSTOPPABLE:
+			# Rooted is the one state it refuses. Slowed is deliberately left alone:
+			# the note says it can still be slowed, and an Unstoppable that ignored
+			# Bramble entirely would read as immunity rather than as a rule change.
+			enemy.bramble_root_remaining = 0.0
+			enemy.bramble_root_duration = 0.0
+			enemy.knockback_remaining = 0.0
+		EliteModifier.REGENERATIVE:
+			if (
+				enemy.regeneration_block_remaining <= 0.0
+				and enemy.health < enemy.maximum_health
+			):
+				enemy.health = minf(
+					enemy.maximum_health,
+					enemy.health + regenerative_health_per_second * delta
+				)
+		EliteModifier.BLIGHTED:
+			# Stamped along the path rather than every frame, so the wake is a trail
+			# with gaps in it instead of a solid smear whose width is the frame rate.
+			if (
+				enemy.position.distance_to(enemy.blight_last_position)
+				>= blighted_trail_spacing_pixels
+			):
+				enemy.blight_last_position = enemy.position
+				territory_field.queue_hostile_growth(
+					enemy.position,
+					blighted_trail_strength * enemy.territory_erosion_scale,
+					1.0
+				)
+		EliteModifier.DISRUPTIVE:
+			# Everything the run reads off its territory is read off maturity, so
+			# suppressing it nearby weakens Green-territory effects without this
+			# needing to know what any of those effects are.
+			territory_field.queue_maturity_suppression(
+				enemy.position,
+				disruptive_suppression_per_second * delta,
+				disruptive_radius_multiplier
+			)
+
+
+func _detonate_volatile(local_position: Vector2) -> void:
+	# Sourced as RELIC so a kill it causes cannot feed a relic trigger and start a
+	# chain the player cannot see the end of - the same safeguard Spore Burst uses.
+	damage_enemies_in_radius(
+		local_position,
+		volatile_detonation_radius,
+		volatile_detonation_damage,
+		DeathSource.RELIC,
+		0
+	)
+	if volatile_territory_damage > 0.0:
+		territory_field.queue_erosion(local_position, volatile_territory_damage, 1.6)
+	elite_detonated.emit(local_position, volatile_detonation_radius)
+
+
 func _configure_enemy_stats(enemy: EnemyState) -> void:
 	var profile := _profile_for_role(enemy.role)
 	assert(profile != null, "Every Phase B enemy role requires an authored profile")
@@ -3100,6 +3422,9 @@ func _configure_enemy_stats(enemy: EnemyState) -> void:
 	enemy.xp_value = profile.xp_reward
 	enemy.target_priority_multiplier = profile.target_priority_multiplier
 	enemy.use_boss_navigation = profile.use_boss_navigation
+	enemy.knockback_resistance = profile.knockback_resistance
+	enemy.territory_action_escalation = profile.territory_action_escalation
+	enemy.territory_action_escalation_cap = profile.territory_action_escalation_cap
 	enemy.movement_behavior = profile.movement_behavior
 	enemy.preferred_distance_pixels = profile.preferred_distance_pixels
 	enemy.territory_behavior = profile.territory_behavior
@@ -3154,6 +3479,12 @@ func _profile_for_role(role: int) -> PhaseBEnemyProfile:
 			return warden_profile
 		EnemyRole.COLONY_CORE:
 			return colony_core_profile
+		EnemyRole.HEAVY_GRAZER:
+			return heavy_grazer_profile
+		EnemyRole.RUSHER:
+			return rusher_profile
+		EnemyRole.SIEGE_CORRUPTOR:
+			return siege_corruptor_profile
 	return null
 
 

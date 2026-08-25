@@ -17,7 +17,7 @@ extends Button
 @export_group("Contents")
 ## The wording, mirrored into the `Caption` child. Set by the run controller during
 ## play; what is typed here is what the editor shows.
-@export_multiline var display_text := "MASS   LV 1\n[ GROW  20 ]   More material":
+@export_multiline var display_text := "MASS   RANK 1\n[ AUTOMATIC ]   More material":
 	set(value):
 		if display_text == value:
 			return

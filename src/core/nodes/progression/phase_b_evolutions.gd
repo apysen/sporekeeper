@@ -179,14 +179,14 @@ signal evolution_changed(status: int)
 
 @export_group("Coppice")
 ## Cells of harvest between the Seeds this pairing buries in the cut ground.
-@export_range(1, 200, 1) var coppice_cells_per_seed := 6
+@export_range(1, 200, 1) var pioneer_cells_per_seed := 6
 ## Most Seeds one eruption may carry, so a long hold erupts repeatedly rather than
 ## saving up one enormous batch.
-@export_range(1, 30, 1) var coppice_seeds := 6
+@export_range(1, 30, 1) var pioneer_seeds := 6
 ## Seconds buried Seeds wait before they erupt.
-@export_range(0.1, 10.0, 0.05) var coppice_delay_seconds := 1.80
+@export_range(0.1, 10.0, 0.05) var pioneer_delay_seconds := 1.80
 ## Damage one of those Seeds can absorb before a Saboteur destroys it.
-@export_range(0.1, 20.0, 0.1) var coppice_seed_durability := 2.0
+@export_range(0.1, 20.0, 0.1) var pioneer_seed_durability := 2.0
 
 @export_group("Rebound")
 ## Radius in arena pixels a detonating Bloom pulls Green in from.
@@ -205,6 +205,64 @@ signal evolution_changed(status: int)
 @export_range(0.0, 4.0, 0.01) var coppicing_cuttings_per_mature_cell := 0.10
 ## Multiplier on how fast Pruned Ground regrows once the Root Network runs it.
 @export_range(1.0, 6.0, 0.05) var coppicing_regrowth_multiplier := 1.90
+
+@export_group("Second Flush")
+## Extra buried Seeds per rank of Dense Reseeding, as a share of the base count.
+@export_range(0.0, 2.0, 0.05) var second_flush_seed_bonus := 0.20
+## How much sooner a buried Seed germinates once Rapid Germination is bought.
+@export_range(0.0, 0.9, 0.01) var second_flush_germination_cut := 0.15
+## Extra Growth Mass a Seed carries when it germinates on ground Pruning cut open.
+@export_range(0.0, 2.0, 0.05) var second_flush_pruned_mass_bonus := 0.20
+## Blood and Soil: Seeds a cycle's Cutting kills can bury, and the cap per cycle.
+@export_range(0.0, 4.0, 0.05) var second_flush_seeds_per_kill := 0.34
+@export_range(0, 20, 1) var second_flush_kill_seed_cap := 6
+## Second Flush: every Nth eruption is followed by a second wave of this share.
+@export_range(1, 10, 1) var second_flush_wave_cadence := 3
+@export_range(0.0, 1.0, 0.05) var second_flush_wave_share := 0.50
+
+@export_group("Compression")
+## Extra Force per cell per rank of Efficient Compression, as a share of the base.
+@export_range(0.0, 2.0, 0.05) var compression_force_bonus := 0.15
+## How much longer Rebound's crater keeps its accelerated reclaim.
+@export_range(1.0, 4.0, 0.05) var compression_regrowth_window := 1.20
+## Inward Collapse: how far the compression drags enemies toward the Bloom.
+@export_range(0.0, 200.0, 1.0) var compression_pull_pixels := 46.0
+## Elastic Rebound: the delay before the second wave, and its share of the Force.
+@export_range(0.1, 5.0, 0.05) var compression_second_wave_delay := 1.25
+@export_range(0.0, 1.0, 0.05) var compression_second_wave_share := 0.45
+@export_range(10.0, 400.0, 5.0) var compression_second_wave_radius := 132.0
+@export_range(0.0, 400.0, 1.0) var compression_second_wave_damage := 34.0
+
+@export_group("Splinterstorm")
+## Extra thorn Cuttings per rank of Thorn Harvest, as a share of the base yield.
+@export_range(0.0, 2.0, 0.05) var splinterstorm_yield_bonus := 0.20
+## Piercing Splinters: extra pierce, and what a pierced hit keeps of its damage.
+@export_range(0, 6, 1) var splinterstorm_extra_pierce := 1
+@export_range(0.1, 1.0, 0.05) var splinterstorm_pierce_falloff := 0.60
+## Shatter: how much of its damage each half keeps when a Cutting splits on a fully
+## Entangled enemy, and how far the splinters seek.
+@export_range(0.0, 1.0, 0.05) var splinterstorm_shatter_share := 0.45
+## How much Entanglement an enemy must be carrying before a Cutting breaks on it.
+@export_range(0.0, 1.0, 0.01) var splinterstorm_shatter_threshold := 0.90
+@export_range(10.0, 400.0, 5.0) var splinterstorm_shatter_seek_pixels := 150.0
+## Deadfall Volley: spikes launched by every cycle, and how hard they hit.
+@export_range(0, 24, 1) var splinterstorm_volley_spikes := 8
+@export_range(0.5, 6.0, 0.05) var splinterstorm_volley_damage_scale := 1.60
+@export_range(0, 12, 1) var splinterstorm_volley_pierce := 4
+
+@export_group("Stool Regrowth")
+## Extra Cuttings per rank of Mature Harvest, as a share of the Mature yield.
+@export_range(0.0, 2.0, 0.05) var stool_regrowth_yield_bonus := 0.15
+## Vigorous Regrowth: how much faster Coppicing drives the cut ground back.
+@export_range(1.0, 4.0, 0.05) var stool_regrowth_reclaim_bonus := 1.20
+## Root Memory: how much of its former maturity ground regrowing over a Mature cut
+## keeps, and how long the memory lasts.
+@export_range(0.0, 1.0, 0.05) var stool_regrowth_memory_share := 0.25
+@export_range(0.5, 20.0, 0.5) var stool_regrowth_memory_seconds := 6.0
+## Second Harvest: the share of a cycle's Mature harvest that must have regrown
+## before the second volley fires, and how large that volley is.
+@export_range(0.0, 1.0, 0.05) var stool_regrowth_second_threshold := 0.50
+@export_range(0.0, 1.0, 0.05) var stool_regrowth_second_share := 0.40
 
 var evolution_status := PhaseBProgression.EvolutionStatus.NOT_READY
 var active_evolution := PhaseBProgression.EvolutionId.NONE
@@ -266,6 +324,14 @@ static func get_evolution_upgrade_id(evolution_id: int) -> int:
 			return PhaseBProgression.UpgradeId.EVOLUTION_SEASONAL_SURGE
 		PhaseBProgression.EvolutionId.OLD_GROWTH:
 			return PhaseBProgression.UpgradeId.EVOLUTION_ANCIENT_FURY
+		PhaseBProgression.EvolutionId.PIONEER:
+			return PhaseBProgression.UpgradeId.EVOLUTION_SECOND_FLUSH
+		PhaseBProgression.EvolutionId.REBOUND:
+			return PhaseBProgression.UpgradeId.EVOLUTION_COMPRESSION
+		PhaseBProgression.EvolutionId.DEADFALL:
+			return PhaseBProgression.UpgradeId.EVOLUTION_SPLINTERSTORM
+		PhaseBProgression.EvolutionId.COPPICING:
+			return PhaseBProgression.UpgradeId.EVOLUTION_STOOL_REGROWTH
 	return -1
 
 
@@ -300,7 +366,7 @@ func get_pair_evolution_id() -> int:
 	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.ROOT):
 		return PhaseBProgression.EvolutionId.OLD_GROWTH
 	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
-		return PhaseBProgression.EvolutionId.COPPICE
+		return PhaseBProgression.EvolutionId.PIONEER
 	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
 		return PhaseBProgression.EvolutionId.REBOUND
 	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
@@ -440,6 +506,89 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 						ancient_fury_awakening_enemies,
 						ancient_fury_awakening_eruptions,
 					]
+		PhaseBProgression.UpgradeId.EVOLUTION_SECOND_FLUSH:
+			match rank:
+				1:
+					return "Dense Reseeding: +%d%% Seeds buried in cut ground" % roundi(
+						second_flush_seed_bonus * 100.0
+					)
+				2:
+					return "Rapid Germination: buried Seeds erupt %d%% sooner" % roundi(
+						second_flush_germination_cut * 100.0
+					)
+				3:
+					return "Fertile Cut: Seeds on cut ground carry +%d%% Growth Mass" % roundi(
+						second_flush_pruned_mass_bonus * 100.0
+					)
+				4:
+					return "Blood and Soil: Cutting kills bury up to %d more Seeds" % (
+						second_flush_kill_seed_cap
+					)
+				5:
+					return "Second Flush: every %d eruptions a second wave at %d%%" % [
+						second_flush_wave_cadence,
+						roundi(second_flush_wave_share * 100.0),
+					]
+		PhaseBProgression.UpgradeId.EVOLUTION_COMPRESSION:
+			match rank:
+				1:
+					return "Efficient Compression: +%d%% Force per cell collapsed" % roundi(
+						compression_force_bonus * 100.0
+					)
+				2:
+					return "Elastic Growth: the collapsed ground reclaims far faster"
+				3:
+					return "Inward Collapse: the compression drags enemies in first"
+				4:
+					return "Efficient Compression II: another +%d%% Force per cell" % roundi(
+						compression_force_bonus * 100.0
+					)
+				5:
+					return "Elastic Rebound: a second wave at %d%% Force after %.2fs" % [
+						roundi(compression_second_wave_share * 100.0),
+						compression_second_wave_delay,
+					]
+		PhaseBProgression.UpgradeId.EVOLUTION_SPLINTERSTORM:
+			match rank:
+				1:
+					return "Thorn Harvest: +%d%% Cuttings from thorned Green" % roundi(
+						splinterstorm_yield_bonus * 100.0
+					)
+				2:
+					return "Piercing Splinters: +%d Pierce at %d%% damage" % [
+						splinterstorm_extra_pierce,
+						roundi(splinterstorm_pierce_falloff * 100.0),
+					]
+				3:
+					return "Shatter: Cuttings split on fully Entangled enemies"
+				4:
+					return "Thorn Harvest II: another +%d%% thorn Cuttings" % roundi(
+						splinterstorm_yield_bonus * 100.0
+					)
+				5:
+					return "Deadfall Volley: every cycle fires %d heavy spikes" % (
+						splinterstorm_volley_spikes
+					)
+		PhaseBProgression.UpgradeId.EVOLUTION_STOOL_REGROWTH:
+			match rank:
+				1:
+					return "Mature Harvest: +%d%% Cuttings from Mature ground" % roundi(
+						stool_regrowth_yield_bonus * 100.0
+					)
+				2:
+					return "Vigorous Regrowth: cut Mature ground returns far faster"
+				3:
+					return "Root Memory: regrowth keeps %d%% of its former maturity" % roundi(
+						stool_regrowth_memory_share * 100.0
+					)
+				4:
+					return "Mature Harvest II: another +%d%% Mature Cuttings" % roundi(
+						stool_regrowth_yield_bonus * 100.0
+					)
+				5:
+					return "Second Harvest: regrowth releases a %d%% second volley" % roundi(
+						stool_regrowth_second_share * 100.0
+					)
 	return ""
 
 
@@ -475,8 +624,8 @@ static func get_evolution_name(evolution_id: int) -> String:
 			return "FLOWERING SEASON"
 		PhaseBProgression.EvolutionId.OLD_GROWTH:
 			return "OLD GROWTH"
-		PhaseBProgression.EvolutionId.COPPICE:
-			return "COPPICE"
+		PhaseBProgression.EvolutionId.PIONEER:
+			return "PIONEER"
 		PhaseBProgression.EvolutionId.REBOUND:
 			return "REBOUND"
 		PhaseBProgression.EvolutionId.DEADFALL:
@@ -500,7 +649,7 @@ static func get_evolution_description(evolution_id: int) -> String:
 			return "Mature ground builds toward mass flowerings that spend maturity for Blooms."
 		PhaseBProgression.EvolutionId.OLD_GROWTH:
 			return "Entangled enemies on ancient ground trigger chaining root eruptions."
-		PhaseBProgression.EvolutionId.COPPICE:
+		PhaseBProgression.EvolutionId.PIONEER:
 			return "Pruned Ground fills with dormant Seeds that all germinate together."
 		PhaseBProgression.EvolutionId.REBOUND:
 			return "Green collapses into a Bloom before it detonates, then explodes outward."
@@ -523,6 +672,14 @@ static func get_upgrade_evolution(upgrade_id: int) -> int:
 			return PhaseBProgression.EvolutionId.THORNBURST
 		PhaseBProgression.UpgradeId.EVOLUTION_SEASONAL_SURGE:
 			return PhaseBProgression.EvolutionId.FLOWERING_SEASON
+		PhaseBProgression.UpgradeId.EVOLUTION_SECOND_FLUSH:
+			return PhaseBProgression.EvolutionId.PIONEER
+		PhaseBProgression.UpgradeId.EVOLUTION_COMPRESSION:
+			return PhaseBProgression.EvolutionId.REBOUND
+		PhaseBProgression.UpgradeId.EVOLUTION_SPLINTERSTORM:
+			return PhaseBProgression.EvolutionId.DEADFALL
+		PhaseBProgression.UpgradeId.EVOLUTION_STOOL_REGROWTH:
+			return PhaseBProgression.EvolutionId.COPPICING
 		PhaseBProgression.UpgradeId.EVOLUTION_ANCIENT_FURY:
 			return PhaseBProgression.EvolutionId.OLD_GROWTH
 	return PhaseBProgression.EvolutionId.NONE

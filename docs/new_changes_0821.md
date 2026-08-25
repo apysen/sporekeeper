@@ -239,179 +239,7 @@ This creates better horde management without turning Thornshot into an excessive
 
 ---
 
-# 9. Kudzu Replaces Swarm + Parasite
-
-The previous Swarm and Parasite Paths overlapped too heavily.
-
-Both ultimately created:
-> Green territory behind enemy lines that spreads independently.
-
-They are merged into one Path.
-
-# Kudzu
-
-**Implementation status: Not yet implemented.**
-
-## Identity
-
-> **Establish invasive independent footholds away from the main ecosystem and let them spread through Neutral and Hostile territory.**
-
-### Distinction From Other Paths
-
-- Spore creates Green from enemy deaths.
-- Bloom pushes existing Green.
-- Kudzu creates persistent remote expansion engines.
-
----
-
-# 10. Kudzu Core Mechanic: Crowns
-
-Kills made sufficiently far from existing Green contribute toward establishing a **Kudzu Crown**.
-
-## Establishment
-
-- Multiple eligible kills in roughly the same area are required.
-- One random kill should not immediately create a Crown.
-- The player deliberately fights in a region to establish a foothold.
-- A new Crown has a rooting period.
-- Crowns are vulnerable while rooting.
-
-## Once Established
-
-A Crown:
-- creates a small Green foothold,
-- sends runners outward,
-- expands quickly through Neutral territory,
-- expands more slowly through Hostile territory,
-- can eventually connect back into another Green region.
-
-## Crown Capacity
-
-Crowns are limited.
-
-Suggested prototype direction:
-- approximately **2 active Crowns baseline**,
-- investment can raise the limit to roughly **4–5**.
-
-The capacity prevents automatic exponential map takeover.
-
-## Crown Destruction
-
-If a Crown is destroyed:
-- territory still dependent only on that Crown begins to recede,
-- territory that has already connected to the larger Green ecosystem survives.
-
-This creates the lifecycle:
-
-> **Establish → Defend → Spread → Connect → Stabilize**
-
----
-
-# 11. Kudzu Runners
-
-Established Crowns periodically send visible runners outward.
-
-## Runner Behavior
-
-Against Neutral territory:
-- spread aggressively.
-
-Against Hostile territory:
-- spread more slowly,
-- use Invasion Strength to overcome resistance.
-
-Against Green territory:
-- connect with the existing ecosystem.
-
-The runners should visually resemble invasive vines crawling across the territory surface.
-
----
-
-# 12. Kudzu Upgrade Lines
-
-### 1. Crown Capacity
-Allows additional simultaneous Crowns.
-
-### 2. Rooting Speed
-Crowns establish faster.
-
-### 3. Runner Growth
-Runners spread faster and farther.
-
-### 4. Invasion Strength
-Improves Kudzu growth through Hostile territory.
-
-## Kudzu Design Constraint
-
-Kudzu should not also become:
-- the best damage Path,
-- the best defensive Path,
-- or the best economy Path.
-
-Its primary strength is:
-
-> **being somewhere Green is not supposed to be.**
-
-Other Paths determine what those new Green regions do once established.
-
----
-
-# 13. Kudzu Evolution Directions
-
-## Spore + Kudzu: Sporulation
-
-- Remote Seeds can develop into Kudzu Crowns.
-- Established Crowns periodically launch Seeds into nearby enemy populations.
-- Seeds create colonies.
-- Colonies create additional Seeds.
-
-### Intended Spectacle
-
-> Multiple independent outbreaks spread across the arena simultaneously.
-
----
-
-## Bloom + Kudzu: Wildflower Network
-
-- Every active Kudzu Crown becomes a valid Bloom origin.
-- Blooms activate sequentially across the Crown network.
-- One Crown Blooming can trigger or accelerate the next.
-
-### Intended Spectacle
-
-> Huge Bloom explosions erupt across several distant regions of the arena in sequence.
-
----
-
-## Bramble + Kudzu: Briar Bastions
-
-- Kudzu colonies become powerful Bramble control zones.
-- Threatened Crowns can cause their entire connected colony to erupt with roots and thorns.
-- Several colonies can trigger independently.
-
-### Intended Spectacle
-
-> Multiple distant Green regions suddenly become aggressive crowd-control strongholds.
-
----
-
-## Root + Kudzu: Rhizome Network
-
-- Mature Kudzu colonies become connected through an underground Root Network.
-- Connected colonies can share:
-  - regeneration,
-  - maturity support,
-  - limited Biomass benefits,
-  - recovery support.
-- The network can periodically cause synchronized territorial growth.
-
-### Intended Spectacle
-
-> Roots visibly connect distant colonies and all connected Green regions surge together.
-
----
-
-# 14. Pruning Replaces Wither
+# 9. Pruning Replaces Wither
 
 The previous name **Wither** has been removed.
 
@@ -427,7 +255,7 @@ Pruning creates a unique risk/reward Path because Territory % is also the player
 
 ---
 
-# 15. Pruning Core Mechanic
+# 10. Pruning Core Mechanic
 
 ## Pruning Cycle
 
@@ -447,7 +275,7 @@ The payoff must be immediate and visually obvious.
 
 ---
 
-# 16. Pruning Territory Rules
+# 11. Pruning Territory Rules
 
 ## Territory Selection Priority
 
@@ -480,7 +308,7 @@ An automatic Path mechanic should not directly kill the player by consuming the 
 
 ---
 
-# 17. Pruned Ground
+# 12. Pruned Ground
 
 Territory removed by Pruning becomes temporary **Pruned Ground**.
 
@@ -495,7 +323,7 @@ This creates the intended cycle:
 
 ---
 
-# 18. Cuttings
+# 13. Cuttings
 
 Cuttings are the immediate offensive reward from Pruning.
 
@@ -511,7 +339,7 @@ Pruning should provide direct offensive power that the other territory-focused P
 
 ---
 
-# 19. Pruning Upgrade Lines
+# 14. Pruning Upgrade Lines
 
 ### 1. Pruning Frequency
 Reduces the time between Pruning Cycles.
@@ -537,7 +365,7 @@ This reduces the risk of exponential sacrifice/growth loops.
 
 ---
 
-# 20. Pruning Evolution Directions
+# 15. Pruning Evolution Directions
 
 ## Spore + Pruning: Coppice
 
@@ -587,20 +415,7 @@ This reduces the risk of exponential sacrifice/growth loops.
 
 ---
 
-## Kudzu + Pruning: Cuttings
-
-- Some Cuttings become living propagules instead of attacks.
-- Propagules fly across the arena.
-- Successful propagules establish new Kudzu Crowns.
-- Sacrificing one region can create several invasive fronts elsewhere.
-
-### Intended Spectacle
-
-> One ecosystem is cut apart and scattered across the arena, with some fragments killing enemies and others taking root.
-
----
-
-# 21. 12-Minute Dev Build Pacing
+# 16. 12-Minute Dev Build Pacing
 
 All current testing should use the **12-minute run** as the primary pacing target.
 
@@ -725,7 +540,7 @@ The eventual full game can expand this structure toward the planned ~30-minute r
 
 ---
 
-# 22. Late-Wave Difficulty Philosophy
+# 17. Late-Wave Difficulty Philosophy
 
 The third Path dramatically raises the player's late-game power ceiling.
 
@@ -758,7 +573,7 @@ The completed build should need several systems working together.
 
 ---
 
-# 23. Late Enemy Specialization
+# 18. Late Enemy Specialization
 
 Avoid making every late enemy simply an early enemy with much more HP.
 
@@ -790,12 +605,11 @@ Possible suppression targets:
 - Seed germination,
 - Bramble Ensnare Rate,
 - Root bonuses,
-- Bloom pressure,
-- Kudzu rooting.
+- Bloom pressure.
 
 ---
 
-# 24. Elite Modifiers
+# 19. Elite Modifiers
 
 Late-game elites should increasingly change rules instead of only increasing stats.
 
@@ -823,7 +637,7 @@ Possible modifiers:
 
 ---
 
-# 25. Difficulty Escalation After Evolution and Third Path
+# 20. Difficulty Escalation After Evolution and Third Path
 
 Difficulty escalation should track build progression.
 
@@ -846,7 +660,7 @@ The game can visibly communicate this transition with a threat-level event or eq
 
 ---
 
-# 26. Current 12-Minute Prototype Balance Priorities
+# 21. Current 12-Minute Prototype Balance Priorities
 
 For the current dev build, prioritize testing:
 
@@ -859,11 +673,11 @@ For the current dev build, prioritize testing:
 7. **Does Root improve its paired mechanic enough to feel noticeable?**
 8. **Can late waves threaten strong completed builds without relying on excessive enemy HP?**
 9. **Do Evolutions create satisfying, unmistakable screen-level events?**
-10. **Do Kudzu and Pruning each occupy a clearly different strategic niche once implemented?**
+10. **Does Pruning occupy a clearly different strategic niche from the other four Paths once implemented?**
 
 ---
 
-# 27. Long-Term 30-Minute Run
+# 22. Long-Term 30-Minute Run
 
 The intended full game can still target approximately **25–30 minute runs**.
 
@@ -893,7 +707,7 @@ For now:
 
 > **All gameplay tuning should prioritize the 12-minute version.**
 
-# 28. Evolution Upgrade System
+# 23. Evolution Upgrade System
 
 After the player's first two Paths combine into an Evolution and the third Path becomes available, the player gains access to **one optional upgrade line for that Evolution**.
 
@@ -932,7 +746,7 @@ This creates a meaningful choice between:
 
 ---
 
-# 29. Spore + Bloom Evolution Upgrade
+# 24. Spore + Bloom Evolution Upgrade
 
 ## Super Bloom
 
@@ -968,7 +782,7 @@ Super Bloom is already the benchmark for Evolution satisfaction, so its upgrade 
 
 ---
 
-# 30. Spore + Bramble Evolution Upgrade
+# 25. Spore + Bramble Evolution Upgrade
 
 ## Briar Pods
 
@@ -1002,7 +816,7 @@ Briar Pods should lean into **mass crowd control** rather than direct damage.
 
 ---
 
-# 31. Spore + Root Evolution Upgrade
+# 26. Spore + Root Evolution Upgrade
 
 ## Seed Bank
 
@@ -1033,36 +847,7 @@ Seed Bank should become more satisfying through synchronized territorial events 
 
 ---
 
-# 32. Spore + Kudzu Evolution Upgrade
-
-## Sporulation
-
-### Evolution Upgrade: Airborne Spores
-
-#### Level 1 — Seed Volley
-- Each Kudzu Crown launches **one additional Seed** whenever it produces Seeds.
-
-#### Level 2 — Long-Distance Dispersal
-- Crown-launched Seeds travel farther.
-- They preferentially target areas farther from existing Green territory.
-
-#### Level 3 — Establishment Burst
-- When a new Crown finishes rooting, it immediately releases a radial Seed burst.
-
-#### Level 4 — Rapid Sporulation
-- Crowns produce Seeds approximately **15% more frequently**.
-
-#### Level 5 — Crown Seed
-- Every third Crown Seed volley contains one special Seed.
-- If Crown Capacity is available, the special Seed attempts to establish another Kudzu Crown.
-- If Crown Capacity is full, it becomes an oversized normal Seed instead.
-
-### Design Goal
-> Create escalating outbreaks across multiple parts of the arena without allowing infinite Crown multiplication.
-
----
-
-# 33. Spore + Pruning Evolution Upgrade
+# 27. Spore + Pruning Evolution Upgrade
 
 ## Coppice
 
@@ -1090,7 +875,7 @@ Seed Bank should become more satisfying through synchronized territorial events 
 
 ---
 
-# 34. Bloom + Bramble Evolution Upgrade
+# 28. Bloom + Bramble Evolution Upgrade
 
 ## Thornburst
 
@@ -1126,7 +911,7 @@ Because base Bramble is now mainly crowd control, Thornburst should provide a st
 
 ---
 
-# 35. Bloom + Root Evolution Upgrade
+# 29. Bloom + Root Evolution Upgrade
 
 ## Flowering Season
 
@@ -1160,39 +945,7 @@ Bloom + Root is already a strong territory combination, so its upgrade line shou
 
 ---
 
-# 36. Bloom + Kudzu Evolution Upgrade
-
-## Wildflower Network
-
-### Evolution Upgrade: Relay Bloom
-
-#### Level 1 — Faster Relay
-- Time between consecutive Crown Blooms decreases approximately **20%**.
-
-#### Level 2 — Building Pressure
-- Each later Crown in the Bloom sequence gains additional Bloom Force.
-- Suggested: **+10% Force per previous Crown**, capped around +30%.
-- Does not increase Plant Mass.
-
-#### Level 3 — Invasive Flowering
-- Crown Blooms gain increased Conversion Pressure against Hostile territory.
-
-#### Level 4 — Faster Relay II
-- Relay delay decreases another approximately **20%**.
-
-#### Level 5 — Synchronized Flowering
-- After the final Crown in the sequence Blooms, all active Crowns simultaneously emit an Echo Bloom.
-- Echo Blooms:
-  - use roughly 30% normal Force,
-  - generate zero new Plant Mass.
-- Suggested global cooldown: approximately **10 seconds**.
-
-### Design Goal
-> Create a recognizable arena-wide chain of territorial explosions across disconnected colonies.
-
----
-
-# 37. Bloom + Pruning Evolution Upgrade
+# 30. Bloom + Pruning Evolution Upgrade
 
 ## Rebound
 
@@ -1222,7 +975,7 @@ Bloom + Root is already a strong territory combination, so its upgrade line shou
 
 ---
 
-# 38. Bramble + Root Evolution Upgrade
+# 31. Bramble + Root Evolution Upgrade
 
 ## Old Growth
 
@@ -1254,35 +1007,7 @@ Bloom + Root is already a strong territory combination, so its upgrade line shou
 
 ---
 
-# 39. Bramble + Kudzu Evolution Upgrade
-
-## Briar Bastions
-
-### Evolution Upgrade: Fortress Network
-
-#### Level 1 — Defensive Response
-- Bastion pulses apply approximately **20% more Entanglement**.
-
-#### Level 2 — Repulsive Hedge
-- Bastion pulses gain stronger knockback.
-
-#### Level 3 — Lockdown
-- Fully Entangled enemies caught by a Bastion pulse are briefly rooted.
-- Elites and bosses receive reduced immobilization.
-
-#### Level 4 — Living Rampart
-- Bastion pulse cooldown decreases approximately **15%**.
-
-#### Level 5 — Mutual Defense
-- Whenever any Kudzu Crown falls below roughly 50% health, **every active Crown simultaneously triggers its Bastion pulse**.
-- Suggested global cooldown: approximately **10–12 seconds**.
-
-### Design Goal
-> Multiple remote Green colonies should suddenly defend themselves at the same time.
-
----
-
-# 40. Bramble + Pruning Evolution Upgrade
+# 32. Bramble + Pruning Evolution Upgrade
 
 ## Deadfall
 
@@ -1315,40 +1040,7 @@ Bloom + Root is already a strong territory combination, so its upgrade line shou
 
 ---
 
-# 41. Root + Kudzu Evolution Upgrade
-
-## Rhizome Network
-
-### Evolution Upgrade: Mycorrhizal Exchange
-
-#### Level 1 — Nutrient Transfer
-- The youngest connected Kudzu colony gains approximately **+15% Maturation Speed**.
-
-#### Level 2 — Network Pressure
-- Synchronized Rhizome growth surges gain approximately **+15% territorial pressure**.
-- No additional Plant Mass.
-
-#### Level 3 — Emergency Routing
-- If a connected Crown is destroyed, part of its stored maturity or Root strength is redistributed to surviving Crowns instead of being completely lost.
-- A Runner may also attempt to reclaim the lost area.
-- Use a cooldown to prevent repeated exploitation.
-
-#### Level 4 — Rapid Exchange
-- Rhizome surge cooldown decreases approximately **15%**.
-
-#### Level 5 — Systemic Flush
-- Every third Rhizome surge simultaneously activates:
-  - every Mature Kudzu colony,
-  - the main Mature ecosystem.
-- All connected regions surge outward together.
-- The effect should emphasize pressure rather than free Plant Mass.
-
-### Design Goal
-> Distant Mature colonies should visibly behave as one interconnected organism.
-
----
-
-# 42. Root + Pruning Evolution Upgrade
+# 33. Root + Pruning Evolution Upgrade
 
 ## Coppicing
 
@@ -1375,47 +1067,7 @@ Bloom + Root is already a strong territory combination, so its upgrade line shou
 
 ---
 
-# 43. Kudzu + Pruning Evolution Upgrade
-
-## Vegetative Propagation
-
-The previous Evolution name **Cuttings** should be changed to **Vegetative Propagation** to avoid confusion with Pruning's Cutting projectile resource.
-
-### Evolution Upgrade: Clone Storm
-
-#### Level 1 — Viable Cuttings
-- Increase the percentage of Pruning Cuttings capable of becoming living propagules.
-- Keep a cap on actual Crown-establishment attempts per cycle.
-
-#### Level 2 — Rapid Rooting
-- Propagules root approximately **20% faster**.
-
-#### Level 3 — No Waste
-- If Crown Capacity is full, living propagules no longer disappear.
-- Instead, they seek an existing Crown and:
-  - accelerate rooting,
-  - repair the Crown,
-  - or trigger a small Runner burst.
-
-#### Level 4 — Successful Cloning
-- Allow **one additional Crown-establishment attempt per Pruning Cycle**.
-- Overall Crown Capacity still applies.
-
-#### Level 5 — Clone Storm
-- Every third Pruning Cycle guarantees several long-range living Cuttings.
-- Suggested behavior:
-  - approximately 2 major propagules launch toward distant valid territory.
-- If Crown Capacity is available:
-  - they attempt to establish Crowns.
-- If capacity is full:
-  - they create temporary satellite Green patches instead.
-
-### Design Goal
-> The player tears apart one ecosystem and physically scatters viable pieces of it across the arena to reproduce elsewhere.
-
----
-
-# 44. Evolution Upgrade Balance Targets
+# 34. Evolution Upgrade Balance Targets
 
 Evolution upgrades should not all provide identical numerical power.
 

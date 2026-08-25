@@ -25,6 +25,12 @@
 [ext_resource type="Script" uid="uid://x2l20t6viy61" path="res://src/core/nodes/elements/phase_b_root_director.gd" id="24_root_director"]
 [ext_resource type="Script" uid="uid://5mjj3pltekkb" path="res://src/core/nodes/elements/phase_b_pruning_director.gd" id="25_pruning_director"]
 [ext_resource type="Script" uid="uid://syv3j1rcmi7v" path="res://src/core/nodes/economy/phase_b_metabolism.gd" id="26_metabolism"]
+[ext_resource type="Script" uid="uid://cn6ork3nfhiub" path="res://src/core/nodes/economy/phase_b_root_network.gd" id="26_root_network"]
+[ext_resource type="Texture2D" uid="uid://b2it052ync4ng" path="res://assets/art/slots/slot-machine1.png" id="26_slot_cabinet"]
+[ext_resource type="Texture2D" uid="uid://2h3ml2r0yx4k" path="res://assets/art/slots/slot-machine3.png" id="26_slot_lever_down"]
+[ext_resource type="Texture2D" uid="uid://dd17upet750cs" path="res://assets/art/slots/slot-machine2.png" id="26_slot_lever_up"]
+[ext_resource type="Script" uid="uid://dyt5tng8n1qhu" path="res://src/core/nodes/economy/phase_b_slot_machine.gd" id="26_slot_machine"]
+[ext_resource type="Texture2D" uid="uid://c25w4a8ge316u" path="res://assets/art/slots/symbols/symbol_wild.svg" id="26_symbol_wild"]
 [ext_resource type="Script" uid="uid://d1vi2molriepg" path="res://src/core/nodes/progression/phase_b_relic_director.gd" id="27_relic_director"]
 [ext_resource type="Script" uid="uid://box02ugcgrggx" path="res://src/core/nodes/progression/phase_b_evolutions.gd" id="28_evolutions"]
 [ext_resource type="StyleBox" path="res://assets/ui/panel_style.tres" id="30_panel_style"]
@@ -42,22 +48,100 @@
 [ext_resource type="StyleBox" path="res://assets/ui/wx_system_track.tres" id="96_wx_system_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_system_fill.tres" id="97_wx_system_fill"]
 [ext_resource type="Script" uid="uid://dr7wbvhjdbbha" path="res://src/core/nodes/run/phase_b_metabolism_button.gd" id="98_metabolism_button"]
+[ext_resource type="Shader" path="res://assets/shaders/slot_symbol.gdshader" id="99_slot_symbol_shader"]
+[ext_resource type="Script" path="res://src/core/nodes/economy/phase_b_clover_odds.gd" id="100_clover_odds"]
+[ext_resource type="Script" path="res://src/core/nodes/economy/phase_b_wager_selector.gd" id="101_wager_selector"]
+[ext_resource type="Script" path="res://src/core/nodes/economy/phase_b_clover_jackpots.gd" id="102_clover_jackpots"]
+[ext_resource type="Script" path="res://src/core/nodes/economy/phase_b_all_in_grace.gd" id="103_all_in_grace"]
+[ext_resource type="Script" path="res://src/core/nodes/territory/territory_wager_layer.gd" id="104_wager_layer"]
+[ext_resource type="Shader" path="res://assets/shaders/wager_field.gdshader" id="105_wager_shader"]
+[ext_resource type="Script" path="res://src/core/nodes/run/phase_b_display_settings.gd" id="106_display_settings"]
+[ext_resource type="Script" path="res://src/core/nodes/economy/phase_b_clover_telemetry.gd" id="107_clover_telemetry"]
 
 [sub_resource type="ShaderMaterial" id="TerritoryMaterial"]
 shader = ExtResource("9_territory_shader")
 shader_parameter/ownership_threshold = 0.18
 shader_parameter/debug_view = 0
+shader_parameter/root_established_threshold = 0.33
+shader_parameter/mature_threshold = 0.66
+shader_parameter/deep_root_threshold = 0.88
 shader_parameter/bramble_enabled = false
 
-[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "audio_settings", "ambient_music_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "run_label", "hostile_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "photosynthesis_button", "meristem_button", "cambium_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "biomass_button", "banner_label", "reset_button", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_restart_button", "pause_quit_button")]
+[sub_resource type="ShaderMaterial" id="SlotSymbol1A"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol1B"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol2A"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol2B"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol3A"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol3B"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="WagerMaterial"]
+shader = ExtResource("105_wager_shader")
+shader_parameter/wager_color = Color(1, 0.86, 0.35, 1)
+shader_parameter/base_alpha = 0.22
+shader_parameter/pulse_amplitude = 0.08
+shader_parameter/pulse_hz = 1.6
+shader_parameter/edge_midpoint = 0.5
+shader_parameter/edge_softness = 0.09
+shader_parameter/boundary_boost = 0.3
+shader_parameter/boundary_width = 0.22
+
+[sub_resource type="AtlasTexture" id="AtlasCabinet"]
+atlas = ExtResource("26_slot_cabinet")
+region = Rect2(138, 0, 627, 624)
+
+[sub_resource type="AtlasTexture" id="AtlasLeverUp"]
+atlas = ExtResource("26_slot_lever_up")
+region = Rect2(138, 0, 627, 624)
+
+[sub_resource type="AtlasTexture" id="AtlasLeverDown"]
+atlas = ExtResource("26_slot_lever_down")
+region = Rect2(138, 0, 627, 624)
+
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "wager_layer", "player", "combat", "progression", "evolutions", "metabolism", "root_network", "slot_machine", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "audio_settings", "ambient_music_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "rooting_button", "storage_button", "circulation_button", "anchoring_button", "overgrow_button", "deep_root_button", "pressurize_button", "translocate_button", "regenerate_button", "metabolism_label", "metabolism_drawer", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "biomass_button", "banner_label", "reset_button", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_restart_button", "pause_quit_button", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight", "setting_button_ui_scale", "setting_button_hud_detail")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
+wager_layer = NodePath("WagerLayer")
 player = NodePath("Player")
 combat = NodePath("CombatDirector")
 progression = NodePath("GameplayComponents/Progression")
 evolutions = NodePath("GameplayComponents/Evolutions")
 metabolism = NodePath("GameplayComponents/Metabolism")
+root_network = NodePath("GameplayComponents/RootNetwork")
+slot_machine = NodePath("GameplayComponents/SlotMachine")
+clover_odds = NodePath("GameplayComponents/CloverOdds")
+wager_selector = NodePath("GameplayComponents/WagerSelector")
+clover_jackpots = NodePath("GameplayComponents/CloverJackpots")
+all_in_grace = NodePath("GameplayComponents/AllInGrace")
 relic_director = NodePath("GameplayComponents/RelicDirector")
 wave_director = NodePath("GameplayComponents/WaveDirector")
 spore_director = NodePath("Paths/SporeDirector")
@@ -74,7 +158,8 @@ territory_bar = NodePath("Interface/SidePanel/TerritoryBar")
 territory_label = NodePath("Interface/SidePanel/TerritoryLabel")
 xp_bar = NodePath("Interface/SidePanel/XPBar")
 xp_label = NodePath("Interface/SidePanel/XPLabel")
-run_label = NodePath("Interface/SidePanel/RunLabel")
+wave_label = NodePath("Interface/SidePanel/WaveLabel")
+clock_label = NodePath("Interface/SidePanel/ClockLabel")
 hostile_label = NodePath("Interface/SidePanel/HostileLabel")
 biomass_label = NodePath("Interface/UpgradeTray/BiomassLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
@@ -89,12 +174,28 @@ choice_button_two = NodePath("Interface/ChoicePanel/Choice2")
 choice_button_three = NodePath("Interface/ChoicePanel/Choice3")
 choice_button_four = NodePath("Interface/ChoicePanel/Choice4")
 choice_reroll_button = NodePath("Interface/ChoicePanel/Reroll")
-photosynthesis_button = NodePath("Interface/MetabolismDrawer/Photosynthesis")
-meristem_button = NodePath("Interface/MetabolismDrawer/Meristem")
-cambium_button = NodePath("Interface/MetabolismDrawer/Cambium")
+rooting_button = NodePath("Interface/MetabolismDrawer/Rooting")
+storage_button = NodePath("Interface/MetabolismDrawer/Storage")
+circulation_button = NodePath("Interface/MetabolismDrawer/Circulation")
+anchoring_button = NodePath("Interface/MetabolismDrawer/Anchoring")
 overgrow_button = NodePath("Interface/MetabolismDrawer/Overgrow")
+deep_root_button = NodePath("Interface/MetabolismDrawer/DeepRoot")
+pressurize_button = NodePath("Interface/MetabolismDrawer/Pressurize")
+translocate_button = NodePath("Interface/MetabolismDrawer/Translocate")
+regenerate_button = NodePath("Interface/MetabolismDrawer/Regenerate")
 metabolism_label = NodePath("Interface/MetabolismDrawer/MetabolismLabel")
 metabolism_drawer = NodePath("Interface/MetabolismDrawer")
+reel_one = NodePath("Interface/SidePanel/SlotMachine/Reel1")
+reel_two = NodePath("Interface/SidePanel/SlotMachine/Reel2")
+reel_three = NodePath("Interface/SidePanel/SlotMachine/Reel3")
+wager_slider = NodePath("Interface/SidePanel/SlotMachine/Wager")
+wager_label = NodePath("Interface/SidePanel/SlotMachine/WagerLabel")
+odds_label = NodePath("Interface/SidePanel/SlotMachine/OddsLabel")
+slot_panel = NodePath("Interface/SidePanel/SlotMachine")
+all_in_label = NodePath("Interface/AllInCountdown")
+lever_grab = NodePath("Interface/SidePanel/SlotMachine/LeverGrab")
+lever_up = NodePath("Interface/SidePanel/SlotMachine/LeverUp")
+lever_down = NodePath("Interface/SidePanel/SlotMachine/LeverDown")
 biomass_button = NodePath("Interface/UpgradeTray/BiomassButton")
 banner_label = NodePath("Interface/Banner")
 reset_button = NodePath("Interface/SidePanel/ResetButton")
@@ -110,8 +211,29 @@ pause_music_volume_value = NodePath("Interface/PauseOverlay/PausePanel/MusicVolu
 pause_fullscreen_button = NodePath("Interface/PauseOverlay/PausePanel/FullscreenButton")
 pause_restart_button = NodePath("Interface/PauseOverlay/PausePanel/RestartButton")
 pause_quit_button = NodePath("Interface/PauseOverlay/PausePanel/QuitButton")
+display_settings = NodePath("GameplayComponents/DisplaySettings")
+clover_telemetry = NodePath("GameplayComponents/CloverTelemetry")
+interface_layer = NodePath("Interface")
+setting_button_friendly_effects = NodePath("Interface/PauseOverlay/PausePanel/FriendlyEffects")
+setting_button_enemy_telegraphs = NodePath("Interface/PauseOverlay/PausePanel/EnemyTelegraphs")
+setting_button_territory_detail = NodePath("Interface/PauseOverlay/PausePanel/TerritoryDetail")
+setting_button_damage_numbers = NodePath("Interface/PauseOverlay/PausePanel/DamageNumbers")
+setting_button_player_highlight = NodePath("Interface/PauseOverlay/PausePanel/PlayerHighlight")
+setting_button_ui_scale = NodePath("Interface/PauseOverlay/PausePanel/UiScale")
+setting_button_hud_detail = NodePath("Interface/PauseOverlay/PausePanel/HudDetail")
 
 [node name="GameplayComponents" type="Node" parent="." unique_id=8230641]
+
+[node name="DisplaySettings" type="Node" parent="GameplayComponents" unique_id=928815901]
+script = ExtResource("106_display_settings")
+
+[node name="CloverTelemetry" type="Node" parent="GameplayComponents" unique_id=928815902 node_paths=PackedStringArray("slot_machine", "clover_odds", "territory_field", "all_in_grace", "wave_director")]
+script = ExtResource("107_clover_telemetry")
+slot_machine = NodePath("../SlotMachine")
+clover_odds = NodePath("../CloverOdds")
+territory_field = NodePath("../../TerritoryField")
+all_in_grace = NodePath("../AllInGrace")
+wave_director = NodePath("../WaveDirector")
 
 [node name="AudioSettings" type="Node" parent="GameplayComponents" unique_id=928815850]
 script = ExtResource("11_audio_settings")
@@ -126,17 +248,41 @@ spore_director = NodePath("../../Paths/SporeDirector")
 bloom_director = NodePath("../../Paths/BloomDirector")
 pruning_director = NodePath("../../Paths/PruningDirector")
 metabolism = NodePath("../Metabolism")
-offer_bramble_path = false
-offer_root_path = false
-offer_pruning_path = false
 
 [node name="Evolutions" type="Node" parent="GameplayComponents" unique_id=1946342541 node_paths=PackedStringArray("progression")]
 script = ExtResource("28_evolutions")
 progression = NodePath("../Progression")
 
-[node name="Metabolism" type="Node" parent="GameplayComponents" unique_id=1701998321 node_paths=PackedStringArray("progression", "territory_field")]
+[node name="Metabolism" type="Node" parent="GameplayComponents" unique_id=1701998321 node_paths=PackedStringArray("progression", "territory_field", "root_network")]
 script = ExtResource("26_metabolism")
 progression = NodePath("../Progression")
+territory_field = NodePath("../../TerritoryField")
+root_network = NodePath("../RootNetwork")
+
+[node name="CloverOdds" type="Node" parent="GameplayComponents" unique_id=299757515 node_paths=PackedStringArray("progression")]
+script = ExtResource("100_clover_odds")
+progression = NodePath("../Progression")
+
+[node name="WagerSelector" type="Node" parent="GameplayComponents" unique_id=299757516 node_paths=PackedStringArray("territory_field")]
+script = ExtResource("101_wager_selector")
+territory_field = NodePath("../../TerritoryField")
+
+[node name="CloverJackpots" type="Node" parent="GameplayComponents" unique_id=299757517 node_paths=PackedStringArray("progression")]
+script = ExtResource("102_clover_jackpots")
+progression = NodePath("../Progression")
+
+[node name="AllInGrace" type="Node" parent="GameplayComponents" unique_id=299757518 node_paths=PackedStringArray("territory_field")]
+script = ExtResource("103_all_in_grace")
+territory_field = NodePath("../../TerritoryField")
+
+[node name="SlotMachine" type="Node" parent="GameplayComponents" unique_id=299757514 node_paths=PackedStringArray("territory_field", "odds", "wager_selector")]
+script = ExtResource("26_slot_machine")
+territory_field = NodePath("../../TerritoryField")
+odds = NodePath("../CloverOdds")
+wager_selector = NodePath("../WagerSelector")
+
+[node name="RootNetwork" type="Node" parent="GameplayComponents" unique_id=2046055 node_paths=PackedStringArray("territory_field")]
+script = ExtResource("26_root_network")
 territory_field = NodePath("../../TerritoryField")
 
 [node name="RelicDirector" type="Node2D" parent="GameplayComponents" unique_id=1884233110 node_paths=PackedStringArray("progression", "territory_field", "overlay", "combat", "player", "wave_director", "bloom_director", "root_director")]
@@ -246,14 +392,22 @@ position = Vector2(24, 104)
 script = ExtResource("2_field")
 tuning = ExtResource("7_territory_tuning")
 
-[node name="PrototypeOverlay" type="Node2D" parent="." unique_id=1412417558 node_paths=PackedStringArray("territory_field")]
+[node name="WagerLayer" type="Node2D" parent="." unique_id=1412417559 node_paths=PackedStringArray("territory_field")]
+z_index = 2
+material = SubResource("WagerMaterial")
+position = Vector2(24, 104)
+script = ExtResource("104_wager_layer")
+tuning = ExtResource("7_territory_tuning")
+territory_field = NodePath("../TerritoryField")
+
+[node name="PrototypeOverlay" type="Node2D" parent="." unique_id=1412417558 node_paths=PackedStringArray("territory_field", "display_settings")]
 z_index = 2
 position = Vector2(24, 104)
 script = ExtResource("3_overlay")
 tuning = ExtResource("7_territory_tuning")
 territory_field = NodePath("../TerritoryField")
 
-[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile")]
+[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile", "heavy_grazer_profile", "rusher_profile", "siege_corruptor_profile", "display_settings")]
 z_index = 3
 position = Vector2(24, 104)
 script = ExtResource("5_combat")
@@ -261,6 +415,7 @@ player = NodePath("../Player")
 territory_field = NodePath("../TerritoryField")
 overlay = NodePath("../PrototypeOverlay")
 audio_settings = NodePath("../GameplayComponents/AudioSettings")
+display_settings = NodePath("../GameplayComponents/DisplaySettings")
 hunter_profile = NodePath("EnemyProfiles/Hunter")
 grazer_profile = NodePath("EnemyProfiles/Grazer")
 elite_profile = NodePath("EnemyProfiles/EliteRootbreaker")
@@ -270,6 +425,9 @@ corruptor_profile = NodePath("EnemyProfiles/Corruptor")
 colonizer_profile = NodePath("EnemyProfiles/Colonizer")
 warden_profile = NodePath("EnemyProfiles/Warden")
 colony_core_profile = NodePath("EnemyProfiles/ColonyCore")
+heavy_grazer_profile = NodePath("EnemyProfiles/HeavyGrazer")
+rusher_profile = NodePath("EnemyProfiles/Rusher")
+siege_corruptor_profile = NodePath("EnemyProfiles/SiegeCorruptor")
 thornshot_shoot_sfx = ExtResource("15_shoot_sfx")
 xp_collect_sfx = ExtResource("16_xp_sfx")
 plant_explosion_sfx = ExtResource("17_explosion_sfx")
@@ -330,6 +488,55 @@ first_territory_action_delay_seconds = 1.25
 territory_action_interval_seconds = 2.4
 territory_action_strength = 2.5
 territory_action_radius_multiplier = 1.15
+require_player_territory = true
+
+[node name="HeavyGrazer" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=339508701]
+script = ExtResource("14_enemy_profile")
+role = 9
+maximum_health = 148.0
+movement_speed = 31.0
+contact_damage = 7.0
+contact_interval_seconds = 1.05
+xp_reward = 11
+body_radius_pixels = 17.0
+target_priority_multiplier = 0.75
+knockback_resistance = 0.92
+territory_behavior = 1
+territory_action_interval_seconds = 0.14
+territory_action_strength = 2.1
+territory_action_radius_multiplier = 2.3
+territory_actions_before_recovery = 18
+territory_recovery_seconds = 2.2
+require_player_territory = true
+
+[node name="Rusher" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=466288251]
+script = ExtResource("14_enemy_profile")
+role = 10
+maximum_health = 24.0
+movement_speed = 143.0
+contact_damage = 5.0
+contact_interval_seconds = 0.7
+xp_reward = 6
+body_radius_pixels = 8.0
+target_priority_multiplier = 0.7
+
+[node name="SiegeCorruptor" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=1854604201]
+script = ExtResource("14_enemy_profile")
+role = 11
+maximum_health = 96.0
+movement_speed = 38.0
+contact_damage = 4.0
+contact_interval_seconds = 1.0
+xp_reward = 12
+body_radius_pixels = 14.0
+target_priority_multiplier = 0.6
+territory_behavior = 4
+first_territory_action_delay_seconds = 1.25
+territory_action_interval_seconds = 2.0
+territory_action_strength = 2.2
+territory_action_radius_multiplier = 1.25
+territory_action_escalation = 1.22
+territory_action_escalation_cap = 6.0
 require_player_territory = true
 
 [node name="Colonizer" type="Node" parent="CombatDirector/EnemyProfiles" unique_id=756900572]
@@ -412,7 +619,7 @@ territory_action_strength = 2.6
 territory_action_radius_multiplier = 2.8
 emit_eruption_signal = true
 
-[node name="Player" type="Node2D" parent="." unique_id=597159367 node_paths=PackedStringArray("territory_field")]
+[node name="Player" type="Node2D" parent="." unique_id=597159367 node_paths=PackedStringArray("territory_field", "display_settings")]
 z_index = 4
 script = ExtResource("4_player")
 territory_field = NodePath("../TerritoryField")
@@ -429,29 +636,40 @@ theme_override_styles/panel = ExtResource("30_panel_style")
 
 [node name="DebugHelp" type="Label" parent="Interface/SidePanel" unique_id=2105709273]
 layout_mode = 0
-offset_left = 87.0
-offset_top = 521.0
-offset_right = 162.0
-offset_bottom = 620.0
+offset_left = 16.0
+offset_top = 534.0
+offset_right = 236.0
+offset_bottom = 630.0
 theme_override_colors/font_color = Color(0.4, 0.6, 0.67, 1)
 theme_override_font_sizes/font_size = 10
 text = "DEV CONTROLS
-F6 +2M
-F7 XP
-F8 MASTERY
-F9 BOSS
-F10 RELIC"
+F4 ECONOMY    F5 ROOT VIEW
+TAB INSPECT    F6 +2M
+F7 XP    F8 MASTERY
+F9 BOSS    F10 RELIC"
 horizontal_alignment = 1
 
-[node name="RunLabel" type="Label" parent="Interface/SidePanel" unique_id=70920556]
+[node name="WaveLabel" type="Label" parent="Interface/SidePanel" unique_id=70920556]
 layout_mode = 0
 offset_left = -980.00006
 offset_top = 9.0
-offset_right = -432.0
+offset_right = -706.0
 offset_bottom = 54.0
 theme_override_colors/font_color = Color(0.71, 0.84, 0.88, 1)
 theme_override_font_sizes/font_size = 32
-text = "WAVE 1                    12:00 REMAINING"
+text = "WAVE 1"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ClockLabel" type="Label" parent="Interface/SidePanel" unique_id=70920558]
+layout_mode = 0
+offset_left = -722.0
+offset_top = 9.0
+offset_right = -339.0
+offset_bottom = 54.0
+theme_override_colors/font_color = Color(0.71, 0.84, 0.88, 1)
+theme_override_font_sizes/font_size = 32
+text = "12:00 REMAINING"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
@@ -460,12 +678,12 @@ autowrap_mode = 2
 layout_mode = 0
 offset_left = -265.0
 offset_top = 7.0
-offset_right = -85.0
+offset_right = -23.0
 offset_bottom = 53.0
 theme_override_colors/font_color = Color(1, 0.78, 0.42, 1)
 theme_override_font_sizes/font_size = 33
 text = "0 HOSTILES"
-horizontal_alignment = 1
+horizontal_alignment = 2
 
 [node name="HealthLabel" type="Label" parent="Interface/SidePanel" unique_id=1486879140]
 layout_mode = 0
@@ -538,19 +756,194 @@ show_percentage = false
 [node name="EvolutionLabel" type="Label" parent="Interface/SidePanel" unique_id=1376313058]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 270.0
+offset_top = 492.0
 offset_right = 236.0
-offset_bottom = 304.0
+offset_bottom = 526.0
 theme_override_colors/font_color = Color(0.58, 0.67, 0.69, 1)
 theme_override_font_sizes/font_size = 10
 autowrap_mode = 2
 
+[node name="SlotMachine" type="Control" parent="Interface/SidePanel" unique_id=7710000]
+anchors_preset = 0
+offset_left = 25.5
+offset_top = 176.0
+offset_right = 226.5
+offset_bottom = 420.0
+
+[node name="Cabinet" type="TextureRect" parent="Interface/SidePanel/SlotMachine" unique_id=7710001]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 9.0
+offset_right = 213.0
+offset_bottom = 209.0
+texture = SubResource("AtlasCabinet")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Reel1" type="Control" parent="Interface/SidePanel/SlotMachine" unique_id=7710010]
+clip_contents = true
+anchors_preset = 0
+offset_left = 41.8
+offset_top = 93.4
+offset_right = 75.8
+offset_bottom = 149.4
+mouse_filter = 2
+
+[node name="FaceA" type="TextureRect" parent="Interface/SidePanel/SlotMachine/Reel1" unique_id=7710020]
+layout_mode = 0
+material = SubResource("SlotSymbol1A")
+offset_left = 1.0
+offset_top = 12.0
+offset_right = 33.0
+offset_bottom = 44.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceB" type="TextureRect" parent="Interface/SidePanel/SlotMachine/Reel1" unique_id=7710030]
+layout_mode = 0
+material = SubResource("SlotSymbol1B")
+offset_left = 1.0
+offset_top = -44.0
+offset_right = 33.0
+offset_bottom = -12.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Reel2" type="Control" parent="Interface/SidePanel/SlotMachine" unique_id=7710011]
+clip_contents = true
+anchors_preset = 0
+offset_left = 83.5
+offset_top = 93.4
+offset_right = 117.5
+offset_bottom = 149.4
+mouse_filter = 2
+
+[node name="FaceA" type="TextureRect" parent="Interface/SidePanel/SlotMachine/Reel2" unique_id=7710021]
+layout_mode = 0
+material = SubResource("SlotSymbol2A")
+offset_left = 1.0
+offset_top = 12.0
+offset_right = 33.0
+offset_bottom = 44.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceB" type="TextureRect" parent="Interface/SidePanel/SlotMachine/Reel2" unique_id=7710031]
+layout_mode = 0
+material = SubResource("SlotSymbol2B")
+offset_left = 1.0
+offset_top = -44.0
+offset_right = 33.0
+offset_bottom = -12.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Reel3" type="Control" parent="Interface/SidePanel/SlotMachine" unique_id=7710012]
+clip_contents = true
+anchors_preset = 0
+offset_left = 125.2
+offset_top = 93.4
+offset_right = 159.2
+offset_bottom = 149.4
+mouse_filter = 2
+
+[node name="FaceA" type="TextureRect" parent="Interface/SidePanel/SlotMachine/Reel3" unique_id=7710022]
+layout_mode = 0
+material = SubResource("SlotSymbol3A")
+offset_left = 1.0
+offset_top = 12.0
+offset_right = 33.0
+offset_bottom = 44.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceB" type="TextureRect" parent="Interface/SidePanel/SlotMachine/Reel3" unique_id=7710032]
+layout_mode = 0
+material = SubResource("SlotSymbol3B")
+offset_left = 1.0
+offset_top = -44.0
+offset_right = 33.0
+offset_bottom = -12.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeverUp" type="TextureRect" parent="Interface/SidePanel/SlotMachine" unique_id=7710004]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 9.0
+offset_right = 213.0
+offset_bottom = 209.0
+mouse_filter = 2
+texture = SubResource("AtlasLeverUp")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeverDown" type="TextureRect" parent="Interface/SidePanel/SlotMachine" unique_id=7710005]
+visible = false
+layout_mode = 0
+offset_right = 201.0
+offset_bottom = 200.0
+mouse_filter = 2
+texture = SubResource("AtlasLeverDown")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeverGrab" type="Control" parent="Interface/SidePanel/SlotMachine" unique_id=7710006]
+anchors_preset = 0
+offset_left = 178.0
+offset_top = 97.0
+offset_right = 218.0
+offset_bottom = 205.0
+tooltip_text = "Pull the lever to spin."
+
+[node name="WagerLabel" type="Label" parent="Interface/SidePanel/SlotMachine" unique_id=7710007]
+layout_mode = 0
+offset_top = 214.0
+offset_right = 201.0
+offset_bottom = 232.0
+theme_override_colors/font_color = Color(0.78, 1, 0.63, 1)
+theme_override_font_sizes/font_size = 12
+text = "MINIMUM BUY-IN"
+horizontal_alignment = 1
+
+[node name="Wager" type="HSlider" parent="Interface/SidePanel/SlotMachine" unique_id=7710008]
+layout_mode = 0
+offset_top = 252.0
+offset_right = 201.0
+offset_bottom = 270.0
+max_value = 3.0
+value = 0.0
+tick_count = 4
+ticks_on_borders = true
+
+[node name="OddsLabel" type="Label" parent="Interface/SidePanel/SlotMachine" unique_id=7710009]
+layout_mode = 0
+offset_top = 234.0
+offset_right = 201.0
+offset_bottom = 250.0
+theme_override_colors/font_color = Color(0.72, 0.83, 0.92, 1)
+theme_override_font_sizes/font_size = 11
+text = "0.0 / 10.0% ESTABLISHED"
+horizontal_alignment = 1
+
 [node name="RelicsLabel" type="Label" parent="Interface/SidePanel" unique_id=600132886]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 183.0
+offset_top = 449.0
 offset_right = 236.0
-offset_bottom = 201.0
+offset_bottom = 467.0
 theme_override_colors/font_color = Color(0.8, 0.65, 1, 1)
 theme_override_font_sizes/font_size = 10
 text = "RELICS"
@@ -559,9 +952,9 @@ autowrap_mode = 2
 [node name="RelicSlots" type="Control" parent="Interface/SidePanel" unique_id=1188305471]
 anchors_preset = 0
 offset_left = 16.0
-offset_top = 205.0
+offset_top = 471.0
 offset_right = 236.0
-offset_bottom = 239.0
+offset_bottom = 505.0
 script = ExtResource("20_upgrade_slots")
 slot_count = 6
 slot_size = 33.0
@@ -599,14 +992,15 @@ theme_override_styles/panel = ExtResource("31_tray_style")
 
 [node name="BiomassLabel" type="Label" parent="Interface/UpgradeTray" unique_id=533912317]
 layout_mode = 0
-offset_left = 689.0
+offset_left = 640.0
 offset_top = 15.0
-offset_right = 747.5034
+offset_right = 731.83673
 offset_bottom = 32.006805
 scale = Vector2(1.47, 1.47)
 theme_override_colors/font_color = Color(0.78, 1, 0.63, 1)
 theme_override_font_sizes/font_size = 10
-text = "0        +0.0/s"
+text = "0 / 40        +0.0/s"
+horizontal_alignment = 2
 
 [node name="Slots" type="Label" parent="Interface/UpgradeTray" unique_id=2019162875]
 layout_mode = 0
@@ -653,7 +1047,7 @@ visible = false
 offset_left = 24.0
 offset_top = 470.0
 offset_right = 984.0
-offset_bottom = 645.0
+offset_bottom = 682.0
 theme_override_styles/panel = ExtResource("30_panel_style")
 
 [node name="Header" type="Label" parent="Interface/MetabolismDrawer" unique_id=771320545]
@@ -677,11 +1071,11 @@ theme_override_font_sizes/font_size = 14
 text = "BIOMASS 0"
 horizontal_alignment = 2
 
-[node name="Photosynthesis" type="Button" parent="Interface/MetabolismDrawer" unique_id=1586179802]
+[node name="Rooting" type="Button" parent="Interface/MetabolismDrawer" unique_id=1586179802]
 layout_mode = 0
 offset_left = 20.0
 offset_top = 48.0
-offset_right = 320.0
+offset_right = 245.0
 offset_bottom = 112.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
@@ -691,8 +1085,10 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 script = ExtResource("98_metabolism_button")
+display_text = "ROOTING   RANK 0
+[ DEVELOP  240 ]   Roots faster"
 
-[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Photosynthesis" unique_id=1589413697]
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Rooting" unique_id=1589413697]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -703,12 +1099,12 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
 theme_override_font_sizes/font_size = 10
-text = "MASS   LV 1
-[ GROW  20 ]   More material"
+text = "ROOTING   RANK 0
+[ DEVELOP  240 ]   Roots faster"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Photosynthesis" unique_id=1999639706]
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Rooting" unique_id=1999639706]
 texture_filter = 1
 layout_mode = 1
 anchors_preset = 12
@@ -728,11 +1124,11 @@ max_value = 1.0
 step = 0.001
 show_percentage = false
 
-[node name="Meristem" type="Button" parent="Interface/MetabolismDrawer" unique_id=1580967168]
+[node name="Storage" type="Button" parent="Interface/MetabolismDrawer" unique_id=1580967168]
 layout_mode = 0
-offset_left = 332.0
+offset_left = 257.0
 offset_top = 48.0
-offset_right = 632.0
+offset_right = 482.0
 offset_bottom = 112.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
@@ -742,10 +1138,10 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 script = ExtResource("98_metabolism_button")
-display_text = "PRESSURE   LV 1
-[ SURGE  20 ]   Push harder"
+display_text = "STORAGE   RANK 0
+[ DEVELOP  240 ]   Banks more"
 
-[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Meristem" unique_id=998395635]
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Storage" unique_id=998395635]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -756,12 +1152,12 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
 theme_override_font_sizes/font_size = 10
-text = "PRESSURE   LV 1
-[ SURGE  20 ]   Push harder"
+text = "STORAGE   RANK 0
+[ DEVELOP  240 ]   Banks more"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Meristem" unique_id=564813745]
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Storage" unique_id=564813745]
 texture_filter = 1
 layout_mode = 1
 anchors_preset = 12
@@ -781,11 +1177,11 @@ max_value = 1.0
 step = 0.001
 show_percentage = false
 
-[node name="Cambium" type="Button" parent="Interface/MetabolismDrawer" unique_id=1276774779]
+[node name="Circulation" type="Button" parent="Interface/MetabolismDrawer" unique_id=1276774779]
 layout_mode = 0
-offset_left = 644.0
+offset_left = 494.0
 offset_top = 48.0
-offset_right = 944.0
+offset_right = 719.0
 offset_bottom = 112.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
@@ -795,10 +1191,10 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 script = ExtResource("98_metabolism_button")
-display_text = "COHESION   LV 1
-[ HARDEN  20 ]   Hold together"
+display_text = "CIRCULATION   RANK 0
+[ DEVELOP  240 ]   Reaches further"
 
-[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Cambium" unique_id=946512971]
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Circulation" unique_id=946512971]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -809,12 +1205,65 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
 theme_override_font_sizes/font_size = 10
-text = "COHESION   LV 1
-[ HARDEN  20 ]   Hold together"
+text = "CIRCULATION   RANK 0
+[ DEVELOP  240 ]   Reaches further"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Cambium" unique_id=743392121]
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Circulation" unique_id=743392121]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -23.0
+offset_right = -12.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/background = ExtResource("96_wx_system_track")
+theme_override_styles/fill = ExtResource("97_wx_system_fill")
+max_value = 1.0
+step = 0.001
+show_percentage = false
+
+[node name="Anchoring" type="Button" parent="Interface/MetabolismDrawer" unique_id=1276774801]
+layout_mode = 0
+offset_left = 731.0
+offset_top = 48.0
+offset_right = 956.0
+offset_bottom = 112.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+script = ExtResource("98_metabolism_button")
+display_text = "ANCHORING   RANK 0
+[ DEVELOP  240 ]   Holds ground"
+
+[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Anchoring" unique_id=946512999]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 10
+text = "ANCHORING   RANK 0
+[ DEVELOP  240 ]   Holds ground"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Anchoring" unique_id=743392155]
 texture_filter = 1
 layout_mode = 1
 anchors_preset = 12
@@ -838,7 +1287,7 @@ show_percentage = false
 layout_mode = 0
 offset_left = 20.0
 offset_top = 122.0
-offset_right = 320.0
+offset_right = 196.0
 offset_bottom = 156.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
@@ -849,15 +1298,169 @@ theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "OVERGROW  0"
 
+[node name="DeepRoot" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364701]
+layout_mode = 0
+offset_left = 208.0
+offset_top = 122.0
+offset_right = 384.0
+offset_bottom = 156.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "DEEP ROOT  0"
+
+[node name="Pressurize" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364702]
+layout_mode = 0
+offset_left = 396.0
+offset_top = 122.0
+offset_right = 572.0
+offset_bottom = 156.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "PRESSURIZE  0"
+
+[node name="Translocate" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364703]
+layout_mode = 0
+offset_left = 584.0
+offset_top = 122.0
+offset_right = 760.0
+offset_bottom = 156.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "TRANSLOCATE  0"
+
+[node name="Regenerate" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364704]
+layout_mode = 0
+offset_left = 772.0
+offset_top = 122.0
+offset_right = 948.0
+offset_bottom = 156.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_colors/font_disabled_color = Color(0.32, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "REGENERATE  0"
+
 [node name="MetabolismLabel" type="Label" parent="Interface/MetabolismDrawer" unique_id=1988530491]
 layout_mode = 0
-offset_left = 332.0
-offset_top = 126.0
+offset_left = 20.0
+offset_top = 166.0
 offset_right = 944.0
-offset_bottom = 152.0
+offset_bottom = 192.0
 theme_override_colors/font_color = Color(0.66, 0.85, 0.72, 1)
 theme_override_font_sizes/font_size = 9
-text = "NEXT ORGAN IN 01:30"
+text = "NEXT DEVELOPMENT: 240"
+
+[node name="SettingsHeader" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=921100000]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 28.0
+offset_right = 748.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.51, 1, 0.71, 1)
+theme_override_font_sizes/font_size = 13
+text = "PRESENTATION"
+
+[node name="FriendlyEffects" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100001]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 62.0
+offset_right = 748.0
+offset_bottom = 100.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "FRIENDLY EFFECTS   100%"
+
+[node name="EnemyTelegraphs" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100002]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 108.0
+offset_right = 748.0
+offset_bottom = 146.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "ENEMY TELEGRAPHS   NORMAL"
+
+[node name="TerritoryDetail" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100003]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 154.0
+offset_right = 748.0
+offset_bottom = 192.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "TERRITORY DETAIL   HIGH"
+
+[node name="DamageNumbers" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100004]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 200.0
+offset_right = 748.0
+offset_bottom = 238.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "DAMAGE NUMBERS   FULL"
+
+[node name="PlayerHighlight" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100005]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 246.0
+offset_right = 748.0
+offset_bottom = 284.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "PLAYER HIGHLIGHT   OUTLINE"
+
+[node name="UiScale" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100006]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 292.0
+offset_right = 748.0
+offset_bottom = 330.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "UI SCALE   100%"
+
+[node name="HudDetail" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100007]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 338.0
+offset_right = 748.0
+offset_bottom = 376.0
+theme_override_colors/font_color = Color(0.84, 0.92, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "HUD DETAIL   COMPACT"
 
 [node name="Banner" type="Label" parent="Interface" unique_id=771320547]
 modulate = Color(1, 1, 1, 0)
@@ -870,6 +1473,19 @@ theme_override_font_sizes/font_size = 26
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
+
+[node name="AllInCountdown" type="Label" parent="Interface" unique_id=771320548]
+visible = false
+offset_left = 224.0
+offset_top = 220.0
+offset_right = 824.0
+offset_bottom = 400.0
+theme_override_colors/font_color = Color(1, 0.72, 0.36, 1)
+theme_override_font_sizes/font_size = 64
+text = "3.0
+RECLAIM 5%"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="ChoicePanel" type="Panel" parent="Interface" unique_id=290580352]
 visible = false
@@ -1003,6 +1619,7 @@ text = "Press R or use RESTART RUN to begin again."
 horizontal_alignment = 1
 
 [node name="PauseOverlay" type="Control" parent="Interface" unique_id=383098748]
+visible = false
 z_index = 20
 layout_mode = 3
 anchors_preset = 15
@@ -1027,9 +1644,9 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -230.0
+offset_left = -390.0
 offset_top = -235.0
-offset_right = 230.0
+offset_right = 390.0
 offset_bottom = 255.0
 grow_horizontal = 2
 grow_vertical = 2

@@ -1,31 +1,32 @@
 class_name PhaseBMetabolism
 extends Node
 
-## Ecosystem Metabolism: the Biomass economy. The run buys levels in three
-## physical development axes outright, at costs that climb steeply enough that
-## specialising deeply eventually makes a neglected axis the better buy.
+## Ecosystem Metabolism: what the organism's tissue is physically like, and the
+## verbs that spend its reserve.
 ##
-## Automatic allocation was tried and dropped: feeding the systems from a pool of
-## points turned the economy into "allocate, then watch bars fill", which is less
-## interactive than the purchases it replaced. Every level here is a decision the
-## player makes at a moment they choose, and every purchase answers immediately in
-## the simulation rather than only in a number.
+## Mass, Pressure, and Cohesion are no longer bought. Two economies were tried on top
+## of them and both failed for the same reason: a shop where the player picks whichever
+## number looks useful is a solved order wearing the costume of a decision, and an
+## automatic ladder fed by lifetime earnings is a bar filling itself. The master doc's
+## answer is that the player develops *physiology* while the simulation uses *physical
+## parameters*, so the three axes stay and stop being a purchase surface. They now
+## describe the organism: what the run developed its roots into, and how much organism
+## there actually is.
 ##
-## Photosynthesis is Mass, Meristem is Pressure, Cambium is Cohesion. The axes
-## unfold across the run rather than all being on the table at second one. Those
-## three are physical parameters of the territory simulation, so this component
-## reports multipliers and the run controller pushes them into the field. It never
-## writes the field itself, and it never holds the currency: the Biomass reserve
-## stays on Progression and is spent through it.
+## What is left here is therefore two things. The axes, read out of Root Metabolism and
+## the field and published as multipliers the run controller pushes into the simulation
+## - this component still never writes the field's parameters itself. And the metabolic
+## actions: large strategic commands that convert the reserve into something happening
+## on the battlefield. The currency belongs to the root network's components, so every
+## one of them is paid for out of the organism that will benefit.
 
 signal levels_changed
-signal system_unlocked(system_id: int)
-signal purchased(system_id: int, level: int, cost: float)
-signal level_reached(system_id: int, level: int)
-signal breakthrough_choice_requested(system_id: int, options: PackedInt32Array)
-signal breakthroughs_changed
 signal production_milestone_reached(per_second: float, milestone_index: int)
 signal overgrown(mass: float, pressure: float, cohesion: float)
+## A metabolic action other than Overgrow resolved, with what it cost. Carried so the
+## battlefield and the status line can answer a large strategic command with something
+## larger than a number changing.
+signal action_performed(action_id: int, local_position: Vector2, spent: float)
 ## A release has begun pouring into the border, with the cells it was sampled onto.
 ## Carries the three axes separately so what the ground shows can say which one the
 ## player actually bought.
@@ -43,14 +44,21 @@ enum SystemId {
 	CAMBIUM,
 }
 
-enum BreakthroughId {
-	NONE,
-	RAPID_CYCLING,
-	STORAGE_ORGANS,
-	APICAL_DOMINANCE,
-	LATERAL_GROWTH,
-	FLEXIBLE_TISSUE,
-	WOODY_TISSUE,
+## The metabolic actions. Overgrow is the one every run has; the other four are the
+## doc's future verbs, and each is unlocked by the developmental domain whose character
+## it expresses. Developing a domain therefore buys a capability rather than only a
+## coefficient, which is what makes the fifth unfolding layer a layer at all.
+enum ActionId {
+	## Always available. Releases the reserve into the frontier as material and shove.
+	OVERGROW,
+	## Rooting. Establishes the ground around the player far faster for a moment.
+	DEEP_ROOT,
+	## Storage. Empties the reserve as one outward shove against hostile ground.
+	PRESSURIZE,
+	## Circulation. Drags what the outlying colonies are holding back to the organism.
+	TRANSLOCATE,
+	## Anchoring. Repairs damaged rooted territory around the player.
+	REGENERATE,
 }
 
 @export_group("Collaborators")
@@ -58,14 +66,11 @@ enum BreakthroughId {
 @export var progression: PhaseBProgression
 ## Authoritative field that receives Overgrow injections and metabolism pulses.
 @export var territory_field: TerritoryField
-
-@export_group("Unfolding")
-## Elapsed run seconds at which Pressure becomes available to buy. Mass is on the
-## table from the start; the other two arrive while the run is being played, so
-## the economy gains capabilities instead of showing everything at second one.
-@export_range(0.0, 600.0, 1.0) var pressure_unlock_seconds := 90.0
-## Elapsed run seconds at which Cohesion becomes available to buy.
-@export_range(0.0, 900.0, 1.0) var cohesion_unlock_seconds := 180.0
+## Root Metabolism's component reserves. Every metabolic action spends the main
+## organism's reserve and discharges through the component that paid, and the three
+## axes are read out of the domains this node develops, so it is required rather than
+## optional: without it there is no economy and no physiology.
+@export var root_network: PhaseBRootNetwork
 
 @export_group("Injection")
 ## Seconds a release takes to pour into the border. Spending it in one step made
@@ -83,18 +88,20 @@ enum BreakthroughId {
 ## anyway.
 @export_range(1, 64, 1) var maximum_pending_injections := 6
 
-@export_group("Purchases")
-## Biomass required to advance a system from level 1 to level 2.
-@export_range(1.0, 500.0, 1.0) var level_base_cost := 20.0
-## Multiplier applied to the level cost at every level. Exponential costs are what
-## create the choice between cheaply raising a neglected system and paying heavily
-## to specialise an advanced one: roughly 20, 35, 61, 107, 188, 328, 574.
-@export_range(1.05, 4.0, 0.01) var level_cost_growth := 1.75
-## Highest level a metabolism system may reach in one run.
+@export_group("Physiology")
+## Highest rank an axis may describe. It is a clamp on a readout rather than a budget:
+## nothing is spent on an axis, so this only stops a runaway organism from reporting a
+## physique the tuning was never checked against.
 @export_range(1, 60, 1) var maximum_level := 20
-## Material budget one purchase injects into the territory on the axis it bought.
-## A purchase the player cannot see in the simulation is only a number changing.
-@export_range(0.0, 400.0, 1.0) var purchase_pulse_budget := 24.0
+## Rooted territory, as a percentage of the claimable board, worth one rank on every
+## axis. This is the half of the physique that no development can buy: a large healthy
+## organism is physically more massive, pushes harder, and holds together better than a
+## small one, because it is made of more of itself. It is also what makes the economy
+## follow the simulation rather than the other way round.
+@export_range(1.0, 100.0, 0.5) var rooted_percent_per_rank := 12.0
+## Material budget one rank injects into the territory when an axis first reaches it.
+## A physique that changes without the ground showing it is only a number changing.
+@export_range(0.0, 400.0, 1.0) var rank_pulse_budget := 24.0
 
 @export_group("System Effects")
 ## Plant Mass multiplier gained per Photosynthesis level above one.
@@ -118,39 +125,38 @@ enum BreakthroughId {
 ## Green tears into isolated scraps less readily.
 @export_range(0.1, 1.0, 0.01) var cambium_fragment_decay_per_level := 0.90
 
-@export_group("Breakthroughs")
-## Levels between behavioural Breakthrough choices for one system.
-@export_range(1, 20, 1) var breakthrough_level_interval := 5
-## Seconds between Rapid Cycling's small continuous Mass pulses.
-@export_range(0.05, 10.0, 0.05) var rapid_cycling_interval_seconds := 0.65
-## Seconds between Storage Organs' large periodic Mass releases.
-@export_range(0.5, 30.0, 0.1) var storage_organs_interval_seconds := 6.00
+@export_group("Metamorphosis Effects")
+## Seconds between Distributed Nodules' small continuous Mass pulses. Storage spread
+## through the network releases what it holds constantly and in small amounts.
+@export_range(0.05, 10.0, 0.05) var nodule_pulse_interval_seconds := 0.65
+## Seconds between Central Taproot's large periodic Mass releases. Storage concentrated
+## into one structure fills, and then empties, and the ground breathes with it.
+@export_range(0.5, 30.0, 0.1) var taproot_pulse_interval_seconds := 6.00
 ## Share of a pulse's Mass that is released as outward Pressure. A pulse of pure
 ## Mass can only top up cells that are already full, so it was refused by the very
 ## frontier it was meant to push: the release has to shove as well as feed.
 @export_range(0.0, 4.0, 0.05) var pulse_pressure_share := 0.85
-## Mass budget released per Photosynthesis level by one metabolism pulse. At the
-## old value a pulsing run and a non-pulsing one were within a twentieth of a
-## percent of territory after ten seconds: the Breakthrough fired and nothing
-## happened. It is priced to be seen.
+## Mass budget released per Mass rank by one metabolism pulse. At the old value a
+## pulsing run and a non-pulsing one were within a twentieth of a percent of territory
+## after ten seconds: the effect fired and nothing happened. It is priced to be seen.
 @export_range(0.0, 600.0, 0.5) var pulse_mass_per_level := 42.0
-## Fraction of the frontier one Apical Dominance injection concentrates into.
-@export_range(0.02, 1.0, 0.01) var apical_focus_fraction := 0.18
-## Frontier share Lateral Growth spreads an injection across. Above one on purpose:
-## at exactly one it was the default, so the Breakthrough was a no-op that only
-## looked like a choice. Lateral reaches further around the frontier than an
-## uninvested run does, which is the opposite of Apical concentrating into a point.
-@export_range(0.02, 6.0, 0.01) var lateral_focus_fraction := 2.40
-## Pressure-advection multiplier supplied by Flexible Tissue, which lets Green
-## deform far more before it breaks and rebound afterwards.
-@export_range(0.5, 3.0, 0.01) var flexible_advection_multiplier := 1.35
-## Extra regeneration per second supplied by Flexible Tissue's rebound.
-@export_range(0.0, 2.0, 0.005) var flexible_rebound_per_second := 0.045
-## Maturity-resistance multiplier supplied by Woody Tissue.
-@export_range(1.0, 3.0, 0.01) var woody_resistance_multiplier := 1.30
-## Pressure-advection multiplier supplied by Woody Tissue, which is what makes
-## rigid Green hold its shape and then fail suddenly instead of bending.
-@export_range(0.1, 1.0, 0.01) var woody_advection_multiplier := 0.72
+## Fraction of the frontier one Cardiac Pumping release concentrates into. A pumped
+## circulation delivers its charge as a shove through a narrow slice of border, which
+## the simulation resolves as protrusions and tendrils.
+@export_range(0.02, 1.0, 0.01) var cardiac_focus_fraction := 0.18
+## Frontier share Continuous Peristalsis spreads a release across. Above one on
+## purpose: at exactly one it would be the default, and a metamorphosis that changes
+## nothing only looks like a choice. A flowing circulation reaches further around the
+## frontier than an undeveloped one, which is the opposite of a pump concentrating.
+@export_range(0.02, 6.0, 0.01) var peristalsis_focus_fraction := 2.40
+## Pressure-advection multiplier supplied by Fibrous Mat, which lets a wide shallow
+## organism deform far more before it breaks and rebound afterwards.
+@export_range(0.5, 3.0, 0.01) var fibrous_advection_multiplier := 1.35
+## Extra regeneration per second supplied by Fibrous Mat's rebound.
+@export_range(0.0, 2.0, 0.005) var fibrous_rebound_per_second := 0.045
+## Pressure-advection multiplier supplied by Deep Taproots, which is what makes
+## anchored Green hold its shape and then fail suddenly instead of bending.
+@export_range(0.1, 1.0, 0.01) var taproot_advection_multiplier := 0.72
 
 @export_group("Overgrow")
 ## Fraction of the current Biomass Reserve one Overgrow spends.
@@ -159,6 +165,49 @@ enum BreakthroughId {
 @export_range(1.0, 500.0, 1.0) var overgrow_minimum_reserve := 20.0
 ## Seconds before Overgrow may be pressed again.
 @export_range(0.0, 120.0, 0.5) var overgrow_cooldown_seconds := 8.0
+## How far around the player a release serves its border first. The doc asks for a
+## cheap spatial approximation of demand rather than routing, and this is it: the
+## front the player ran to is fed before the rest of the organism.
+@export_range(0.0, 900.0, 5.0) var overgrow_focus_radius := 190.0
+
+@export_group("Metabolic Actions")
+## Domain rank an action's unlocking domain must reach before the action exists. The
+## doc is explicit that these are large strategic commands rather than maintenance
+## buttons, and one is easier to keep that way than four handed over at once.
+@export_range(1, 10, 1) var action_unlock_rank := 1
+## Fraction of the main organism's reserve one Deep Root spends.
+@export_range(0.05, 1.0, 0.01) var deep_root_reserve_fraction := 0.35
+## Seconds before Deep Root may be pressed again.
+@export_range(0.0, 120.0, 0.5) var deep_root_cooldown_seconds := 10.0
+## Maturity delivered per unit of Biomass a Deep Root spends. Far above the trickle the
+## player's standing support pays, because this is the whole reserve arriving at once.
+@export_range(0.0, 0.5, 0.0005) var deep_root_maturity_per_biomass := 0.030
+## Reach of a Deep Root, as a multiple of the field's stamp radius.
+@export_range(0.1, 12.0, 0.1) var deep_root_radius_multiplier := 5.2
+## Fraction of the main organism's reserve one Pressurize spends.
+@export_range(0.05, 1.0, 0.01) var pressurize_reserve_fraction := 0.60
+## Seconds before Pressurize may be pressed again.
+@export_range(0.0, 120.0, 0.5) var pressurize_cooldown_seconds := 14.0
+## What a Pressurize turns its spend into, as a multiple of an equal Overgrow's shove.
+## It buys no material at all, so the same Biomass has to be worth more as motion or
+## the action is a worse Overgrow with a longer cooldown.
+@export_range(1.0, 6.0, 0.05) var pressurize_pressure_multiplier := 2.60
+## Fraction of the main organism's reserve one Regenerate spends.
+@export_range(0.05, 1.0, 0.01) var regenerate_reserve_fraction := 0.40
+## Seconds before Regenerate may be pressed again.
+@export_range(0.0, 120.0, 0.5) var regenerate_cooldown_seconds := 12.0
+## What a Regenerate turns its spend into, as a multiple of an equal Overgrow's repair.
+@export_range(1.0, 8.0, 0.05) var regenerate_repair_multiplier := 3.20
+## Radius around the player a Regenerate searches for damaged rooted ground.
+@export_range(20.0, 900.0, 5.0) var regenerate_radius := 210.0
+## Seconds before Translocate may be pressed again.
+@export_range(0.0, 240.0, 0.5) var translocate_cooldown_seconds := 30.0
+## Share of a colony's reserve that survives the journey home. Translocate is the one
+## exception to a colony's Biomass being unreachable, so it has to cost something:
+## moving it through ground the organism does not hold loses part of it.
+@export_range(0.05, 1.0, 0.01) var translocate_recovery_fraction := 0.65
+## Smallest total held outside the main organism that is worth a Translocate.
+@export_range(1.0, 500.0, 1.0) var translocate_minimum_stranded := 15.0
 
 @export_group("Milestones")
 ## Biomass-per-second production milestones that each announce themselves once.
@@ -168,18 +217,17 @@ enum BreakthroughId {
 ## Free Mass budget injected by the celebratory pulse at a production milestone.
 @export_range(0.0, 400.0, 1.0) var milestone_pulse_mass := 45.0
 
-var _levels := PackedInt32Array()
-var _unlocked := PackedByteArray()
-var _breakthroughs := PackedInt32Array()
-var _pending_breakthrough_system := -1
-var _pending_breakthrough_options := PackedInt32Array()
+## Rank each axis was last seen at, so a rank that arrives on its own can still
+## answer on the battlefield the way a bought one used to.
+var _announced_levels := PackedInt32Array([1, 1, 1])
 var _elapsed_seconds := 0.0
 var _last_injection_mass := 0.0
 var _injection_count := 0
 var _pending_injections: Array[PendingInjection] = []
 var _pulse_accumulator := 0.0
 var _pulse_charge := 0.0
-var _overgrow_cooldown_remaining := 0.0
+## Cooldown remaining on each metabolic action, indexed by ActionId.
+var _action_cooldowns := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
 var _milestones_reached := 0
 var _overgrow_count := 0
 
@@ -187,129 +235,102 @@ var _overgrow_count := 0
 func _ready() -> void:
 	assert(progression != null, "PhaseBMetabolism requires PhaseBProgression")
 	assert(territory_field != null, "PhaseBMetabolism requires TerritoryField")
+	assert(root_network != null, "PhaseBMetabolism requires PhaseBRootNetwork")
 	reset_metabolism()
 
 
 func reset_metabolism() -> void:
-	_levels = PackedInt32Array([1, 1, 1])
-	# Mass is the only axis on the table at the start. The rest arrive on the
-	# clock, each announced when it does.
-	_unlocked = PackedByteArray([1, 0, 0])
+	_announced_levels = PackedInt32Array([1, 1, 1])
 	_elapsed_seconds = 0.0
-	_breakthroughs = PackedInt32Array([
-		BreakthroughId.NONE,
-		BreakthroughId.NONE,
-		BreakthroughId.NONE,
-	])
-	_pending_breakthrough_system = -1
-	_pending_breakthrough_options = PackedInt32Array()
-	_pulse_accumulator = 0.0
-	_pulse_charge = 0.0
-	_overgrow_cooldown_remaining = 0.0
-	_milestones_reached = 0
-	_overgrow_count = 0
+	_last_injection_mass = 0.0
 	_injection_count = 0
 	_pending_injections.clear()
+	_pulse_accumulator = 0.0
+	_pulse_charge = 0.0
+	_action_cooldowns = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+	_milestones_reached = 0
+	_overgrow_count = 0
 	levels_changed.emit()
-	breakthroughs_changed.emit()
 
 
 func advance(delta: float) -> void:
 	if delta <= 0.0:
 		return
-	_overgrow_cooldown_remaining = maxf(0.0, _overgrow_cooldown_remaining - delta)
+	for action_id in range(_action_cooldowns.size()):
+		_action_cooldowns[action_id] = maxf(0.0, _action_cooldowns[action_id] - delta)
 	_elapsed_seconds += delta
-	_advance_unlocks()
+	_advance_ranks()
 	_advance_injections(delta)
 	_advance_pulses(delta)
 	_advance_milestones()
 
 
-func _advance_unlocks() -> void:
-	# The economy unfolds on the run clock. Each axis announces itself as the organ
-	# that discovered it, and is immediately usable: no tutorial, no locked button
-	# sitting on screen beforehand.
-	for system_id in range(_unlocked.size()):
-		if _unlocked[system_id] != 0:
+func _advance_ranks() -> void:
+	# The axes rise without being bought, so the moment one rises is the moment the
+	# ground has to say so. Every other economy this component has carried answered a
+	# rank with a visible release; that requirement did not go away when the shopping
+	# did, it just stopped having a button to hang off.
+	var changed := false
+	for system_id in range(_announced_levels.size()):
+		var level := get_level(system_id)
+		if level <= _announced_levels[system_id]:
+			# Ranks can fall: the organism can be cut down to a fraction of itself and
+			# the physique honestly follows it. A fall is not announced, because the
+			# player is already watching the thing that caused it.
+			if level != _announced_levels[system_id]:
+				_announced_levels[system_id] = level
+				changed = true
 			continue
-		if _elapsed_seconds < get_unlock_seconds(system_id):
-			continue
-		_unlocked[system_id] = 1
-		system_unlocked.emit(system_id)
+		_announced_levels[system_id] = level
+		changed = true
+		_pulse_rank(system_id)
+		status_requested.emit("%s RANK %d" % [
+			get_axis_name(system_id).to_upper(),
+			level,
+		])
+	if changed:
 		levels_changed.emit()
 
 
-func try_purchase(system_id: int) -> bool:
-	# One outright purchase. Costs climb steeply, so a deep specialisation
-	# eventually prices itself out and the neglected axis becomes the better buy.
-	if not can_purchase(system_id):
-		return false
-	var cost := get_level_cost(system_id)
-	# spend_biomass reports what it actually took, and can_purchase has already
-	# checked the Reserve covers it, so a short debit means something changed
-	# underneath us and the level is not granted.
-	if progression.spend_biomass(cost) < cost:
-		return false
-	_levels[system_id] += 1
-	var level := _levels[system_id]
-	purchased.emit(system_id, level, cost)
-	level_reached.emit(system_id, level)
-	levels_changed.emit()
-	_pulse_purchase(system_id)
-	status_requested.emit("%s LV. %d" % [
-		get_axis_name(system_id).to_upper(),
-		level,
-	])
-	_try_request_breakthrough(system_id)
-	return true
-
-
-func can_purchase(system_id: int) -> bool:
-	if system_id < 0 or system_id >= _levels.size():
-		return false
-	if not is_system_unlocked(system_id):
-		return false
-	if _levels[system_id] >= maximum_level:
-		return false
-	return progression.biomass >= get_level_cost(system_id)
-
-
-func has_affordable_purchase() -> bool:
-	for system_id in range(_levels.size()):
-		if can_purchase(system_id):
-			return true
-	return false
-
-
-func _pulse_purchase(system_id: int) -> void:
-	# The battlefield answers the purchase: material on Mass, a shove on Pressure,
-	# a knitting-together on Cohesion. The axis bought is the one the ground shows.
-	if purchase_pulse_budget <= 0.0:
+func _pulse_rank(system_id: int) -> void:
+	# Material on Mass, a shove on Push, a knitting-together on Hold. The axis that
+	# rose is the one the ground shows.
+	if rank_pulse_budget <= 0.0:
 		return
 	match system_id:
 		SystemId.PHOTOSYNTHESIS:
-			_inject(purchase_pulse_budget, 0.0, 0.0)
+			_inject(rank_pulse_budget, 0.0, 0.0)
 		SystemId.MERISTEM:
-			_inject(purchase_pulse_budget * 0.25, purchase_pulse_budget, 0.0)
+			_inject(rank_pulse_budget * 0.25, rank_pulse_budget, 0.0)
 		SystemId.CAMBIUM:
-			_inject(purchase_pulse_budget * 0.25, 0.0, purchase_pulse_budget)
+			_inject(rank_pulse_budget * 0.25, 0.0, rank_pulse_budget)
 
 
 func _advance_pulses(delta: float) -> void:
-	# Photosynthesis' Breakthrough decides the shape of its output rather than its
-	# size: the same Mass either trickles out continuously or is stored and released
-	# in a pulse the player can see the ecosystem breathe with.
-	var breakthrough := _breakthroughs[SystemId.PHOTOSYNTHESIS]
-	if breakthrough != BreakthroughId.RAPID_CYCLING and breakthrough != BreakthroughId.STORAGE_ORGANS:
+	# The Storage metamorphosis decides the shape of the organism's output rather than
+	# its size: the same Mass either trickles out continuously through nodules spread
+	# across the network, or is gathered into the taproot and released in a pulse the
+	# player can watch the ecosystem breathe with.
+	if root_network == null:
+		_pulse_accumulator = 0.0
+		_pulse_charge = 0.0
+		return
+	var nodules := root_network.has_metamorphosis(
+		PhaseBRootNetwork.MetamorphosisId.DISTRIBUTED_NODULES
+	)
+	var taproot := root_network.has_metamorphosis(
+		PhaseBRootNetwork.MetamorphosisId.CENTRAL_TAPROOT
+	)
+	if not nodules and not taproot:
 		_pulse_accumulator = 0.0
 		_pulse_charge = 0.0
 		return
 	var interval := (
-		rapid_cycling_interval_seconds
-		if breakthrough == BreakthroughId.RAPID_CYCLING
-		else storage_organs_interval_seconds
+		nodule_pulse_interval_seconds
+		if nodules
+		else taproot_pulse_interval_seconds
 	)
-	var level_mass := pulse_mass_per_level * float(_levels[SystemId.PHOTOSYNTHESIS])
+	var level_mass := pulse_mass_per_level * float(get_level(SystemId.PHOTOSYNTHESIS))
 	_pulse_charge += level_mass * delta
 	_pulse_accumulator += delta
 	if _pulse_accumulator < interval:
@@ -418,17 +439,19 @@ func _inject(
 	mass: float,
 	pressure: float,
 	cohesion: float,
-	focus_scale: float = 1.0
+	focus_scale: float = 1.0,
+	focus_position: Vector2 = Vector2.INF,
+	component_id: int = -1
 ) -> void:
 	_last_injection_mass = 0.0
 	if territory_field == null:
 		return
 	var focus := get_injection_focus_fraction() * maxf(0.02, focus_scale)
 	_injection_count += 1
-	# Apical Dominance concentrates the same budget into a narrow slice of the
-	# frontier, which the simulation resolves as protrusions and tendrils. Lateral
-	# Growth does the reverse and spreads it further around the border than an
-	# uninvested run reaches. Both are the same dial, read in both directions.
+	# Cardiac Pumping concentrates the same budget into a narrow slice of the frontier,
+	# which the simulation resolves as protrusions and tendrils. Continuous Peristalsis
+	# does the reverse and spreads it further around the border than an undeveloped run
+	# reaches. Both are the same dial, read in both directions.
 	var restored := territory_field.tuning.overgrow_frontier_sample_limit
 	if not is_equal_approx(focus, 1.0):
 		territory_field.tuning.overgrow_frontier_sample_limit = maxi(
@@ -437,7 +460,17 @@ func _inject(
 		)
 	# Sampled once, against the whole budget, so the ramp keeps feeding the border
 	# the release was aimed at instead of picking a narrower one every frame.
-	var cells := territory_field.sample_overgrow_frontier(mass + pressure)
+	# Circulation carries a release further, the same way it carries the support the
+	# player draws while standing: one domain, one meaning.
+	var reach := overgrow_focus_radius
+	if root_network != null:
+		reach *= root_network.get_reach_multiplier()
+	var cells := territory_field.sample_overgrow_frontier(
+		mass + pressure,
+		focus_position,
+		reach,
+		component_id
+	)
 	territory_field.tuning.overgrow_frontier_sample_limit = restored
 	if cells.is_empty():
 		return
@@ -454,15 +487,92 @@ func _inject(
 	injection_started.emit(mass, pressure, cohesion, cells)
 
 
-func can_overgrow() -> bool:
-	return (
-		_overgrow_cooldown_remaining <= 0.0
-		and progression.biomass >= overgrow_minimum_reserve
+func get_action_cooldown_remaining(action_id: int) -> float:
+	if action_id < 0 or action_id >= _action_cooldowns.size():
+		return 0.0
+	return _action_cooldowns[action_id]
+
+
+static func get_action_domain(action_id: int) -> int:
+	# Every domain unlocks exactly one verb, and the verb expresses what the domain is
+	# for. Developing therefore buys a capability rather than only a coefficient, which
+	# is the difference between the fifth unfolding layer being a layer and being a
+	# coefficient the player was told about.
+	match action_id:
+		ActionId.DEEP_ROOT:
+			return PhaseBRootNetwork.DomainId.ROOTING
+		ActionId.PRESSURIZE:
+			return PhaseBRootNetwork.DomainId.STORAGE
+		ActionId.TRANSLOCATE:
+			return PhaseBRootNetwork.DomainId.CIRCULATION
+		ActionId.REGENERATE:
+			return PhaseBRootNetwork.DomainId.ANCHORING
+	return -1
+
+
+func is_action_unlocked(action_id: int) -> bool:
+	# Overgrow is the run's first metabolic discharge and is never gated. The rest
+	# arrive as the organism develops the physiology that could perform them.
+	var domain := get_action_domain(action_id)
+	if domain < 0:
+		return true
+	if root_network == null:
+		return false
+	return root_network.get_development_level(domain) >= action_unlock_rank
+
+
+func get_action_cost(action_id: int) -> float:
+	# What pressing it now would take. Translocate is the exception and always reads
+	# zero: it does not spend the organism's reserve, it goes and fetches one.
+	var reserve := get_spendable_reserve()
+	match action_id:
+		ActionId.OVERGROW:
+			return reserve * overgrow_reserve_fraction
+		ActionId.DEEP_ROOT:
+			return reserve * deep_root_reserve_fraction
+		ActionId.PRESSURIZE:
+			return reserve * pressurize_reserve_fraction
+		ActionId.REGENERATE:
+			return reserve * regenerate_reserve_fraction
+	return 0.0
+
+
+func get_stranded_reserve() -> float:
+	# Biomass the run owns and cannot reach, which is the entire subject of Translocate.
+	if root_network == null:
+		return 0.0
+	return maxf(
+		0.0,
+		root_network.get_total_reserve() - root_network.get_primary_reserve()
 	)
 
 
+func can_perform(action_id: int) -> bool:
+	if not is_action_unlocked(action_id):
+		return false
+	if get_action_cooldown_remaining(action_id) > 0.0:
+		return false
+	if action_id == ActionId.TRANSLOCATE:
+		return get_stranded_reserve() >= translocate_minimum_stranded
+	return get_spendable_reserve() >= overgrow_minimum_reserve
+
+
+func can_overgrow() -> bool:
+	return can_perform(ActionId.OVERGROW)
+
+
+func get_spendable_reserve() -> float:
+	# What the run can actually spend, which is the main organism's reserve alone.
+	# Biomass held by a colony that is cut off is real and is still producing, but it
+	# is not reachable until the ground reconnects - or until a Translocate goes and
+	# drags what is left of it home.
+	if root_network == null:
+		return 0.0
+	return root_network.get_primary_reserve()
+
+
 func get_overgrow_cooldown_remaining() -> float:
-	return _overgrow_cooldown_remaining
+	return get_action_cooldown_remaining(ActionId.OVERGROW)
 
 
 func get_overgrow_count() -> int:
@@ -470,27 +580,32 @@ func get_overgrow_count() -> int:
 
 
 func get_overgrow_cost() -> float:
-	return progression.biomass * overgrow_reserve_fraction
+	return get_action_cost(ActionId.OVERGROW)
 
 
-func try_overgrow() -> bool:
+func try_overgrow(focus_position: Vector2 = Vector2.INF) -> bool:
 	# Overgrow does not hand the run a fixed slice of territory. It converts the
-	# Reserve into Mass, Pressure, and Cohesion in the proportions this run's
-	# Metabolism actually is, injects them into the living frontier, and lets the
-	# battlefield decide what that looks like.
-	if not can_overgrow():
-		return false
-	var spent := get_overgrow_cost()
+	# Reserve into Mass, Pressure, and Cohesion in the proportions this run's physique
+	# actually is, injects them into the living frontier, and lets the battlefield
+	# decide what that looks like.
+	var spent := _spend_action(ActionId.OVERGROW)
 	if spent <= 0.0:
 		return false
-	progression.spend_biomass(spent)
-	_overgrow_cooldown_remaining = overgrow_cooldown_seconds
 	_overgrow_count += 1
-	var mass := spent * get_identity_share(SystemId.PHOTOSYNTHESIS)
-	var pressure := spent * get_identity_share(SystemId.MERISTEM)
-	var cohesion := spent * get_identity_share(SystemId.CAMBIUM)
-	_inject(mass, pressure, cohesion)
+	var discharge := spent * root_network.get_discharge_multiplier()
+	var mass := discharge * get_identity_share(SystemId.PHOTOSYNTHESIS)
+	var pressure := discharge * get_identity_share(SystemId.MERISTEM)
+	var cohesion := discharge * get_identity_share(SystemId.CAMBIUM)
+	_inject(
+		mass,
+		pressure,
+		cohesion,
+		1.0,
+		focus_position,
+		root_network.get_primary_component()
+	)
 	overgrown.emit(mass, pressure, cohesion)
+	action_performed.emit(ActionId.OVERGROW, focus_position, spent)
 	status_requested.emit(
 		"OVERGROW — %.0f Biomass spent as %.0f Mass, %.0f Pressure, %.0f Cohesion."
 		% [spent, mass, pressure, cohesion]
@@ -498,80 +613,252 @@ func try_overgrow() -> bool:
 	return true
 
 
-func get_identity_share(system_id: int) -> float:
-	# Every axis takes part in an Overgrow, but what the run actually bought decides
-	# how much of the burst becomes material, motion, or repair. Two runs pressing
-	# the same button therefore get visibly different physical results.
-	var total := 0
-	for level in _levels:
-		total += level
-	if total <= 0:
-		return 1.0 / float(maxi(1, _levels.size()))
-	return float(get_level(system_id)) / float(total)
+func _spend_action(action_id: int) -> float:
+	# One debit, one cooldown, one place. Every action pays out of the organism that
+	# will benefit, and a short debit means the ground changed underneath the press and
+	# the command shrinks to what was actually there rather than being granted anyway.
+	if not can_perform(action_id):
+		return 0.0
+	var cost := get_action_cost(action_id)
+	if cost <= 0.0:
+		return 0.0
+	var spent := root_network.spend_from_primary(cost)
+	if spent <= 0.0:
+		return 0.0
+	_action_cooldowns[action_id] = get_action_cooldown_seconds(action_id)
+	return spent
 
 
-func is_system_unlocked(system_id: int) -> bool:
-	if system_id < 0 or system_id >= _unlocked.size():
-		return false
-	return _unlocked[system_id] != 0
-
-
-func get_unlocked_system_count() -> int:
-	var count := 0
-	for flag in _unlocked:
-		if flag != 0:
-			count += 1
-	return count
-
-
-func get_unlock_seconds(system_id: int) -> float:
-	match system_id:
-		SystemId.MERISTEM:
-			return pressure_unlock_seconds
-		SystemId.CAMBIUM:
-			return cohesion_unlock_seconds
+func get_action_cooldown_seconds(action_id: int) -> float:
+	match action_id:
+		ActionId.OVERGROW:
+			return overgrow_cooldown_seconds
+		ActionId.DEEP_ROOT:
+			return deep_root_cooldown_seconds
+		ActionId.PRESSURIZE:
+			return pressurize_cooldown_seconds
+		ActionId.REGENERATE:
+			return regenerate_cooldown_seconds
+		ActionId.TRANSLOCATE:
+			return translocate_cooldown_seconds
 	return 0.0
 
 
-func get_next_unlock_system() -> int:
-	# At most the next one is ever teased; nothing beyond it is on screen.
-	var best := -1
-	var best_seconds := INF
-	for system_id in range(_unlocked.size()):
-		if _unlocked[system_id] != 0:
-			continue
-		var seconds := get_unlock_seconds(system_id)
-		if seconds < best_seconds:
-			best_seconds = seconds
-			best = system_id
-	return best
+func try_deep_root(focus_position: Vector2) -> bool:
+	# Rooting's verb. The whole reserve arrives at one place as establishment, so
+	# ground the player is standing on becomes productive infrastructure in seconds
+	# rather than over the minute it would ordinarily take.
+	if not focus_position.is_finite():
+		return false
+	var spent := _spend_action(ActionId.DEEP_ROOT)
+	if spent <= 0.0:
+		return false
+	territory_field.queue_maturity_support(
+		focus_position,
+		spent * deep_root_maturity_per_biomass,
+		deep_root_radius_multiplier * root_network.get_reach_multiplier()
+	)
+	action_performed.emit(ActionId.DEEP_ROOT, focus_position, spent)
+	status_requested.emit(
+		"DEEP ROOT — %.0f Biomass driven into the ground underfoot." % spent
+	)
+	return true
 
 
-func debug_unlock_system(system_id: int) -> void:
-	if system_id < 0 or system_id >= _unlocked.size() or _unlocked[system_id] != 0:
+func try_pressurize(focus_position: Vector2) -> bool:
+	# Storage's verb. The reserve is released as motion and nothing else: it buys no
+	# material, so the same Biomass has to be worth more as a shove than it would have
+	# been as an Overgrow, or the action is a worse Overgrow with a longer cooldown.
+	var spent := _spend_action(ActionId.PRESSURIZE)
+	if spent <= 0.0:
+		return false
+	var discharge := (
+		spent
+		* pressurize_pressure_multiplier
+		* root_network.get_discharge_multiplier()
+	)
+	_inject(
+		0.0,
+		discharge,
+		0.0,
+		1.0,
+		focus_position,
+		root_network.get_primary_component()
+	)
+	action_performed.emit(ActionId.PRESSURIZE, focus_position, spent)
+	status_requested.emit(
+		"PRESSURIZE — %.0f Biomass released as one outward shove." % spent
+	)
+	return true
+
+
+func try_regenerate(focus_position: Vector2) -> bool:
+	# Anchoring's verb. Pure Cohesion, which the field already spends on whatever is
+	# damaged rather than on whatever is furthest forward - thin Green thickens and
+	# hostile ground beside it is pushed back toward neutral.
+	var spent := _spend_action(ActionId.REGENERATE)
+	if spent <= 0.0:
+		return false
+	var restored_here := (
+		spent
+		* regenerate_repair_multiplier
+		* root_network.get_discharge_multiplier()
+	)
+	_inject(
+		0.0,
+		0.0,
+		restored_here,
+		maxf(0.02, regenerate_radius / maxf(1.0, overgrow_focus_radius)),
+		focus_position,
+		root_network.get_primary_component()
+	)
+	action_performed.emit(ActionId.REGENERATE, focus_position, spent)
+	status_requested.emit(
+		"REGENERATE — %.0f Biomass spent sealing damaged ground." % spent
+	)
+	return true
+
+
+func try_translocate(focus_position: Vector2 = Vector2.INF) -> bool:
+	# Circulation's verb, and the one exception to a severed colony's Biomass being
+	# unreachable. It has to cost something or the rule it breaks was never a rule:
+	# moving reserve through ground the organism does not hold loses part of it, and
+	# what arrives is what survived the journey.
+	if not can_perform(ActionId.TRANSLOCATE):
+		return false
+	var recovered := root_network.translocate_to_primary(translocate_recovery_fraction)
+	if recovered <= 0.0:
+		return false
+	_action_cooldowns[ActionId.TRANSLOCATE] = translocate_cooldown_seconds
+	action_performed.emit(ActionId.TRANSLOCATE, focus_position, recovered)
+	status_requested.emit(
+		"TRANSLOCATE — %.0f Biomass dragged home from the outlying colonies." % recovered
+	)
+	return true
+
+
+static func get_action_name(action_id: int) -> String:
+	match action_id:
+		ActionId.OVERGROW:
+			return "OVERGROW"
+		ActionId.DEEP_ROOT:
+			return "DEEP ROOT"
+		ActionId.PRESSURIZE:
+			return "PRESSURIZE"
+		ActionId.TRANSLOCATE:
+			return "TRANSLOCATE"
+		ActionId.REGENERATE:
+			return "REGENERATE"
+	return ""
+
+
+static func get_action_summary(action_id: int) -> String:
+	match action_id:
+		ActionId.OVERGROW:
+			return (
+				"Release the reserve into the frontier you aim at, as material and "
+				+ "outward shove in the proportions this organism is built from. The "
+				+ "battlefield decides what that becomes."
+			)
+		ActionId.DEEP_ROOT:
+			return (
+				"Drive the reserve into the ground around you. Everything nearby "
+				+ "establishes at once instead of over the next minute."
+			)
+		ActionId.PRESSURIZE:
+			return (
+				"Empty the reserve as one shove and nothing else. It creates no Plant "
+				+ "material at all; it moves what is already there."
+			)
+		ActionId.TRANSLOCATE:
+			return (
+				"Drag home what the cut-off colonies are still holding. Part of it is "
+				+ "lost on the way through ground you do not own."
+			)
+		ActionId.REGENERATE:
+			return (
+				"Spend the reserve sealing damaged ground. It goes where the organism "
+				+ "is thin, not where it is furthest forward."
+			)
+	return ""
+
+
+func get_identity_share(system_id: int) -> float:
+	# Every axis takes part in an Overgrow, but the organism's physique decides how
+	# much of the burst becomes material, motion, or repair. Two runs pressing the same
+	# button therefore get visibly different physical results.
+	var total := 0
+	for axis in range(_announced_levels.size()):
+		total += get_level(axis)
+	if total <= 0:
+		return 1.0 / float(maxi(1, _announced_levels.size()))
+	return float(get_level(system_id)) / float(total)
+
+
+func debug_grant_axis(system_id: int, ranks: int = 1) -> void:
+	# Raises an axis by developing the domain that governs it, because that is the
+	# only thing that raises one. A debug lever that wrote the rank directly would be
+	# able to produce a physique the game cannot actually reach.
+	if root_network == null:
 		return
-	_unlocked[system_id] = 1
-	system_unlocked.emit(system_id)
-	levels_changed.emit()
+	var domain := get_axis_domain(system_id)
+	for _rank in range(maxi(0, ranks)):
+		root_network.debug_grant_development(domain)
+	_advance_ranks()
+
+
+static func get_axis_domain(system_id: int) -> int:
+	# The doc's own mapping, in one place. Root storage and available biological
+	# material influence Mass; vascular output influences Pressure; root anchoring and
+	# tissue structure influence Cohesion. The player develops physiology; the
+	# simulation reads physical parameters; this is the join between them.
+	match system_id:
+		SystemId.PHOTOSYNTHESIS:
+			return PhaseBRootNetwork.DomainId.STORAGE
+		SystemId.MERISTEM:
+			return PhaseBRootNetwork.DomainId.CIRCULATION
+		SystemId.CAMBIUM:
+			return PhaseBRootNetwork.DomainId.ANCHORING
+	return PhaseBRootNetwork.DomainId.STORAGE
+
+
+func get_organism_rank_bonus() -> int:
+	# The half of the physique nothing can be spent on. A large healthy organism is
+	# physically more massive, pushes harder, and holds together better than a small
+	# one, because it is made of more of itself - so the economy follows the simulation
+	# rather than the simulation being decorated by the economy.
+	if territory_field == null or rooted_percent_per_rank <= 0.0:
+		return 0
+	return int(floor(
+		territory_field.get_rooted_territory_percent() / rooted_percent_per_rank
+	))
+
+
+func get_axis_progress(system_id: int) -> float:
+	# How far the organism has come toward its next rank on this axis, for a meter that
+	# reports growth. Only the organism half moves continuously; a domain rank arrives
+	# whole, so it is the remainder of the rooted percentage that fills the bar.
+	if territory_field == null or rooted_percent_per_rank <= 0.0:
+		return 0.0
+	if get_level(system_id) >= maximum_level:
+		return 1.0
+	var rooted := territory_field.get_rooted_territory_percent()
+	return clampf(
+		fposmod(rooted, rooted_percent_per_rank) / rooted_percent_per_rank,
+		0.0,
+		1.0
+	)
 
 
 func get_level(system_id: int) -> int:
-	if system_id < 0 or system_id >= _levels.size():
+	# One rank for existing, one per rank of the domain that governs this axis, and one
+	# per slice of the board the organism has actually rooted.
+	if system_id < 0 or system_id >= _announced_levels.size():
 		return 0
-	return _levels[system_id]
-
-
-func get_level_cost(system_id: int) -> float:
-	return level_base_cost * pow(level_cost_growth, float(get_level(system_id) - 1))
-
-
-func get_level_fraction(system_id: int) -> float:
-	# How close the Reserve is to the next level of this axis. With outright
-	# purchases the bar is affordability, not stored progress.
-	var cost := get_level_cost(system_id)
-	if cost <= 0.0:
-		return 0.0
-	return clampf(progression.biomass / cost, 0.0, 1.0)
+	var developed := 0
+	if root_network != null:
+		developed = root_network.get_development_level(get_axis_domain(system_id))
+	return clampi(1 + developed + get_organism_rank_bonus(), 1, maximum_level)
 
 
 func get_elapsed_seconds() -> float:
@@ -580,93 +867,6 @@ func get_elapsed_seconds() -> float:
 
 func get_milestones_reached() -> int:
 	return _milestones_reached
-
-
-func _try_request_breakthrough(system_id: int) -> void:
-	if breakthrough_level_interval <= 0:
-		return
-	if _levels[system_id] % breakthrough_level_interval != 0:
-		return
-	if _breakthroughs[system_id] != BreakthroughId.NONE:
-		# One authored branch per system for the prototype: later thresholds deepen
-		# the choice already made rather than re-asking the same question.
-		return
-	_pending_breakthrough_system = system_id
-	_pending_breakthrough_options = get_breakthrough_options(system_id)
-	breakthrough_choice_requested.emit(system_id, _pending_breakthrough_options.duplicate())
-
-
-static func get_breakthrough_options(system_id: int) -> PackedInt32Array:
-	match system_id:
-		SystemId.PHOTOSYNTHESIS:
-			return PackedInt32Array([
-				BreakthroughId.RAPID_CYCLING,
-				BreakthroughId.STORAGE_ORGANS,
-			])
-		SystemId.MERISTEM:
-			return PackedInt32Array([
-				BreakthroughId.APICAL_DOMINANCE,
-				BreakthroughId.LATERAL_GROWTH,
-			])
-		SystemId.CAMBIUM:
-			return PackedInt32Array([
-				BreakthroughId.FLEXIBLE_TISSUE,
-				BreakthroughId.WOODY_TISSUE,
-			])
-	return PackedInt32Array()
-
-
-func has_pending_breakthrough_choice() -> bool:
-	return _pending_breakthrough_system >= 0
-
-
-func get_pending_breakthrough_system() -> int:
-	return _pending_breakthrough_system
-
-
-func get_pending_breakthrough_options() -> PackedInt32Array:
-	return _pending_breakthrough_options.duplicate()
-
-
-func choose_breakthrough(breakthrough_id: int) -> bool:
-	if _pending_breakthrough_system < 0:
-		return false
-	if _pending_breakthrough_options.find(breakthrough_id) == -1:
-		return false
-	_breakthroughs[_pending_breakthrough_system] = breakthrough_id
-	_pending_breakthrough_system = -1
-	_pending_breakthrough_options = PackedInt32Array()
-	_pulse_accumulator = 0.0
-	_pulse_charge = 0.0
-	breakthroughs_changed.emit()
-	status_requested.emit(
-		"BREAKTHROUGH — %s." % get_breakthrough_name(breakthrough_id)
-	)
-	return true
-
-
-func get_breakthrough(system_id: int) -> int:
-	if system_id < 0 or system_id >= _breakthroughs.size():
-		return BreakthroughId.NONE
-	return _breakthroughs[system_id]
-
-
-func has_breakthrough(breakthrough_id: int) -> bool:
-	return _breakthroughs.find(breakthrough_id) != -1
-
-
-func debug_grant_level(system_id: int, levels: int = 1) -> void:
-	# Test and debug entry point: reach a level without paying its cost.
-	if system_id < 0 or system_id >= _levels.size():
-		return
-	debug_unlock_system(system_id)
-	for _step in range(maxi(1, levels)):
-		if _levels[system_id] >= maximum_level:
-			return
-		_levels[system_id] += 1
-		level_reached.emit(system_id, _levels[system_id])
-		_try_request_breakthrough(system_id)
-	levels_changed.emit()
 
 
 func get_mass_multiplier() -> float:
@@ -703,13 +903,10 @@ func get_conversion_multiplier() -> float:
 
 
 func get_resistance_multiplier() -> float:
-	var multiplier := pow(
-		cambium_resistance_per_level,
-		float(get_level(SystemId.CAMBIUM) - 1)
-	)
-	if has_breakthrough(BreakthroughId.WOODY_TISSUE):
-		multiplier *= woody_resistance_multiplier
-	return multiplier
+	# The axis half. Anchoring's own metamorphoses are applied by the root network,
+	# which is also what knows whether the ground being asked about is old enough for
+	# Deep Taproots to be defending it at all.
+	return pow(cambium_resistance_per_level, float(get_level(SystemId.CAMBIUM) - 1))
 
 
 func get_cohesion_multiplier() -> float:
@@ -723,18 +920,19 @@ func get_regeneration_per_second() -> float:
 		cambium_regeneration_per_level
 		* float(get_level(SystemId.CAMBIUM) - 1)
 	)
-	if has_breakthrough(BreakthroughId.FLEXIBLE_TISSUE):
-		regeneration += flexible_rebound_per_second
+	if _has_metamorphosis(PhaseBRootNetwork.MetamorphosisId.FIBROUS_MAT):
+		regeneration += fibrous_rebound_per_second
 	return regeneration
 
 
 func get_advection_multiplier() -> float:
-	# Flexible Green deforms heavily and springs back; Woody Green refuses to move
-	# until it fails. Both read out of the same simulation parameter.
-	if has_breakthrough(BreakthroughId.FLEXIBLE_TISSUE):
-		return flexible_advection_multiplier
-	if has_breakthrough(BreakthroughId.WOODY_TISSUE):
-		return woody_advection_multiplier
+	# A wide fibrous mat deforms heavily and springs back; deeply anchored Green
+	# refuses to move until it fails. Both read out of the same simulation parameter,
+	# which is what makes them two shapes of one organism rather than two effects.
+	if _has_metamorphosis(PhaseBRootNetwork.MetamorphosisId.FIBROUS_MAT):
+		return fibrous_advection_multiplier
+	if _has_metamorphosis(PhaseBRootNetwork.MetamorphosisId.DEEP_TAPROOTS):
+		return taproot_advection_multiplier
 	return 1.0
 
 
@@ -746,35 +944,31 @@ func get_fragment_decay_multiplier() -> float:
 
 
 func get_injection_focus_fraction() -> float:
-	if has_breakthrough(BreakthroughId.APICAL_DOMINANCE):
-		return apical_focus_fraction
-	if has_breakthrough(BreakthroughId.LATERAL_GROWTH):
-		return lateral_focus_fraction
+	if _has_metamorphosis(PhaseBRootNetwork.MetamorphosisId.CARDIAC_PUMPING):
+		return cardiac_focus_fraction
+	if _has_metamorphosis(PhaseBRootNetwork.MetamorphosisId.CONTINUOUS_PERISTALSIS):
+		return peristalsis_focus_fraction
 	return 1.0
 
 
+func _has_metamorphosis(metamorphosis_id: int) -> bool:
+	# One guarded read, so every consumer above stays a single legible line and none of
+	# them has to know that the physiology lives on another node.
+	return root_network != null and root_network.has_metamorphosis(metamorphosis_id)
+
+
 static func get_axis_name(system_id: int) -> String:
-	# What the player buys is the physical axis; the organ name is how the run
-	# discovered it. The drawer speaks in axes and the announcement in organs.
+	# The physical axis, in the plainest words available: what the ground is made of,
+	# how hard it pushes, how well it holds. The organ name is how the run discovered
+	# it, and stays for announcements.
 	match system_id:
 		SystemId.PHOTOSYNTHESIS:
 			return "Mass"
 		SystemId.MERISTEM:
-			return "Pressure"
+			return "Push"
 		SystemId.CAMBIUM:
-			return "Cohesion"
+			return "Hold"
 	return ""
-
-
-static func get_purchase_verb(system_id: int) -> String:
-	match system_id:
-		SystemId.PHOTOSYNTHESIS:
-			return "GROW"
-		SystemId.MERISTEM:
-			return "SURGE"
-		SystemId.CAMBIUM:
-			return "HARDEN"
-	return "BUY"
 
 
 static func get_axis_summary(system_id: int) -> String:
@@ -786,15 +980,6 @@ static func get_axis_summary(system_id: int) -> String:
 		SystemId.CAMBIUM:
 			return "Hold together"
 	return ""
-
-
-static func get_unlock_line(system_id: int) -> String:
-	match system_id:
-		SystemId.MERISTEM:
-			return "Spend Biomass to increase territorial Pressure."
-		SystemId.CAMBIUM:
-			return "Biomass can now reinforce and repair Green."
-	return "Spend Biomass to build more territorial Mass."
 
 
 static func get_system_name(system_id: int) -> String:
@@ -836,38 +1021,4 @@ static func get_system_description(system_id: int) -> String:
 				"Cohesion. Structural integrity. Weak Green tears; strong Green bends, "
 				+ "holds together, and rebounds."
 			)
-	return ""
-
-
-static func get_breakthrough_name(breakthrough_id: int) -> String:
-	match breakthrough_id:
-		BreakthroughId.RAPID_CYCLING:
-			return "RAPID CYCLING"
-		BreakthroughId.STORAGE_ORGANS:
-			return "STORAGE ORGANS"
-		BreakthroughId.APICAL_DOMINANCE:
-			return "APICAL DOMINANCE"
-		BreakthroughId.LATERAL_GROWTH:
-			return "LATERAL GROWTH"
-		BreakthroughId.FLEXIBLE_TISSUE:
-			return "FLEXIBLE TISSUE"
-		BreakthroughId.WOODY_TISSUE:
-			return "WOODY TISSUE"
-	return "NO BREAKTHROUGH"
-
-
-static func get_breakthrough_description(breakthrough_id: int) -> String:
-	match breakthrough_id:
-		BreakthroughId.RAPID_CYCLING:
-			return "Mass is created continuously, in many small pulses."
-		BreakthroughId.STORAGE_ORGANS:
-			return "Mass accumulates and releases in large pulses; the Green breathes outward."
-		BreakthroughId.APICAL_DOMINANCE:
-			return "Pressure concentrates into protrusions and tendrils."
-		BreakthroughId.LATERAL_GROWTH:
-			return "Pressure spreads broadly across the whole frontier."
-		BreakthroughId.FLEXIBLE_TISSUE:
-			return "Green deforms heavily before breaking, and rebounds afterwards."
-		BreakthroughId.WOODY_TISSUE:
-			return "Green resists deformation, but fractures suddenly when overloaded."
 	return ""

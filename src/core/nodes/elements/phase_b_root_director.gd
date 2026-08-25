@@ -72,7 +72,8 @@ func reset_director() -> void:
 
 
 func has_path() -> bool:
-	return progression.has_path(PhaseBProgression.PathId.ROOT)
+	# Active, not owned: a Root jackpot runs the path for a run that never took it.
+	return progression.has_path_active(PhaseBProgression.PathId.ROOT)
 
 
 func get_maturation_multiplier() -> float:

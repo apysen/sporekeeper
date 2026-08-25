@@ -178,7 +178,7 @@ The playable Phase B scene demonstrates this convention directly. Its run root
 coordinates `AudioSettings`, `Progression`, and `WaveDirector` under
 `GameplayComponents`, and every Plant path under a single `Paths` parent:
 `SporeDirector`, `BloomDirector`, `BrambleDirector`, `RootDirector`, and
-`CarnivoryDirector`. Each path owns its own component rather than sharing one Plant
+`PruningDirector`. Each path owns its own component rather than sharing one Plant
 director, so a path's tuning, its derived values, its evolutions, and the signals
 it listens to all live together and are found in one place.
 
@@ -220,8 +220,8 @@ profile when it changes one archetype, to `CombatDirector` when it changes
 shared combat resolution, to `WaveDirector` when it changes spawn scheduling,
 or to the director of the path it belongs to: `SporeDirector` for Seeds, Briar
 Pods, and the Seed Bank, `BloomDirector` for Blooms, Thornburst, and Flowering
-Season, and `CarnivoryDirector` for Prey Pressure, Maws, the Bite, and Maw
-Capacity. A pairing evolution
+Season, and `PruningDirector` for the harvest, Cuttings, and the orbiting
+ring. A pairing evolution
 lives with the path whose mechanic it changes, which is why Super Bloom's chain
 depth sits on `BloomDirector` even though a Seed arms it. Avoid
 reintroducing a single run-tuning Resource that couples those owners together.

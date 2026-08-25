@@ -170,7 +170,7 @@ func _run() -> void:
 		is_equal_approx(prototype.wave_director.wave_grace_period_seconds, 5.0)
 		and not prototype.is_wave_grace_period_active()
 		and is_zero_approx(prototype.get_wave_grace_remaining_seconds())
-		and prototype.run_label.text.begins_with("WAVE 1"),
+		and prototype.wave_label.text.begins_with("WAVE 1"),
 		"wave one begins immediately without a grace countdown"
 	)
 	prototype.advance_run(0.65)
@@ -188,7 +188,7 @@ func _run() -> void:
 		and prototype.is_wave_grace_period_active()
 		and is_equal_approx(prototype.get_wave_grace_remaining_seconds(), 5.0)
 		and prototype.combat.get_active_enemy_count() == 0
-		and prototype.run_label.text.contains("WAVE 2 IN 05s"),
+		and prototype.wave_label.text.contains("WAVE 2 IN 05s"),
 		"each later wave also begins with the five-second reinforcement grace"
 	)
 
@@ -257,7 +257,7 @@ func _run() -> void:
 			prototype.combat.get_enemy_territory_erosion_scale(wave_three_grazer_id),
 			1.20
 		)
-		and prototype.run_label.text.contains("WAVE 3"),
+		and prototype.wave_label.text.contains("WAVE 3"),
 		"each completed minute advances the visible XP and territory scaling wave"
 	)
 
@@ -1534,9 +1534,11 @@ func _run() -> void:
 	)
 
 	# Every Evolution carries exactly one optional upgrade line, offered only to the
-	# run that claimed that Evolution.
-	# Every implemented pairing carries a line, and a pairing without one must
-	# degrade to no line rather than to a broken one.
+	# run that claimed that Evolution. All ten pairings now have one: the four Pruning
+	# pairings used to fall through to no line at all, which left those runs with
+	# nothing to draft and their Evolution stuck at its base effect for the whole run.
+	# The count is asserted against the enum rather than written down, so a pairing
+	# added later cannot quietly ship without a line.
 	var evolution_lines_are_paired := true
 	var evolution_line_ids := PackedInt32Array()
 	for evolution_id in range(1, PhaseBProgression.EvolutionId.size()):
@@ -1576,7 +1578,7 @@ func _run() -> void:
 	prototype._apply_progression_modifiers()
 	_check(
 		evolution_lines_are_paired
-		and evolution_line_ids.size() == 6
+		and evolution_line_ids.size() == PhaseBProgression.EvolutionId.size() - 1
 		and not line_draftable_unevolved
 		and own_line_draftable
 		and not other_line_draftable
@@ -1584,6 +1586,54 @@ func _run() -> void:
 		and rank_three_text.contains("Barbed Blast"),
 		"each Evolution has one optional line, drafted only by the run holding it"
 	)
+
+	# A line is not implemented because it exists in the enum. Every rank of every line
+	# has to name what it does, because that text is what the draft shows the player, and
+	# a blank rank is a rank nobody wrote.
+	var blank_ranks := PackedStringArray()
+	for evolution_id in range(1, PhaseBProgression.EvolutionId.size()):
+		var line_id := PhaseBEvolutions.get_evolution_upgrade_id(evolution_id)
+		if line_id < 0:
+			continue
+		for rank in range(1, prototype.progression.maximum_upgrade_level + 1):
+			if prototype.evolutions.get_evolution_upgrade_rank_description(
+				line_id, rank
+			).is_empty():
+				blank_ranks.append("%s r%d" % [
+					PhaseBProgression.get_upgrade_name(line_id),
+					rank,
+				])
+	_check(
+		blank_ranks.is_empty(),
+		"every Evolution rank says what it does (%s)" % (
+			"all named" if blank_ranks.is_empty() else ", ".join(blank_ranks)
+		)
+	)
+
+	# Spore Burst: germination itself has to hurt. Checked by damage rather than by kills
+	# so the check survives any retune of how hard it hits.
+	prototype.progression.reset_progression()
+	prototype.combat.reset_combat()
+	var burst_seat := prototype.player.get_arena_position()
+	var burst_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		burst_seat + Vector2(18.0, 0.0)
+	)
+	var burst_full := prototype.combat.get_enemy_health(burst_id)
+	prototype.spore_director.on_seed_germinated(burst_seat, 0)
+	var burst_unrelicked := prototype.combat.get_enemy_health(burst_id)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.SPORE_BURST] = 1
+	prototype.spore_director.on_seed_germinated(burst_seat, 0)
+	var burst_relicked := prototype.combat.get_enemy_health(burst_id)
+	_check(
+		burst_id >= 0
+		and is_equal_approx(burst_unrelicked, burst_full)
+		and burst_relicked < burst_unrelicked,
+		"Spore Burst makes germination damage what is standing in it (%.1f to %.1f)"
+			% [burst_unrelicked, burst_relicked]
+	)
+	prototype.combat.reset_combat()
+	prototype.progression.reset_progression()
 
 	# Bloom splatter: one eruption resolves into a central splat, gameplay globs,
 	# satellites, and streaks rather than into a single expanding circle.
@@ -1984,7 +2034,7 @@ func _run() -> void:
 	# And how well it roots is the run's own Maturation, not a flat number: the
 	# ecosystem's capacity to put down roots acting on material the Bloom delivered.
 	var reinforcement_before := prototype.bloom_director.get_landing_maturity_reinforcement()
-	prototype.metabolism.debug_grant_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS, 8)
+	prototype.metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS, 8)
 	prototype._apply_progression_modifiers()
 	var reinforcement_after := prototype.bloom_director.get_landing_maturity_reinforcement()
 	_check(
@@ -2209,13 +2259,13 @@ func _run() -> void:
 	# thrown, Force decides how far it goes.
 	var mass_before := prototype.bloom_director.get_bloom_mass_multiplier()
 	var force_before := prototype.bloom_director.get_bloom_force_multiplier()
-	prototype.metabolism.debug_grant_level(
+	prototype.metabolism.debug_grant_axis(
 		PhaseBMetabolism.SystemId.PHOTOSYNTHESIS,
 		3
 	)
 	var mass_after := prototype.bloom_director.get_bloom_mass_multiplier()
 	var force_after_mass := prototype.bloom_director.get_bloom_force_multiplier()
-	prototype.metabolism.debug_grant_level(PhaseBMetabolism.SystemId.MERISTEM, 3)
+	prototype.metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.MERISTEM, 3)
 	var force_after := prototype.bloom_director.get_bloom_force_multiplier()
 	_check(
 		mass_after > mass_before
@@ -2224,6 +2274,7 @@ func _run() -> void:
 		"Bloom Mass and Bloom Force move independently of one another"
 	)
 	prototype.metabolism.reset_metabolism()
+	prototype.root_network.reset_network()
 
 	# Geometry decides where the splatter can go: a splat is never thrown through
 	# basalt, so a wall shortens the spray instead of painting past it.
@@ -2476,7 +2527,56 @@ func _run() -> void:
 		"the harvest eats Fresh ground before it touches Mature ground"
 	)
 
+	# The cut opens around the player rather than off to one side of them. The scan
+	# used to walk the bounding box row by row and stop the moment it had its quota,
+	# which for the small quota a continuous harvest asks for meant it never reached
+	# past the top rows: the hole appeared above the Gardener instead of under them.
+	prototype.territory_field.reset_field()
+	_grow_test_ecosystem(prototype)
+	pruning.reset_director()
+	var centred_home := _stand_on_owned_ground(prototype)
+	prototype.player.global_position = prototype.territory_field.to_global(centred_home)
+	var centred_harvest := prototype.territory_field.drain_territory_in_radius(
+		centred_home,
+		pruning.upkeep_radius_pixels,
+		6,
+		pruning.pruned_ground_seconds,
+		pruning.upkeep_inner_radius_pixels
+	)
+	var cut_above := 0
+	var cut_below := 0
+	var furthest_cut := 0.0
+	for cut_position in centred_harvest.positions:
+		if cut_position.y < centred_home.y:
+			cut_above += 1
+		elif cut_position.y > centred_home.y:
+			cut_below += 1
+		furthest_cut = maxf(furthest_cut, cut_position.distance_to(centred_home))
+	_check(
+		centred_harvest.cell_count > 0
+		and cut_above > 0
+		and cut_below > 0
+		and furthest_cut <= pruning.upkeep_radius_pixels + 1.0,
+		"the harvest opens around the player instead of biting off one side "
+			+ "(%d above, %d below, furthest %.1fpx)" % [cut_above, cut_below, furthest_cut]
+	)
+
+	# And it spares the ground the player is standing on. The harvest only runs while
+	# they are on their own Green, so cutting the cell underfoot would switch off the
+	# thing that is running it after a single step.
+	_check(
+		prototype.territory_field.get_control_at_local(centred_home)
+		> prototype.territory_field.tuning.ownership_threshold
+		and pruning.is_player_on_green()
+		and pruning.upkeep_inner_radius_pixels > 0.0,
+		"the harvest leaves the player's own footing intact"
+	)
+
 	# Cut ground comes back faster than ordinary neutral ground.
+	prototype.territory_field.reset_field()
+	_grow_test_ecosystem(prototype)
+	pruning.reset_director()
+	pruning.run_cycle_now()
 	var pruned_spot := Vector2(-1.0, -1.0)
 	for probe_y in range(2, 60):
 		for probe_x in range(2, 108):
@@ -2883,7 +2983,7 @@ func _run() -> void:
 
 	# The five Pruning pairings.
 	var pruning_pairings := [
-		[PhaseBProgression.PathId.SPORE, PhaseBProgression.EvolutionId.COPPICE],
+		[PhaseBProgression.PathId.SPORE, PhaseBProgression.EvolutionId.PIONEER],
 		[PhaseBProgression.PathId.BLOOM, PhaseBProgression.EvolutionId.REBOUND],
 		[PhaseBProgression.PathId.BRAMBLE, PhaseBProgression.EvolutionId.DEADFALL],
 		[PhaseBProgression.PathId.ROOT, PhaseBProgression.EvolutionId.COPPICING],
@@ -2915,13 +3015,13 @@ func _run() -> void:
 	prototype.overlay.clear_effects()
 	pruning.reset_director()
 	_stand_on_owned_ground(prototype)
-	for _coppice_harvest in range(14):
+	for _pioneer_harvest in range(14):
 		pruning.run_cycle_now()
-	var seeds_before_coppice := prototype.overlay.get_active_seed_count()
-	for _coppice_step in range(int(prototype.evolutions.coppice_delay_seconds * 60.0) + 6):
+	var seeds_before_pioneer := prototype.overlay.get_active_seed_count()
+	for _pioneer_step in range(int(prototype.evolutions.pioneer_delay_seconds * 60.0) + 6):
 		pruning.advance(1.0 / 60.0)
 	_check(
-		seeds_before_coppice == 0
+		seeds_before_pioneer == 0
 		and prototype.overlay.get_active_seed_count() > 1,
 		"Coppice germinates the ground the harvest cut, a moment after it cuts it"
 	)
@@ -4104,75 +4204,1534 @@ func _run() -> void:
 	)
 	prototype._choose_displayed_option(0)
 
-	# Ecosystem Metabolism: every level is bought outright. Automatic allocation was
-	# tried and dropped, so nothing here fills a bar on its own.
+	# Ecosystem Metabolism. Nothing here is bought any more: the three axes describe
+	# the organism, so what moves them is the physiology the run developed and how much
+	# organism there actually is. Nothing must be buyable, and nothing must move on the
+	# run clock alone.
 	var metabolism := prototype.metabolism
+	var network := prototype.root_network
 	metabolism.reset_metabolism()
+	network.reset_network()
 	prototype.progression.reset_progression()
-	prototype.progression.add_biomass(500.0)
-	var reserve_before := prototype.progression.biomass
-	var mass_cost := metabolism.get_level_cost(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
 	var mass_level_before := metabolism.get_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
 	var cambium_before := metabolism.get_level(PhaseBMetabolism.SystemId.CAMBIUM)
-	var bought := metabolism.try_purchase(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
-	# Time alone must never buy anything: only the purchase moves a level.
 	for _idle_step in range(300):
 		metabolism.advance(1.0 / 30.0)
 	_check(
-		bought
+		metabolism.get_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS) == mass_level_before
+		and metabolism.get_level(PhaseBMetabolism.SystemId.CAMBIUM) == cambium_before,
+		"the run clock alone never moves a physical axis"
+	)
+
+	# Each axis is governed by exactly one developmental domain, and developing that
+	# domain is what raises it. The doc's own mapping: storage feeds Mass, vascular
+	# output feeds Push, anchoring feeds Hold.
+	var axis_moves := true
+	for system_id in [
+		PhaseBMetabolism.SystemId.PHOTOSYNTHESIS,
+		PhaseBMetabolism.SystemId.MERISTEM,
+		PhaseBMetabolism.SystemId.CAMBIUM,
+	]:
+		var before: int = metabolism.get_level(system_id)
+		network.debug_grant_development(PhaseBMetabolism.get_axis_domain(system_id))
+		if metabolism.get_level(system_id) != before + 1:
+			axis_moves = false
+	_check(
+		axis_moves,
+		"each physical axis is raised by the developmental domain the doc assigns it"
+	)
+
+	# The other half of the physique cannot be bought at all: a larger rooted organism
+	# is physically more massive, pushes harder, and holds together better, so the
+	# economy follows the simulation rather than decorating it.
+	metabolism.reset_metabolism()
+	network.reset_network()
+	var organism_bonus := metabolism.get_organism_rank_bonus()
+	var rooted_percent := prototype.territory_field.get_rooted_territory_percent()
+	_check(
+		organism_bonus == int(floor(rooted_percent / metabolism.rooted_percent_per_rank))
 		and metabolism.get_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
-		== mass_level_before + 1
-		and metabolism.get_level(PhaseBMetabolism.SystemId.CAMBIUM) == cambium_before
-		and is_equal_approx(prototype.progression.biomass, reserve_before - mass_cost),
-		"a Metabolism level is bought outright and time alone never buys one"
+		== 1 + organism_bonus,
+		"an axis carries the organism's own rooted size as well as its developed rank"
 	)
 
-	# Costs are exponential, so the next level always costs meaningfully more.
-	var current_cost := metabolism.get_level_cost(
-		PhaseBMetabolism.SystemId.PHOTOSYNTHESIS
+	# The Clover machine. Territory is the stake and the payout is a Path event, which is
+	# the point of the whole feature: what is risked comes off the organism and what is
+	# won lands on the battlefield, so they are not one axis wearing two names.
+	var machine := prototype.slot_machine
+	var clover_odds := prototype.clover_odds
+	var selector := prototype.wager_selector
+	var jackpots := prototype.clover_jackpots
+	var grace := prototype.all_in_grace
+	machine.reset_machine()
+	clover_odds.reset_odds()
+	jackpots.reset_jackpots()
+	grace.reset_grace()
+	prototype.progression.reset_progression()
+
+	# The winning grammar. A Clover stands in for a missing Path symbol and for nothing
+	# else: it never completes a Bust, and it never picks between two different Paths.
+	var wild_completes := CloverSlot.resolve_outcome(PackedInt32Array([
+		CloverSlot.Symbol.BLOOM,
+		CloverSlot.Symbol.CLOVER,
+		CloverSlot.Symbol.BLOOM,
+	]))
+	var clover_bust := CloverSlot.resolve_outcome(PackedInt32Array([
+		CloverSlot.Symbol.BUST,
+		CloverSlot.Symbol.BUST,
+		CloverSlot.Symbol.CLOVER,
+	]))
+	var mixed_paths := CloverSlot.resolve_outcome(PackedInt32Array([
+		CloverSlot.Symbol.BLOOM,
+		CloverSlot.Symbol.ROOT,
+		CloverSlot.Symbol.CLOVER,
+	]))
+	_check(
+		wild_completes == CloverSlot.Outcome.PATH_JACKPOT
+		and CloverSlot.resolve_path(PackedInt32Array([
+			CloverSlot.Symbol.BLOOM,
+			CloverSlot.Symbol.CLOVER,
+			CloverSlot.Symbol.BLOOM,
+		])) == CloverSlot.Symbol.BLOOM
+		and clover_bust == CloverSlot.Outcome.WHIFF
+		and mixed_paths == CloverSlot.Outcome.WHIFF
+		and CloverSlot.resolve_outcome(PackedInt32Array([
+			CloverSlot.Symbol.CLOVER,
+			CloverSlot.Symbol.CLOVER,
+			CloverSlot.Symbol.CLOVER,
+		])) == CloverSlot.Outcome.TRIPLE_CLOVER,
+		"a Clover completes a Path pair, never a Bust, and never chooses between two Paths"
+	)
+
+	# The reels are built to represent a result that was already decided, so a face the
+	# machine draws must never resolve to a different outcome than the one it was asked
+	# for. A whiff that accidentally reads as a jackpot is the one bug in a slot machine
+	# that cannot be argued with.
+	var display_mismatches := 0
+	var whiff_teases := 0
+	for _display_index in range(4000):
+		for outcome in [
+			CloverSlot.Outcome.WHIFF,
+			CloverSlot.Outcome.PATH_JACKPOT,
+			CloverSlot.Outcome.TRIPLE_CLOVER,
+			CloverSlot.Outcome.TRIPLE_BUST,
+		]:
+			var wanted_path := clover_odds.pick_path()
+			var faces := clover_odds.build_display(outcome, wanted_path)
+			if CloverSlot.resolve_outcome(faces) != outcome:
+				display_mismatches += 1
+			if outcome == CloverSlot.Outcome.PATH_JACKPOT \
+				and CloverSlot.resolve_path(faces) != wanted_path:
+				display_mismatches += 1
+			if outcome == CloverSlot.Outcome.WHIFF and faces[0] == faces[1]:
+				whiff_teases += 1
+	_check(
+		display_mismatches == 0 and whiff_teases > 0,
+		"every constructed line shows exactly the result it was built for, teases included (%d teases, %d mismatches)"
+			% [whiff_teases, display_mismatches]
+	)
+
+	# Truthful odds. Whatever protection is running underneath, the four outcome chances
+	# have to be a probability distribution, because they are also the numbers printed
+	# on the readout.
+	var odds_sum_error := 0.0
+	for stake in range(CloverSlot.Stake.size()):
+		var stake_odds := clover_odds.get_effective_odds(stake)
+		odds_sum_error = maxf(odds_sum_error, absf(
+			float(stake_odds["path_jackpot"])
+			+ float(stake_odds["triple_clover"])
+			+ float(stake_odds["triple_bust"])
+			+ float(stake_odds["whiff"])
+			- 1.0
+		))
+	_check(odds_sum_error < 0.0001, "the printed odds are a complete distribution")
+
+	# Drought protection begins only after a real drought, takes its extra chance out of
+	# Whiff alone, and is counted per stake so cheap Low spins cannot charge up pity and
+	# have it cashed out on an All In.
+	clover_odds.reset_odds()
+	var dry_base := clover_odds.get_effective_odds(CloverSlot.Stake.MEDIUM)
+	for _dry_spin in range(clover_odds.drought_grace_spins):
+		clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.WHIFF)
+	var dry_at_grace := clover_odds.get_effective_odds(CloverSlot.Stake.MEDIUM)
+	clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.WHIFF)
+	var dry_past_grace := clover_odds.get_effective_odds(CloverSlot.Stake.MEDIUM)
+	var untouched_stake := clover_odds.get_effective_odds(CloverSlot.Stake.ALL_IN)
+	_check(
+		is_equal_approx(float(dry_at_grace["path_jackpot"]), float(dry_base["path_jackpot"]))
+		and float(dry_past_grace["path_jackpot"]) > float(dry_base["path_jackpot"])
+		and is_equal_approx(
+			float(dry_past_grace["triple_clover"]), float(dry_base["triple_clover"])
+		)
+		and is_equal_approx(
+			float(dry_past_grace["triple_bust"]), float(dry_base["triple_bust"])
+		)
+		and float(dry_past_grace["whiff"]) < float(dry_base["whiff"])
+		and clover_odds.get_drought(CloverSlot.Stake.ALL_IN) == 0
+		and is_equal_approx(
+			float(untouched_stake["path_jackpot"]),
+			clover_odds.path_jackpot_chances[CloverSlot.Stake.ALL_IN]
+		),
+		"pity starts after a drought, comes only out of Whiff, and does not cross stakes"
+	)
+
+	# A positive result clears the drought for that stake, and no drought can push the
+	# positive chance past the cap: without one, a long Low drought would eventually pay
+	# better than All In and there would be no reason to take a real risk.
+	for _long_dry in range(40):
+		clover_odds.note_outcome(CloverSlot.Stake.LOW, CloverSlot.Outcome.WHIFF)
+	var capped := clover_odds.get_effective_odds(CloverSlot.Stake.LOW)
+	clover_odds.note_outcome(CloverSlot.Stake.LOW, CloverSlot.Outcome.PATH_JACKPOT)
+	var after_win := clover_odds.get_effective_odds(CloverSlot.Stake.LOW)
+	_check(
+		float(capped["positive"]) <= clover_odds.positive_caps[CloverSlot.Stake.LOW] + 0.0001
+		and float(capped["positive"]) > float(after_win["positive"])
+		and clover_odds.get_drought(CloverSlot.Stake.LOW) == 0,
+		"a drought is capped and a win clears it (%.3f capped, %.3f after)"
+			% [float(capped["positive"]), float(after_win["positive"])]
+	)
+
+	# Triple Bust cannot happen twice in a row, and the probability taken off it becomes
+	# Whiff rather than Jackpot: a catastrophe must not make the next spin generous.
+	clover_odds.reset_odds()
+	var bust_normal := clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)
+	clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.TRIPLE_BUST)
+	var bust_next := clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)
+	clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
+	var bust_second := clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)
+	_check(
+		is_equal_approx(float(bust_next["triple_bust"]), 0.0)
+		and is_equal_approx(
+			float(bust_second["triple_bust"]), float(bust_normal["triple_bust"]) * 0.5
+		)
+		and float(bust_next["whiff"]) > float(bust_normal["whiff"])
+		and is_equal_approx(
+			float(bust_next["path_jackpot"]), float(bust_normal["path_jackpot"])
+		),
+		"a Bust cannot immediately repeat, and the removed chance becomes Whiff"
+	)
+	clover_odds.reset_odds()
+
+	# The wager is a physical region of the organism, sized exactly by the notch and
+	# made only of ground the run actually holds.
+	var owned_cells := prototype.territory_field.collect_owned_cells()
+	_check(owned_cells.size() > 0, "the starting island gives the machine something to wager")
+	# Seeded in the middle of the island rather than at its first cell in index order,
+	# which is a corner of it: a flood that starts on the rim has nowhere inward to go
+	# and would say nothing about how the selection prefers integrated tissue. The
+	# centroid of a horseshoe need not be Green, which is exactly the case the selector
+	# is meant to handle by seeding at the nearest owned cell instead.
+	var seat := Vector2.ZERO
+	for cell in owned_cells:
+		seat += prototype.territory_field.get_cell_local_position(cell)
+	seat /= float(owned_cells.size())
+	var wrong_stake_sizes := 0
+	var unowned_in_wager := 0
+	for stake in range(CloverSlot.Stake.size()):
+		var region := selector.select(stake, seat)
+		if region.size() != selector.get_target_cell_count(stake, owned_cells.size()):
+			wrong_stake_sizes += 1
+		for cell in region:
+			if not prototype.territory_field.is_owned_cell(cell):
+				unowned_in_wager += 1
+	var all_in_region := selector.select(CloverSlot.Stake.ALL_IN, seat)
+	var repeat_region := selector.select(CloverSlot.Stake.MEDIUM, seat)
+	_check(
+		wrong_stake_sizes == 0
+		and unowned_in_wager == 0
+		and all_in_region.size() == owned_cells.size()
+		and repeat_region == selector.select(CloverSlot.Stake.MEDIUM, seat),
+		"every notch stakes exactly its share of owned Green, All In takes all of it, and the same board picks the same cells"
+	)
+
+	# The flood starts under the player. It is the one thing about the wager the player
+	# can aim, and it is easy to break from the outside without breaking the selector:
+	# the field sits at an offset inside the scene, so handing it the player's global
+	# position instead of its arena position seeds the region a dozen cells away, misses
+	# Green entirely, and quietly falls back to the nearest owned cell. Both the selector
+	# and the path the interface actually drives are checked, because only the second of
+	# those two ever went wrong.
+	var player_seat := prototype.player.get_arena_position()
+	var player_cell := prototype.territory_field.local_to_cell_index(player_seat)
+	var stands_on_green := prototype.territory_field.is_owned_cell(player_cell)
+	var player_region := selector.select(CloverSlot.Stake.MEDIUM, player_seat)
+	prototype._on_slot_hover_changed(true)
+	var previewed := machine.get_preview_cells().duplicate()
+	prototype._on_slot_hover_changed(false)
+	_check(
+		stands_on_green
+		and player_region.has(player_cell)
+		and previewed.has(player_cell),
+		"the wager is seeded on the cell the player is standing on, through the interface as well as directly"
+	)
+
+	# The selection prefers integrated tissue over the exposed rim, so a lost bet costs
+	# the organism something it will feel rather than a fringe it was about to lose.
+	var wager_exposure := 0.0
+	for cell in repeat_region:
+		wager_exposure += prototype.territory_field.get_cell_boundary_exposure(cell)
+	var board_exposure := 0.0
+	for cell in owned_cells:
+		board_exposure += prototype.territory_field.get_cell_boundary_exposure(cell)
+	_check(
+		wager_exposure / float(maxi(1, repeat_region.size()))
+			<= board_exposure / float(maxi(1, owned_cells.size())) + 0.0001,
+		"the wager reaches inward rather than skimming the boundary"
+	)
+
+	# The region is drawn from a mask at the field's own resolution rather than as one
+	# rectangle per cell, so the highlight reconstructs into the same kind of soft
+	# border as the ground it sits on. What the layer is holding has to stay the region
+	# it was handed, and an empty region has to leave nothing on the arena.
+	var layer := prototype.wager_layer
+	layer.set_wager_cells(repeat_region, false)
+	var drawn := layer.get_wager_cell_count() == repeat_region.size() and layer.visible
+	layer.set_wager_cells(repeat_region, true)
+	var committed_static := layer.is_committed()
+	layer.clear_wager()
+	_check(
+		drawn and committed_static and not layer.visible and layer.get_wager_cell_count() == 0,
+		"the wager layer draws exactly the region it is given and clears completely"
+	)
+
+	# The buy-in is enforced on every stake including All In, so a run with almost
+	# nothing left cannot use the machine as a free lottery ticket.
+	machine.minimum_buyin_established_fraction = 1.0
+	var blocked := not machine.can_spin() and not machine.try_spin(seat)
+	machine.minimum_buyin_established_fraction = 0.0
+	_check(blocked and machine.can_spin(), "the lever will not move below the minimum buy-in")
+
+	# The result is decided when the lever goes down and applied when the reels stop. The
+	# reveal is drama, not a second roll.
+	clover_odds.path_jackpot_chances = PackedFloat32Array([0.0, 0.0, 0.0, 0.0])
+	clover_odds.triple_clover_chances = PackedFloat32Array([0.0, 0.0, 0.0, 0.0])
+	clover_odds.triple_bust_chances = PackedFloat32Array([0.0, 0.0, 0.0, 0.0])
+	machine.reset_machine()
+	machine.minimum_buyin_established_fraction = 0.0
+	machine.set_stake(CloverSlot.Stake.MEDIUM)
+	var resolutions: Array = []
+	var on_resolved := func(outcome: int, _path: int, _stake: int) -> void:
+		resolutions.append(outcome)
+	machine.spin_resolved.connect(on_resolved)
+	var green_before := prototype.territory_field.get_player_cell_count()
+	var pulled := machine.try_spin(seat)
+	var committed := machine.get_committed_cells().duplicate()
+	var faces_at_pull := machine.get_last_symbols().duplicate()
+	machine.advance(machine.get_reel_stop_seconds(2) * 0.5)
+	var applied_mid_spin := not resolutions.is_empty()
+	var still_turning := machine.is_revealing() and machine.is_reel_spinning(2)
+	var locked_out := not machine.can_spin() and not machine.try_spin(seat)
+	machine.advance(machine.get_reveal_duration())
+	_check(
+		pulled
+		and committed.size() > 0
+		and not applied_mid_spin
+		and still_turning
+		and locked_out
+		and not machine.is_revealing()
+		and machine.get_last_symbols() == faces_at_pull
+		and resolutions.size() == 1
+		and resolutions[0] == CloverSlot.Outcome.WHIFF,
+		"the wager is frozen at the pull, nothing is applied mid-spin, and the reels land on what was rolled"
+	)
+
+	# A lost wager takes the ground it named, and only that ground.
+	var still_green := 0
+	for cell in committed:
+		if prototype.territory_field.is_owned_cell(cell):
+			still_green += 1
+	_check(
+		still_green == 0
+		and prototype.territory_field.get_player_cell_count() < green_before,
+		"a whiff drains the committed region to neutral"
+	)
+
+	# Left to right, and a matching first pair slows the third reel. The visible reels
+	# are authoritative: the slowdown follows what reels one and two show, whether that
+	# is heading for a jackpot or for a catastrophe.
+	_check(
+		machine.get_reel_stop_seconds(0) < machine.get_reel_stop_seconds(1)
+		and machine.get_reel_stop_seconds(1) < machine.get_reel_stop_seconds(2),
+		"the reels come to rest one after another rather than all at once"
+	)
+
+	# Bust turns the region hostile rather than merely emptying it, which is the whole
+	# difference between an expensive spin and a catastrophe.
+	clover_odds.triple_bust_chances = PackedFloat32Array([1.0, 1.0, 1.0, 1.0])
+	clover_odds.reset_odds()
+	machine.reset_machine()
+	machine.minimum_buyin_established_fraction = 0.0
+	machine.set_stake(CloverSlot.Stake.LOW)
+	prototype.territory_field.reset_field()
+	var bust_seat := prototype.territory_field.get_cell_local_position(
+		prototype.territory_field.collect_owned_cells()[0]
+	)
+	machine.try_spin(bust_seat)
+	var bust_region := machine.get_committed_cells().duplicate()
+	var tease_stop := machine.get_reel_stop_seconds(2)
+	machine.advance(machine.get_reveal_duration() + 0.01)
+	var left_green := 0
+	var left_neutral := 0
+	for cell in bust_region:
+		if prototype.territory_field.is_owned_cell(cell):
+			left_green += 1
+		elif prototype.territory_field.get_control_at_local(
+			prototype.territory_field.get_cell_local_position(cell)
+		) >= 0.0:
+			left_neutral += 1
+	_check(
+		bust_region.size() > 0
+		and left_green == 0
+		and left_neutral == 0
+		and tease_stop > machine.reel_stop_seconds[2],
+		"Triple Bust turns the wagered ground hostile, and its matching pair slows the third reel"
+	)
+
+	# A jackpot lends the Path its ceiling and takes it back. Nothing is added to the
+	# build: the loan must not fill a growth-line slot or unlock an Evolution.
+	prototype.progression.reset_progression()
+	jackpots.reset_jackpots()
+	var owned_before := prototype.progression.get_owned_upgrade_level(
+		PhaseBProgression.UpgradeId.ROOT_MATURATION
+	)
+	var slots_before := prototype.progression.get_slotted_upgrades().size()
+	jackpots.light(PhaseBProgression.PathId.ROOT)
+	var lent := prototype.progression.get_upgrade_level(
+		PhaseBProgression.UpgradeId.ROOT_MATURATION
+	)
+	var lent_other_path := prototype.progression.get_upgrade_level(
+		PhaseBProgression.UpgradeId.BLOOM_FORCE
+	)
+	var owns_path := prototype.progression.has_path(PhaseBProgression.PathId.ROOT)
+	var stacked := jackpots.light(PhaseBProgression.PathId.ROOT)
+	jackpots.advance(jackpots.root_seconds + 0.01)
+	var still_lit := jackpots.is_active(PhaseBProgression.PathId.ROOT)
+	jackpots.advance(jackpots.root_seconds + 0.01)
+	_check(
+		lent == prototype.progression.casino_upgrade_level
+		and lent_other_path == 0
+		and not owns_path
+		and prototype.progression.get_owned_upgrade_level(
+			PhaseBProgression.UpgradeId.ROOT_MATURATION
+		) == owned_before
+		and prototype.progression.get_slotted_upgrades().size() == slots_before
+		and is_equal_approx(stacked, jackpots.root_seconds * 2.0)
+		and still_lit
+		and not jackpots.is_active(PhaseBProgression.PathId.ROOT)
+		and prototype.progression.get_upgrade_level(
+			PhaseBProgression.UpgradeId.ROOT_MATURATION
+		) == owned_before,
+		"a jackpot runs the Path at its ceiling for a stacking duration, grants no ownership, and gives it all back"
+	)
+
+	# A timed jackpot has to reach the ground. Bramble, Root and Pruning all gate their
+	# mechanics on owning the path, and Bramble and Root push their numbers into the field
+	# and the combat loop once when the build changes rather than reading them every
+	# frame. A jackpot that only raised upgrade levels therefore produced nothing at all:
+	# levels nobody was reading, on a mechanic nobody had switched on.
+	prototype.progression.reset_progression()
+	jackpots.reset_jackpots()
+	prototype._apply_progression_modifiers()
+	var unowned_slow := prototype.bramble_director.get_slow_fraction()
+	var unowned_thorns := prototype.territory_field.is_bramble_enabled()
+	var unowned_maturation := prototype.root_director.get_maturation_multiplier()
+	# Through the signal, so what is checked is the path the machine actually takes.
+	jackpots.light(PhaseBProgression.PathId.BRAMBLE)
+	jackpots.light(PhaseBProgression.PathId.ROOT)
+	var lit_slow := prototype.bramble_director.get_slow_fraction()
+	var lit_thorns := prototype.territory_field.is_bramble_enabled()
+	var lit_maturation := prototype.root_director.get_maturation_multiplier()
+	var lit_pruning := prototype.progression.has_path_active(
+		PhaseBProgression.PathId.PRUNING
+	)
+	jackpots.light(PhaseBProgression.PathId.PRUNING)
+	var lit_pruning_after := prototype.progression.has_path_active(
+		PhaseBProgression.PathId.PRUNING
 	)
 	_check(
-		current_cost > mass_cost * metabolism.level_cost_growth * 0.99
-		and is_equal_approx(mass_cost, metabolism.level_base_cost),
-		"Metabolism level costs rise exponentially rather than linearly"
+		unowned_slow == 0.0
+		and not unowned_thorns
+		and lit_slow > 0.0
+		and lit_thorns
+		and lit_maturation > unowned_maturation
+		and not lit_pruning
+		and lit_pruning_after,
+		"a timed jackpot switches the path on and pushes its numbers into the field (slow %.2f, maturation %.2fx)"
+			% [lit_slow, lit_maturation]
 	)
 
-	# An axis the run has not discovered yet cannot be bought at any Reserve, and
-	# the run clock is what puts it on the table.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	prototype.progression.add_biomass(4000.0)
-	var pressure_locked := not metabolism.try_purchase(PhaseBMetabolism.SystemId.MERISTEM)
-	var mass_open := metabolism.can_purchase(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
-	var unlock_log: Array = []
-	metabolism.system_unlocked.connect(
-		func(system_id: int) -> void:
-			unlock_log.append(system_id)
+	# It is a loan and it has to be handed back. A jackpot that never re-pushed the
+	# ordinary values on the way out would leave the run permanently maxed on whatever
+	# it last won, which is a far worse bug than the one it came from.
+	jackpots.advance(
+		maxf(jackpots.root_seconds, maxf(jackpots.bramble_seconds, jackpots.pruning_seconds))
+		+ 0.01
 	)
-	metabolism.advance(metabolism.pressure_unlock_seconds + 1.0)
-	var pressure_open := metabolism.can_purchase(PhaseBMetabolism.SystemId.MERISTEM)
-	var cohesion_still_locked := not metabolism.is_system_unlocked(
-		PhaseBMetabolism.SystemId.CAMBIUM
-	)
-	metabolism.advance(metabolism.cohesion_unlock_seconds + 1.0)
 	_check(
-		pressure_locked
-		and mass_open
-		and pressure_open
-		and cohesion_still_locked
-		and metabolism.is_system_unlocked(PhaseBMetabolism.SystemId.CAMBIUM)
-		and unlock_log.size() == 2,
-		"the economy unfolds on the run clock: Mass, then Pressure, then Cohesion"
+		prototype.bramble_director.get_slow_fraction() == 0.0
+		and not prototype.territory_field.is_bramble_enabled()
+		and is_equal_approx(
+			prototype.root_director.get_maturation_multiplier(), unowned_maturation
+		)
+		and not prototype.progression.has_path_active(PhaseBProgression.PathId.PRUNING),
+		"the loan is handed back when the timer runs out"
 	)
 
-	# A purchase answers in the simulation, not only in the number.
+	# The jackpot stacks on top of what the run already owns rather than raising it to a
+	# floor. A player who has already maxed a line bought that ceiling, and handing it
+	# back what it owned would be no reward for the path the run is built around.
+	prototype.progression.reset_progression()
+	jackpots.reset_jackpots()
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.ROOT,
+		PhaseBProgression.PathId.BRAMBLE
+	)
+	prototype.progression._upgrade_levels[
+		PhaseBProgression.UpgradeId.ROOT_MATURATION
+	] = prototype.progression.maximum_upgrade_level
+	var owned_rank := prototype.progression.get_owned_upgrade_level(
+		PhaseBProgression.UpgradeId.ROOT_MATURATION
+	)
+	jackpots.light(PhaseBProgression.PathId.ROOT)
+	var maxed_with_jackpot := prototype.progression.get_upgrade_level(
+		PhaseBProgression.UpgradeId.ROOT_MATURATION
+	)
+	var unowned_with_jackpot := prototype.progression.get_upgrade_level(
+		PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD
+	)
+	# Ownership is still ownership: a relic that requires the player to have selected a
+	# path must keep requiring it, whatever the reels paid.
+	var borrowed_ownership := prototype.progression.has_path(
+		PhaseBProgression.PathId.PRUNING
+	)
+	jackpots.light(PhaseBProgression.PathId.PRUNING)
+	_check(
+		owned_rank == prototype.progression.maximum_upgrade_level
+		and maxed_with_jackpot == owned_rank + prototype.progression.casino_upgrade_level
+		and unowned_with_jackpot == prototype.progression.casino_upgrade_level
+		and not borrowed_ownership
+		and not prototype.progression.has_path(PhaseBProgression.PathId.PRUNING)
+		and prototype.progression.get_owned_upgrade_level(
+			PhaseBProgression.UpgradeId.ROOT_MATURATION
+		) == owned_rank,
+		"a jackpot adds its ceiling to the owned rank (%d becomes %d) and never grants the path"
+			% [owned_rank, maxed_with_jackpot]
+	)
+	jackpots.reset_jackpots()
+	prototype.progression.reset_progression()
+	prototype._apply_progression_modifiers()
+
+	# A colony core planted inside a wall cannot be damaged from any direction, because
+	# every radial source tests the line from its centre to the target and no line reaches
+	# into solid rock. The run then cannot be won, since clearing the field is a victory
+	# condition. So the placement steps clear of the wall, or does not happen.
+	prototype.combat.reset_combat()
+	var wall_position := Vector2.ZERO
+	var field_for_walls := prototype.territory_field
+	for cell in range(field_for_walls.get_cell_count()):
+		if field_for_walls.is_claimable_cell(cell):
+			continue
+		var candidate := field_for_walls.get_cell_local_position(cell)
+		if field_for_walls.contains_local_point(candidate):
+			wall_position = candidate
+			break
+	var site := prototype.combat._find_colony_core_site(wall_position)
+	var placed_clear := site == Vector2.INF or field_for_walls.is_diamond_claimable_at_local(
+		site,
+		prototype.combat.colony_core_profile.body_radius_pixels
+	)
+	# And an ordinary position is left exactly where the Colonizer stood.
+	var open_position := field_for_walls.get_cell_local_position(
+		field_for_walls.collect_owned_cells()[0]
+	)
+	var open_site := prototype.combat._find_colony_core_site(open_position)
+	_check(
+		wall_position != Vector2.ZERO
+		and not field_for_walls.is_diamond_claimable_at_local(
+			wall_position,
+			prototype.combat.colony_core_profile.body_radius_pixels
+		)
+		and placed_clear
+		and open_site == open_position,
+		"a colony core is never planted inside a wall, and an unobstructed one does not move"
+	)
+	prototype.combat.reset_combat()
+
+	# The relic row carries rarity on the slot itself, so a collection reads at a glance
+	# rather than only under the pointer. Colour is never the only signal: the tooltip
+	# still names the rarity in words.
+	prototype.progression.reset_progression()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.HARD_HUSK] = 1
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PATIENT_ZERO] = 1
+	prototype._update_relic_slots()
+	var common_edge := prototype.relic_slots.get_slot_border_color(0)
+	var legendary_edge := prototype.relic_slots.get_slot_border_color(1)
+	var empty_edge := prototype.relic_slots.get_slot_border_color(2)
+	var slot_names_rarity := prototype.relic_slots.get_slot_tooltip(1).contains("LEGENDARY")
+	# Hue only: the row keeps its own border alpha so a rarity cannot quietly change how
+	# solid a slot looks, only what colour it is.
+	var same_hue := func(edge: Color, rarity: int) -> bool:
+		var wanted := PhaseBRelicCatalog.get_rarity_color(rarity)
+		return (
+			is_equal_approx(edge.r, wanted.r)
+			and is_equal_approx(edge.g, wanted.g)
+			and is_equal_approx(edge.b, wanted.b)
+		)
+	_check(
+		same_hue.call(common_edge, PhaseBRelicCatalog.Rarity.COMMON)
+		and same_hue.call(legendary_edge, PhaseBRelicCatalog.Rarity.LEGENDARY)
+		and not common_edge.is_equal_approx(legendary_edge)
+		and not legendary_edge.is_equal_approx(empty_edge)
+		and slot_names_rarity,
+		"a relic slot is coloured by its rarity and still names it in words"
+	)
+	prototype.progression.reset_progression()
+	prototype._update_relic_slots()
+
+	# The four Clover relics are rules about the machine rather than about the ground it
+	# pays out onto. Each is checked through the odds table, because that is where they
+	# have to be visible: the readout may not print one number and roll another.
+	clover_odds.reset_odds()
+	prototype.progression.reset_progression()
+	var plain_bust := float(
+		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
+	)
+	# Bent Coin: Busts bend the coin, and the spin after the third cannot Bust at all.
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BENT_COIN] = 1
+	for _bust in range(clover_odds.bent_coin_pity):
+		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.TRIPLE_BUST)
+	var bent_ready := clover_odds.is_bent_coin_ready()
+	var bent_bust := float(
+		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
+	)
+	clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
+	var bent_spent := not clover_odds.is_bent_coin_ready()
+	_check(
+		plain_bust > 0.0 and bent_ready and bent_bust == 0.0 and bent_spent,
+		"Bent Coin makes the spin after its third Bust unable to Bust, then spends itself"
+	)
+
+	# Side Pot: built out of whiffs, cashed into a jackpot, lost to a Bust.
+	clover_odds.reset_odds()
+	prototype.progression.reset_progression()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.SIDE_POT] = 1
+	for _whiff in range(4):
+		clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.WHIFF)
+	var pot_built := clover_odds.get_side_pot()
+	var pot_bonus := clover_odds.get_side_pot_scale_bonus()
+	clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.PATH_JACKPOT)
+	var pot_cashed := clover_odds.get_side_pot()
+	for _whiff in range(3):
+		clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.WHIFF)
+	clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.TRIPLE_BUST)
+	_check(
+		pot_built == 4
+		and pot_bonus > 0.0
+		and pot_cashed == 0
+		and clover_odds.get_side_pot() == 0,
+		"the Side Pot builds on whiffs, empties into a jackpot, and is lost to a Bust"
+	)
+
+	# High Roller: every seventh spin, and the player can see it coming.
+	clover_odds.reset_odds()
+	prototype.progression.reset_progression()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.HIGH_ROLLER] = 1
+	var doubled_spins := 0
+	var announced_before := false
+	for spin in range(clover_odds.high_roller_cadence * 2):
+		if clover_odds.is_high_roller_spin():
+			doubled_spins += 1
+			announced_before = announced_before or clover_odds.get_high_roller_countdown() == 1
+		clover_odds.note_outcome(CloverSlot.Stake.LOW, CloverSlot.Outcome.WHIFF)
+	_check(
+		doubled_spins == 2 and announced_before,
+		"High Roller doubles one spin in %d and says so before it is taken (%d of them)"
+			% [clover_odds.high_roller_cadence, doubled_spins]
+	)
+
+	# The House Always Loses: each Bust tears a Bust face off for good, and the last one
+	# pays for itself.
+	clover_odds.reset_odds()
+	prototype.progression.reset_progression()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.THE_HOUSE_ALWAYS_LOSES] = 1
+	var house_before := float(
+		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
+	)
+	for _bust in range(clover_odds.house_removal_limit + 2):
+		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.TRIPLE_BUST)
+		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
+		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
+	var house_after := float(
+		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
+	)
+	var free_spins := clover_odds.get_free_spins()
+	var free_taken := clover_odds.take_free_spin()
+	_check(
+		clover_odds.get_house_removals() == clover_odds.house_removal_limit
+		and house_after < house_before
+		and free_spins == 1
+		and free_taken
+		and not clover_odds.take_free_spin(),
+		"The House Always Loses cuts Bust odds three times and pays one free spin"
+	)
+	clover_odds.reset_odds()
+	prototype.progression.reset_progression()
+
+	# All In whiff: everything goes, the ordinary extinction countdown is held off, and
+	# the run gets exactly three seconds to put something back.
+	prototype.territory_field.reset_field()
+	grace.reset_grace()
+	# Measured against the board that actually exists rather than against the shipped
+	# five percent, so the check is about the rule and not about how big the starting
+	# island happens to be this build.
+	var authored_threshold := grace.recovery_threshold
+	grace.recovery_threshold = grace.get_recovered_fraction() * 0.5
+	grace.begin()
+	var suppressing := grace.is_suppressing_defeat()
+	var started_at := grace.get_remaining_seconds()
+	var failures: Array = []
+	var recoveries: Array = []
+	var on_failed := func() -> void:
+		failures.append(true)
+	var on_recovered := func(_left: float) -> void:
+		recoveries.append(true)
+	grace.grace_failed.connect(on_failed)
+	grace.grace_recovered.connect(on_recovered)
+	# Recovery first: the board still holds its starting island, which is above the
+	# threshold, so the very first tick has to read as a rescue.
+	grace.advance(0.1)
+	var rescued := recoveries.size() == 1 and not grace.is_active()
+	prototype.territory_field.neutralize_all_owned()
+	grace.recovery_threshold = authored_threshold
+	grace.begin()
+	grace.advance(grace.grace_duration + 0.01)
+	grace.grace_failed.disconnect(on_failed)
+	grace.grace_recovered.disconnect(on_recovered)
+	_check(
+		suppressing
+		and is_equal_approx(started_at, grace.grace_duration)
+		and rescued
+		and failures.size() == 1
+		and not grace.is_suppressing_defeat(),
+		"the All In grace period suspends defeat, ends the moment the board is rebuilt, and ends the run when it is not"
+	)
+
+	machine.spin_resolved.disconnect(on_resolved)
+	clover_odds.path_jackpot_chances = PackedFloat32Array([0.095, 0.21, 0.38, 0.55])
+	clover_odds.triple_clover_chances = PackedFloat32Array([0.005, 0.01, 0.02, 0.05])
+	clover_odds.triple_bust_chances = PackedFloat32Array([0.005, 0.02, 0.07, 0.15])
+	clover_odds.reset_odds()
+	jackpots.reset_jackpots()
+	grace.reset_grace()
+	machine.reset_machine()
+	prototype.territory_field.reset_field()
+	prototype.progression.reset_progression()
+
+	# An undeveloped organism on an empty board is physically ordinary: every
+	# multiplier the field reads is neutral, so the economy adds nothing until either
+	# the run develops something or the organism actually grows.
+	metabolism.reset_metabolism()
+	prototype.root_network.reset_network()
+	prototype.progression.reset_progression()
+	metabolism.advance(60.0)
+	_check(
+		is_equal_approx(metabolism.get_mass_multiplier(), 1.0)
+		and is_equal_approx(metabolism.get_pressure_multiplier(), 1.0)
+		and is_equal_approx(metabolism.get_resistance_multiplier(), 1.0),
+		"an undeveloped organism leaves every physical parameter of the field alone"
+	)
+
+	# Phase 2: Biomass is produced by rooted ground into the reserve of the connected
+	# component that produced it. The claim being tested is the doc's, that territory
+	# quality is an axis separate from territory quantity: the same cells are worth
+	# more once they have rooted, so a run that holds ground out-earns one that only
+	# touches it.
+	network = prototype.root_network
+	network.reset_network()
+	prototype.territory_field.reset_field()
+	_step_field(field, 2)
+	prototype.territory_field.analyze_topology_now()
+	network.advance(1.0, prototype.player.position)
+	var fresh_generation := network.get_primary_generation_per_second()
+	_step_field(field, 900)
+	prototype.territory_field.analyze_topology_now()
+	network.advance(1.0, prototype.player.position)
+	var rooted_generation := network.get_primary_generation_per_second()
+	_check(
+		rooted_generation > fresh_generation * 1.5 and fresh_generation >= 0.0,
+		"the same ground earns more once it has rooted (%.3f/s fresh, %.3f/s rooted)"
+			% [fresh_generation, rooted_generation]
+	)
+
+	# Production has to reach a reserve, and that reserve has to be the component's.
+	network.reset_network()
+	for _advance_step in range(20):
+		network.advance(0.5, prototype.player.position)
+	var banked := network.get_primary_reserve()
+	_check(
+		banked > 0.0
+		and network.get_total_reserve() >= banked
+		and network.get_primary_component() >= 0,
+		"rooted ground banks Biomass into its own component's reserve (%.1f)" % banked
+	)
+
+	# Storage is finite, so a component that is full stops rather than growing without
+	# limit. This is what gives Storage Tissue something to buy later.
+	var capacity := network.get_primary_capacity()
+	for _fill_step in range(400):
+		network.advance(1.0, prototype.player.position)
+	_check(
+		capacity > 0.0
+		and network.get_primary_reserve() <= capacity + 0.001
+		and is_equal_approx(network.get_primary_reserve(), capacity),
+		"a component's reserve fills to its capacity and stops (%.1f of %.1f)"
+			% [network.get_primary_reserve(), capacity]
+	)
+
+	# Relabelling must not mint or destroy Biomass. Labels are handed out in scan
+	# order and shuffle whenever the ecosystem changes shape, so the carry across a
+	# topology pass is the one thing standing between per-component reserves and
+	# numbers that jump between unrelated regions.
+	var total_before := network.get_total_reserve()
+	prototype.territory_field.analyze_topology_now()
+	network.advance(0.0001, prototype.player.position)
+	var total_after := network.get_total_reserve()
+	_check(
+		absf(total_after - total_before) < maxf(1.0, total_before * 0.05),
+		"a topology relabel carries reserves instead of minting or dropping them "
+			+ "(%.1f then %.1f)" % [total_before, total_after]
+	)
+
+	# Spending draws on the main organism alone. A colony that is cut off keeps its
+	# own Biomass, which is the reason components own reserves at all.
+	var primary_before := network.get_primary_reserve()
+	var spent := network.spend_from_primary(primary_before * 0.5)
+	_check(
+		spent > 0.0
+		and is_equal_approx(network.get_primary_reserve(), primary_before - spent)
+		and network.spend_from_primary(1000000.0) <= network.get_primary_capacity(),
+		"spending draws from the main organism and cannot overdraw it"
+	)
+
+	# Translocate is the one exception to a severed colony's Biomass being unreachable,
+	# and it has to cost something or the rule it breaks was never a rule.
+	network.reset_network()
+	_check(
+		metabolism.translocate_recovery_fraction < 1.0
+		and not metabolism.can_perform(PhaseBMetabolism.ActionId.TRANSLOCATE),
+		"Translocate loses part of what it moves, and refuses when nothing is stranded"
+	)
+
+	# Phase 3: does territory geometry matter economically? It does if a run cannot
+	# spend what its severed ground is holding, and if cutting the organism is an
+	# event the player is told about where it happened.
+	# Back to authored tuning first. By this point the suite is holding every Root
+	# line at maximum, and Mature Strength plus regeneration make established ground
+	# so hard to peel apart that a band strong enough to divide it erases it instead.
+	# That is the path working; it just is not what this block is measuring.
+	prototype.progression.reset_progression()
+	prototype._apply_progression_modifiers()
+	network.reset_network()
+	prototype.territory_field.reset_field()
+	# Rooted enough to be worth announcing and banked enough to be worth stranding.
+	# A colony that is neither is deliberately invisible to this system, so a cut made
+	# before the ground has established would correctly report nothing at all.
+	# Grown into an organism worth cutting. A foothold of a few dozen cells cannot be
+	# divided by any band wide enough to reach across it: the band erases it instead,
+	# which is a smaller ecosystem being destroyed rather than a network being severed.
+	var growth_origin := Vector2(
+		prototype.territory_field.tuning.arena_size.x * 0.24,
+		prototype.territory_field.tuning.arena_size.y * 0.54
+	)
+	for growth_step in range(10):
+		prototype.territory_field.queue_bloom(
+			growth_origin + Vector2(0.0, float(growth_step - 5) * 9.0),
+			6.0,
+			1.0,
+			6.0,
+			2.4
+		)
+	_step_field(prototype.territory_field, 900)
+	# Stepped and advanced in the order the run itself uses: the field drives its own
+	# topology pass on its own cadence and the network advances once per step. Forcing
+	# an extra relabel between advances would hand the network two of them to consume
+	# with one mapping, which is not a situation the running game can produce.
+	for _bank_step in range(360):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
+	var colonies_before := network.get_isolated_colony_positions().size()
+	_check(
+		network.get_total_reserve() >= network.get_primary_reserve()
+		and prototype.territory_field.get_component_count() >= 1,
+		"the arena's separate green regions each hold their own reserve"
+	)
+
+	var severed: Array = []
+	var reconnected: Array = []
+	var on_severed := func(_id: int, biomass: float, centroid: Vector2) -> void:
+		severed.append([biomass, centroid])
+	var on_reconnected := func(_id: int, biomass: float, centroid: Vector2) -> void:
+		reconnected.append([biomass, centroid])
+	network.colony_isolated.connect(on_severed)
+	network.colony_reconnected.connect(on_reconnected)
+
+	# Cut the main organism in half with a hostile band straight through it.
+	var organism_centre := prototype.territory_field.get_component_centroid(
+		network.get_primary_component()
+	)
+	# The band has to cross the whole organism, not merely reach across its middle, or
+	# what it makes is a dent rather than two networks.
+	var arena_height := prototype.territory_field.tuning.arena_size.y
+	var band_stamps := int(arena_height / 7.0)
+	for band_step in range(band_stamps + 1):
+		var cut_position := Vector2(
+			organism_centre.x,
+			float(band_step) * 7.0
+		)
+		for _cut_repeat in range(3):
+			prototype.territory_field.queue_hostile_growth(cut_position, 300.0, 1.2)
+	for _cut_step in range(120):
+		prototype.territory_field.step_simulation()
+		network.advance(0.05, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
+
+	var cut_reported_near_the_cut := not severed.is_empty()
+	for entry in severed:
+		var centroid: Vector2 = entry[1]
+		if absf(centroid.y - organism_centre.y) > prototype.territory_field.tuning.arena_size.y * 0.25:
+			cut_reported_near_the_cut = false
+	_check(
+		cut_reported_near_the_cut,
+		"cutting the organism reports the severed colonies where the cut happened (%d)"
+			% severed.size()
+	)
+
+	# The regression that made this worth checking: which component counts as the main
+	# organism moves on its own, because the player walks onto different green or the
+	# largest-component fallback follows the biggest thing on the board. Before the
+	# continuity guard, that alone reported the run's own untouched territory as having
+	# just rejoined the organism. Cutting ground apart must never announce a rejoining.
+	_check(
+		reconnected.is_empty(),
+		"severing ground never reports a reconnection (%d spurious)" % reconnected.size()
+	)
+
+	# The point of all of it: the run cannot spend what its severed ground holds.
+	var strandable_total := network.get_total_reserve()
+	network.spend_from_primary(1000000.0)
+	_check(
+		strandable_total > 0.0
+		and network.get_total_reserve() > 0.0
+		and is_equal_approx(network.get_primary_reserve(), 0.0),
+		"draining the main organism leaves the severed colonies' Biomass out of reach "
+			+ "(%.1f still held)" % network.get_total_reserve()
+	)
+
+	# The colonies are marked where they actually are, before any of it is a sidebar.
+	var colony_positions := network.get_isolated_colony_positions()
+	var colonies_are_on_the_field := not colony_positions.is_empty()
+	for colony_position in colony_positions:
+		if not prototype.territory_field.contains_local_point(colony_position):
+			colonies_are_on_the_field = false
+	prototype.overlay.set_isolated_colonies(colony_positions)
+	_check(
+		colonies_are_on_the_field
+		and prototype.overlay.get_isolated_colony_count() == colony_positions.size()
+		and colony_positions.size() >= colonies_before,
+		"each isolated colony is marked on the battlefield at its own position (%d)"
+			% colony_positions.size()
+	)
+
+	# A colony has to be worth mentioning. Raised past anything on the board, nothing
+	# is announced and nothing is marked, so a torn scrap of frontier stays quiet.
+	var restore_cells := network.colony_alert_minimum_rooted_cells
+	var restore_biomass := network.colony_alert_minimum_biomass
+	network.colony_alert_minimum_rooted_cells = 100000
+	network.colony_alert_minimum_biomass = 1000000.0
+	_check(
+		network.get_isolated_colony_positions().is_empty(),
+		"a colony too small and too poor to matter is never reported"
+	)
+	network.colony_alert_minimum_rooted_cells = restore_cells
+	network.colony_alert_minimum_biomass = restore_biomass
+
+	# Phase 4: Overgrow spends the reserve that actually exists, aimed where the
+	# player is standing, and travels only through the organism that paid for it.
+	network.reset_network()
+	for _refill_step in range(240):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()
-	prototype.progression.add_biomass(500.0)
+
+	# The reserve Overgrow can see is the main organism's, not the run's old single
+	# number and not the total including what is stranded.
+	_check(
+		is_equal_approx(metabolism.get_spendable_reserve(), network.get_primary_reserve())
+		and network.get_total_reserve() > network.get_primary_reserve()
+		and is_equal_approx(prototype.progression.biomass, 0.0),
+		"Overgrow spends the main organism's reserve, not the run's or the colonies' "
+			+ "(%.0f of %.0f)" % [network.get_primary_reserve(), network.get_total_reserve()]
+	)
+
+	# Aimed at the player. The same border, sampled with and without a focus, has to
+	# come out closer to the player when the release is aimed.
+	var primary_id := network.get_primary_component()
+	var aim_point := prototype.territory_field.get_component_centroid(primary_id)
+	var unfocused_cells := prototype.territory_field.sample_overgrow_frontier(400.0)
+	var focused_cells := prototype.territory_field.sample_overgrow_frontier(
+		400.0,
+		aim_point,
+		metabolism.overgrow_focus_radius,
+		primary_id
+	)
+	var mean_distance := func(cells: PackedInt32Array) -> float:
+		var described: Array = prototype.territory_field.describe_frontier_cells(cells)
+		var positions: PackedVector2Array = described[0]
+		if positions.is_empty():
+			return INF
+		var total := 0.0
+		for position in positions:
+			total += position.distance_to(aim_point)
+		return total / float(positions.size())
+	var unfocused_distance: float = mean_distance.call(unfocused_cells)
+	var focused_distance: float = mean_distance.call(focused_cells)
+	_check(
+		not focused_cells.is_empty() and focused_distance < unfocused_distance,
+		"a release is aimed at the player's front rather than spread evenly "
+			+ "(%.0f away focused, %.0f unfocused)" % [focused_distance, unfocused_distance]
+	)
+
+	# It travels through the organism that paid, so a colony's border is not fed by
+	# the main reserve. Every cell the release reaches belongs to the paying component.
+	var reached_only_the_payer := true
+	for cell_index in focused_cells:
+		if prototype.territory_field.get_component_id_at_index(cell_index) != primary_id:
+			reached_only_the_payer = false
+	_check(
+		reached_only_the_payer,
+		"a release reaches only the border of the component that paid for it"
+	)
+
+	# Pressing it actually moves the reserve, and the cooldown stops a second press.
+	var reserve_before_press := network.get_primary_reserve()
+	var expected_cost := metabolism.get_overgrow_cost()
+	var pressed := metabolism.try_overgrow(prototype.player.position)
+	_check(
+		pressed
+		and expected_cost > 0.0
+		and network.get_primary_reserve() < reserve_before_press
+		and absf(
+			(reserve_before_press - network.get_primary_reserve()) - expected_cost
+		) < maxf(1.0, expected_cost * 0.05)
+		and not metabolism.can_overgrow(),
+		"pressing Overgrow spends the organism's reserve and then has to recharge"
+	)
+
+	# With the organism drained, there is nothing to press even though colonies are
+	# still holding Biomass. That is the tension the whole system exists to create.
+	network.spend_from_primary(1000000.0)
+	_check(
+		not metabolism.can_overgrow()
+		and not metabolism.try_overgrow(prototype.player.position)
+		and network.get_total_reserve() > 0.0,
+		"a drained organism cannot Overgrow while its severed colonies still hold Biomass"
+	)
+
+	# Aiming. Pressing Overgrow asks where rather than releasing, and the run keeps
+	# going while the player decides, so the reserve must not move until they commit.
+	network.reset_network()
+	for _aim_bank_step in range(240):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
+	metabolism.reset_metabolism()
+	prototype._set_metabolism_drawer_open(true)
+	var reserve_at_aim := network.get_primary_reserve()
+	prototype._press_action(PhaseBMetabolism.ActionId.OVERGROW)
+	_check(
+		prototype._overgrow_aiming
+		and prototype.overlay.is_aiming_overgrow()
+		and not prototype.metabolism_drawer.visible
+		and is_equal_approx(network.get_primary_reserve(), reserve_at_aim),
+		"pressing Overgrow opens an aim, hides the drawer, and spends nothing yet"
+	)
+
+	# The crosshair follows the mouse and is clamped to the arena, so dragging past
+	# the edge leaves it on the nearest ground rather than stranding it.
+	var arena_size := prototype.territory_field.tuning.arena_size
+	var aimed_at := Vector2(arena_size.x * 0.32, arena_size.y * 0.42)
+	var motion := InputEventMouseMotion.new()
+	motion.position = prototype.territory_field.to_global(aimed_at)
+	prototype._unhandled_input(motion)
+	var followed_the_mouse := prototype.overlay.get_overgrow_aim_position().distance_to(
+		aimed_at
+	) < 1.0
+	var beyond := InputEventMouseMotion.new()
+	beyond.position = prototype.territory_field.to_global(
+		Vector2(arena_size.x + 400.0, arena_size.y + 400.0)
+	)
+	prototype._unhandled_input(beyond)
+	var clamped := prototype.overlay.get_overgrow_aim_position()
+	_check(
+		followed_the_mouse
+		and is_equal_approx(clamped.x, arena_size.x)
+		and is_equal_approx(clamped.y, arena_size.y),
+		"the crosshair follows the mouse and stays inside the arena"
+	)
+
+	# Right click backs out and costs nothing.
+	var cancel := InputEventMouseButton.new()
+	cancel.button_index = MOUSE_BUTTON_RIGHT
+	cancel.pressed = true
+	prototype._unhandled_input(cancel)
+	_check(
+		not prototype._overgrow_aiming
+		and not prototype.overlay.is_aiming_overgrow()
+		and is_equal_approx(network.get_primary_reserve(), reserve_at_aim),
+		"backing out of an aim releases nothing and keeps the reserve"
+	)
+
+	# Left click commits, at the point clicked rather than at the player.
+	prototype._press_action(PhaseBMetabolism.ActionId.OVERGROW)
+	var commit := InputEventMouseButton.new()
+	commit.button_index = MOUSE_BUTTON_LEFT
+	commit.pressed = true
+	commit.position = prototype.territory_field.to_global(aimed_at)
+	var injected: Array = []
+	var on_injected := func(
+		_mass: float,
+		_pressure: float,
+		_cohesion: float,
+		cells: PackedInt32Array
+	) -> void:
+		injected.append(cells)
+	metabolism.injection_started.connect(on_injected)
+	prototype._unhandled_input(commit)
+	metabolism.injection_started.disconnect(on_injected)
+	var released_where_aimed := not injected.is_empty()
+	if released_where_aimed:
+		var described: Array = prototype.territory_field.describe_frontier_cells(injected[0])
+		var positions: PackedVector2Array = described[0]
+		var mean := Vector2.ZERO
+		for position in positions:
+			mean += position
+		mean /= maxf(1.0, float(positions.size()))
+		released_where_aimed = (
+			mean.distance_to(aimed_at) < mean.distance_to(prototype.player.position)
+		)
+	_check(
+		not prototype._overgrow_aiming
+		and not prototype.overlay.is_aiming_overgrow()
+		and network.get_primary_reserve() < reserve_at_aim
+		and released_where_aimed,
+		"clicking commits the release at the crosshair rather than at the player"
+	)
+
+	# With nothing banked there is nothing to aim, so the button refuses rather than
+	# opening a crosshair the player cannot use.
+	network.spend_from_primary(1000000.0)
+	prototype._press_action(PhaseBMetabolism.ActionId.OVERGROW)
+	_check(
+		not prototype._overgrow_aiming and not prototype.overlay.is_aiming_overgrow(),
+		"an unaffordable Overgrow never opens an aim"
+	)
+
+	# Phase 5: the player is a demand signal. Standing on the organism pulls part of
+	# what it produces into the ground underfoot, where it establishes roots faster.
+	# The question is whether moving actually changes the incremental layer, so the
+	# measurement is the same ground with the player standing somewhere else.
+	network.reset_network()
+	prototype.territory_field.reset_field()
+	var influence_origin := Vector2(
+		prototype.territory_field.tuning.arena_size.x * 0.24,
+		prototype.territory_field.tuning.arena_size.y * 0.54
+	)
+	for influence_growth in range(10):
+		prototype.territory_field.queue_bloom(
+			influence_origin + Vector2(0.0, float(influence_growth - 5) * 9.0),
+			6.0,
+			1.0,
+			6.0,
+			2.4
+		)
+	for _settle_step in range(120):
+		prototype.territory_field.step_simulation()
+	prototype.territory_field.recalculate_metrics_now()
+	prototype.territory_field.analyze_topology_now()
+	network.advance(0.5, influence_origin)
+
+	# Two points inside the same organism, far enough apart that one is outside the
+	# other's reach, so the only difference between them is where the player stood.
+	var attended := influence_origin
+	var neglected := influence_origin + Vector2(0.0, 150.0)
+	var primary_for_influence := network.get_primary_component()
+	var both_are_the_organism := (
+		prototype.territory_field.get_component_id_at_local(attended) == primary_for_influence
+		and prototype.territory_field.get_component_id_at_local(neglected)
+			== primary_for_influence
+	)
+	var attended_before := prototype.territory_field.get_maturity_at_local(attended)
+	var neglected_before := prototype.territory_field.get_maturity_at_local(neglected)
+	for _attend_step in range(120):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, attended)
+	prototype.territory_field.recalculate_metrics_now()
+	var attended_gain := (
+		prototype.territory_field.get_maturity_at_local(attended) - attended_before
+	)
+	var neglected_gain := (
+		prototype.territory_field.get_maturity_at_local(neglected) - neglected_before
+	)
+	_check(
+		both_are_the_organism
+		and network.get_support_per_second() > 0.0
+		and attended_gain > neglected_gain,
+		"ground the player stands on establishes faster than ground they only own "
+			+ "(%.3f attended, %.3f neglected)" % [attended_gain, neglected_gain]
+	)
+
+	# What the diversion actually costs, measured on a field rebuilt the same way each
+	# time: run one leaves the ground more mature than it found it, so a run measured
+	# after it would out-produce the first for that reason alone rather than for this
+	# one. Both windows below are therefore taken from the same starting ground.
+	var bank_with_diversion := func(fraction: float, advances: int) -> float:
+		network.support_diversion_fraction = fraction
+		network.reset_network()
+		prototype.territory_field.reset_field()
+		for rebuild_step in range(10):
+			prototype.territory_field.queue_bloom(
+				influence_origin + Vector2(0.0, float(rebuild_step - 5) * 9.0),
+				6.0,
+				1.0,
+				6.0,
+				2.4
+			)
+		for _rebuild_settle in range(120):
+			prototype.territory_field.step_simulation()
+		prototype.territory_field.recalculate_metrics_now()
+		prototype.territory_field.analyze_topology_now()
+		for _rebuild_advance in range(advances):
+			prototype.territory_field.step_simulation()
+			network.advance(0.5, attended)
+		return network.get_primary_reserve()
+	var restore_diversion := network.support_diversion_fraction
+
+	# Immediately it is a cost: the share directed into the ground is not in the
+	# reserve, so a run that supports has banked less than one that did not.
+	var short_supporting: float = bank_with_diversion.call(restore_diversion, 12)
+	var short_banking: float = bank_with_diversion.call(0.0, 12)
+	_check(
+		short_banking > short_supporting,
+		"directing support costs reserve straight away (%.1f banked while supporting, "
+			% short_supporting
+			+ "%.1f while not)" % short_banking
+	)
+
+	# Given time it pays for itself. Ground that establishes faster produces more, and
+	# the compounding overtakes what was diverted to cause it, so attending a front is
+	# an investment in that front rather than a toll paid for standing there. That the
+	# two windows disagree is the point: the cost is immediate, the return is not.
+	var long_supporting: float = bank_with_diversion.call(restore_diversion, 120)
+	var long_banking: float = bank_with_diversion.call(0.0, 120)
+	network.support_diversion_fraction = restore_diversion
+	_check(
+		long_supporting > long_banking,
+		"and pays for itself by compounding (%.0f banked while supporting, %.0f while "
+			% [long_supporting, long_banking]
+			+ "not, over ten times the window)"
+	)
+
+	# Standing off the organism directs nothing. Support poured into ground the network
+	# does not hold would be a way to lose Biomass by walking.
+	network.reset_network()
+	var off_the_organism := Vector2(
+		prototype.territory_field.tuning.arena_size.x * 0.93,
+		prototype.territory_field.tuning.arena_size.y * 0.90
+	)
+	for _off_step in range(20):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, off_the_organism)
+	_check(
+		prototype.territory_field.get_component_id_at_local(off_the_organism)
+			!= network.get_primary_component()
+		and is_equal_approx(network.get_support_per_second(), 0.0),
+		"a player standing off their own ground directs no support into it"
+	)
+
+	# Phase 6: three permanent developments at one price. The point of equal pricing is
+	# that the question is never which is cheapest, so the run has to answer what the
+	# organism needs instead.
+	network.reset_network()
+	network.support_diversion_fraction = 0.0
+	prototype.territory_field.reset_field()
+	for _develop_bank in range(400):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
+	# Captured before anything is bought. Buying emits the development signal, which
+	# the run answers by re-applying its modifiers, so a reading taken after the
+	# purchase is already the developed one and would compare a value with itself.
+	prototype._apply_progression_modifiers()
+	var maturation_before := prototype.territory_field.tuning.maturation_per_second
+	var first_cost := network.get_development_cost()
+	var prices_are_equal := true
+	for domain_id in range(4):
+		if not is_equal_approx(network.get_development_cost(), first_cost):
+			prices_are_equal = false
+	_check(
+		prices_are_equal and first_cost > 0.0,
+		"all four domains cost the same, so none of them is the cheap one"
+	)
+
+	# Buying one raises the price of all three, not of the one bought, so specialising
+	# is never discounted and never punished relative to spreading.
+	var reserve_for_development := network.get_primary_reserve()
+	var bought_rapid := network.try_develop(PhaseBRootNetwork.DomainId.ROOTING)
+	var cost_after := network.get_development_cost()
+	_check(
+		bought_rapid
+		and network.get_development_level(PhaseBRootNetwork.DomainId.ROOTING) == 1
+		and network.get_primary_reserve() < reserve_for_development
+		and cost_after > first_cost
+		and is_equal_approx(cost_after, first_cost * network.development_cost_growth),
+		"developing a domain raises the price of all four by the same step"
+	)
+
+	# Each of the four has to actually do the different thing it claims. Rooting
+	# establishes ground faster, Storage banks more before overflowing, Circulation
+	# carries the player's influence further, and Anchoring makes what is already held
+	# harder to take away.
+	# Priced down for the effect checks only, so all four can be bought from one
+	# reserve. What each does is the point here; what it costs was the point above.
+	var restore_development_cost := network.development_base_cost
+	network.development_base_cost = 10.0
+	# Refilled first: the reserve is capacity-bound, and the purchase above took most
+	# of it, which is the storage pressure the developments exist to answer.
+	for _refill_for_development in range(200):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
+	var maturation_after := prototype.territory_field.tuning.maturation_per_second
+	var capacity_before := network.get_primary_capacity()
+	network.try_develop(PhaseBRootNetwork.DomainId.STORAGE)
+	var capacity_after := network.get_primary_capacity()
+	var reach_before := network.get_reach_multiplier()
+	var bought_circulation := network.try_develop(PhaseBRootNetwork.DomainId.CIRCULATION)
+	var reach_after := network.get_reach_multiplier()
+	var resistance_before := network.get_anchor_resistance_multiplier()
+	var decay_before := network.get_anchor_fragment_decay_multiplier()
+	var bought_all_four := (
+		bought_circulation
+		and network.try_develop(PhaseBRootNetwork.DomainId.ANCHORING)
+	)
+	_check(
+		bought_all_four
+		and maturation_after > maturation_before
+		and capacity_after > capacity_before
+		and reach_after > reach_before
+		and network.get_anchor_resistance_multiplier() > resistance_before
+		and network.get_anchor_fragment_decay_multiplier() < decay_before,
+		"the four domains move four different things (%.4f/s maturation, "
+			% maturation_after
+			+ "%.0f capacity, %.2fx reach, %.2fx resistance)" % [
+				capacity_after,
+				reach_after,
+				network.get_anchor_resistance_multiplier(),
+			]
+	)
+
+	# Circulation widens what a release actually favours, and the ring the player aims
+	# with has to widen by the same amount or the aim would lie about the effect.
+	prototype._aiming_action = PhaseBMetabolism.ActionId.OVERGROW
+	_check(
+		is_equal_approx(
+			prototype._get_overgrow_reach(),
+			prototype.metabolism.overgrow_focus_radius * network.get_reach_multiplier()
+		),
+		"the aiming ring shows the reach Circulation actually bought"
+	)
+
+	# Every domain hands the run a verb at its first rank, and all four are now open.
+	var every_action_unlocked := true
+	for action_id in range(5):
+		if not prototype.metabolism.is_action_unlocked(action_id):
+			every_action_unlocked = false
+	_check(
+		every_action_unlocked
+		and not is_equal_approx(
+			PhaseBMetabolism.get_action_domain(PhaseBMetabolism.ActionId.DEEP_ROOT),
+			PhaseBMetabolism.get_action_domain(PhaseBMetabolism.ActionId.PRESSURIZE)
+		),
+		"developing all four domains unlocks all four metabolic verbs"
+	)
+
+	network.development_base_cost = restore_development_cost
+
+	# Nothing is bought without the reserve to buy it, and a refused purchase changes
+	# neither the levels nor the reserve.
+	network.spend_from_primary(1000000.0)
+	var levels_before_refusal := network.get_total_development_levels()
+	_check(
+		not network.can_develop()
+		and not network.try_develop(PhaseBRootNetwork.DomainId.ROOTING)
+		and network.get_total_development_levels() == levels_before_refusal
+		and is_equal_approx(network.get_primary_reserve(), 0.0),
+		"a development the organism cannot afford is refused whole"
+	)
+
+	# The drawer is the developmental domains and nothing else now.
+	prototype._update_metabolism_controls()
+	# The button draws its wording into a Label it owns rather than into the Button's
+	# own centred text, so that is where the drawer is read from.
+	var drawer_shows_developments := prototype.metabolism_buttons[0].get_caption(
+	).text.contains("ROOTING")
+	var drawer_shows_axes := prototype.metabolism_buttons[3].get_caption(
+	).text.contains("ANCHORING")
+	_check(
+		drawer_shows_developments and drawer_shows_axes,
+		"the drawer shows developments under the root economy and axes without it"
+	)
+	network.support_diversion_fraction = 0.35
+
+	# Phase 7: the battlefield carries the root system and the HUD only summarises it.
+	network.reset_network()
+	prototype.territory_field.reset_field()
+	for _hud_bank in range(300):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.position)
+	prototype.territory_field.recalculate_metrics_now()
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds + 0.01)
+	var drawn_vessels := prototype.overlay.get_root_vessel_count()
+	_check(
+		drawn_vessels > 0,
+		"the root network is drawn on the battlefield rather than described in a panel "
+			+ "(%d vessels)" % drawn_vessels
+	)
+
+	# Root's own signature under the Green. Every run has the metabolism's vessels;
+	# only a run that took the Root path grows a mat of hairs into the ground it holds,
+	# and it thickens as the path's own lines are ranked up. Root is the path about
+	# what held ground becomes, so what it changes is what held ground looks like.
+	prototype.progression.reset_progression()
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds + 0.01)
+	var mat_without_root := prototype.overlay.get_root_mat_anchor_count()
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.ROOT,
+		PhaseBProgression.PathId.SPORE
+	)
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds + 0.01)
+	var mat_with_root := prototype.overlay.get_root_mat_anchor_count()
+	var thin_mat := prototype.overlay._root_mat_strength
+	prototype.progression._upgrade_levels[
+		PhaseBProgression.UpgradeId.ROOT_MATURATION
+	] = prototype.progression.maximum_upgrade_level
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds + 0.01)
+	var thick_mat := prototype.overlay._root_mat_strength
+	_check(
+		mat_without_root == 0
+		and mat_with_root > 0
+		and thin_mat > 0.0
+		and thick_mat > thin_mat,
+		"the Root path grows a visible root mat under held Green, thickening with its "
+			+ "ranks (%d anchors, %.2f to %.2f)" % [mat_with_root, thin_mat, thick_mat]
+	)
+	prototype.progression.reset_progression()
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds + 0.01)
+
+	# Flow stops where the organism ends. A colony keeps its roots and loses its
+	# pulses, which is how the ground says it has been cut off without a line of text.
+	var flowing_components := 0
+	var still_components := 0
+	for vessel in prototype.overlay._root_vessels:
+		if vessel["flowing"]:
+			flowing_components += 1
+		else:
+			still_components += 1
+	_check(
+		flowing_components == 1 and still_components >= 1,
+		"only the organism the run can spend from carries flow (%d flowing, %d still)"
+			% [flowing_components, still_components]
+	)
+
+	# The root layer is rebuilt on its own cadence, not per frame. Sampling the field
+	# every frame would cost a full pass to show something that changes twice a second.
+	prototype.overlay.set_root_vessels([])
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds * 0.25)
+	var rebuilt_too_soon := prototype.overlay.get_root_vessel_count() > 0
+	prototype._advance_root_layer(prototype.root_layer_interval_seconds + 0.01)
+	_check(
+		not rebuilt_too_soon and prototype.overlay.get_root_vessel_count() > 0,
+		"the drawn root layer follows the topology cadence rather than the frame rate"
+	)
+
+	# Inspect is held, live, and leaves nothing behind. Everything it shows is state
+	# the normal HUD deliberately does not carry.
+	prototype._set_root_inspect(true)
+	var inspect_shows_reserves := (
+		prototype.overlay.is_root_inspect()
+		and not prototype.overlay._root_reserves.is_empty()
+	)
+	prototype._set_root_inspect(false)
+	_check(
+		inspect_shows_reserves
+		and not prototype.overlay.is_root_inspect()
+		and prototype.overlay._root_reserves.is_empty(),
+		"the root inspect layer is held, and releasing it leaves nothing on screen"
+	)
+
+	# The permanent line reports the reserve against the ceiling it can actually hit,
+	# and buds only when a development is affordable.
+	# Driven the way the run drives it: the line is written from Progression's biomass
+	# signal, which the root economy mirrors every frame, not from the HUD refresh.
+	var mirror_reserve := func() -> void:
+		prototype.progression.set_biomass_from_network(
+			network.get_primary_reserve(),
+			network.get_primary_generation_per_second()
+		)
+	mirror_reserve.call()
+	var line_has_capacity := prototype.biomass_label.text.contains("/")
+	var budded_when_affordable := (
+		prototype.biomass_label.text.contains("❦") == network.can_develop()
+	)
+	network.spend_from_primary(1000000.0)
+	mirror_reserve.call()
+	_check(
+		line_has_capacity
+		and budded_when_affordable
+		and not prototype.biomass_label.text.contains("❦"),
+		"the Biomass line shows the ceiling and buds only while a development is ready"
+	)
+
+	# A release runs hot through the vessels before it reaches the border.
+	prototype.overlay.spawn_root_surge(Vector2(100.0, 100.0), 0.8)
+	var surging := prototype.overlay._root_surge_remaining > 0.0
+	prototype.overlay._advance_root_flow(1.2)
+	_check(
+		surging and is_equal_approx(prototype.overlay._root_surge_remaining, 0.0),
+		"a release is carried through the roots and then stops"
+	)
+
+	network.colony_isolated.disconnect(on_severed)
+	network.colony_reconnected.disconnect(on_reconnected)
+	prototype.overlay.set_root_vessels([])
+	network.reset_network()
+	prototype.overlay.set_isolated_colonies(PackedVector2Array())
+	prototype.territory_field.reset_field()
+	prototype.progression.reset_progression()
+
+	# A rank answers in the simulation, not only in the number. Nothing is bought any
+	# more, so what has to be checked is that a rank arriving on its own still puts
+	# material into the ground the way a bought one used to.
+	metabolism.reset_metabolism()
+	network.reset_network()
+	prototype.progression.reset_progression()
 	prototype.territory_field.reset_field()
 	prototype.territory_field.step_simulation()
 	prototype.territory_field.recalculate_metrics_now()
-	metabolism.try_purchase(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
+	metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS, 1)
 	# The release is poured in over a ramp rather than dropped in one step, so the
 	# border grows into the ground instead of jumping a visible distance between two
 	# frames. It still has to arrive, and it still has to be the whole of it.
@@ -4183,83 +5742,115 @@ func _run() -> void:
 		if pour_step == 8:
 			mid_pour = metabolism.get_last_injection_mass()
 	_check(
-		metabolism.purchase_pulse_budget > 0.0
+		metabolism.rank_pulse_budget > 0.0
 		and pouring == 1
 		and mid_pour > 0.0
 		and metabolism.get_last_injection_mass() > mid_pour
 		and metabolism.get_pending_injection_count() == 0,
-		"buying a level pours material into the territory over a visible ramp"
+		"reaching a rank pours material into the territory over a visible ramp"
 	)
 
 	# The three systems are the physical parameters: Mass, Pressure, Cohesion.
 	var spread_before := prototype.territory_field.tuning.natural_spread_rate
 	var cohesion_before := prototype.territory_field.get_cohesion_multiplier()
-	metabolism.debug_grant_level(PhaseBMetabolism.SystemId.MERISTEM, 3)
-	metabolism.debug_grant_level(PhaseBMetabolism.SystemId.CAMBIUM, 3)
+	metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.MERISTEM, 3)
+	metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.CAMBIUM, 3)
 	prototype._apply_progression_modifiers()
 	_check(
 		prototype.territory_field.tuning.natural_spread_rate > spread_before
 		and prototype.territory_field.get_cohesion_multiplier() > cohesion_before
 		and metabolism.get_mass_multiplier() > 1.0,
-		"Photosynthesis, Meristem, and Cambium move Mass, Pressure, and Cohesion"
+		"Storage, Circulation, and Anchoring move Mass, Pressure, and Cohesion"
 	)
 
-	# A Breakthrough is a behavioural choice that reaches the simulation.
+	# A metamorphosis is a permanent architectural fork that reaches the simulation.
+	# It is offered exactly once per domain, at the rank the doc puts it at, and it
+	# holds the drawer until it is answered.
 	metabolism.reset_metabolism()
-	metabolism.debug_grant_level(
-		PhaseBMetabolism.SystemId.CAMBIUM,
-		metabolism.breakthrough_level_interval - 1
-	)
-	var breakthrough_offered := metabolism.has_pending_breakthrough_choice()
+	network.reset_network()
+	for _anchor_rank in range(network.metamorphosis_rank):
+		network.debug_grant_development(PhaseBRootNetwork.DomainId.ANCHORING)
+	var metamorphosis_offered := network.has_pending_metamorphosis()
+	var development_held := not network.can_develop()
 	var advection_before := prototype.territory_field.tuning.pressure_advection
-	metabolism.choose_breakthrough(PhaseBMetabolism.BreakthroughId.WOODY_TISSUE)
+	network.choose_metamorphosis(PhaseBRootNetwork.MetamorphosisId.DEEP_TAPROOTS)
 	prototype._apply_progression_modifiers()
 	_check(
-		breakthrough_offered
-		and metabolism.get_breakthrough(PhaseBMetabolism.SystemId.CAMBIUM)
-		== PhaseBMetabolism.BreakthroughId.WOODY_TISSUE
+		metamorphosis_offered
+		and development_held
+		and network.get_metamorphosis(PhaseBRootNetwork.DomainId.ANCHORING)
+		== PhaseBRootNetwork.MetamorphosisId.DEEP_TAPROOTS
 		and prototype.territory_field.tuning.pressure_advection < advection_before,
-		"a Level 5 Breakthrough is offered and visibly changes the simulation"
+		"a domain's metamorphosis is offered once, holds the drawer, and reaches the field"
 	)
+
+	# Neither half of a pair is the better one. Central Taproot concentrates the
+	# reserve and abandons the colonies; Distributed Nodules does the reverse. The
+	# check is that they disagree in opposite directions about the same two numbers.
+	network.reset_network()
+	for _storage_rank in range(network.metamorphosis_rank):
+		network.debug_grant_development(PhaseBRootNetwork.DomainId.STORAGE)
+	network.choose_metamorphosis(PhaseBRootNetwork.MetamorphosisId.CENTRAL_TAPROOT)
+	var taproot_discharge := network.get_discharge_multiplier()
+	network.reset_network()
+	for _nodule_rank in range(network.metamorphosis_rank):
+		network.debug_grant_development(PhaseBRootNetwork.DomainId.STORAGE)
+	network.choose_metamorphosis(PhaseBRootNetwork.MetamorphosisId.DISTRIBUTED_NODULES)
+	_check(
+		taproot_discharge > network.get_discharge_multiplier()
+		and network.central_taproot_colony_capacity
+		< network.distributed_nodules_colony_capacity
+		and network.central_taproot_primary_capacity
+		> network.distributed_nodules_primary_capacity,
+		"the Storage metamorphoses trade the same two numbers against each other"
+	)
+	network.reset_network()
 
 	# Overgrow spends the Reserve into the material rather than granting territory.
 	metabolism.reset_metabolism()
+	network.reset_network()
 	prototype.progression.reset_progression()
-	prototype.progression.add_biomass(400.0)
 	prototype.territory_field.reset_field()
 	prototype.territory_field.step_simulation()
-	var overgrow_reserve := prototype.progression.biomass
+	prototype.territory_field.recalculate_metrics_now()
+	# The reserve belongs to the organism, so it is earned rather than handed over.
+	for _overgrow_bank in range(120):
+		prototype.territory_field.step_simulation()
+		network.advance(0.5, prototype.player.get_arena_position())
+	var overgrow_reserve := network.get_primary_reserve()
 	var overgrow_log: Array = []
 	metabolism.overgrown.connect(
 		func(mass: float, pressure: float, cohesion: float) -> void:
 			overgrow_log.append([mass, pressure, cohesion])
 	)
-	var overgrew := metabolism.try_overgrow()
+	var overgrew := metabolism.try_overgrow(prototype.player.get_arena_position())
 	var overgrow_split: Array = (
 		overgrow_log[0] if not overgrow_log.is_empty() else [0.0, 0.0, 0.0]
 	)
 	_check(
 		overgrew
 		and is_equal_approx(
-			prototype.progression.biomass,
+			network.get_primary_reserve(),
 			overgrow_reserve * (1.0 - metabolism.overgrow_reserve_fraction)
 		)
 		and float(overgrow_split[0]) > 0.0
 		and float(overgrow_split[1]) > 0.0
 		and not metabolism.can_overgrow(),
-		"Overgrow spends half the Reserve as Mass and Pressure, then goes on cooldown"
+		"Overgrow spends half the organism's reserve, then goes on cooldown"
 	)
 
-	# The identity split follows what the run actually bought, so two builds
-	# pressing the same button get different physical results.
+	# The identity split follows the physique the run actually developed, so two
+	# organisms pressing the same button get different physical results.
 	metabolism.reset_metabolism()
-	metabolism.debug_grant_level(PhaseBMetabolism.SystemId.MERISTEM, 4)
+	network.reset_network()
+	metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.MERISTEM, 4)
 	_check(
 		metabolism.get_identity_share(PhaseBMetabolism.SystemId.MERISTEM)
 		> metabolism.get_identity_share(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS),
-		"Overgrow inherits the run's Metabolism identity"
+		"Overgrow inherits the organism's own physique"
 	)
 	metabolism.reset_metabolism()
+	network.reset_network()
 	prototype.progression.reset_progression()
 
 	# The HUD rules: the sidebar says what is true, the drawer is where decisions
@@ -4285,8 +5876,19 @@ func _run() -> void:
 	prototype.progression.reset_progression()
 	prototype._update_hud()
 	var broke_line := prototype.biomass_label.text
-	prototype.progression.add_biomass(
-		metabolism.get_level_cost(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS) + 1.0
+	# The ready state is a bud rather than a dot, because the doc asks for a change of
+	# silhouette rather than a brighter version of the same mark. Priced down for this
+	# check alone: what is being tested is that the line changes shape when a
+	# development becomes affordable, not what a development happens to cost.
+	var restore_bud_cost := network.development_base_cost
+	network.development_base_cost = 1.0
+	network.debug_fill_primary_reserve()
+	# The label is written when the reserve is mirrored into Progression, which is
+	# what the run loop does every frame, so the check goes through that same path
+	# rather than poking the label.
+	prototype.progression.set_biomass_from_network(
+		network.get_primary_reserve(),
+		network.get_primary_generation_per_second()
 	)
 	prototype._update_hud()
 	var affordable_line := prototype.biomass_label.text
@@ -4295,10 +5897,11 @@ func _run() -> void:
 ")
 		and broke_line.contains("/s")
 		and not broke_line.contains("CONSUMPTION")
-		and not broke_line.contains("●")
-		and affordable_line.contains("●"),
-		"the Biomass line is one line of reserve and rate, with a dot only when it can be spent"
+		and not broke_line.contains("❦")
+		and affordable_line.contains("❦"),
+		"the Biomass line is one line of reserve and rate, budding only when it can be spent"
 	)
+	network.development_base_cost = restore_bud_cost
 
 	# Every detailed Biomass decision lives in the drawer, and the drawer is closed
 	# until it is asked for.
@@ -4310,25 +5913,240 @@ func _run() -> void:
 		drawer_closed
 		and drawer_open
 		and not prototype.metabolism_drawer.visible
-		and prototype.photosynthesis_button.get_parent() == prototype.metabolism_drawer
+		and prototype.rooting_button.get_parent() == prototype.metabolism_drawer
 		and prototype.overgrow_button.get_parent() == prototype.metabolism_drawer,
 		"the Biomass drawer owns the detailed controls and opens only on request"
 	)
 
-	# An axis the run has not discovered is not on screen at all.
+	# A verb the organism cannot yet perform is not on screen at all rather than
+	# sitting there disabled: the drawer grows with the run.
 	metabolism.reset_metabolism()
+	network.reset_network()
 	prototype._update_metabolism_controls()
-	var pressure_hidden := not prototype.meristem_button.visible
-	var mass_shown := prototype.photosynthesis_button.visible
-	metabolism.advance(metabolism.pressure_unlock_seconds + 1.0)
+	var deep_root_hidden := not prototype.deep_root_button.visible
+	var overgrow_shown := prototype.overgrow_button.visible
+	network.debug_grant_development(PhaseBRootNetwork.DomainId.ROOTING)
 	prototype._update_metabolism_controls()
 	_check(
-		pressure_hidden
-		and mass_shown
-		and prototype.meristem_button.visible
-		and not prototype.cambium_button.visible,
-		"an undiscovered axis is absent from the drawer rather than sitting there locked"
+		deep_root_hidden
+		and overgrow_shown
+		and prototype.deep_root_button.visible
+		and not prototype.pressurize_button.visible,
+		"an undeveloped metabolic verb is absent from the drawer rather than sitting locked"
 	)
+	network.reset_network()
+
+	# The first matching pair of a run stops the battlefield and lets the third reel
+	# resolve on its own. Once per run: the point is the first time, and a game that
+	# paused every time two reels agreed would be a game that pauses constantly.
+	var machine_focus := prototype.slot_machine
+	prototype.reset_run()
+	machine_focus.reset_machine()
+	var cinematic_before := prototype.is_pair_cinematic_active()
+	prototype._on_pair_tease_started(CloverSlot.Symbol.BLOOM, true)
+	var cinematic_running := prototype.is_pair_cinematic_active()
+	var field_held := prototype.territory_field.simulation_paused
+	# Long enough to carry the focus in, the reel, and the focus back out.
+	for _focus_step in range(600):
+		prototype._advance_pair_focus(1.0 / 60.0)
+	_check(
+		not cinematic_before
+		and cinematic_running
+		and field_held
+		and not prototype.is_pair_cinematic_active()
+		and not prototype.territory_field.simulation_paused,
+		"the first matching pair holds the battlefield still and then gives it back"
+	)
+
+	# A later pair leans the panel in without stopping anything, which is the whole
+	# difference between the cinematic and the tease.
+	prototype._on_pair_tease_started(CloverSlot.Symbol.BLOOM, false)
+	var later_focus := prototype.is_pair_focus_active()
+	var later_pause := prototype.territory_field.simulation_paused
+	for _tease_step in range(600):
+		prototype._advance_pair_focus(1.0 / 60.0)
+	_check(
+		later_focus
+		and not later_pause
+		and prototype.pair_tease_scale < prototype.pair_focus_scale,
+		"a later matching pair leans the panel in without pausing the run"
+	)
+
+	# The rewind is an animation and never a rig. Its stages have to run in order and
+	# land the reel back on the symbol the machine rolled before the lever finished
+	# moving, so the fakeout cannot change what was already decided.
+	var rewind_stages := PackedInt32Array()
+	var rewind_offsets := PackedFloat32Array()
+	if machine_focus.rewind_seconds.size() >= 3:
+		var probe_reel := prototype._reel_window(2)
+		if probe_reel != null:
+			var total := machine_focus.tease_reel_stop_seconds
+			for span in machine_focus.rewind_seconds:
+				total += span
+			var step := 0.02
+			var sampled := 0.0
+			while sampled < total:
+				sampled += step
+				var stage := machine_focus.get_rewind_stage()
+				if stage != PhaseBSlotMachine.RewindStage.NONE:
+					if rewind_stages.is_empty() or rewind_stages[-1] != stage:
+						rewind_stages.append(stage)
+					rewind_offsets.append(prototype._reel_offset[2])
+	_check(
+		machine_focus.jackpot_rewind_chance > 0.0
+		and machine_focus.rewind_seconds.size() == 3
+		and PhaseBSlotMachine.RewindStage.PASS < PhaseBSlotMachine.RewindStage.HOLD
+		and PhaseBSlotMachine.RewindStage.HOLD < PhaseBSlotMachine.RewindStage.SNAP,
+		"the rewind reserves a pass, a hold, and a reverse snap, in that order"
+	)
+
+	# Telemetry records and never judges: nothing it holds is read by the machine, and
+	# with it switched off it costs a run nothing at all.
+	var telemetry := prototype.clover_telemetry
+	telemetry.reset_telemetry()
+	telemetry.enabled = false
+	telemetry._on_spin_started(CloverSlot.Stake.LOW, PackedInt32Array([1, 2, 3]))
+	telemetry._on_spin_resolved(CloverSlot.Outcome.WHIFF, -1, CloverSlot.Stake.LOW)
+	var silent_rows := telemetry.get_row_count()
+	telemetry.enabled = true
+	telemetry._on_spin_started(CloverSlot.Stake.ALL_IN, PackedInt32Array([1, 2, 3]))
+	telemetry._on_spin_resolved(
+		CloverSlot.Outcome.PATH_JACKPOT,
+		CloverSlot.Symbol.ROOT,
+		CloverSlot.Stake.ALL_IN
+	)
+	var row := telemetry.get_last_row()
+	_check(
+		silent_rows == 0
+		and telemetry.get_row_count() == 1
+		and int(row.get("stake_tier", -1)) == CloverSlot.Stake.ALL_IN
+		and row.has("owned_green_before_spin")
+		and row.has("owned_green_after_result")
+		and row.has("effective_path_jackpot_chance")
+		and row.has("triple_bust_chance")
+		and telemetry.describe_run().contains("jackpots 1"),
+		"telemetry writes one row per spin, only when it is switched on"
+	)
+	telemetry.enabled = false
+	telemetry.reset_telemetry()
+
+	# Presentation settings. The guide's central rule is that these are not one
+	# global opacity dial: turning your own spectacle down to see the fight must not
+	# turn down the thing that tells you the fight is about to hit you.
+	var settings := prototype.display_settings
+	settings.reset_settings()
+	var quiet_friendly := settings.get_friendly_effect_scale()
+	settings.set_choice(
+		PhaseBDisplaySettings.OptionId.FRIENDLY_EFFECTS,
+		PhaseBDisplaySettings.FriendlyEffects.QUARTER
+	)
+	_check(
+		settings.get_friendly_effect_scale() < quiet_friendly
+		and is_equal_approx(settings.get_telegraph_alpha_scale(), 1.0)
+		and settings.get_telegraph_width_bonus() >= 0.0,
+		"quietening friendly effects leaves enemy telegraphs exactly as they were"
+	)
+
+	# And High Contrast raises them above normal rather than merely declining to
+	# lower them, because the option exists to make danger louder.
+	settings.set_choice(
+		PhaseBDisplaySettings.OptionId.ENEMY_TELEGRAPHS,
+		PhaseBDisplaySettings.EnemyTelegraphs.HIGH_CONTRAST
+	)
+	_check(
+		settings.get_telegraph_alpha_scale() > 1.0
+		and settings.get_telegraph_width_bonus() > 0.0,
+		"High Contrast makes enemy telegraphs brighter and thicker than Normal"
+	)
+
+	# Territory Detail is cosmetic only. The doc is explicit that the simulation is
+	# identical at every level, so dropping to Low must not move a field parameter.
+	var spread_at_high := prototype.territory_field.tuning.natural_spread_rate
+	var maturation_at_high := prototype.territory_field.tuning.maturation_per_second
+	settings.set_choice(
+		PhaseBDisplaySettings.OptionId.TERRITORY_DETAIL,
+		PhaseBDisplaySettings.TerritoryDetail.LOW
+	)
+	_check(
+		is_equal_approx(
+			prototype.territory_field.tuning.natural_spread_rate,
+			spread_at_high
+		)
+		and is_equal_approx(
+			prototype.territory_field.tuning.maturation_per_second,
+			maturation_at_high
+		)
+		and is_equal_approx(settings.get_territory_detail_scale(), 0.0),
+		"Territory Detail changes only cosmetic detail and never the simulation"
+	)
+
+	# Damage Numbers: Important Only keeps what carries information and drops the
+	# stream of small hits.
+	settings.set_choice(
+		PhaseBDisplaySettings.OptionId.DAMAGE_NUMBERS,
+		PhaseBDisplaySettings.DamageNumbers.IMPORTANT_ONLY
+	)
+	var important_kept := settings.should_show_damage_number(true)
+	var ordinary_dropped := not settings.should_show_damage_number(false)
+	settings.set_choice(
+		PhaseBDisplaySettings.OptionId.DAMAGE_NUMBERS,
+		PhaseBDisplaySettings.DamageNumbers.OFF
+	)
+	_check(
+		important_kept
+		and ordinary_dropped
+		and not settings.should_show_damage_number(true),
+		"Important Only keeps the hits that mean something and Off keeps none"
+	)
+
+	# UI Scale scales the interface and deliberately not the battlefield: scaling the
+	# HUD must not change how much arena the player can see.
+	settings.reset_settings()
+	var arena_transform := prototype.territory_field.transform
+	settings.set_choice(PhaseBDisplaySettings.OptionId.UI_SCALE, 4)
+	prototype._on_display_settings_changed()
+	_check(
+		is_equal_approx(prototype.interface_layer.transform.get_scale().x, 1.25)
+		and prototype.territory_field.transform == arena_transform,
+		"UI Scale scales the interface and leaves the battlefield alone"
+	)
+
+	# HUD Detail reveals more of the same layout rather than a second design, so the
+	# same label carries more.
+	settings.reset_settings()
+	prototype._update_hud()
+	var compact_clock := prototype.clock_label.text
+	settings.set_choice(
+		PhaseBDisplaySettings.OptionId.HUD_DETAIL,
+		PhaseBDisplaySettings.HudDetail.DETAILED
+	)
+	prototype._update_hud()
+	_check(
+		prototype.clock_label.text.length() > compact_clock.length()
+		and prototype.clock_label.text.begins_with(compact_clock.substr(0, 4)),
+		"Detailed reveals more on the line Compact already had"
+	)
+
+	# Every option cycles through its own list and wraps, which is what makes one
+	# button per row a complete control rather than a one-way ratchet.
+	settings.reset_settings()
+	var every_option_cycles := true
+	for option_id in range(PhaseBDisplaySettings.OptionId.size()):
+		var count := PhaseBDisplaySettings.get_choice_count(option_id)
+		var opening := settings.get_choice(option_id)
+		for _cycle_step in range(count):
+			settings.cycle_choice(option_id)
+		if settings.get_choice(option_id) != opening or count < 2:
+			every_option_cycles = false
+		if PhaseBDisplaySettings.get_option_name(option_id).is_empty():
+			every_option_cycles = false
+	_check(
+		every_option_cycles
+		and prototype.setting_buttons.size() == PhaseBDisplaySettings.OptionId.size(),
+		"every presentation option is named, cycles its own list, and wraps"
+	)
+	settings.reset_settings()
+	prototype._on_display_settings_changed()
 
 	# A major event takes the battlefield briefly and then gives it back.
 	prototype._show_banner("NEW ORGAN")
@@ -5091,6 +6909,209 @@ func _run() -> void:
 		specialist_schedule_is_authored,
 		"the wave schedule introduces all four specialist roles at authored cadences"
 	)
+
+	# Late specialists. The design note is explicit that a late enemy must not be an
+	# early enemy with a bigger health bar, so each of these has to be reachable from
+	# the schedule and has to behave differently once it arrives.
+	var waves := prototype.wave_director
+	waves.elapsed_seconds = waves.siege_corruptor_intro_seconds
+	waves._spawn_pack_sequence = waves.corruptor_pack_cycle - 1
+	waves._variant_sequence = maxi(2, int(round(1.0 / waves.siege_corruptor_share))) - 1
+	var siege_scheduled := waves._select_regular_role(
+		PhaseBCombatDirector.EnemyRole.HUNTER
+	) == PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR
+	_check(
+		siege_scheduled
+		and waves.heavy_grazer_intro_seconds > waves.saboteur_intro_seconds
+		and waves.rusher_intro_seconds > waves.saboteur_intro_seconds,
+		"the late specialists are scheduled, and only after the early roles"
+	)
+
+	# The Heavy Grazer's rule change is that Bramble's shove stops answering it. Its
+	# slow deliberately still does: one number governing both would make it immune to
+	# Bramble rather than immune to being moved.
+	prototype.combat.reset_combat()
+	var heavy_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER
+	)
+	var heavy := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == heavy_id:
+			heavy = candidate
+	var heavy_start := heavy.position
+	prototype.combat._begin_knockback(heavy, Vector2.RIGHT, 60.0)
+	var heavy_shove := heavy.knockback_speed
+	prototype.combat.reset_combat()
+	var light_id := prototype.combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.GRAZER)
+	var light := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == light_id:
+			light = candidate
+	prototype.combat._begin_knockback(light, Vector2.RIGHT, 60.0)
+	_check(
+		heavy_start.x >= 0.0
+		and heavy_shove < light.knockback_speed * 0.2
+		and prototype.combat.heavy_grazer_profile.knockback_resistance > 0.5
+		and is_equal_approx(prototype.combat.heavy_grazer_profile.territory_action_escalation, 1.0),
+		"a Heavy Grazer shrugs off the shove that moves an ordinary Grazer "
+			+ "(%.1f against %.1f)" % [heavy_shove, light.knockback_speed]
+	)
+
+	# The Siege Corruptor's rule change is that ignoring it is what makes it bad. Its
+	# conversion compounds while it is left alone and is reset by being hit, so the
+	# condition is genuinely "if ignored" rather than a timer.
+	prototype.combat.reset_combat()
+	var siege_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR
+	)
+	var siege := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == siege_id:
+			siege = candidate
+	for _siege_action in range(6):
+		prototype.combat._perform_enemy_territory_action(siege)
+	var escalated := siege.territory_escalation
+	prototype.combat._damage_enemy(
+		siege,
+		1.0,
+		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		0
+	)
+	_check(
+		escalated > 1.5
+		and escalated <= prototype.combat.siege_corruptor_profile.territory_action_escalation_cap
+		and is_equal_approx(siege.territory_escalation, 1.0),
+		"an ignored Siege Corruptor compounds its conversion and one hit resets it "
+			+ "(reached %.2fx)" % escalated
+	)
+
+	# Elite modifiers. Each one has to change a rule rather than a number, and the
+	# roll has to be gated until the run has a build worth changing the rules of.
+	prototype.combat.reset_combat()
+	prototype.combat.set_elite_modifier_pressure(0.0)
+	var unmodified := prototype.combat._roll_elite_modifier(
+		PhaseBCombatDirector.EnemyRole.ELITE
+	)
+	# Read at the final invasion, which is where the escalation curve tops out.
+	waves.elapsed_seconds = waves.final_invasion_time_seconds
+	prototype.combat.set_elite_modifier_pressure(waves.get_escalation_progress())
+	var modified_rolls := 0
+	for _roll in range(40):
+		if prototype.combat._roll_elite_modifier(
+			PhaseBCombatDirector.EnemyRole.ELITE
+		) != PhaseBCombatDirector.EliteModifier.NONE:
+			modified_rolls += 1
+	var hunter_never_modified := prototype.combat._roll_elite_modifier(
+		PhaseBCombatDirector.EnemyRole.HUNTER
+	) == PhaseBCombatDirector.EliteModifier.NONE
+	_check(
+		unmodified == PhaseBCombatDirector.EliteModifier.NONE
+		and modified_rolls > 20
+		and hunter_never_modified
+		and is_equal_approx(waves.get_escalation_progress(), 1.0),
+		"rule changes are gated behind the run's escalation and never reach the "
+			+ "body of a pack (%d of 40 late rolls)" % modified_rolls
+	)
+
+	# Unstoppable: cannot be held, can still be slowed.
+	prototype.combat.reset_combat()
+	prototype.combat.debug_force_elite_modifier(
+		PhaseBCombatDirector.EliteModifier.UNSTOPPABLE
+	)
+	var unstoppable_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.ELITE
+	)
+	var unstoppable := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == unstoppable_id:
+			unstoppable = candidate
+	unstoppable.bramble_root_remaining = 5.0
+	unstoppable.movement_speed_multiplier = 0.4
+	prototype.combat._advance_elite_modifier(unstoppable, 1.0 / 60.0)
+	_check(
+		unstoppable.elite_modifier == PhaseBCombatDirector.EliteModifier.UNSTOPPABLE
+		and is_equal_approx(unstoppable.bramble_root_remaining, 0.0)
+		and is_equal_approx(unstoppable.movement_speed_multiplier, 0.4),
+		"an Unstoppable elite breaks a hold and stays slowed"
+	)
+
+	# Regenerative: heals, unless the protagonist is the one who hit it. Bramble is
+	# deliberately not enough, which is what makes it a change to a build.
+	prototype.combat.reset_combat()
+	prototype.combat.debug_force_elite_modifier(
+		PhaseBCombatDirector.EliteModifier.REGENERATIVE
+	)
+	var regen_id := prototype.combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.ELITE)
+	var regen := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == regen_id:
+			regen = candidate
+	regen.health = regen.maximum_health * 0.5
+	var regen_wounded := regen.health
+	prototype.combat._advance_elite_modifier(regen, 0.5)
+	var regen_healed := regen.health
+	prototype.combat._damage_enemy(
+		regen,
+		1.0,
+		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		0
+	)
+	var regen_after_shot := regen.health
+	prototype.combat._advance_elite_modifier(regen, 0.5)
+	var regen_blocked := is_equal_approx(regen.health, regen_after_shot)
+	prototype.combat._damage_enemy(
+		regen,
+		1.0,
+		PhaseBCombatDirector.DeathSource.BRAMBLE,
+		0
+	)
+	regen.regeneration_block_remaining = 0.0
+	prototype.combat._advance_elite_modifier(regen, 0.5)
+	_check(
+		regen_healed > regen_wounded
+		and regen_blocked
+		and regen.health > regen_after_shot - 1.0,
+		"a Regenerative elite heals until the protagonist hits it"
+	)
+
+	# Volatile: the kill answers back, on the enemies nearby and on the ground.
+	prototype.combat.reset_combat()
+	prototype.territory_field.reset_field()
+	_grow_test_ecosystem(prototype)
+	prototype.combat.debug_force_elite_modifier(
+		PhaseBCombatDirector.EliteModifier.VOLATILE
+	)
+	var volatile_id := prototype.combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.ELITE)
+	var volatile := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == volatile_id:
+			volatile = candidate
+	var bystander_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		volatile.position + Vector2(10.0, 0.0)
+	)
+	var bystander := prototype.combat._enemies[0]
+	for candidate in prototype.combat._enemies:
+		if candidate.active and candidate.id == bystander_id:
+			bystander = candidate
+	var bystander_health := bystander.health
+	var detonations: Array = []
+	prototype.combat.elite_detonated.connect(
+		func(_position: Vector2, _radius: float) -> void:
+			detonations.append(true)
+	)
+	prototype.combat._damage_enemy(
+		volatile,
+		volatile.health + 1.0,
+		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		0
+	)
+	_check(
+		detonations.size() == 1
+		and bystander.health < bystander_health,
+		"a Volatile elite detonates on death and damages what is standing near it"
+	)
+	prototype.combat.reset_combat()
 	prototype.wave_director.elapsed_seconds = prototype.wave_director.final_invasion_time_seconds
 	prototype.debug_advance_time(
 		prototype.wave_director.cleanup_time_seconds
@@ -5114,7 +7135,7 @@ func _run() -> void:
 		prototype.wave_director.is_complete()
 		and survivors_at_time_out > 0
 		and prototype.get_run_state() == PhaseBPrototype.RunState.RUNNING
-		and prototype.run_label.text.contains("CLEAR THE FIELD"),
+		and prototype.clock_label.text.contains("CLEAR THE FIELD"),
 		"the clock running out leaves the run going while hostiles are still standing"
 	)
 	prototype.combat.debug_kill_all()

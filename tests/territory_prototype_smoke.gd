@@ -83,7 +83,61 @@ func _run() -> void:
 		> natural_maturity_before,
 		"owned territory matures continuously"
 	)
+
+	# Phase 1 of the Root Metabolism rework. Maturity is the root substrate, so the
+	# thing to prove is the one the doc names: that ground the run keeps becomes
+	# economically distinguishable from ground it has merely touched. Stages must be
+	# ordered, reachable by holding, and lost when the ground is.
+	var held_point := Vector2(tuning.arena_size.x * 0.235, tuning.arena_size.y * 0.535)
+	var stage_ordering_holds := (
+		field.get_root_stage(0.0) == TerritoryField.RootStage.SHALLOW
+		and field.get_root_stage(field.get_root_established_threshold())
+			== TerritoryField.RootStage.ESTABLISHED
+		and field.get_root_stage(tuning.mature_threshold)
+			== TerritoryField.RootStage.DEVELOPED
+		and field.get_root_stage(tuning.deep_root_threshold)
+			== TerritoryField.RootStage.LATE
+		and field.get_root_established_threshold() < tuning.mature_threshold
+		and tuning.mature_threshold < tuning.deep_root_threshold
+	)
+	_check(
+		stage_ordering_holds,
+		"the four root stages are ordered and split at the thresholds they name"
+	)
+
+	var stage_before := field.get_root_stage_at_local(held_point)
+	_step(field, 900)
+	field.recalculate_metrics_now()
+	var stage_after := field.get_root_stage_at_local(held_point)
+	var rooted_after := field.get_rooted_territory_percent()
+	var deep_after := field.get_deep_rooted_percent()
+	_check(
+		stage_after > stage_before and rooted_after > 0.0,
+		"held ground climbs the root stages: %s to %s, %.1f%% rooted"
+			% [
+				TerritoryField.get_root_stage_name(stage_before),
+				TerritoryField.get_root_stage_name(stage_after),
+				rooted_after,
+			]
+	)
+	# Quality is a separate axis from quantity, so deeply rooted ground can never be
+	# more of the arena than rooted ground, and neither can exceed what is held.
+	_check(
+		deep_after <= rooted_after
+		and rooted_after <= field.get_player_percent() + 0.001,
+		"rooted and deeply rooted stay nested inside held territory (%.1f%% / %.1f%% / %.1f%%)"
+			% [deep_after, rooted_after, field.get_player_percent()]
+	)
+
+	# Losing the ground has to cost the roots, otherwise holding it meant nothing.
+	var rooted_peak := rooted_after
 	field.reset_field()
+	field.recalculate_metrics_now()
+	_check(
+		field.get_rooted_territory_percent() < rooted_peak,
+		"roots do not survive the ground they grew in"
+	)
+
 
 	var weak_hostile := Vector2(tuning.arena_size.x * 0.690, tuning.arena_size.y * 0.765)
 	var hostile_before := field.get_control_at_local(weak_hostile)

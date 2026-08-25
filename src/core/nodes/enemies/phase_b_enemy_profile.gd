@@ -11,6 +11,20 @@ enum Role {
 	COLONIZER,
 	WARDEN,
 	COLONY_CORE,
+	## Late specialists. A late enemy that is an early enemy with more health is a
+	# wave the player fights the same way for twelve minutes, so each of these
+	## changes what the fight is about rather than how long it takes.
+	##
+	## Large, slow, eats a lot of Green, and shrugs off a shove. Bramble's repulsion
+	## stops answering it; Bramble's slow still does.
+	HEAVY_GRAZER,
+	## A fast Hunter. Entanglement ramps with time spent on Green, so something that
+	## crosses the frontier quickly is barely touched by passive Bramble control -
+	## the counter is emergent rather than a resistance stat.
+	RUSHER,
+	## A Corruptor whose conversion accelerates the longer it is left alone, so
+	## ignoring one turns a nuisance into a region.
+	SIEGE_CORRUPTOR,
 }
 
 enum MovementBehavior {
@@ -54,6 +68,10 @@ enum TerritoryBehavior {
 @export_range(0.05, 2.0, 0.05) var target_priority_multiplier := 1.0
 ## Uses CombatDirector's wider boss navigation clearance instead of the small clearance.
 @export var use_boss_navigation := false
+## Share of an incoming shove this archetype ignores. At 1.0 nothing moves it at
+## all. Deliberately separate from slowing: the doc's Heavy Grazer is immovable and
+## still fully vulnerable to being slowed and held, so one number cannot govern both.
+@export_range(0.0, 1.0, 0.01) var knockback_resistance := 0.0
 ## Movement objective used by this archetype: chase, hunt catalysts, keep distance, or remain anchored.
 @export var movement_behavior := MovementBehavior.CHASE_PLAYER
 ## Desired player separation used only by Keep Distance movement; the enemy retreats inside this range.
@@ -70,6 +88,13 @@ enum TerritoryBehavior {
 @export_range(0.0, 8.0, 0.01) var territory_action_strength := 0.0
 ## Radius multiplier for erosion, hostile growth, catalyst attacks, or maturity suppression.
 @export_range(0.1, 8.0, 0.05) var territory_action_radius_multiplier := 1.0
+## What each uninterrupted territory action multiplies the next one's strength by.
+## At 1.0 the archetype works at a constant rate, which is what every early role
+## does. Above it, leaving the enemy alone is what makes it dangerous.
+@export_range(1.0, 2.0, 0.01) var territory_action_escalation := 1.0
+## Ceiling on that escalation, as a multiple of the base strength, so an ignored
+## enemy becomes a serious problem rather than an unbounded one.
+@export_range(1.0, 20.0, 0.5) var territory_action_escalation_cap := 1.0
 ## Territory actions performed back to back before this archetype must recover; zero disables.
 @export_range(0, 60, 1) var territory_actions_before_recovery := 0
 ## Seconds this archetype pauses after a burst, opening a window for the frontier to regrow.

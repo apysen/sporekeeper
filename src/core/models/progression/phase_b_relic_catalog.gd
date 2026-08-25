@@ -32,6 +32,8 @@ enum Pool {
 	PATH,
 	## Curated cross-mechanic relic.
 	SYNERGY,
+	## Rules about the Clover machine itself.
+	GAMBLING,
 }
 
 enum Mechanic {
@@ -46,6 +48,9 @@ enum Mechanic {
 	## have yet. A relic requiring it is authored but never offered, so it turns
 	## on by itself the day objectives arrive.
 	OPTIONAL_OBJECTIVE,
+	## The Clover machine. Baseline rather than earned: the master guide houses the
+	## machine permanently in the side panel, so every run can reach it.
+	GAMBLING,
 }
 
 enum Id {
@@ -72,6 +77,7 @@ enum Id {
 	MAN_EATER,
 	# Spore.
 	HARD_HUSK,
+	SPORE_BURST,
 	CROSS_POLLINATION,
 	PATIENT_ZERO,
 	# Bloom.
@@ -96,6 +102,13 @@ enum Id {
 	TANGLED_WAKE,
 	DEEP_SNARE,
 	STORED_SAP,
+	# Clover. Rules about the machine itself rather than about the battlefield it
+	# pays out onto, which is what keeps them from being upgrade lines with a
+	# different name.
+	BENT_COIN,
+	SIDE_POT,
+	HIGH_ROLLER,
+	THE_HOUSE_ALWAYS_LOSES,
 }
 
 
@@ -145,6 +158,8 @@ static func get_relic_name(relic_id: int) -> String:
 			return "Man-Eater"
 		Id.HARD_HUSK:
 			return "Hard Husk"
+		Id.SPORE_BURST:
+			return "Spore Burst"
 		Id.CROSS_POLLINATION:
 			return "Cross-Pollination"
 		Id.PATIENT_ZERO:
@@ -183,6 +198,14 @@ static func get_relic_name(relic_id: int) -> String:
 			return "Deep Snare"
 		Id.STORED_SAP:
 			return "Stored Sap"
+		Id.BENT_COIN:
+			return "Bent Coin"
+		Id.SIDE_POT:
+			return "Side Pot"
+		Id.HIGH_ROLLER:
+			return "High Roller"
+		Id.THE_HOUSE_ALWAYS_LOSES:
+			return "The House Always Loses"
 	return "Unknown Relic"
 
 
@@ -229,6 +252,8 @@ static func get_relic_description(relic_id: int) -> String:
 			return "Enemies on Green feed a giant Maw that erupts and eats them."
 		Id.HARD_HUSK:
 			return "Every Seed shrugs off the first hit that would break it."
+		Id.SPORE_BURST:
+			return "Germination detonates, damaging everything around the new growth."
 		Id.CROSS_POLLINATION:
 			return "Germinating Seeds advance nearby Seeds by 25%."
 		Id.PATIENT_ZERO:
@@ -267,24 +292,32 @@ static func get_relic_description(relic_id: int) -> String:
 			return "Entanglement barely decays on Mature Green."
 		Id.STORED_SAP:
 			return "Harvesting Mature Green banks Sap that surges Root on release."
+		Id.BENT_COIN:
+			return "Every third Triple Bust is bent into a whiff instead."
+		Id.SIDE_POT:
+			return "Whiffs build a Side Pot that swells the next jackpot. A Bust empties it."
+		Id.HIGH_ROLLER:
+			return "Every seventh spin doubles the jackpot and doubles the Bust."
+		Id.THE_HOUSE_ALWAYS_LOSES:
+			return "Each Triple Bust permanently cuts Bust odds. The third one is on the house."
 	return ""
 
 
 static func get_rarity(relic_id: int) -> int:
 	match relic_id:
 		Id.PREDATORS_EYE, Id.FOLLOW_THROUGH, Id.ADRENAL_RESPONSE, Id.CLEAN_FINISH, \
-		Id.GREEN_THUMB, Id.HARD_HUSK:
+		Id.GREEN_THUMB, Id.HARD_HUSK, Id.BENT_COIN:
 			return Rarity.COMMON
 		Id.OVERPOPULATION, Id.LAST_BASTION, Id.BLOOD_IN_THE_WATER, Id.SALVAGE_RIGHTS, \
 		Id.REGROWTH, Id.COMPOST, Id.CANOPY, Id.LATE_BLOOMER, Id.SNARE_VINE, \
-		Id.TAPROOT, Id.GLEANING_HOOK, Id.POLLINATOR, Id.DEEP_SNARE:
+		Id.TAPROOT, Id.GLEANING_HOOK, Id.POLLINATOR, Id.DEEP_SNARE, Id.SPORE_BURST, 		Id.SIDE_POT:
 			return Rarity.UNCOMMON
 		Id.INSURANCE_POLICY, Id.RECYCLING_BIN, Id.UNDERDOG, Id.RESURRECTION_FERN, \
 		Id.CROSS_POLLINATION, Id.SUPERBLOOM, Id.LIVING_RAMPART, Id.ANNUAL_RINGS, \
-		Id.GREEN_MANURE, Id.SEEDBED, Id.TANGLED_WAKE, Id.STORED_SAP:
+		Id.GREEN_MANURE, Id.SEEDBED, Id.TANGLED_WAKE, Id.STORED_SAP, Id.HIGH_ROLLER:
 			return Rarity.RARE
 		Id.ENCORE, Id.WORLD_SEED, Id.PATIENT_ZERO, Id.PERENNIAL, Id.THE_HEDGE, \
-		Id.WORLD_TREE, Id.MAN_EATER, Id.RETURN_STROKE:
+		Id.WORLD_TREE, Id.MAN_EATER, Id.RETURN_STROKE, Id.THE_HOUSE_ALWAYS_LOSES:
 			return Rarity.LEGENDARY
 	return Rarity.COMMON
 
@@ -326,13 +359,15 @@ static func get_pool(relic_id: int) -> int:
 			return Pool.ELEMENT
 		Id.POLLINATOR, Id.SEEDBED, Id.TANGLED_WAKE, Id.DEEP_SNARE, Id.STORED_SAP:
 			return Pool.SYNERGY
+		Id.BENT_COIN, Id.SIDE_POT, Id.HIGH_ROLLER, Id.THE_HOUSE_ALWAYS_LOSES:
+			return Pool.GAMBLING
 	return Pool.PATH
 
 
 static func get_owning_path(relic_id: int) -> int:
 	# Path pool only. Everything else reports no owning path.
 	match relic_id:
-		Id.HARD_HUSK, Id.CROSS_POLLINATION, Id.PATIENT_ZERO:
+		Id.HARD_HUSK, Id.SPORE_BURST, Id.CROSS_POLLINATION, Id.PATIENT_ZERO:
 			return PhaseBProgression.PathId.SPORE
 		Id.LATE_BLOOMER, Id.SUPERBLOOM, Id.PERENNIAL:
 			return PhaseBProgression.PathId.BLOOM
@@ -359,6 +394,8 @@ static func get_mechanic_requirements(relic_id: int) -> PackedInt32Array:
 			return PackedInt32Array([Mechanic.ENTANGLEMENT, Mechanic.MATURE_GREEN])
 		Id.STORED_SAP:
 			return PackedInt32Array([Mechanic.ROOT_POTENCY, Mechanic.PRUNING_CHARGE])
+		Id.BENT_COIN, Id.SIDE_POT, Id.HIGH_ROLLER, Id.THE_HOUSE_ALWAYS_LOSES:
+			return PackedInt32Array([Mechanic.GAMBLING])
 		Id.INSURANCE_POLICY:
 			return PackedInt32Array([Mechanic.OPTIONAL_OBJECTIVE])
 	return PackedInt32Array()
@@ -382,7 +419,7 @@ static func get_path_mechanics(path_id: int) -> PackedInt32Array:
 
 
 static func get_baseline_mechanics() -> PackedInt32Array:
-	return PackedInt32Array([Mechanic.SEED, Mechanic.MATURE_GREEN])
+	return PackedInt32Array([Mechanic.SEED, Mechanic.MATURE_GREEN, Mechanic.GAMBLING])
 
 
 static func get_mechanic_name(mechanic_id: int) -> String:
@@ -403,6 +440,8 @@ static func get_mechanic_name(mechanic_id: int) -> String:
 			return "Pruning Charge"
 		Mechanic.OPTIONAL_OBJECTIVE:
 			return "Optional Objective"
+		Mechanic.GAMBLING:
+			return "Clover"
 	return ""
 
 

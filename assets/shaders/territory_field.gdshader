@@ -3,6 +3,9 @@ render_mode unshaded;
 
 uniform float ownership_threshold : hint_range(0.01, 0.49) = 0.18;
 uniform int debug_view = 0;
+uniform float root_established_threshold : hint_range(0.0, 1.0) = 0.33;
+uniform float mature_threshold : hint_range(0.0, 1.0) = 0.66;
+uniform float deep_root_threshold : hint_range(0.0, 1.0) = 0.88;
 uniform bool bramble_enabled = false;
 
 vec4 cubic_weights(float offset) {
@@ -100,6 +103,29 @@ void fragment() {
 			? vec3(0.02, 0.78, 0.18) * strength
 			: vec3(0.82, 0.04, 0.10) * strength;
 		field_color = control_color;
+	} else if (debug_view == 3) {
+		// Root depth read as four discrete stages rather than a smooth ramp. The
+		// question this view exists to answer is whether held ground has become
+		// established, and a continuous gradient cannot be read that way: banding
+		// is what makes the boundary visible at a glance.
+		vec3 stage_color = vec3(0.05, 0.07, 0.06);
+		if (maturity >= deep_root_threshold) {
+			stage_color = vec3(0.86, 1.0, 0.42);
+		} else if (maturity >= mature_threshold) {
+			stage_color = vec3(0.42, 0.90, 0.34);
+		} else if (maturity >= root_established_threshold) {
+			stage_color = vec3(0.16, 0.52, 0.28);
+		} else {
+			stage_color = vec3(0.09, 0.22, 0.16);
+		}
+		field_color = neutral_color;
+		// Hostile ground establishes on the same rule, so it is banded too, in its
+		// own hue. Otherwise a contested front reads as if only one side ages.
+		vec3 hostile_stage = vec3(0.30, 0.06, 0.09)
+			+ vec3(0.62, 0.10, 0.12) * step(root_established_threshold, maturity)
+			+ vec3(0.20, 0.14, 0.10) * step(deep_root_threshold, maturity);
+		field_color = mix(field_color, stage_color, player_weight);
+		field_color = mix(field_color, hostile_stage, hostile_weight);
 	}
 
 	float contour_aa = max(fwidth(control), 0.0001);

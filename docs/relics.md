@@ -140,22 +140,22 @@ This avoids needing separate pools for:
 
 # 4. Current Core Catalog Size
 
-The currently defined core catalog contains **43 relics**.
+The currently defined core catalog contains **44 relics**.
 
 | Pool | Count |
 |---|---:|
 | Universal, shared by all elements | 12 |
 | Plant element | 7 |
-| Spore | 3 |
+| Spore | 4 |
 | Bloom | 3 |
 | Bramble | 3 |
 | Root | 3 |
 | Pruning | 3 |
 | Curated Plant synergies | 5 |
 | Secret Clover | 4 |
-| **Total currently defined** | **43** |
+| **Total currently defined** | **44** |
 
-The prototype currently implements 39 of these; the four Clover relics arrive with the secret gambling Path.
+The prototype implements all 44. The four Clover relics require the Clover mechanic, which is baseline: the master guide houses the machine permanently in the side panel, so every run can reach it.
 
 Carnivory was a sixth Path and is now one Legendary relic. Its three Path relics and the three synergies that reached into standing Maws retired with it: nothing in the catalog refers to a Maw that no longer exists.
 
@@ -459,6 +459,19 @@ Nothing about the Maw persists. There is no Maw HP, no Capacity, no Digestion, n
 **Rarity:** Common
 
 Each Seed ignores the first interruption or Saboteur hit that would significantly delay or destroy it.
+
+---
+
+## Spore Burst
+**Rarity:** Uncommon
+
+Germination is violent. When a Seed opens it detonates, damaging everything standing in
+the growth it creates.
+
+The damage rides the Growth Mass the germination pushes into the field rather than being
+a flat number beside it, so the relic scales with everything that already makes a Seed
+better - Growth Mass, the Root Network, Seed Bank's maturity bonus - instead of carrying
+its own ladder.
 
 ---
 
@@ -769,52 +782,63 @@ The gambling Path already has its own upgrade system, so its relics should add s
 ## Bent Coin
 **Rarity:** Common
 
-Each Bust adds one **Pity**.
+Each Triple Bust bends the coin a little further. On the third, the next spin cannot come
+up Triple Bust at all, and the coin straightens again.
 
-At 3 Pity:
-- the next spin cannot contain more than one Bust symbol.
+The printed Bust chance drops to zero for that spin, because the readout must never
+advertise odds the machine is not about to roll. The shield is spent by whatever spin
+follows it rather than waiting for a Bust that may never arrive: a Bust chance of zero
+printed indefinitely stops being information.
 
-Pity then resets.
+> **Rewritten for the current machine.** The original was written against the Chips and
+> Pot economy and read "the next spin cannot contain more than one Bust symbol". Under the
+> current grammar a single Bust symbol is already worthless and Triple Bust is the only
+> Bust result, so the rule was restated in the terms that now exist.
 
 ---
 
 ## Side Pot
 **Rarity:** Uncommon
 
-Chips earned while the normal Pot is already full accumulate in a small Side Pot.
+Every whiff drops a stake into the Side Pot. The next jackpot cashes the whole pot into
+its own strength and empties it.
 
-On Jackpot:
-- Side Pot Chips trigger additional minor symbol rewards.
+A Triple Bust takes the pot with it.
 
-On Bust:
-- the Side Pot is lost.
+That is the entire risk the pot carries: it is built out of the spins that paid nothing,
+and it is lost to the one that costs.
+
+> **Rewritten for the current machine.** The original depended on Chips accumulating past
+> a full Pot and paying out as "additional minor symbol rewards". Chips, the Pot, and
+> minor rewards were all removed by the gambling master guide - the machine is
+> jackpot-only - so the relic was rebuilt on the shape that survived: accumulate on
+> failure, cash on a jackpot, lose to a Bust.
 
 ---
 
 ## High Roller
 **Rarity:** Rare
 
-Every seventh spin becomes a **High Roller Spin**.
+Every seventh spin is a **High Roller Spin**:
+- the jackpot it pays is doubled,
+- the Bust it takes is doubled.
 
-High Roller:
-- doubles Jackpot effects,
-- doubles Bust penalties.
+The counter is always visible in the machine's readout. A doubled spin the player only
+finds out about afterwards is a coin flip rather than a decision.
 
-The counter is always visible.
+The doubled Bust lands on how hostile the wagered ground becomes rather than on how much
+of it is taken, so the wager the player agreed to is still the wager they lose.
 
 ---
 
 ## The House Always Loses
 **Rarity:** Legendary
 
-Each time the player Busts, remove one Bust result from one reel for the rest of the run.
+Each Triple Bust tears a Bust face off the reels for good, up to three times. Every
+removal permanently cuts the machine's Bust odds for the rest of the run.
 
-Maximum:
-
-> 3 removals.
-
-After the third removal:
-- immediately gain one free spin.
+The third removal is on the house: it comes with one free spin, which stakes no territory
+at all.
 
 ---
 
@@ -1123,8 +1147,9 @@ Pruning now uses the held ring and Charge loop.
 
 ## Spore
 1. Hard Husk — Common
-2. Cross-Pollination — Rare
-3. Patient Zero — Legendary
+2. Spore Burst — Uncommon
+3. Cross-Pollination — Rare
+4. Patient Zero — Legendary
 
 ## Bloom
 1. Late Bloomer — Uncommon

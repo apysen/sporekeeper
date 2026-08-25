@@ -104,6 +104,12 @@ class Cutting:
 ## Arena pixels around the player the harvest eats from. Deliberately tight, so the
 ## hole opens under the player's feet where it can be seen.
 @export_range(10.0, 240.0, 2.0) var upkeep_radius_pixels := 52.0
+## Ground immediately under the player the harvest will not cut. The harvest only
+## runs while the player is standing on their own Green, so cutting the cell they
+## are standing on stops the harvest after a single step. Sparing this much leaves
+## the footing intact and opens the hole in a ring around the player, which is also
+## what makes the cut legible: a hole exactly underneath is hidden by the Gardener.
+@export_range(0.0, 60.0, 0.5) var upkeep_inner_radius_pixels := 7.0
 ## Cells of Green below which the harvest stops entirely. Counted in cells rather
 ## than as a share of the arena on purpose: a percentage floor gates the whole path
 ## on a state runs in this build rarely reach. What the floor is for is refusing to
@@ -214,11 +220,29 @@ class Cutting:
 @export_range(0.0, 0.5, 0.005) var stored_sap_maturity := 0.055
 ## Radius in pixels a released Sap surge covers.
 @export_range(40.0, 600.0, 5.0) var stored_sap_radius_pixels := 190.0
+## How wide Root Memory feeds maturity back, as a multiple of the harvest's own reach.
+@export_range(0.5, 8.0, 0.1) var stool_regrowth_memory_radius_multiplier := 2.4
 
 var _cuttings: Array[Cutting] = []
-var _coppice_remaining := 0.0
-var _coppice_sites := PackedVector2Array()
-var _coppice_debt := 0.0
+var _pioneer_remaining := 0.0
+var _pioneer_sites := PackedVector2Array()
+var _pioneer_debt := 0.0
+## Second Flush's own counters: Seeds owed by Cutting kills, eruptions so far, and the
+## wave held back for the next one.
+var _pioneer_kill_debt := 0.0
+var _pioneer_kill_seeds := 0
+var _pioneer_eruptions := 0
+var _pioneer_second_wave := PackedVector2Array()
+var _last_pioneer_positions := PackedVector2Array()
+## Elastic Rebound's pending wave: where it lands, how hard, and how long until it does.
+var _compression_wave_position := Vector2.ZERO
+var _compression_wave_force := 0.0
+var _compression_wave_remaining := 0.0
+## Second Harvest: how much Mature ground the last cycle took, where it took it, and how
+## many Cuttings the follow-up owes once it has grown back.
+var _stool_watch_position := Vector2.ZERO
+var _stool_watch_cells := 0
+var _stool_watch_reward := 0
 var _gleaning_kills := 0
 var _gleaning_banked := 0.0
 var _green_manure_kills := 0
@@ -250,9 +274,20 @@ func _ready() -> void:
 func reset_director() -> void:
 	for cutting in _cuttings:
 		cutting.state = CuttingState.INACTIVE
-	_coppice_remaining = 0.0
-	_coppice_sites = PackedVector2Array()
-	_coppice_debt = 0.0
+	_pioneer_remaining = 0.0
+	_pioneer_sites = PackedVector2Array()
+	_pioneer_debt = 0.0
+	_pioneer_kill_debt = 0.0
+	_pioneer_kill_seeds = 0
+	_pioneer_eruptions = 0
+	_pioneer_second_wave = PackedVector2Array()
+	_last_pioneer_positions = PackedVector2Array()
+	_compression_wave_position = Vector2.ZERO
+	_compression_wave_force = 0.0
+	_compression_wave_remaining = 0.0
+	_stool_watch_position = Vector2.ZERO
+	_stool_watch_cells = 0
+	_stool_watch_reward = 0
 	_gleaning_kills = 0
 	_gleaning_banked = 0.0
 	_green_manure_kills = 0
@@ -282,7 +317,9 @@ func advance(delta: float) -> void:
 			_apply_regrowth()
 	_advance_ring(delta)
 	_advance_cuttings(delta)
-	_advance_coppice(delta)
+	_advance_pioneer(delta)
+	_advance_compression(delta)
+	_advance_stool_regrowth(delta)
 	_apply_regrowth()
 	queue_redraw()
 
@@ -380,26 +417,113 @@ func prune_for_rebound(local_position: Vector2) -> float:
 		return 0.0
 	if not is_above_safety_floor():
 		return 0.0
+	var rank := get_evolution_rank(PhaseBProgression.EvolutionId.REBOUND)
+	# Elastic Growth: the crater keeps its accelerated reclaim for longer, so the ground
+	# Rebound spends comes back rather than being a permanent hole in the organism.
+	var pruned_window := pruned_ground_seconds
+	if rank >= 2:
+		pruned_window *= evolutions.compression_regrowth_window
+	if rank >= 3:
+		# Inward Collapse: the ground is not the only thing dragged in. Done before the
+		# harvest so the pull reads as the cause of the collapse rather than its echo.
+		combat.pull_enemies_toward(
+			local_position,
+			evolutions.rebound_radius_pixels,
+			evolutions.compression_pull_pixels
+		)
 	var harvest := territory_field.prune_territory_in_radius(
 		local_position,
 		evolutions.rebound_radius_pixels,
-		pruned_ground_seconds
+		pruned_window
 	)
 	if harvest.cell_count <= 0:
 		return 0.0
+	# Efficient Compression, twice: the same cell of Green is worth more Force. The cap
+	# is left where it is, so the ranks buy a steeper curve rather than a higher ceiling.
+	var conversion := evolutions.rebound_force_per_cell
+	if rank >= 1:
+		conversion *= 1.0 + evolutions.compression_force_bonus
+	if rank >= 4:
+		conversion *= 1.0 + evolutions.compression_force_bonus
 	var force := minf(
 		evolutions.rebound_maximum_force,
-		float(harvest.cell_count) * evolutions.rebound_force_per_cell
+		float(harvest.cell_count) * conversion
 	)
+	if rank >= 5:
+		# Elastic Rebound: the collapse springs back a beat after the Bloom goes off. It
+		# takes no further territory and makes no Plant Mass - it is the ground releasing
+		# what the first detonation stored, not a second Bloom.
+		_compression_wave_position = local_position
+		_compression_wave_force = force * evolutions.compression_second_wave_share
+		_compression_wave_remaining = evolutions.compression_second_wave_delay
 	status_requested.emit(
 		"REBOUND — %d cells collapsed into the Bloom." % harvest.cell_count
 	)
 	return force
 
+
+func _advance_compression(delta: float) -> void:
+	if _compression_wave_remaining <= 0.0:
+		return
+	_compression_wave_remaining -= delta
+	if _compression_wave_remaining > 0.0:
+		return
+	_compression_wave_remaining = 0.0
+	# Pressure and damage, no mass: the second wave shoves the frontier and hurts what is
+	# standing in it without growing a single new cell of Green.
+	territory_field.queue_bloom(
+		_compression_wave_position,
+		0.0,
+		1.0 + _compression_wave_force,
+		0.0,
+		1.0
+	)
+	combat.damage_enemies_in_radius(
+		_compression_wave_position,
+		evolutions.compression_second_wave_radius,
+		evolutions.compression_second_wave_damage * (1.0 + _compression_wave_force),
+		PhaseBCombatDirector.DeathSource.BLOOM
+	)
+	overlay.spawn_hostile_pulse(
+		_compression_wave_position,
+		evolutions.compression_second_wave_radius
+	)
+	status_requested.emit("ELASTIC REBOUND — the collapse springs back.")
+
 func run_cycle_now() -> int:
 	# Debug and test entry point for one second of the harvest the run performs
 	# continuously while the player stands on their own ground.
 	return _harvest(get_cycle_target_cells())
+
+func grant_free_cuttings(wanted: int) -> int:
+	## Clippings that cost the run no territory. Two things ask for them: a Clover
+	## Pruning jackpot, which must not pay for itself with the ground it is rewarding,
+	## and Second Harvest, where the regrowth itself is what pays.
+	if wanted <= 0:
+		return 0
+	var room := maxi(0, orbit_capacity - _get_committed_ring_count())
+	if room <= 0:
+		return 0
+	# A real harvest carries the positions its spikes rise from. This one is generated:
+	# a ring around the player, at the radius the orbit will settle to anyway.
+	var gift := TerritoryField.PruneHarvest.new()
+	var origin := combat.player.get_arena_position()
+	var count := mini(wanted, room)
+	for index in range(count):
+		gift.positions.append(
+			origin + Vector2.from_angle(TAU * float(index) / float(count)) * get_orbit_radius()
+		)
+	var raised := 0
+	# _raise_cuttings throttles itself to one harvest step, which is the right rule for
+	# ground being cut and the wrong one for a one-off gift, so the gift is paid out in
+	# as many steps as it takes.
+	while raised < count:
+		var granted := _raise_cuttings(gift, count - raised)
+		if granted <= 0:
+			break
+		raised += granted
+	return raised
+
 
 func release_ring_now() -> int:
 	# Debug and test entry point for the release the run would trigger by moving.
@@ -424,6 +548,10 @@ func _apply_regrowth() -> void:
 	if progression.has_active_evolution(PhaseBProgression.EvolutionId.COPPICING):
 		# Coppicing: the Root Network drives the cut ground back much faster.
 		regrowth *= evolutions.coppicing_regrowth_multiplier
+		if get_evolution_rank(PhaseBProgression.EvolutionId.COPPICING) >= 2:
+			# Vigorous Regrowth: faster still, which is also what makes Second Harvest
+			# arrive inside the same fight rather than two cycles later.
+			regrowth *= evolutions.stool_regrowth_reclaim_bonus
 	if _green_manure_remaining > 0.0:
 		# Green Manure: what the discharge killed feeds the ground it was cut from,
 		# and the more it killed the faster that ground comes back.
@@ -439,7 +567,7 @@ func _advance_ring(delta: float) -> void:
 		if _hit_cooldowns[enemy_id] <= 0.0:
 			_hit_cooldowns.erase(enemy_id)
 	var can_hold := (
-		progression.has_path(PhaseBProgression.PathId.PRUNING)
+		progression.has_path_active(PhaseBProgression.PathId.PRUNING)
 		and is_player_on_green()
 		and is_above_safety_floor()
 	)
@@ -502,7 +630,8 @@ func _harvest(wanted_cells: int) -> int:
 		combat.player.get_arena_position(),
 		upkeep_radius_pixels,
 		wanted_cells,
-		pruned_ground_seconds
+		pruned_ground_seconds,
+		upkeep_inner_radius_pixels
 	)
 	_last_cycle_cells = harvest.cell_count
 	if harvest.cell_count <= 0:
@@ -525,10 +654,42 @@ func _harvest(wanted_cells: int) -> int:
 	var cuttings := float(harvest.cell_count) * cuttings_per_cell
 	if progression.has_active_evolution(PhaseBProgression.EvolutionId.DEADFALL):
 		# Deadfall: the thorns torn out with the Green become spikes of their own.
-		cuttings += harvest.bramble_development * evolutions.deadfall_cuttings_per_development
+		# Thorn Harvest, twice: the same thorned cut is worth more of them.
+		var splinter_rank := get_evolution_rank(PhaseBProgression.EvolutionId.DEADFALL)
+		var thorn_yield := evolutions.deadfall_cuttings_per_development
+		if splinter_rank >= 1:
+			thorn_yield *= 1.0 + evolutions.splinterstorm_yield_bonus
+		if splinter_rank >= 4:
+			thorn_yield *= 1.0 + evolutions.splinterstorm_yield_bonus
+		cuttings += harvest.bramble_development * thorn_yield
 	if progression.has_active_evolution(PhaseBProgression.EvolutionId.COPPICING):
 		# Coppicing: ancient ground is worth far more when it is finally cut.
-		cuttings += float(harvest.mature_cell_count) * evolutions.coppicing_cuttings_per_mature_cell
+		# Mature Harvest, twice: more of it still.
+		var stool_rank := get_evolution_rank(PhaseBProgression.EvolutionId.COPPICING)
+		var mature_yield := evolutions.coppicing_cuttings_per_mature_cell
+		if stool_rank >= 1:
+			mature_yield *= 1.0 + evolutions.stool_regrowth_yield_bonus
+		if stool_rank >= 4:
+			mature_yield *= 1.0 + evolutions.stool_regrowth_yield_bonus
+		cuttings += float(harvest.mature_cell_count) * mature_yield
+		if stool_rank >= 3 and harvest.mature_cell_count > 0:
+			# Root Memory: the ground remembers what it was. The regrowth over a Mature
+			# cut comes back part-matured instead of starting from nothing.
+			territory_field.queue_maturity_support(
+				combat.player.get_arena_position(),
+				evolutions.stool_regrowth_memory_share,
+				stool_regrowth_memory_radius_multiplier
+			)
+		if stool_rank >= 5 and harvest.mature_cell_count > 0 and _stool_watch_cells <= 0:
+			# Second Harvest: watch the ground this cycle took, and pay a second volley
+			# once it has grown most of the way back. No further territory is spent.
+			_stool_watch_position = combat.player.get_arena_position()
+			_stool_watch_cells = harvest.mature_cell_count
+			_stool_watch_reward = maxi(
+				1,
+				roundi(float(harvest.mature_cell_count) * mature_yield
+					* evolutions.stool_regrowth_second_share)
+			)
 	cuttings *= get_pruning_cutting_yield_multiplier()
 	_cutting_debt += cuttings
 	# A ring with room fills as fast as the harvest pays for it; a full one takes
@@ -538,7 +699,8 @@ func _harvest(wanted_cells: int) -> int:
 		room = 1
 	var raised := _raise_cuttings(harvest, mini(int(floor(_cutting_debt)), room))
 	_cutting_debt -= float(raised)
-	_bury_coppice_seeds(harvest)
+	_bury_pioneer_seeds(harvest)
+	_fire_deadfall_volley()
 	cycle_pruned.emit(harvest.cell_count, raised)
 	return raised
 
@@ -557,6 +719,17 @@ func get_green_manure_kills() -> int:
 func notify_ring_kill(outward: bool) -> void:
 	# The ring reports its own kills so two relics can pay out on them without
 	# either of them watching the combat loop.
+	if get_evolution_rank(PhaseBProgression.EvolutionId.PIONEER) >= 4:
+		# Blood and Soil: what the spikes kill during a cycle is buried with the cut.
+		# Banked as a fraction so a single kill is not worth a whole Seed, and capped so
+		# a long hold cannot turn the arena into a nursery.
+		_pioneer_kill_debt += evolutions.second_flush_seeds_per_kill
+		while (
+			_pioneer_kill_debt >= 1.0
+			and _pioneer_kill_seeds < evolutions.second_flush_kill_seed_cap
+		):
+			_pioneer_kill_debt -= 1.0
+			_pioneer_kill_seeds += 1
 	if outward:
 		if _has_relic(PhaseBRelicCatalog.Id.GREEN_MANURE):
 			_green_manure_kills += 1
@@ -705,6 +878,11 @@ func _launch_cutting(cutting: Cutting, outward: bool = false) -> void:
 	cutting.last_hit_enemy_id = -1
 	cutting.pierce_remaining = cutting_pierce
 	cutting.pierce_falloff = cutting_pierce_falloff
+	if get_evolution_rank(PhaseBProgression.EvolutionId.DEADFALL) >= 2:
+		# Piercing Splinters: the spike goes through one more enemy, and lands softer for
+		# doing it, so pierce widens a volley rather than squaring its damage.
+		cutting.pierce_remaining += evolutions.splinterstorm_extra_pierce
+		cutting.pierce_falloff = evolutions.splinterstorm_pierce_falloff
 	var direction := Vector2.from_angle(cutting.spin)
 	if outward:
 		cutting.pierce_remaining = cutting_pierce + int(round(
@@ -849,11 +1027,122 @@ func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 	cutting.last_hit_enemy_id = struck
 	if not combat.is_enemy_active(struck):
 		notify_ring_kill(true)
+	if (
+		get_evolution_rank(PhaseBProgression.EvolutionId.DEADFALL) >= 3
+		and combat.get_enemy_entanglement(struck) >= evolutions.splinterstorm_shatter_threshold
+	):
+		# Shatter: a spike that finds an enemy already wrapped in thorns has something
+		# solid to break against, and comes apart into two smaller ones that go looking
+		# for whatever else is nearby. Splitting only on a fully Entangled target keeps
+		# it as Bramble's payoff rather than a free doubling on every hit.
+		_shatter_cutting(cutting)
 	cutting.pierce_remaining -= 1
 	# A pierced hit lands softer, so pierce widens a volley rather than squaring it.
 	cutting.damage *= cutting.pierce_falloff
 	if cutting.pierce_remaining <= 0:
 		cutting.state = CuttingState.INACTIVE
+
+
+func _fire_deadfall_volley() -> void:
+	## Deadfall Volley: every cycle throws a ring of heavy spikes outward on top of
+	## whatever the harvest raised. They come from the cut rather than from the ring, so
+	## the volley does not eat the orbit the player is holding.
+	if get_evolution_rank(PhaseBProgression.EvolutionId.DEADFALL) < 5:
+		return
+	var spikes := evolutions.splinterstorm_volley_spikes
+	if spikes <= 0:
+		return
+	var origin := combat.player.get_arena_position()
+	var damage := (
+		cutting_damage
+		* get_pruning_cutting_damage_multiplier()
+		* evolutions.splinterstorm_volley_damage_scale
+	)
+	var launched := 0
+	for index in range(spikes):
+		var spike := _get_inactive_cutting()
+		if spike == null:
+			break
+		var heading := Vector2.from_angle(TAU * float(index) / float(spikes))
+		spike.state = CuttingState.LAUNCHED
+		spike.position = origin + heading * cutting_hit_radius_pixels
+		spike.velocity = heading * cutting_speed_pixels_per_second
+		spike.remaining = cutting_lifetime_seconds
+		spike.damage = damage
+		# High pierce and a gentle falloff: the doc wants a wall of shrapnel that keeps
+		# going through a crowd, with the damage tapering rather than stopping.
+		spike.pierce_remaining = evolutions.splinterstorm_volley_pierce
+		spike.pierce_falloff = evolutions.splinterstorm_pierce_falloff
+		spike.last_hit_enemy_id = -1
+		spike.spin = heading.angle()
+		spike.travelled = 0.0
+		spike.maximum_travel = 0.0
+		spike.returning = false
+		spike.gather_remaining = 0.0
+		launched += 1
+	if launched > 0:
+		_cuttings_launched += launched
+		status_requested.emit("DEADFALL VOLLEY — %d spikes tear outward." % launched)
+
+
+func _advance_stool_regrowth(_delta: float) -> void:
+	## Second Harvest: the cycle's Mature cut is watched, and once enough of it has grown
+	## back the ground pays a second volley of Cuttings for free. It is the regrowth
+	## itself that triggers it, which is what makes Vigorous Regrowth feed into it.
+	if _stool_watch_cells <= 0:
+		return
+	if get_evolution_rank(PhaseBProgression.EvolutionId.COPPICING) < 5:
+		_stool_watch_cells = 0
+		return
+	var regrown := territory_field.count_owned_cells_in_radius(
+		_stool_watch_position,
+		upkeep_radius_pixels
+	)
+	if float(regrown) < float(_stool_watch_cells) * evolutions.stool_regrowth_second_threshold:
+		return
+	var reward := _stool_watch_reward
+	_stool_watch_cells = 0
+	_stool_watch_reward = 0
+	if reward <= 0:
+		return
+	var granted := grant_free_cuttings(reward)
+	if granted > 0:
+		status_requested.emit(
+			"SECOND HARVEST — the regrowth gives back %d Cuttings." % granted
+		)
+
+
+func _shatter_cutting(source: Cutting) -> void:
+	for side in [-1.0, 1.0]:
+		var splinter := _get_inactive_cutting()
+		if splinter == null:
+			return
+		var target := combat.get_nearest_enemy_position(
+			source.position,
+			evolutions.splinterstorm_shatter_seek_pixels
+		)
+		var heading := source.velocity.normalized()
+		if heading == Vector2.ZERO:
+			heading = Vector2.RIGHT
+		# Each half leaves at an angle and then turns toward whatever it can find, so a
+		# shatter reads as the spike bursting rather than as two clones carrying on.
+		heading = heading.rotated(side * 0.6)
+		if target.x >= 0.0:
+			heading = source.position.direction_to(target)
+		splinter.state = CuttingState.LAUNCHED
+		splinter.position = source.position
+		splinter.velocity = heading * cutting_speed_pixels_per_second
+		splinter.remaining = cutting_lifetime_seconds * 0.6
+		splinter.damage = source.damage * evolutions.splinterstorm_shatter_share
+		splinter.pierce_remaining = 1
+		splinter.pierce_falloff = cutting_pierce_falloff
+		splinter.last_hit_enemy_id = source.last_hit_enemy_id
+		splinter.spin = heading.angle()
+		splinter.travelled = 0.0
+		splinter.maximum_travel = 0.0
+		splinter.returning = false
+		splinter.gather_remaining = 0.0
+		_cuttings_launched += 1
 
 func _finish_cutting(cutting: Cutting) -> void:
 	cutting.state = CuttingState.INACTIVE
@@ -899,39 +1188,98 @@ func _draw_thicket() -> void:
 		var stem := Vector2.from_angle(swirl + PI * 0.5) * 2.6
 		draw_line(leaf - stem, leaf + stem, litter, 1.4, true)
 
-func _bury_coppice_seeds(harvest: TerritoryField.PruneHarvest) -> void:
+func get_evolution_rank(evolution_id: int) -> int:
+	## The rank of this pairing's own Evolution line, or zero for a run holding a
+	## different pairing. Every rank check below reads this rather than the raw level,
+	## so a line can never be read by the Evolution it does not belong to.
+	if not progression.has_active_evolution(evolution_id):
+		return 0
+	return progression.get_evolution_upgrade_level()
+
+
+func _bury_pioneer_seeds(harvest: TerritoryField.PruneHarvest) -> void:
 	# Coppice: the cut ground is seeded as it is taken, and germinates together a
 	# moment later, so the harvest reads as retract, kill, then erupt.
-	if not progression.has_active_evolution(PhaseBProgression.EvolutionId.COPPICE):
+	if not progression.has_active_evolution(PhaseBProgression.EvolutionId.PIONEER):
 		return
 	if harvest.positions.is_empty():
 		return
-	_coppice_debt += float(harvest.cell_count)
-	while _coppice_debt >= float(evolutions.coppice_cells_per_seed):
-		_coppice_debt -= float(evolutions.coppice_cells_per_seed)
-		if _coppice_sites.size() >= evolutions.coppice_seeds:
+	var rank := get_evolution_rank(PhaseBProgression.EvolutionId.PIONEER)
+	# Dense Reseeding: the same cut buys more Seeds. Paid into the debt rather than into
+	# the cap, so a small harvest gets denser instead of a large one simply reaching the
+	# ceiling sooner.
+	var density := 1.0 + evolutions.second_flush_seed_bonus * (1.0 if rank >= 1 else 0.0)
+	_pioneer_debt += float(harvest.cell_count) * density
+	# Blood and Soil: the kills the ring made during this cycle are worth Seeds of their
+	# own, capped so a long hold cannot bury the whole board.
+	if rank >= 4 and _pioneer_kill_seeds > 0:
+		_pioneer_debt += float(_pioneer_kill_seeds) * float(evolutions.pioneer_cells_per_seed)
+		_pioneer_kill_seeds = 0
+	var capacity := evolutions.pioneer_seeds
+	if rank >= 4:
+		capacity += evolutions.second_flush_kill_seed_cap
+	while _pioneer_debt >= float(evolutions.pioneer_cells_per_seed):
+		_pioneer_debt -= float(evolutions.pioneer_cells_per_seed)
+		if _pioneer_sites.size() >= capacity:
 			break
-		_coppice_sites.append(
-			harvest.positions[_coppice_sites.size() % harvest.positions.size()]
+		_pioneer_sites.append(
+			harvest.positions[_pioneer_sites.size() % harvest.positions.size()]
 		)
-	if not _coppice_sites.is_empty() and _coppice_remaining <= 0.0:
-		_coppice_remaining = evolutions.coppice_delay_seconds
+	if not _pioneer_sites.is_empty() and _pioneer_remaining <= 0.0:
+		_pioneer_remaining = evolutions.pioneer_delay_seconds
 
-func _advance_coppice(delta: float) -> void:
-	if _coppice_remaining <= 0.0:
+func _advance_pioneer(delta: float) -> void:
+	if _pioneer_remaining <= 0.0:
 		return
-	_coppice_remaining -= delta
-	if _coppice_remaining > 0.0:
+	_pioneer_remaining -= delta
+	if _pioneer_remaining > 0.0:
 		return
-	var planted := 0
-	for site in _coppice_sites:
-		overlay.spawn_seed(site, -1.0, 0, evolutions.coppice_seed_durability)
-		planted += 1
-	_coppice_sites = PackedVector2Array()
-	if planted > 0:
-		status_requested.emit(
-			"COPPICE — %d Seeds erupt out of the ground the harvest cut." % planted
+	var rank := get_evolution_rank(PhaseBProgression.EvolutionId.PIONEER)
+	# Rapid Germination: the buried Seeds spend less time as a target before they open.
+	var charge := -1.0
+	if rank >= 2:
+		charge = (
+			territory_field.tuning.seed_charge_seconds
+			* (1.0 - evolutions.second_flush_germination_cut)
 		)
+	# Remembered before the list is cleared, so a second wave has somewhere to land.
+	_last_pioneer_positions = _pioneer_sites.duplicate()
+	var planted := 0
+	for site in _pioneer_sites:
+		overlay.spawn_seed(site, charge, 0, evolutions.pioneer_seed_durability)
+		planted += 1
+	# Second Flush: every few eruptions the ground gives a second, smaller wave a moment
+	# later. Held here rather than buried again through the harvest, because it must not
+	# cost the run another cut to receive it.
+	var pending := _pioneer_second_wave
+	_pioneer_second_wave = PackedVector2Array()
+	_pioneer_sites = PackedVector2Array()
+	if planted > 0:
+		_pioneer_eruptions += 1
+		if (
+			rank >= 5
+			and evolutions.second_flush_wave_cadence > 0
+			and _pioneer_eruptions % evolutions.second_flush_wave_cadence == 0
+		):
+			var wave_count := maxi(1, roundi(float(planted) * evolutions.second_flush_wave_share))
+			for index in range(wave_count):
+				_pioneer_second_wave.append(_last_pioneer_site(index))
+			_pioneer_remaining = evolutions.pioneer_delay_seconds
+		status_requested.emit(
+			"PIONEER — %d Seeds erupt out of the ground the harvest cut." % planted
+		)
+	if not pending.is_empty():
+		for site in pending:
+			overlay.spawn_seed(site, charge, 0, evolutions.pioneer_seed_durability)
+		status_requested.emit(
+			"SECOND FLUSH — the cut ground gives a second wave of %d Seeds." % pending.size()
+		)
+
+
+func _last_pioneer_site(index: int) -> Vector2:
+	if _last_pioneer_positions.is_empty():
+		return combat.player.get_arena_position()
+	return _last_pioneer_positions[index % _last_pioneer_positions.size()]
 
 func _draw() -> void:
 	_draw_thicket()

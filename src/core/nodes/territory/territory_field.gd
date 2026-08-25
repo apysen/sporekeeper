@@ -12,10 +12,27 @@ signal metrics_changed(
 )
 signal simulation_reset
 
+## Components per pass are far below this, and the key packs two labels into one
+## integer so the overlap between passes can be counted in a single dictionary.
+const OVERLAP_KEY_STRIDE := 65536
+
 enum DebugView {
 	TERRITORY,
 	MATURITY,
 	CONTROL,
+	ROOT,
+}
+
+## The four root stages the Root Metabolism doc asks a player to be able to read off
+## the ground. Maturity is the root substrate: it already grows while a cell keeps
+## its owner, decays while the cell is neutral, and resets when the owner flips,
+## which is the establishment rule the doc specifies. These name the bands of it
+## rather than introducing a second per-cell field to keep in step with the first.
+enum RootStage {
+	SHALLOW,
+	ESTABLISHED,
+	DEVELOPED,
+	LATE,
 }
 
 class TerritoryCommand:
@@ -127,7 +144,36 @@ var _territory_age := PackedFloat32Array()
 ## Seconds of accelerated reclamation left on ground a Pruning Cycle cut away.
 var _pruned_ground := PackedFloat32Array()
 var _lost_memory := PackedFloat32Array()
+var _ownership_snapshot := PackedFloat32Array()
+var _snapshot_owned_count := 0
 var _topology_labels := PackedInt32Array()
+## The labels the previous topology pass assigned, kept so a component can be
+## recognised across a relabel. Labels are handed out in scan order and therefore
+## shuffle whenever the shape of the ecosystem changes, so a reserve keyed on a raw
+## label would jump between unrelated regions every half second.
+var _previous_topology_labels := PackedInt32Array()
+var _component_count := 0
+## Incremented by every topology pass. The overlap arrays describe one relabel, so
+## anything carrying state across components has to apply them exactly once; without
+## a generation to compare against, a per-frame reader would re-apply a mapping whose
+## inputs it had already consumed.
+var _topology_generation := 0
+var _component_rooted_cells := PackedInt32Array()
+var _component_production_weight := PackedFloat32Array()
+## Owned cells per component and the running sum of their positions, so a colony can
+## be pointed at on the battlefield. The doc wants an isolated colony marked where it
+## actually is before anything about it reaches a sidebar.
+var _component_cells := PackedInt32Array()
+var _component_centroid_x := PackedFloat32Array()
+var _component_centroid_y := PackedFloat32Array()
+## How the previous pass's components map onto this one's, as parallel arrays of
+## (current, previous, shared cell count). Naming only each component's single
+## likeliest ancestor is not enough: a merge would then drop the reserves of every
+## component but the largest one it swallowed, and the doc requires those to
+## synchronise. Proportional overlap divides on a split and sums on a merge.
+var _overlap_current := PackedInt32Array()
+var _overlap_previous := PackedInt32Array()
+var _overlap_cells := PackedInt32Array()
 var _topology_queue := PackedInt32Array()
 var _pixel_bytes := PackedByteArray()
 var _commands: Array[TerritoryCommand] = []
@@ -140,8 +186,13 @@ var _player_percent := 0.0
 var _hostile_percent := 0.0
 var _neutral_percent := 100.0
 var _mature_player_percent := 0.0
+var _rooted_territory_percent := 0.0
+var _deep_rooted_percent := 0.0
 var _fragment_count := 0
 var _small_fragment_count := 0
+## Mass, as the bulk driving force in the critical-radius test. One rather than zero
+## by default so a field with no economy behind it behaves exactly as authored.
+var _nucleation_driving_multiplier := 1.0
 
 var _average_step_ms := 0.0
 var _peak_step_ms := 0.0
@@ -696,15 +747,41 @@ func overgrow(
 	return apply_overgrow(sampled, mass_budget, pressure_budget, cohesion_budget)
 
 
-func sample_overgrow_frontier(reach_budget: float) -> PackedInt32Array:
+func sample_overgrow_frontier(
+	reach_budget: float,
+	focus_position: Vector2 = Vector2.INF,
+	focus_radius: float = 0.0,
+	component_id: int = -1
+) -> PackedInt32Array:
 	# Which stretch of the living border a release reaches, decided by how much it
 	# is carrying. Split out from applying it so a release that is poured in over
 	# several frames scans the field once and then keeps feeding the same border,
 	# rather than re-deciding its own shape every frame.
 	var frontier_cells := PackedInt32Array()
+	# A release travels through the root network that paid for it, so it can only
+	# reach the border of the component it came out of. A colony that is cut off is
+	# not fed by the main organism's reserve; that is what makes being cut off cost
+	# something rather than merely read differently.
+	var near_cells := PackedInt32Array()
+	var focused := focus_position.is_finite() and focus_radius > 0.0
+	var focus_radius_squared := focus_radius * focus_radius
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
 	for index in range(_cell_count):
-		if _player_frontier_mask[index] != 0:
-			frontier_cells.append(index)
+		if _player_frontier_mask[index] == 0:
+			continue
+		if component_id >= 0 and _topology_labels[index] != component_id:
+			continue
+		frontier_cells.append(index)
+		if not focused:
+			continue
+		# Distance to the player, squared, against a radius. The doc asks for a cheap
+		# spatial approximation rather than routing: what matters is that support
+		# arrives where the player went, not that it took a plausible path there.
+		var offset_x := (float(index % _width) + 0.5) * cell_width - focus_position.x
+		var offset_y := (float(index / _width) + 0.5) * cell_height - focus_position.y
+		if offset_x * offset_x + offset_y * offset_y <= focus_radius_squared:
+			near_cells.append(index)
 	if frontier_cells.is_empty():
 		return frontier_cells
 	# How far around the border this release reaches is decided by how much material
@@ -716,6 +793,31 @@ func sample_overgrow_frontier(reach_budget: float) -> PackedInt32Array:
 	var stride := 1
 	if frontier_cells.size() > limit:
 		stride = int(ceil(float(frontier_cells.size()) / float(limit)))
+	if focused and not near_cells.is_empty():
+		# The border the player is standing at is served first, and whatever the
+		# release still has left over is spread around the rest of the organism. A
+		# release that cannot reach past the player's own front never leaves it.
+		var sampled_near := PackedInt32Array()
+		var near_stride := 1
+		if near_cells.size() > limit:
+			near_stride = int(ceil(float(near_cells.size()) / float(limit)))
+		for offset in range(0, near_cells.size(), near_stride):
+			sampled_near.append(near_cells[offset])
+		if sampled_near.size() >= limit:
+			return sampled_near
+		var remaining := limit - sampled_near.size()
+		var already_taken := {}
+		for taken in sampled_near:
+			already_taken[taken] = true
+		var far_stride := maxi(1, int(ceil(float(frontier_cells.size()) / float(remaining))))
+		for offset in range(0, frontier_cells.size(), far_stride):
+			var candidate := frontier_cells[offset]
+			if already_taken.has(candidate):
+				continue
+			sampled_near.append(candidate)
+			if sampled_near.size() >= limit:
+				break
+		return sampled_near
 	var sampled := PackedInt32Array()
 	for offset in range(0, frontier_cells.size(), stride):
 		sampled.append(frontier_cells[offset])
@@ -934,7 +1036,8 @@ func drain_territory_in_radius(
 	local_position: Vector2,
 	radius_pixels: float,
 	target_cells: int,
-	pruned_seconds: float
+	pruned_seconds: float,
+	inner_radius_pixels: float = 0.0
 ) -> PruneHarvest:
 	# A bounded cut around one point that takes the youngest ground it can find
 	# first, which is what an upkeep drain under the player needs: it should eat the
@@ -951,6 +1054,12 @@ func drain_territory_in_radius(
 	var radius_x := maxi(1, ceili(radius_pixels / cell_width))
 	var radius_y := maxi(1, ceili(radius_pixels / cell_height))
 	var radius_squared := radius_pixels * radius_pixels
+	# Ground the cut is not allowed to touch, measured from the same centre. The
+	# harvest is gated on the player standing on their own Green, so a cut that takes
+	# the cell underfoot switches off the very thing that is running it: one step of
+	# harvesting and the ring stops filling. Sparing a small disc keeps the player's
+	# own footing and opens the hole around them instead of beneath them.
+	var inner_squared := maxf(0.0, inner_radius_pixels) * maxf(0.0, inner_radius_pixels)
 	var bands := [
 		[0.0, tuning.mature_threshold * 0.5],
 		[tuning.mature_threshold * 0.5, tuning.mature_threshold],
@@ -961,12 +1070,15 @@ func drain_territory_in_radius(
 			break
 		var lower: float = band[0]
 		var upper: float = band[1]
+		# Gathered before any of it is taken, and taken nearest-first. Consuming during
+		# the scan and stopping at the quota ate the box in row-major order, so a small
+		# per-step quota - which is what the continuous harvest always asks for - only
+		# ever reached the topmost rows and the hole opened above the player instead of
+		# under them. The band order still decides which ground is eligible; distance
+		# decides which of the eligible ground actually goes.
+		var candidates: Array = []
 		for y in range(maxi(0, centre_y - radius_y), mini(_height - 1, centre_y + radius_y) + 1):
-			if harvest.cell_count >= target_cells:
-				break
 			for x in range(maxi(0, centre_x - radius_x), mini(_width - 1, centre_x + radius_x) + 1):
-				if harvest.cell_count >= target_cells:
-					break
 				var index := y * _width + x
 				if _claimable_mask[index] == 0:
 					continue
@@ -977,22 +1089,38 @@ func drain_territory_in_radius(
 					continue
 				var offset_x := (float(x) + 0.5) * cell_width - local_position.x
 				var offset_y := (float(y) + 0.5) * cell_height - local_position.y
-				if offset_x * offset_x + offset_y * offset_y > radius_squared:
+				var distance_squared := offset_x * offset_x + offset_y * offset_y
+				if distance_squared > radius_squared or distance_squared < inner_squared:
 					continue
-				harvest.mass += _control[index]
-				harvest.bramble_development += _bramble_development[index]
-				if maturity >= tuning.mature_threshold:
-					harvest.mature_cell_count += 1
-				harvest.positions.append(Vector2(
-					(float(x) + 0.5) * cell_width,
-					(float(y) + 0.5) * cell_height
-				))
-				harvest.cell_count += 1
-				_control[index] = 0.0
-				_maturity[index] = 0.0
-				_territory_age[index] = 0.0
-				_bramble_development[index] = 0.0
-				_pruned_ground[index] = pruned_seconds
+				candidates.append([distance_squared, index])
+		# Ties break on cell index so a player standing still is not handed a different
+		# cut every step out of two equidistant cells.
+		candidates.sort_custom(
+			func(a: Array, b: Array) -> bool:
+				if a[0] == b[0]:
+					return a[1] < b[1]
+				return a[0] < b[0]
+		)
+		for candidate in candidates:
+			if harvest.cell_count >= target_cells:
+				break
+			var index: int = candidate[1]
+			var cell_x := index % _width
+			var cell_y := index / _width
+			harvest.mass += _control[index]
+			harvest.bramble_development += _bramble_development[index]
+			if _maturity[index] >= tuning.mature_threshold:
+				harvest.mature_cell_count += 1
+			harvest.positions.append(Vector2(
+				(float(cell_x) + 0.5) * cell_width,
+				(float(cell_y) + 0.5) * cell_height
+			))
+			harvest.cell_count += 1
+			_control[index] = 0.0
+			_maturity[index] = 0.0
+			_territory_age[index] = 0.0
+			_bramble_development[index] = 0.0
+			_pruned_ground[index] = pruned_seconds
 	if harvest.cell_count > 0:
 		refresh_visuals_now()
 	return harvest
@@ -1027,6 +1155,233 @@ func get_claimable_cell_count() -> int:
 		if _claimable_mask[index] != 0:
 			count += 1
 	return count
+
+
+func refresh_ownership_snapshot() -> int:
+	## Rebuilds the ownership snapshot and reports how many cells the run holds.
+	##
+	## A consumer that walks the whole grid cannot afford to ask this node a question
+	## per cell. The wager flood asks four times per cell it considers - is this owned,
+	## how mature is it, and the same again for each neighbour to work out its exposure -
+	## and on a mid-run organism that is tens of thousands of script calls inside one
+	## rebuild, which measured at twenty-six milliseconds: more than the frame it was
+	## running in. This publishes the same answers once, as one array.
+	##
+	## Maturity for owned cells, -1.0 for everything else, so a single read answers both
+	## questions. Read-only: the buffer belongs to the field and is reused every call.
+	if _ownership_snapshot.size() != _cell_count:
+		_ownership_snapshot.resize(_cell_count)
+	var threshold := tuning.ownership_threshold
+	var owned := 0
+	for index in range(_cell_count):
+		if _claimable_mask[index] != 0 and _control[index] > threshold:
+			_ownership_snapshot[index] = _maturity[index]
+			owned += 1
+		else:
+			_ownership_snapshot[index] = -1.0
+	_snapshot_owned_count = owned
+	return owned
+
+
+func get_ownership_snapshot() -> PackedFloat32Array:
+	## The array built by the last refresh_ownership_snapshot. Treat as read-only.
+	return _ownership_snapshot
+
+
+func get_snapshot_owned_count() -> int:
+	return _snapshot_owned_count
+
+
+func get_grid_width() -> int:
+	return _width
+
+
+func get_grid_height() -> int:
+	return _height
+
+
+func get_cell_count() -> int:
+	return _cell_count
+
+
+func is_owned_cell(index: int) -> bool:
+	# Index-addressed rather than position-addressed because the wager flood walks
+	# thousands of neighbours per rebuild and cannot afford to convert each one back
+	# through world space to ask a question the array already answers.
+	if index < 0 or index >= _cell_count:
+		return false
+	return _claimable_mask[index] != 0 and _control[index] > tuning.ownership_threshold
+
+
+func is_claimable_cell(index: int) -> bool:
+	if index < 0 or index >= _cell_count:
+		return false
+	return _claimable_mask[index] != 0
+
+
+func get_cell_maturity(index: int) -> float:
+	if index < 0 or index >= _cell_count:
+		return 0.0
+	return _maturity[index]
+
+
+func get_cell_boundary_exposure(index: int) -> float:
+	# The share of the four neighbours that are not owned Green. Ground with a high
+	# exposure is the edge of the organism, which is what the wager flood is told to
+	# reach past: an edge cell is the ecosystem's cheapest tissue and staking it first
+	# would make every wager a rim rather than a bite.
+	if index < 0 or index >= _cell_count:
+		return 1.0
+	var x := index % _width
+	var y := index / _width
+	var exposed := 0
+	if x <= 0 or not is_owned_cell(index - 1):
+		exposed += 1
+	if x >= _width - 1 or not is_owned_cell(index + 1):
+		exposed += 1
+	if y <= 0 or not is_owned_cell(index - _width):
+		exposed += 1
+	if y >= _height - 1 or not is_owned_cell(index + _width):
+		exposed += 1
+	return float(exposed) * 0.25
+
+
+func get_cell_local_position(index: int) -> Vector2:
+	if index < 0 or index >= _cell_count:
+		return Vector2.ZERO
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	return Vector2(
+		(float(index % _width) + 0.5) * cell_width,
+		(float(index / _width) + 0.5) * cell_height
+	)
+
+
+func local_to_cell_index(local_position: Vector2) -> int:
+	if not contains_local_point(local_position):
+		return -1
+	return _index_at_local(local_position)
+
+
+func collect_owned_cells() -> PackedInt32Array:
+	var cells := PackedInt32Array()
+	for index in range(_cell_count):
+		if _claimable_mask[index] != 0 and _control[index] > tuning.ownership_threshold:
+			cells.append(index)
+	return cells
+
+
+func count_owned_cells_in_radius(local_position: Vector2, radius_pixels: float) -> int:
+	## How much Green stands inside a circle right now. Used by mechanics that cut ground
+	## and then wait for it to come back, which have to ask about a place rather than
+	## about the board as a whole.
+	if radius_pixels <= 0.0 or not contains_local_point(local_position):
+		return 0
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var centre := local_to_cell(local_position)
+	var centre_x := clampi(int(round(centre.x)), 0, _width - 1)
+	var centre_y := clampi(int(round(centre.y)), 0, _height - 1)
+	var radius_x := maxi(1, ceili(radius_pixels / cell_width))
+	var radius_y := maxi(1, ceili(radius_pixels / cell_height))
+	var radius_squared := radius_pixels * radius_pixels
+	var count := 0
+	for y in range(maxi(0, centre_y - radius_y), mini(_height - 1, centre_y + radius_y) + 1):
+		for x in range(maxi(0, centre_x - radius_x), mini(_width - 1, centre_x + radius_x) + 1):
+			var index := y * _width + x
+			if _claimable_mask[index] == 0 or _control[index] <= tuning.ownership_threshold:
+				continue
+			var offset_x := (float(x) + 0.5) * cell_width - local_position.x
+			var offset_y := (float(y) + 0.5) * cell_height - local_position.y
+			if offset_x * offset_x + offset_y * offset_y > radius_squared:
+				continue
+			count += 1
+	return count
+
+
+func get_established_cell_count() -> int:
+	# Established-or-better, using the same threshold the root stages already read, so
+	# the gambling buy-in cannot drift into a second private definition of maturity.
+	var threshold := get_root_established_threshold()
+	var count := 0
+	for index in range(_cell_count):
+		if _claimable_mask[index] == 0 or _control[index] <= tuning.ownership_threshold:
+			continue
+		if _maturity[index] >= threshold:
+			count += 1
+	return count
+
+
+func find_nearest_owned_cell(local_position: Vector2) -> int:
+	# Nearest by squared distance over the owned set. A ring search would be faster on
+	# a full board and far slower on the case that matters, which is a player standing
+	# well outside a shrunken organism.
+	var best := -1
+	var best_distance := INF
+	for index in range(_cell_count):
+		if _claimable_mask[index] == 0 or _control[index] <= tuning.ownership_threshold:
+			continue
+		var offset := get_cell_local_position(index) - local_position
+		var distance := offset.length_squared()
+		if distance < best_distance:
+			best_distance = distance
+			best = index
+	return best
+
+
+func neutralize_cells(cells: PackedInt32Array) -> int:
+	# A lost wager. Only ground the run still holds is taken: a committed cell the
+	# enemy already took during the spin stays hostile rather than being handed back
+	# as neutral, which would make losing the bet a favour.
+	var converted := 0
+	for index in cells:
+		if index < 0 or index >= _cell_count:
+			continue
+		if _claimable_mask[index] == 0 or _control[index] <= tuning.ownership_threshold:
+			continue
+		_control[index] = 0.0
+		_maturity[index] = 0.0
+		_territory_age[index] = 0.0
+		_bramble_development[index] = 0.0
+		converted += 1
+	if converted > 0:
+		refresh_visuals_now()
+	return converted
+
+
+func make_cells_hostile(cells: PackedInt32Array, hostile_control := 0.75) -> int:
+	# A Bust. Neutral ground in the region goes with the Green, which is the whole
+	# difference between a whiff and a Bust: one takes the tissue, the other leaves
+	# something behind that has to be fought back through.
+	var strength := -clampf(absf(hostile_control), 0.0, 1.0)
+	var converted := 0
+	for index in cells:
+		if index < 0 or index >= _cell_count:
+			continue
+		if _claimable_mask[index] == 0 or _control[index] <= strength:
+			continue
+		_control[index] = strength
+		_maturity[index] = 0.0
+		_territory_age[index] = 0.0
+		_bramble_development[index] = 0.0
+		converted += 1
+	if converted > 0:
+		refresh_visuals_now()
+	return converted
+
+
+func neutralize_all_owned() -> int:
+	return neutralize_cells(collect_owned_cells())
+
+
+func make_field_hostile(hostile_control := 0.75) -> int:
+	# The All In Bust. Every claimable cell, not only what was owned, because the run
+	# is over and the field has to read as lost rather than as merely empty.
+	var claimable := PackedInt32Array()
+	for index in range(_cell_count):
+		if _claimable_mask[index] != 0:
+			claimable.append(index)
+	return make_cells_hostile(claimable, hostile_control)
 
 
 func queue_maturity_support(
@@ -1080,6 +1435,23 @@ func recalculate_metrics_now() -> void:
 	var player_cells := 0
 	var hostile_cells := 0
 	var mature_player_cells := 0
+	var rooted_cells := 0
+	var deep_rooted_cells := 0
+	var established_threshold := get_root_established_threshold()
+	# Per-component production rides along inside this loop rather than taking a pass
+	# of its own. Measured on the authored arena a full-cell pass costs about 1.7ms,
+	# which is the whole cost of the metrics pass; accumulating into the component a
+	# cell already names is a few operations on top of a loop that is already running.
+	_component_rooted_cells.resize(_component_count)
+	_component_rooted_cells.fill(0)
+	_component_production_weight.resize(_component_count)
+	_component_production_weight.fill(0.0)
+	_component_cells.resize(_component_count)
+	_component_cells.fill(0)
+	_component_centroid_x.resize(_component_count)
+	_component_centroid_x.fill(0.0)
+	_component_centroid_y.resize(_component_count)
+	_component_centroid_y.fill(0.0)
 	for index in range(_cell_count):
 		if _claimable_mask[index] == 0:
 			continue
@@ -1087,8 +1459,29 @@ func recalculate_metrics_now() -> void:
 		var owner := _owner_from_control(_control[index])
 		if owner > 0:
 			player_cells += 1
-			if _maturity[index] >= tuning.mature_threshold:
+			var maturity := _maturity[index]
+			var component_id := _topology_labels[index]
+			if component_id >= 0 and component_id < _component_count:
+				# The doc's cell output: green strength x root depth. Fresh Green is
+				# worth almost nothing without the maturity factor, which is the
+				# whole point - it is what makes held ground and touched ground
+				# economically different rather than merely differently coloured.
+				_component_production_weight[component_id] += _control[index] * maturity
+				_component_cells[component_id] += 1
+				_component_centroid_x[component_id] += float(index % _width)
+				_component_centroid_y[component_id] += float(index / _width)
+				if maturity >= established_threshold:
+					_component_rooted_cells[component_id] += 1
+			if maturity >= tuning.mature_threshold:
 				mature_player_cells += 1
+			# Rooted and deeply rooted are shares of the whole claimable arena, not
+			# of what the run happens to hold. The doc separates territory quantity
+			# from territory quality, and a percentage of held ground would move when
+			# either one changed, which is the confusion it is meant to resolve.
+			if maturity >= established_threshold:
+				rooted_cells += 1
+			if maturity >= tuning.deep_root_threshold:
+				deep_rooted_cells += 1
 		elif owner < 0:
 			hostile_cells += 1
 
@@ -1105,6 +1498,12 @@ func recalculate_metrics_now() -> void:
 		if player_cells > 0
 		else 0.0
 	)
+	if claimable_cells == 0:
+		_rooted_territory_percent = 0.0
+		_deep_rooted_percent = 0.0
+	else:
+		_rooted_territory_percent = float(rooted_cells) / float(claimable_cells) * 100.0
+		_deep_rooted_percent = float(deep_rooted_cells) / float(claimable_cells) * 100.0
 	metrics_changed.emit(
 		_player_percent,
 		_hostile_percent,
@@ -1115,6 +1514,11 @@ func recalculate_metrics_now() -> void:
 
 
 func analyze_topology_now() -> void:
+	# The labels about to be overwritten are what the next component has to be
+	# recognised by, so they are kept before the fill rather than after it.
+	var swap := _previous_topology_labels
+	_previous_topology_labels = _topology_labels
+	_topology_labels = swap
 	_topology_labels.fill(-1)
 	_fragment_count = 0
 	_small_fragment_count = 0
@@ -1132,10 +1536,16 @@ func analyze_topology_now() -> void:
 		_topology_queue[tail] = start_index
 		tail += 1
 		_topology_labels[start_index] = next_label
+		# Gathered during the flood the region needs anyway, so the nucleation test
+		# costs no extra pass over the field: how mature this patch is, and how much
+		# friendly Green is sitting right beside it without being part of it.
+		var maturity_sum := 0.0
+		var support_contacts := 0
 
 		while head < tail:
 			var current := _topology_queue[head]
 			head += 1
+			maturity_sum += _maturity[current]
 			var current_x := current % _width
 			var current_y := current / _width
 			if current_x > 0:
@@ -1146,19 +1556,268 @@ func analyze_topology_now() -> void:
 				tail = _try_enqueue_topology_neighbor(current - _width, next_label, tail)
 			if current_y < _height - 1:
 				tail = _try_enqueue_topology_neighbor(current + _width, next_label, tail)
+			# The flood is four-connected, so Green touching this patch only diagonally
+			# is a different component sitting physically against it. That is exactly
+			# what "landed next to friendly Green" means, and it is one check per cell.
+			if current_x > 0 and current_y > 0:
+				support_contacts += _count_support_contact(current - _width - 1)
+			if current_x < _width - 1 and current_y > 0:
+				support_contacts += _count_support_contact(current - _width + 1)
+			if current_x > 0 and current_y < _height - 1:
+				support_contacts += _count_support_contact(current + _width - 1)
+			if current_x < _width - 1 and current_y < _height - 1:
+				support_contacts += _count_support_contact(current + _width + 1)
 
 		_fragment_count += 1
-		if tail < tuning.small_fragment_cell_limit:
+		# Classical nucleation, in place of a flat timer on a cell count nobody derived.
+		# A new phase forming inside another pays surface energy and gains bulk energy;
+		# below the critical radius the surface term wins and the nucleus dissolves.
+		# What was a threshold we picked is now a consequence of what the patch is made
+		# of, how mature it is, and what it landed next to.
+		var region_radius := sqrt(float(tail) / PI)
+		var critical_radius := _critical_radius(
+			maturity_sum / maxf(1.0, float(tail)),
+			float(support_contacts) / maxf(1.0, float(tail))
+		)
+		if region_radius < critical_radius:
 			_small_fragment_count += 1
-			var decay := tuning.small_fragment_decay_per_second * tuning.topology_interval_seconds
+			# Proportional to how far below the critical radius it is, so a patch that
+			# nearly makes it lingers and a speck goes at once. A uniform rate made a
+			# one-cell scrap and an almost-viable colony die at the same speed.
+			var shortfall := clampf(
+				(critical_radius - region_radius) / maxf(0.0001, critical_radius),
+				0.0,
+				1.0
+			)
+			var decay := (
+				tuning.small_fragment_decay_per_second
+				* tuning.topology_interval_seconds
+				* shortfall
+			)
 			for queue_index in range(tail):
 				var cell_index := _topology_queue[queue_index]
 				_control[cell_index] = maxf(0.0, _control[cell_index] - decay)
 		next_label += 1
 
+	_component_count = next_label
+	_topology_generation += 1
+	_resolve_component_overlap()
+
+
+func _count_support_contact(index: int) -> int:
+	# One if this cell is friendly Green, zero otherwise. Written out rather than
+	# inlined four times because the flood already runs several thousand times a pass
+	# and four copies of a two-line test is four places for it to drift.
+	if _claimable_mask[index] == 0:
+		return 0
+	return 1 if _control[index] > tuning.ownership_threshold else 0
+
+
+func _critical_radius(average_maturity: float, support_fraction: float) -> float:
+	# r* = 2y / dg. Cohesion is the surface tension: a cohesive ecosystem raises the
+	# cost of having a border at all, so it throws fewer surviving satellites and
+	# holds its main body harder. Mass is the bulk driving force and lowers r*, so a
+	# Mass build's scatter literally starts taking root - which is the fantasy that
+	# axis has always been selling and only ever approximated.
+	var gamma := tuning.nucleation_surface_tension * maxf(0.05, _cohesion_multiplier)
+	var driving := (
+		tuning.nucleation_driving_force
+		* maxf(0.05, _nucleation_driving_multiplier)
+		* lerpf(
+			1.0 - tuning.nucleation_maturity_share,
+			1.0,
+			clampf(average_maturity, 0.0, 1.0)
+		)
+		* (1.0 + tuning.nucleation_support_bonus * clampf(support_fraction, 0.0, 1.0))
+	)
+	return 2.0 * gamma / maxf(0.0001, driving)
+
+
+func get_critical_radius(average_maturity: float, support_fraction: float) -> float:
+	# The same number, for anything that wants to reason about survival without
+	# waiting for a topology pass to demonstrate it.
+	return _critical_radius(average_maturity, support_fraction)
+
+
+func set_nucleation_driving_multiplier(multiplier: float) -> void:
+	# Mass, as the bulk driving force. Pushed in by the run controller the same way
+	# Cohesion is, so the field still never reaches into the economy.
+	_nucleation_driving_multiplier = maxf(0.05, multiplier)
+
+
+func get_nucleation_driving_multiplier() -> float:
+	return _nucleation_driving_multiplier
+
+
+func _resolve_component_overlap() -> void:
+	_overlap_current.clear()
+	_overlap_previous.clear()
+	_overlap_cells.clear()
+	if _component_count == 0:
+		return
+	# Counted in one dictionary keyed by both labels rather than a component-by-
+	# component scan, so this stays a single pass over the cells.
+	var overlap := {}
+	for index in range(_cell_count):
+		var current_label := _topology_labels[index]
+		if current_label < 0:
+			continue
+		var previous_label := _previous_topology_labels[index]
+		if previous_label < 0:
+			continue
+		var key := current_label * OVERLAP_KEY_STRIDE + previous_label
+		overlap[key] = int(overlap.get(key, 0)) + 1
+	for key in overlap.keys():
+		_overlap_current.append(int(key) / OVERLAP_KEY_STRIDE)
+		_overlap_previous.append(int(key) % OVERLAP_KEY_STRIDE)
+		_overlap_cells.append(overlap[key])
+
+
+func get_component_overlap_count() -> int:
+	return _overlap_cells.size()
+
+
+func get_component_overlap_current(overlap_index: int) -> int:
+	return _overlap_current[overlap_index]
+
+
+func get_component_overlap_previous(overlap_index: int) -> int:
+	return _overlap_previous[overlap_index]
+
+
+func get_component_overlap_cells(overlap_index: int) -> int:
+	return _overlap_cells[overlap_index]
+
+
+func get_topology_generation() -> int:
+	return _topology_generation
+
+
+func get_component_count() -> int:
+	return _component_count
+
+
+func get_component_rooted_cells(component_id: int) -> int:
+	if component_id < 0 or component_id >= _component_rooted_cells.size():
+		return 0
+	return _component_rooted_cells[component_id]
+
+
+func get_component_cells(component_id: int) -> int:
+	if component_id < 0 or component_id >= _component_cells.size():
+		return 0
+	return _component_cells[component_id]
+
+
+func get_component_centroid(component_id: int) -> Vector2:
+	if component_id < 0 or component_id >= _component_cells.size():
+		return Vector2.ZERO
+	var cells := _component_cells[component_id]
+	if cells <= 0:
+		return Vector2.ZERO
+	return Vector2(
+		(_component_centroid_x[component_id] / float(cells) + 0.5)
+		* tuning.arena_size.x / float(_width),
+		(_component_centroid_y[component_id] / float(cells) + 0.5)
+		* tuning.arena_size.y / float(_height)
+	)
+
+
+func get_component_production_weight(component_id: int) -> float:
+	# Sum of control x maturity over the component's cells: the doc's per-cell output
+	# with its productivity constant left out, because what a unit of rooted ground
+	# is worth is an economic decision and belongs to the economy, not the field.
+	if component_id < 0 or component_id >= _component_production_weight.size():
+		return 0.0
+	return _component_production_weight[component_id]
+
+
+func sample_rooted_ground(wanted: int) -> PackedVector2Array:
+	# Where the organism has actually put roots down, sampled coarsely, with each
+	# point carrying its own maturity in the returned pair's second slot so the layer
+	# drawn on top can be thicker where the ground is older.
+	#
+	# Strided like the vessel sampler and rebuilt on the same slow cadence: root hairs
+	# are a broad texture rather than a per-cell readout, and scanning the whole board
+	# every frame to draw a few dozen tufts would cost the budget for no visible gain.
+	var anchors := PackedVector2Array()
+	if wanted <= 0:
+		return anchors
+	var established := get_root_established_threshold()
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var candidates := PackedInt32Array()
+	var stride := maxi(1, _cell_count / 2048)
+	for index in range(0, _cell_count, stride):
+		if _claimable_mask[index] == 0:
+			continue
+		if _control[index] <= tuning.ownership_threshold:
+			continue
+		if _maturity[index] < established:
+			continue
+		candidates.append(index)
+	if candidates.is_empty():
+		return anchors
+	var pick_stride := maxi(1, int(ceil(float(candidates.size()) / float(wanted))))
+	for offset in range(0, candidates.size(), pick_stride):
+		var index := candidates[offset]
+		anchors.append(Vector2(
+			(float(index % _width) + 0.5) * cell_width,
+			(float(index / _width) + 0.5) * cell_height
+		))
+		# Maturity rides along as a second point so one array carries both and the
+		# caller never has to ask the field a second question per anchor.
+		anchors.append(Vector2(_maturity[index], 0.0))
+	return anchors
+
+
+func sample_component_vessels(component_id: int, wanted: int) -> PackedVector2Array:
+	# Where a component's roots run out to, sampled coarsely. This is what the root
+	# layer is drawn along, so it is rebuilt on the topology cadence rather than per
+	# frame: the doc asks for low-frequency root updates, and the shape of an organism
+	# does not change between two frames.
+	var endpoints := PackedVector2Array()
+	if component_id < 0 or wanted <= 0:
+		return endpoints
+	var established := get_root_established_threshold()
+	var candidates := PackedInt32Array()
+	# Strided rather than exhaustive. A vessel is a broad shape, and sampling every
+	# cell to draw a few dozen lines would cost the whole budget for no visible gain.
+	var stride := maxi(1, _cell_count / 2048)
+	for index in range(0, _cell_count, stride):
+		if _claimable_mask[index] == 0:
+			continue
+		if _topology_labels[index] != component_id:
+			continue
+		if _maturity[index] < established:
+			continue
+		candidates.append(index)
+	if candidates.is_empty():
+		return endpoints
+	var pick_stride := maxi(1, int(ceil(float(candidates.size()) / float(wanted))))
+	for offset in range(0, candidates.size(), pick_stride):
+		var index := candidates[offset]
+		endpoints.append(Vector2(
+			(float(index % _width) + 0.5) * tuning.arena_size.x / float(_width),
+			(float(index / _width) + 0.5) * tuning.arena_size.y / float(_height)
+		))
+	return endpoints
+
+
+func get_component_id_at_index(index: int) -> int:
+	if index < 0 or index >= _cell_count:
+		return -1
+	var label := _topology_labels[index]
+	return label if label >= 0 else -1
+
+
+func get_component_id_at_local(local_position: Vector2) -> int:
+	var label := _topology_labels[_index_at_local(local_position)]
+	return label if label >= 0 else -1
+
 
 func cycle_debug_view() -> String:
-	debug_view = (debug_view + 1) % 3
+	debug_view = (debug_view + 1) % DebugView.size()
 	if _field_material != null:
 		_field_material.set_shader_parameter("debug_view", debug_view)
 	queue_redraw()
@@ -1167,6 +1826,8 @@ func cycle_debug_view() -> String:
 
 func get_debug_view_name() -> String:
 	match debug_view:
+		DebugView.ROOT:
+			return "ROOT DEPTH"
 		DebugView.MATURITY:
 			return "MATURITY"
 		DebugView.CONTROL:
@@ -1603,6 +2264,47 @@ func get_mature_player_percent() -> float:
 	return _mature_player_percent
 
 
+func get_rooted_territory_percent() -> float:
+	return _rooted_territory_percent
+
+
+func get_deep_rooted_percent() -> float:
+	return _deep_rooted_percent
+
+
+func get_root_established_threshold() -> float:
+	# Where ground stops being fresh and starts carrying roots. Pruning already eats
+	# the ecosystem in bands split at this same point, so the stages read here and
+	# the order it harvests in cannot drift apart.
+	return tuning.mature_threshold * 0.5
+
+
+func get_root_stage(maturity: float) -> int:
+	if maturity >= tuning.deep_root_threshold:
+		return RootStage.LATE
+	if maturity >= tuning.mature_threshold:
+		return RootStage.DEVELOPED
+	if maturity >= get_root_established_threshold():
+		return RootStage.ESTABLISHED
+	return RootStage.SHALLOW
+
+
+func get_root_stage_at_local(local_position: Vector2) -> int:
+	return get_root_stage(get_maturity_at_local(local_position))
+
+
+static func get_root_stage_name(stage: int) -> String:
+	match stage:
+		RootStage.LATE:
+			return "Late"
+		RootStage.DEVELOPED:
+			return "Developed"
+		RootStage.ESTABLISHED:
+			return "Established"
+		_:
+			return "Shallow"
+
+
 func get_fragment_count() -> int:
 	return _fragment_count
 
@@ -1649,6 +2351,8 @@ func _configure_buffers() -> void:
 	_pruned_ground.resize(_cell_count)
 	_lost_memory.resize(_cell_count)
 	_topology_labels.resize(_cell_count)
+	_previous_topology_labels.resize(_cell_count)
+	_previous_topology_labels.fill(-1)
 	_topology_queue.resize(_cell_count)
 	_pixel_bytes.resize(_cell_count * 4)
 
@@ -1665,6 +2369,11 @@ func _configure_material() -> void:
 		_field_material = configured_material.duplicate() as ShaderMaterial
 	material = _field_material
 	_field_material.set_shader_parameter("ownership_threshold", tuning.ownership_threshold)
+	_field_material.set_shader_parameter(
+		"root_established_threshold", get_root_established_threshold()
+	)
+	_field_material.set_shader_parameter("mature_threshold", tuning.mature_threshold)
+	_field_material.set_shader_parameter("deep_root_threshold", tuning.deep_root_threshold)
 	_field_material.set_shader_parameter("debug_view", debug_view)
 	_field_material.set_shader_parameter("bramble_enabled", _bramble_enabled)
 

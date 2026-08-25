@@ -10,6 +10,9 @@ signal died
 @export_group("Collaborators")
 ## Authoritative field used for movement collision, spawn position, and Green healing checks.
 @export var territory_field: TerritoryField
+## Presentation options, for the highlight ring. Optional: without it the Gardener
+## is drawn exactly as it was before the setting existed.
+@export var display_settings: PhaseBDisplaySettings
 
 @export_group("Health")
 ## Health restored on reset and the upper limit for all healing.
@@ -72,6 +75,35 @@ func _physics_process(delta: float) -> void:
 func _draw() -> void:
 	var flash := _damage_flash_remaining > 0.0
 	var body_color := Color("fff0df") if flash else Color("d8ffe5")
+	# Drawn first, underneath the body, so the highlight reads as the Gardener being
+	# picked out of the battlefield rather than as another effect sitting on top of
+	# them. Off by default is deliberately not the default choice: by the time the
+	# arena carries splatter, vines and an orbiting ring, an outline is the difference
+	# between playing and hunting for yourself.
+	if display_settings != null:
+		var highlight_width := display_settings.get_player_highlight_width()
+		var highlight_alpha := display_settings.get_player_highlight_alpha()
+		if highlight_width > 0.0 and highlight_alpha > 0.0:
+			draw_arc(
+				Vector2.ZERO,
+				body_radius_pixels + 6.0,
+				0.0,
+				TAU,
+				28,
+				Color(0.05, 0.02, 0.03, highlight_alpha * 0.7),
+				highlight_width + 2.0,
+				true
+			)
+			draw_arc(
+				Vector2.ZERO,
+				body_radius_pixels + 6.0,
+				0.0,
+				TAU,
+				28,
+				Color(1.0, 0.98, 0.72, highlight_alpha),
+				highlight_width,
+				true
+			)
 	draw_circle(Vector2.ZERO, body_radius_pixels + 3.0, Color(0.01, 0.03, 0.025, 0.92))
 	draw_circle(Vector2.ZERO, body_radius_pixels, body_color)
 	var leaf := PackedVector2Array([

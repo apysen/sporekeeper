@@ -10,190 +10,21 @@
 
 # 1. Current Plant Path Roster
 
-Plant has six normal Paths plus one secret seventh gambling Path.
+Plant has five normal Paths plus the Clover gambling machine.
 
 1. **Spore** — enemy death becomes delayed territorial growth through Seeds.
 2. **Bloom** — existing Green violently expands through splatter and pressure.
 3. **Bramble** — Green controls enemies through Entanglement, rooting, and repulsion.
 4. **Root** — Mature Green becomes stronger and amplifies other Plant systems.
-5. **Carnivory** — Green grows autonomous predators where enemies invade it.
-6. **Pruning** — Green is harvested into an offensive ring and discharged outward.
-7. **Clover** — secret gambling Path available only as the post-Evolution third Path.
+5. **Pruning** — Green is harvested into an offensive ring and discharged outward.
 
-Kudzu is removed from the active Plant roster.
-
----
-
-# 2. Carnivory Replaces Kudzu
-
-## Identity
-
-> **Enemies invading Green feed the growth of predatory plants.**
-
-Carnivory should add new functionality to owned territory instead of acting as another territory-expansion Path.
-
-## Local Prey Pressure
-
-Enemies spending time on Green generate **local Prey Pressure**.
-
-- Use local enemy-seconds or a similar local metric.
-- Do not use whole-arena territory percentages.
-- Dense late-game invasions should naturally create Prey Pressure faster.
-- High-pressure areas become the places where predators grow.
-
-Conceptual trigger:
-
-> Enemies collectively spend roughly 10 enemy-seconds inside a local Green region.
-
-Exact values are tunable.
+Clover is not a Path. It is a machine permanently housed in the side panel that
+wagers Territory, and it is specified in `docs/gambling_master_implementation_guide.md`
+rather than here.
 
 ---
 
-# 3. Maw System
-
-When local Prey Pressure reaches its threshold:
-
-1. A **Maw Bud** emerges.
-2. The Bud visibly grows.
-3. It becomes an active **Maw**.
-
-## Maw Behavior
-
-1. Detect nearby prey.
-2. Open with a visible telegraph.
-3. Snap shut.
-4. Damage several enemies inside its Jawspan.
-5. Enter **Digestion**.
-6. Bite again after Digestion completes.
-
-## Territory Dependency
-
-- Maws must remain planted on Green.
-- Losing the underlying Green uproots or destroys the Maw.
-- Maw growth should visibly draw material from the surrounding ecosystem.
-
-## Capacity
-
-Maw count must remain capped.
-
-Prototype direction:
-
-- low investment: about 2 Maws,
-- high investment: about 5–6 Maws.
-
-At capacity, either prevent a new Maw or replace the oldest/least useful one.
-
----
-
-# 4. Carnivory Damage Model
-
-Maws should cover hordes without multiplying full damage by every enemy caught.
-
-Possible model:
-
-> Each Bite has a total damage budget that is distributed among captured enemies.
-
-Example:
-
-- 1 enemy: ~500 total damage.
-- 5 enemies: ~100 each.
-
-Partial splitting can be tested if perfect division feels too weak.
-
-The goal is:
-
-> **More prey increases coverage, not unlimited damage multiplication.**
-
----
-
-# 5. Carnivory Upgrade Lines
-
-Prototype four normal upgrade lines:
-
-## Bite Force
-Increases Bite damage.
-
-## Jawspan
-Increases Bite area and maximum prey caught.
-
-## Digestion
-Reduces the time between Bites.
-
-## Budding
-Increases Prey Pressure conversion and can eventually increase Maw Capacity.
-
-Possible specialization:
-
-- **Boss:** Bite Force + Digestion.
-- **Horde:** Jawspan + Budding.
-
----
-
-# 6. Carnivory Evolutions
-
-The five old Kudzu pairings should be replaced by Carnivory pairings.
-
-## Spore + Carnivory — Snap Pods
-
-> Seed → predator → kill → Seed.
-
-Possible behavior:
-
-- Seeds germinating beneath enemy groups temporarily form snapping mouths.
-- Permanent Maws finishing Digestion can spit out Seeds.
-- Late game becomes a field of snaptraps erupting under mobs.
-
-## Bloom + Carnivory — Feeding Frenzy
-
-> Bloom wakes the predator network.
-
-Possible behavior:
-
-- Maws inside a Bloom event snap simultaneously.
-- Bloom expansion scatters temporary Maw Buds into newly claimed Green.
-
-Presentation:
-
-> Bloom charges → mouths open → synchronized Bite → splatter surge → new mouths emerge.
-
-## Bramble + Carnivory — Strangletrap
-
-> Bramble captures prey and Carnivory eats it.
-
-Possible behavior:
-
-- heavily Entangled enemies become Prey,
-- nearby Maws extend long vines,
-- vines drag trapped enemies toward the jaws,
-- Bite resolves after the pull.
-
-## Root + Carnivory — Ancient Hunger
-
-> Old Green grows enormous predators.
-
-Possible behavior:
-
-- Maws rooted in Mature Green can become Elder Maws,
-- Elder Maws are slower but much larger,
-- digestion can feed Root systems or Elder Maw growth.
-
-## Pruning + Carnivory — Uprooting
-
-> Pruning tears predators out of the ecosystem and weaponizes them.
-
-Possible behavior:
-
-- harvested Maws become orbiting snapping heads in the Pruning ring,
-- they Bite enemies within the held ring,
-- released heads travel outward with the ring,
-- they Bite along the route,
-- they may replant where the ring ends.
-
-This must use the current active Pruning ring, not the obsolete timed Pruning Cycle.
-
----
-
-# 7. Secret Seventh Path — Clover
+# 2. Secret Seventh Path — Clover
 
 Clover is the secret Plant gambling Path.
 
@@ -214,7 +45,7 @@ Selecting it causes the slot-machine UI to appear.
 
 ---
 
-# 8. Clover Core Mechanic
+# 3. Clover Core Mechanic
 
 Normal gameplay earns **Chips**.
 
@@ -253,7 +84,7 @@ Mega Jackpot can trigger one major event from all six normal Plant Paths.
 
 ---
 
-# 9. Clover Busts and Rigging
+# 4. Clover Busts and Rigging
 
 Busts should create meaningful downside without randomly ending a run.
 
@@ -279,7 +110,7 @@ The presentation should become increasingly suspicious and casino-like as Clover
 
 ---
 
-# 10. Incremental System Overhaul
+# 5. Incremental System Overhaul
 
 The Biomass system should become a defining mechanic rather than a row of repeatable percentage upgrades.
 
@@ -297,7 +128,7 @@ Biomass becomes:
 
 ---
 
-# 11. Ecosystem Metabolism
+# 6. Ecosystem Metabolism
 
 Start with three universal Plant metabolism systems.
 
@@ -346,7 +177,7 @@ Physical fantasy:
 
 ---
 
-# 12. Metabolism Allocation
+# 7. Metabolism Allocation
 
 Use a small number of discrete allocation points instead of precise sliders.
 
@@ -373,7 +204,7 @@ Important rule:
 
 ---
 
-# 13. Automatic Leveling
+# 8. Automatic Leveling
 
 Allocated Biomass should automatically fill Metabolism level bars.
 
@@ -392,7 +223,7 @@ Do not require repeated manual upgrade clicks.
 
 ---
 
-# 14. Exponential Costs
+# 9. Exponential Costs
 
 Metabolism costs should increase exponentially.
 
@@ -415,7 +246,7 @@ The goal is to create a real decision between:
 
 ---
 
-# 15. Metabolism Breakthroughs
+# 10. Metabolism Breakthroughs
 
 Every major threshold should offer a behavioral choice.
 
@@ -451,7 +282,7 @@ Breakthroughs should visibly alter the simulation.
 
 ---
 
-# 16. Biomass HUD
+# 11. Biomass HUD
 
 Show Biomass as a running economy.
 
@@ -475,7 +306,7 @@ The player can intentionally run an unsustainable configuration for a short time
 
 ---
 
-# 17. Overgrow
+# 12. Overgrow
 
 Add one major instant-dopamine Biomass action:
 
@@ -515,7 +346,7 @@ The same button should produce different outcomes because the battlefield state 
 
 ---
 
-# 18. Overgrow and Metabolism
+# 13. Overgrow and Metabolism
 
 Overgrow should inherit the player's Metabolism identity.
 
@@ -532,7 +363,7 @@ Two players pressing Overgrow should be able to get visibly different physical r
 
 ---
 
-# 19. Incremental Dopamine
+# 14. Incremental Dopamine
 
 Add simple celebration around economic growth.
 
@@ -564,7 +395,7 @@ These are secondary additions, not requirements for the first prototype.
 
 ---
 
-# 20. Territory Physics Becomes Core Gameplay
+# 15. Territory Physics Becomes Core Gameplay
 
 Territory should behave like a living material rather than a static painted texture.
 
@@ -584,7 +415,7 @@ The physics simulation determines the resulting shape and movement of territory.
 
 ---
 
-# 21. Physical Identity of Plant
+# 16. Physical Identity of Plant
 
 Plant should behave like a **living viscoelastic material**.
 
@@ -613,7 +444,7 @@ Root further exaggerates these differences.
 
 ---
 
-# 22. Paths as Physics Manipulators
+# 17. Paths as Physics Manipulators
 
 ## Spore
 Adds localized new Mass through biological growth.
@@ -627,9 +458,6 @@ Makes Green resist enemy movement and physically restrain invaders.
 ## Root
 Changes material properties of Mature Green.
 
-## Carnivory
-Turns local enemy pressure into organisms embedded in Green.
-
 ## Pruning
 Removes territorial Mass and converts it into an offensive physical object.
 
@@ -637,7 +465,7 @@ This should make the Paths feel like different ways of manipulating one shared e
 
 ---
 
-# 23. Bloom Splatter Rework
+# 18. Bloom Splatter Rework
 
 Bloom should visually and physically resemble a violent **paint splatter** rather than a clean expanding circle.
 
@@ -651,7 +479,7 @@ Spore should remain more like organic point growth.
 
 ---
 
-# 24. Bloom Is Not a Fixed Splat Texture
+# 19. Bloom Is Not a Fixed Splat Texture
 
 Do not simply stamp one irregular decal.
 
@@ -669,7 +497,7 @@ The final shape emerges from the simulation.
 
 ---
 
-# 25. Bloom Mass vs Force
+# 20. Bloom Mass vs Force
 
 Keep Bloom Mass and Bloom Force physically distinct.
 
@@ -707,7 +535,7 @@ Players should be able to recognize their Bloom build from its physical appearan
 
 ---
 
-# 26. Bloom Droplet Simulation
+# 21. Bloom Droplet Simulation
 
 Do not make every visible droplet a full gameplay object.
 
@@ -724,7 +552,7 @@ This keeps the effect spectacular without requiring hundreds of physics bodies.
 
 ---
 
-# 27. Bloom Satellite Green
+# 22. Bloom Satellite Green
 
 Large splats can create temporary disconnected Green regions.
 
@@ -743,7 +571,7 @@ Example emergent chain:
 
 ---
 
-# 28. Bloom vs Hostile Territory
+# 23. Bloom vs Hostile Territory
 
 Green splatter should not automatically recolor Hostile material.
 
@@ -759,7 +587,7 @@ The battlefield should look like two living materials pushing into each other.
 
 ---
 
-# 29. Bloom and Arena Geometry
+# 24. Bloom and Arena Geometry
 
 Bloom should react differently to geometry.
 
@@ -782,7 +610,7 @@ This makes automatic Bloom positioning meaningful.
 
 ---
 
-# 30. Super Bloom Spectacle
+# 25. Super Bloom Spectacle
 
 Super Bloom should become one of the main visual benchmarks for the entire game.
 
@@ -808,7 +636,7 @@ Those splats remain real territory and continue to:
 
 ---
 
-# 31. Bramble Physical Presentation
+# 26. Bramble Physical Presentation
 
 Entanglement should be visually tied to the Green field.
 
@@ -824,7 +652,7 @@ The underlying movement logic can remain deterministic rather than using expensi
 
 ---
 
-# 32. Root Physical Presentation
+# 27. Root Physical Presentation
 
 Root should increasingly become:
 
@@ -842,7 +670,7 @@ A Bloom interacting with heavily Rooted territory should physically behave diffe
 
 ---
 
-# 33. Pruning as Mass Conversion
+# 28. Pruning as Mass Conversion
 
 Pruning should visibly remove Mass from Green.
 
@@ -861,7 +689,7 @@ The player is performing:
 
 ---
 
-# 34. Simulation Architecture Direction
+# 29. Simulation Architecture Direction
 
 Avoid building territory from hundreds or thousands of Unity Rigidbody objects.
 
@@ -890,7 +718,7 @@ Shaders and particles can upscale and exaggerate the gameplay field.
 
 ---
 
-# 35. Prototype Resolution
+# 30. Prototype Resolution
 
 Start with a moderate field resolution.
 
@@ -912,7 +740,7 @@ The goal is responsive, readable, emergent territory behavior.
 
 ---
 
-# 36. Gameplay Physics Over Scientific Physics
+# 31. Gameplay Physics Over Scientific Physics
 
 Use simplified, deterministic rules for:
 
@@ -939,7 +767,7 @@ Target:
 
 ---
 
-# 37. Final System Relationship
+# 32. Final System Relationship
 
 The intended architecture is:
 
@@ -959,7 +787,7 @@ These systems should feed into one another rather than feeling like separate pro
 
 ---
 
-# 38. Desired Run Fantasy
+# 33. Desired Run Fantasy
 
 Early run:
 
@@ -987,7 +815,7 @@ The intended feeling is:
 
 ---
 
-# 39. Recommended Implementation Order
+# 34. Recommended Implementation Order
 
 ## Phase 1 — Shared Territory Field
 Prototype:
@@ -1020,19 +848,7 @@ Add one Lv. 5 branch choice for each Metabolism system.
 ## Phase 5 — Overgrow
 Convert Biomass Reserve into temporary Mass + Pressure.
 
-## Phase 6 — Carnivory
-Implement:
-- local Prey Pressure,
-- Maw Bud,
-- Maw,
-- Bite,
-- Digestion,
-- Maw Capacity.
-
-## Phase 7 — Carnivory Evolutions
-Replace the five obsolete Kudzu pairings.
-
-## Phase 8 — Clover
+## Phase 6 — Clover
 Implement:
 - Chips,
 - slot-machine UI,
@@ -1051,7 +867,7 @@ Implement:
 
 ---
 
-# 40. Current Design Standard
+# 35. Current Design Standard
 
 Every major new mechanic should contribute to at least two of the following:
 

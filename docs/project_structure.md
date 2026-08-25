@@ -40,7 +40,7 @@ data/                           Authored Resource instances; no mutable run stat
   elements/
     shared/                     Framework defaults and common stat vocabulary
     plant/
-      paths/                    Spore, Bloom, Bramble, Root, Carnivory, Pruning
+      paths/                    Spore, Bloom, Bramble, Root, Pruning
       upgrades/                 Four numeric stat lines per Plant path
       relics/                   Universal, path, cross-path, and legendary relics
   assets/ui/                  Imported UI art and the StyleBoxTexture resources

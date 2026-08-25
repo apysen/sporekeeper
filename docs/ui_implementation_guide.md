@@ -837,7 +837,7 @@ Test at:
 - dense late-game horde
 - Super Bloom chain
 - heavy Bramble build
-- full Carnivory build
+- a Man-Eater eruption
 - Pruning discharge
 - boss encounter
 - low Green emergency

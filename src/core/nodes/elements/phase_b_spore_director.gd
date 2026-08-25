@@ -34,6 +34,16 @@ signal status_requested(message: String)
 ## Additive Seed territory-mass multiplier granted by each Growth Mass rank.
 @export_range(0.0, 2.0, 0.01) var seed_mass_per_level := 0.24
 
+@export_group("Spore Burst")
+## Damage a germinating Seed deals at a Growth Mass of one, for runs holding the Spore
+## Burst relic. Scaled by the same mass the germination pushes into the field, so a Seed
+## that arrives out of Mature ground hits as hard as the Green it makes.
+@export_range(0.0, 200.0, 1.0) var spore_burst_damage := 24.0
+## How far that detonation reaches. Kept close to the growth it accompanies: the relic
+## should read as the germination itself being violent, not as a second explosion
+## arriving from somewhere else.
+@export_range(8.0, 320.0, 2.0) var spore_burst_radius_pixels := 84.0
+
 @export_group("Catalyst Durability")
 ## Base damage charging Seeds can withstand before a Saboteur destroys them.
 @export_range(0.1, 20.0, 0.1) var seed_durability := 2.0
@@ -145,6 +155,16 @@ func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 	var inherited_mass := 1.0 + root_director.get_network_bonus() * ground_maturity
 	if progression.has_active_evolution(PhaseBProgression.EvolutionId.SEED_BANK):
 		inherited_mass += evolutions.seed_bank_maturity_mass_bonus * ground_maturity
+	if (
+		progression.has_active_evolution(PhaseBProgression.EvolutionId.PIONEER)
+		and progression.get_evolution_upgrade_level() >= 3
+		and territory_field.get_pruned_ground_at_local(local_position) > 0.0
+	):
+		# Fertile Cut: ground Pruning has just opened is the best thing a Seed can land
+		# in. Read from the field's own pruned-ground timer rather than from a list the
+		# Pruning director would have to keep, so it works for any Seed that happens to
+		# germinate there and not only for the ones Pioneer buried.
+		inherited_mass += evolutions.second_flush_pruned_mass_bonus
 	territory_field.queue_seed_growth(
 		local_position,
 		get_seed_mass_multiplier() * inherited_mass,
@@ -152,6 +172,24 @@ func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 		progression.get_conversion_multiplier(),
 		sqrt(expansion)
 	)
+	if progression.has_relic(PhaseBRelicCatalog.Id.SPORE_BURST):
+		# Spore Burst: germination is violent. The damage rides the same mass the growth
+		# just pushed into the field rather than being a flat number beside it, so the
+		# relic scales with everything that already makes a Seed better - Growth Mass,
+		# the Root Network, Seed Bank's maturity bonus - instead of needing its own
+		# ladder. Sourced as RELIC so a kill it causes cannot feed a relic trigger and
+		# start a chain the player cannot see the end of.
+		var burst_mass := get_seed_mass_multiplier() * inherited_mass
+		var burst_radius := spore_burst_radius_pixels * sqrt(expansion)
+		var caught := combat.damage_enemies_in_radius(
+			local_position,
+			burst_radius,
+			spore_burst_damage * burst_mass,
+			PhaseBCombatDirector.DeathSource.RELIC
+		)
+		overlay.spawn_hostile_pulse(local_position, burst_radius)
+		if caught > 0:
+			status_requested.emit("SPORE BURST — germination tore through %d enemies." % caught)
 	if progression.has_active_evolution(PhaseBProgression.EvolutionId.SUPER_BLOOM):
 		# The Bloom director owns chain depth and the Bloom's own telegraph, so the
 		# Seed asks it to arm the chain rather than keeping a second copy.

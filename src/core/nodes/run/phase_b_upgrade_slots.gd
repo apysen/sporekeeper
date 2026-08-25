@@ -266,6 +266,19 @@ func get_slot_tooltip(index: int) -> String:
 	return _slot_panels[index].tooltip_text
 
 
+func get_slot_border_color(index: int) -> Color:
+	## The colour the slot's edge actually ended up with. Read back for tests and for
+	## anything that wants to mirror the row, the same way the tooltip is.
+	if index < 0 or index >= _slot_panels.size():
+		return Color(0.0, 0.0, 0.0, 0.0)
+	var style := _slot_panels[index].get_theme_stylebox("panel")
+	if style is StyleBoxFlat:
+		return (style as StyleBoxFlat).border_color
+	if style is StyleBoxTexture:
+		return (style as StyleBoxTexture).modulate_color
+	return Color(0.0, 0.0, 0.0, 0.0)
+
+
 func get_slot_level_text(index: int) -> String:
 	if index < 0 or index >= _slot_levels.size():
 		return ""
@@ -283,13 +296,18 @@ func set_slot(
 	title: String,
 	level_text: String,
 	tooltip: String,
-	state: int
+	state: int,
+	accent := Color(0.0, 0.0, 0.0, 0.0)
 ) -> void:
+	## `accent` recolours a filled slot away from the row's own palette. The relic row
+	## uses it to carry rarity; the growth-line row leaves it unset and is untouched.
+	## Transparent black is the sentinel rather than a second boolean, because a colour
+	## nobody can see is never a colour anyone meant.
 	if index < 0 or index >= _slot_panels.size():
 		return
 	var panel := _slot_panels[index]
 	panel.tooltip_text = tooltip
-	panel.add_theme_stylebox_override("panel", _build_style(state))
+	panel.add_theme_stylebox_override("panel", _build_style(state, accent))
 	# A locked slot says everything it needs to with the icon alone.
 	var locked := state == SlotState.LOCKED
 	_slot_locks[index].visible = locked and locked_icon != null
@@ -301,15 +319,19 @@ func set_slot(
 	)
 	_slot_levels[index].text = level_text
 	_slot_levels[index].visible = not level_text.is_empty()
+	var accented := accent.a > 0.0
 	match state:
 		SlotState.FILLED:
+			# Lifted toward white rather than set to the accent itself. Legendary gold
+			# lettering on a legendary gold border is a slot with nothing readable in it,
+			# and the abbreviation is the part that has to survive at this size.
 			_slot_titles[index].add_theme_color_override(
 				"font_color",
-				Color(0.84, 1.0, 0.88)
+				accent.lerp(Color(1.0, 1.0, 1.0), 0.72) if accented else Color(0.84, 1.0, 0.88)
 			)
 			_slot_levels[index].add_theme_color_override(
 				"font_color",
-				Color(0.55, 0.92, 0.70)
+				accent.lerp(Color(1.0, 1.0, 1.0), 0.35) if accented else Color(0.55, 0.92, 0.70)
 			)
 		SlotState.LOCKED:
 			_slot_titles[index].add_theme_color_override(
@@ -412,14 +434,25 @@ func _build_slots() -> void:
 		_slot_locks.append(lock)
 
 
-func _build_style(state: int) -> StyleBox:
+func _build_style(state: int, accent := Color(0.0, 0.0, 0.0, 0.0)) -> StyleBox:
 	if slot_texture_style != null:
-		return _build_texture_style(state)
+		return _build_texture_style(state, accent)
 	var style := StyleBoxFlat.new()
 	match state:
 		SlotState.FILLED:
-			style.bg_color = filled_color
-			style.border_color = filled_border
+			# The accent takes the border outright and only darkens into the fill, so a
+			# rarity reads as the edge of the slot rather than as a coloured square that
+			# fights the abbreviation sitting on it.
+			style.bg_color = (
+				Color(accent.r, accent.g, accent.b, filled_color.a).darkened(0.74)
+				if accent.a > 0.0
+				else filled_color
+			)
+			style.border_color = (
+				Color(accent.r, accent.g, accent.b, filled_border.a)
+				if accent.a > 0.0
+				else filled_border
+			)
 			style.set_border_width_all(border_width)
 		SlotState.LOCKED:
 			style.bg_color = locked_color
@@ -433,14 +466,18 @@ func _build_style(state: int) -> StyleBox:
 	return style
 
 
-func _build_texture_style(state: int) -> StyleBox:
+func _build_texture_style(state: int, accent := Color(0.0, 0.0, 0.0, 0.0)) -> StyleBox:
 	# One piece of art, tinted per state. The border colours the flat styles use are
 	# what the eye actually reads a slot's state from, so they become the tint here
 	# rather than being thrown away with the flat box.
 	var style: StyleBoxTexture = slot_texture_style.duplicate()
 	match state:
 		SlotState.FILLED:
-			style.modulate_color = filled_border
+			style.modulate_color = (
+				Color(accent.r, accent.g, accent.b, filled_border.a)
+				if accent.a > 0.0
+				else filled_border
+			)
 		SlotState.LOCKED:
 			style.modulate_color = locked_border
 		_:

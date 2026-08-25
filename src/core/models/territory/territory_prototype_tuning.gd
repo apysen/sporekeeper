@@ -53,6 +53,11 @@ extends Resource
 @export_range(0.0, 8.0, 0.1) var maturity_resistance_bonus := 2.4
 ## Minimum 0-to-1 maturity used to classify Green as Mature for metrics and Biomass.
 @export_range(0.1, 1.0, 0.01) var mature_threshold := 0.66
+## Minimum 0-to-1 maturity at which established ground counts as deeply rooted. This
+## is the top of the four root stages the Root Metabolism doc asks a run to be able
+## to read off the battlefield; the three boundaries below it are already implied by
+## mature_threshold, so only the last one needs authoring.
+@export_range(0.1, 1.0, 0.01) var deep_root_threshold := 0.88
 ## Seconds of unbroken Mature ownership after which Age-based effects reach full strength.
 ## Age is explicit field data; it is never inferred from a rendered texture.
 @export_range(1.0, 600.0, 1.0) var age_reference_seconds := 45.0
@@ -105,6 +110,24 @@ extends Resource
 @export_range(0.1, 2.0, 0.05) var topology_interval_seconds := 0.50
 ## Regions with fewer cells than this value are classified as small fragments.
 @export_range(1, 500, 1) var small_fragment_cell_limit := 28
+## Surface energy of a border, in the critical-radius test that decides whether an
+## isolated patch of Green survives. This is the doc's gamma: how much it costs to
+## be a border rather than an interior, scaled by the ecosystem's own Cohesion. A
+## cohesive organism holds its main body harder and throws fewer surviving
+## satellites, which is a genuine trade rather than two upgrades that both say
+## "better".
+@export_range(0.1, 40.0, 0.1) var nucleation_surface_tension := 3.4
+## Bulk driving force of being Green at all: the doc's delta-g. Raised by the
+## ground's own maturity, by Mass, and by friendly Green sitting right beside the
+## patch, and it is what the surface term is weighed against.
+@export_range(0.05, 20.0, 0.05) var nucleation_driving_force := 1.9
+## How much a patch's own maturity contributes to that driving force. Below one so
+## fresh ground still has some claim on surviving rather than none at all.
+@export_range(0.0, 1.0, 0.01) var nucleation_maturity_share := 0.65
+## What being surrounded by friendly Green is worth. A satellite that lands beside
+## the organism survives at a size that would dissolve out on open ground, which is
+## the whole behaviour this replaces a flat timer with.
+@export_range(0.0, 6.0, 0.05) var nucleation_support_bonus := 1.8
 ## Green control removed per second from cells belonging to a small fragment.
 @export_range(0.0, 1.0, 0.01) var small_fragment_decay_per_second := 0.11
 

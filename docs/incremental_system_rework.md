@@ -682,9 +682,6 @@ Cohesion investment performs better in heavily controlled Green.
 ## Root
 Mature Green improves production or transport efficiency.
 
-## Carnivory
-Successful digestion can return a small amount of local support.
-
 ## Pruning
 Harvesting sacrifices territorial capital and forces the economy to rebuild.
 
