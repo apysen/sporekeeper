@@ -126,25 +126,10 @@ var _isolated_colony_reserves := PackedFloat32Array()
 ## The root network as drawn: one entry per component, each a heart and the vessels
 ## running out of it. Rebuilt on the topology cadence rather than per frame, because
 ## the shape of an organism does not change between two frames.
-var _root_vessels: Array = []
 ## Anchor points of the fine root mat, in pairs: a position, then that cell's
 ## maturity in the x of the following entry. Empty unless the run holds the Root
 ## path, which is the only build that grows a mat worth drawing.
-var _root_mat := PackedVector2Array()
-## How developed the mat is, 0 to 1. Root's own ranks drive it, so a run that has
-## only just taken the path shows fine hairs and a maxed one shows a dense felt.
-var _root_mat_strength := 0.0
-## Advances only while something is flowing, and is what the pulses ride on.
-var _root_flow_phase := 0.0
-## Where the player is, so flow can favour the ground they are standing on.
-var _root_demand_position := Vector2.INF
-## Seconds left of a discharge running hot through the vessels after a release.
-var _root_surge_remaining := 0.0
-var _root_surge_origin := Vector2.INF
-## Whether the deeper root read-out is up, which brightens the layer and labels it.
-var _root_inspect := false
 ## Per-component reserves, drawn at the component while the inspect layer is held.
-var _root_reserves: Array = []
 
 ## The release being aimed, drawn only while the player is choosing where to put it.
 var _overgrow_aim_active := false
@@ -155,34 +140,6 @@ var _overgrow_aim_radius := 0.0
 ## Presentation options. Optional: without it everything is drawn at full strength,
 ## which is what this did before the settings existed.
 @export var display_settings: PhaseBDisplaySettings
-
-@export_group("Root Network")
-## How fast a pulse travels its vessel, in vessels per second. Normal flow is slow on
-## purpose: the doc wants the eye to react to changes in motion, not to constant
-## motion, so this is the baseline everything else is read against.
-@export_range(0.05, 3.0, 0.05) var root_flow_speed := 0.28
-## How near the player a vessel has to end before flow starts favouring it.
-@export_range(20.0, 900.0, 10.0) var root_demand_radius := 220.0
-
-@export_group("Root Mat")
-## Colour of the root hairs drawn under Green while the run holds the Root path.
-## Darker than the Green above it on purpose: this is the underside of the
-## organism showing through, not another layer of foliage.
-@export var root_mat_color := Color(0.30, 0.20, 0.10, 1.0)
-## Alpha of the mat at full development. Everything above it has to stay readable,
-## so the mat is texture rather than a surface: it says the ground is rooted, it
-## does not say anything the player has to read.
-@export_range(0.0, 1.0, 0.01) var root_mat_alpha := 0.34
-## Hairs radiating from one anchor.
-@export_range(2, 12, 1) var root_mat_hairs := 5
-## Length of one hair at full maturity, in arena pixels.
-@export_range(2.0, 60.0, 0.5) var root_mat_hair_length := 13.0
-## Width of a hair's first segment; each following segment tapers toward nothing,
-## which is what makes a line read as a root rather than as a scratch.
-@export_range(0.5, 6.0, 0.1) var root_mat_hair_width := 1.6
-## Segments per hair. More than this buys no visible crookedness and costs draw
-## calls on every anchor.
-@export_range(2, 8, 1) var root_mat_segments := 3
 
 @export_group("Splatter Flight")
 ## Body colour of a glob in flight. Opaque on purpose: a translucent glob against
@@ -224,8 +181,6 @@ var _last_germinated_seed_id := -1
 
 
 func _process(delta: float) -> void:
-	if not effects_paused:
-		_advance_root_flow(delta)
 	if not effects_paused:
 		for index in range(_seeds.size() - 1, -1, -1):
 			var seed := _seeds[index]
@@ -307,14 +262,6 @@ func _draw() -> void:
 		)
 		_draw_annotation(Vector2(704.0, 380.0), "WEAK HOSTILE TERRITORY", Color("ffb071"))
 
-	# Under everything else: the root layer is the ground's own state, and it must not
-	# compete with enemies, projectiles, or the frontier for attention. The mat goes
-	# down first of all, because it is literally underneath: the vessels run through it.
-	_draw_root_mat()
-	_draw_root_network()
-	_draw_isolated_colonies()
-	if _root_inspect:
-		_draw_root_reserves()
 	_draw_overgrow_aim()
 
 	for tether in _tethers:
@@ -832,247 +779,6 @@ func spawn_hostile_pulse(local_position: Vector2, maximum_radius: float) -> void
 	_spawn_pulse(local_position, 0.52, maximum_radius, Color("ff5369"), true)
 
 
-func set_root_mat(anchors: PackedVector2Array, strength: float) -> void:
-	_root_mat = anchors
-	_root_mat_strength = clampf(strength, 0.0, 1.0)
-	queue_redraw()
-
-
-func get_root_mat_anchor_count() -> int:
-	# Anchors arrive in pairs of position and maturity, so what a caller means by
-	# "how many" is half of what the array holds.
-	return _root_mat.size() / 2
-
-
-func _draw_root_mat() -> void:
-	# Root's own signature on the battlefield: held ground visibly grows roots into
-	# itself. It is drawn as tapering hairs radiating from sampled mature cells rather
-	# than as a texture over the Green, so what the player sees follows the actual
-	# shape of the organism and thins out wherever the ground is young.
-	var detail := _territory_detail_scale()
-	if _root_mat_strength <= 0.0 or _root_mat.size() < 2 or detail <= 0.0:
-		return
-	var anchor_count := _root_mat.size() / 2
-	for anchor_index in range(anchor_count):
-		var origin := _root_mat[anchor_index * 2]
-		var maturity := clampf(_root_mat[anchor_index * 2 + 1].x, 0.0, 1.0)
-		# Older ground carries more of the mat, which is what makes the layer describe
-		# the organism's age rather than only its outline.
-		var presence := _root_mat_strength * maturity * detail
-		if presence <= 0.02:
-			continue
-		var colour := Color(
-			root_mat_color.r,
-			root_mat_color.g,
-			root_mat_color.b,
-			root_mat_alpha * presence
-		)
-		# Seeded off the anchor's own position so a hair is in the same place every
-		# frame. A mat that reshuffles itself between frames reads as static, not roots.
-		var seed := int(origin.x) * 73856093 ^ int(origin.y) * 19349663
-		var hair_count := maxi(2, int(round(float(root_mat_hairs) * presence)) + 1)
-		for hair_index in range(hair_count):
-			var wobble := float((seed + hair_index * 2654435761) % 1000) / 1000.0
-			var angle := (
-				TAU * float(hair_index) / float(hair_count)
-				+ wobble * TAU / float(hair_count)
-			)
-			var length := root_mat_hair_length * (0.45 + 0.55 * maturity) * (0.6 + wobble * 0.7)
-			var previous := origin
-			var heading := Vector2.from_angle(angle)
-			for segment in range(root_mat_segments):
-				# Each segment bends a little further off the last, so a hair crooks the
-				# way a root does instead of being a spoke on a wheel.
-				var bend := (wobble - 0.5) * 1.1 * float(segment + 1)
-				var step := heading.rotated(bend) * (length / float(root_mat_segments))
-				var point := previous + step
-				var taper := 1.0 - float(segment) / float(root_mat_segments)
-				draw_line(
-					previous,
-					point,
-					Color(colour.r, colour.g, colour.b, colour.a * taper),
-					maxf(0.6, root_mat_hair_width * taper),
-					true
-				)
-				previous = point
-
-
-func set_root_vessels(vessels: Array) -> void:
-	_root_vessels = vessels
-	queue_redraw()
-
-
-func set_root_demand(local_position: Vector2) -> void:
-	_root_demand_position = local_position
-
-
-func set_root_reserves(reserves: Array) -> void:
-	_root_reserves = reserves
-	queue_redraw()
-
-
-func _draw_root_reserves() -> void:
-	for entry in _root_reserves:
-		var position: Vector2 = entry["position"]
-		var reserve: float = entry["reserve"]
-		var capacity: float = entry["capacity"]
-		var is_primary: bool = entry["primary"]
-		# A storage organ drawn where the reserve actually is, filling as it fills.
-		var fill := clampf(reserve / maxf(1.0, capacity), 0.0, 1.0)
-		var radius := 15.0
-		draw_circle(position, radius, Color(0.04, 0.09, 0.06, 0.72))
-		draw_arc(
-			position,
-			radius,
-			-PI * 0.5,
-			-PI * 0.5 + TAU * fill,
-			48,
-			Color(0.78, 1.0, 0.52, 0.95) if is_primary else Color(0.44, 0.84, 0.75, 0.95),
-			3.0,
-			true
-		)
-		var font := ThemeDB.fallback_font
-		var label := "%d" % roundi(reserve)
-		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11)
-		draw_string(
-			font,
-			position + Vector2(-text_size.x * 0.5, radius + 14.0),
-			label,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1.0,
-			11,
-			Color(0.86, 1.0, 0.78, 0.95)
-		)
-
-
-func set_root_inspect(enabled: bool) -> void:
-	if enabled == _root_inspect:
-		return
-	_root_inspect = enabled
-	queue_redraw()
-
-
-func is_root_inspect() -> bool:
-	return _root_inspect
-
-
-func spawn_root_surge(origin: Vector2, seconds: float) -> void:
-	## A release travelling out through the roots before it reaches the border. The
-	## doc asks for the network to visibly carry what was spent rather than for the
-	## frontier to simply change.
-	_root_surge_origin = origin
-	_root_surge_remaining = maxf(_root_surge_remaining, seconds)
-
-
-func get_root_vessel_count() -> int:
-	var total := 0
-	for vessel in _root_vessels:
-		total += (vessel["endpoints"] as PackedVector2Array).size()
-	return total
-
-
-func _advance_root_flow(delta: float) -> void:
-	var flowing := false
-	for vessel in _root_vessels:
-		if vessel["flowing"]:
-			flowing = true
-			break
-	if flowing:
-		_root_flow_phase = fmod(_root_flow_phase + delta * root_flow_speed, 1.0)
-	_root_surge_remaining = maxf(0.0, _root_surge_remaining - delta)
-	if flowing or _root_surge_remaining > 0.0:
-		queue_redraw()
-
-
-func _vessel_bend(heart: Vector2, endpoint: Vector2) -> Vector2:
-	# Roots do not run in straight lines to a hub. A deterministic sideways kick at the
-	# midpoint is enough to read as growth rather than as a diagram, and being derived
-	# from the endpoint means a vessel keeps its shape between rebuilds.
-	var span := endpoint - heart
-	var sideways := Vector2(-span.y, span.x).normalized()
-	var wobble := sin(endpoint.x * 0.061 + endpoint.y * 0.043) * span.length() * 0.24
-	return heart + span * 0.5 + sideways * wobble
-
-
-func _vessel_point(heart: Vector2, bend: Vector2, endpoint: Vector2, t: float) -> Vector2:
-	var inverse := 1.0 - t
-	return (
-		heart * inverse * inverse
-		+ bend * 2.0 * inverse * t
-		+ endpoint * t * t
-	)
-
-
-func _draw_root_network() -> void:
-	if _root_vessels.is_empty():
-		return
-	var surging := _root_surge_remaining > 0.0
-	for vessel in _root_vessels:
-		var heart: Vector2 = vessel["heart"]
-		var endpoints: PackedVector2Array = vessel["endpoints"]
-		var flowing: bool = vessel["flowing"]
-		# A component cut off from the organism keeps its roots and loses its flow.
-		# The doc is explicit that a severed region must not instantly look dead: it
-		# stops receiving pulses, and that absence is what carries the information.
-		# Subtle is not the same as invisible. At the alpha this started on, the root
-		# layer could not be seen at all during normal play, which made the question
-		# "what are the roots doing" unanswerable before it was a question about flow.
-		var vessel_alpha := (0.46 if _root_inspect else 0.30) * (1.0 if flowing else 0.55)
-		var vessel_colour := Color(0.50, 0.92, 0.56, vessel_alpha)
-		var vessel_width := 2.2 if _root_inspect else 1.7
-		for endpoint_index in range(endpoints.size()):
-			var endpoint := endpoints[endpoint_index]
-			var bend := _vessel_bend(heart, endpoint)
-			var previous := heart
-			for step in range(1, 7):
-				var point := _vessel_point(heart, bend, endpoint, float(step) / 6.0)
-				draw_line(previous, point, vessel_colour, vessel_width, true)
-				previous = point
-			if not flowing:
-				continue
-			# Which way a pulse travels is the whole of what the roots are saying.
-			# Inward is the organism gathering what its ground produced into the
-			# reserve; outward is the organism spending, pushing support to the front
-			# the player is standing at. One picture, two opposite meanings.
-			var demand := 0.0
-			if _root_demand_position.is_finite():
-				demand = clampf(
-					1.0 - endpoint.distance_to(_root_demand_position)
-					/ maxf(1.0, root_demand_radius),
-					0.0,
-					1.0
-				)
-			var outward := demand > 0.35 or surging
-			var offset := float(endpoint_index) * 0.137
-			var travel := fmod(_root_flow_phase + offset, 1.0)
-			var along := travel if outward else 1.0 - travel
-			var brightness := (0.60 if _root_inspect else 0.48) + demand * 0.50
-			draw_circle(
-				_vessel_point(heart, bend, endpoint, along),
-				(1.7 if not _root_inspect else 2.3) * (1.0 + demand * 0.6),
-				Color(
-					0.76 + demand * 0.18,
-					1.0,
-					0.52,
-					clampf(brightness * sin(along * PI), 0.0, 1.0)
-				)
-			)
-			if not surging:
-				continue
-			# The discharge runs the same vessels outward, faster and brighter, so what
-			# the player spent is seen leaving the organism on its way to the border.
-			draw_circle(
-				_vessel_point(
-					heart,
-					bend,
-					endpoint,
-					fmod(travel + _root_surge_remaining * 2.4, 1.0)
-				),
-				3.0,
-				Color(0.90, 1.0, 0.58, clampf(_root_surge_remaining * 1.4, 0.0, 0.9))
-			)
-
-
 func set_overgrow_aim(local_position: Vector2, radius: float) -> void:
 	_overgrow_aim_active = true
 	_overgrow_aim_position = local_position
@@ -1159,75 +865,6 @@ func set_isolated_colonies(
 
 func get_isolated_colony_count() -> int:
 	return _isolated_colonies.size()
-
-
-func _draw_isolated_colonies() -> void:
-	# A broken ring rather than a coloured one. The doc is explicit that a state this
-	# important must not be carried by colour alone, and a ring with gaps torn in it
-	# says "cut off" at a glance in a way a tinted circle does not.
-	var font := ThemeDB.fallback_font
-	for colony_index in range(_isolated_colonies.size()):
-		var colony_position := _isolated_colonies[colony_index]
-		var segments := 16
-		for segment in range(segments):
-			if segment % 2 == 1:
-				continue
-			var from_angle := TAU * float(segment) / float(segments)
-			var to_angle := TAU * float(segment + 1) / float(segments)
-			draw_arc(
-				colony_position,
-				19.0,
-				from_angle,
-				to_angle,
-				5,
-				Color(0.44, 0.84, 0.75, 0.85),
-				2.0,
-				true
-			)
-		# The ring says something is wrong with this ground; it cannot say what. A
-		# marker nobody can read is decoration, so it names itself and carries the
-		# number that makes it matter - Biomass the run is producing and cannot spend.
-		var caption := "CUT OFF"
-		if colony_index < _isolated_colony_reserves.size():
-			caption = "CUT OFF  %d" % roundi(_isolated_colony_reserves[colony_index])
-		# Sized to be read at a glance over bright territory rather than squinted at.
-		# The accessibility guidance the doc cites treats small text as a defect, and
-		# this sits on top of the most saturated colour on the screen.
-		var caption_font_size := 17
-		var caption_size := font.get_string_size(
-			caption,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1.0,
-			caption_font_size
-		)
-		var caption_origin := colony_position + Vector2(-caption_size.x * 0.5, 40.0)
-		draw_rect(
-			Rect2(
-				caption_origin - Vector2(7.0, caption_size.y * 0.80),
-				caption_size + Vector2(14.0, 8.0)
-			),
-			Color(0.01, 0.04, 0.04, 0.88),
-			true
-		)
-		draw_rect(
-			Rect2(
-				caption_origin - Vector2(7.0, caption_size.y * 0.80),
-				caption_size + Vector2(14.0, 8.0)
-			),
-			Color(0.44, 0.84, 0.75, 0.55),
-			false,
-			1.0,
-			true
-		)
-		draw_string(
-			font,
-			caption_origin,
-			caption,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1.0,
-			caption_font_size,
-			Color(0.78, 1.0, 0.93, 1.0)
-		)
 
 
 func get_active_seed_count() -> int:
@@ -1356,11 +993,6 @@ func clear_effects() -> void:
 	_tethers.clear()
 	_isolated_colonies.clear()
 	_isolated_colony_reserves.clear()
-	_root_vessels.clear()
-	_root_reserves.clear()
-	_root_mat = PackedVector2Array()
-	_root_mat_strength = 0.0
-	_root_surge_remaining = 0.0
 	_overgrow_aim_active = false
 	queue_redraw()
 

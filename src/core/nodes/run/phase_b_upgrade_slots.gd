@@ -167,42 +167,42 @@ enum SlotState {
 
 @export_group("Palette")
 ## Fill of a slot with nothing in it yet.
-@export var empty_color := Color(0.055, 0.085, 0.075, 0.90):
+@export var empty_color := Color(0.133, 0.149, 0.122, 0.90):
 	set(value):
 		if empty_color == value:
 			return
 		empty_color = value
 		_rebuild()
 ## Fill of a slot holding a growth line.
-@export var filled_color := Color(0.075, 0.185, 0.130, 0.96):
+@export var filled_color := Color(0.173, 0.227, 0.161, 0.96):
 	set(value):
 		if filled_color == value:
 			return
 		filled_color = value
 		_rebuild()
 ## Fill of a slot an Evolution has not unlocked yet.
-@export var locked_color := Color(0.045, 0.050, 0.058, 0.90):
+@export var locked_color := Color(0.090, 0.102, 0.082, 0.90):
 	set(value):
 		if locked_color == value:
 			return
 		locked_color = value
 		_rebuild()
 ## Border of an empty slot.
-@export var empty_border := Color(0.22, 0.36, 0.32, 0.70):
+@export var empty_border := Color(0.337, 0.376, 0.322, 0.70):
 	set(value):
 		if empty_border == value:
 			return
 		empty_border = value
 		_rebuild()
 ## Border of a slot holding a growth line.
-@export var filled_border := Color(0.38, 0.92, 0.58, 0.90):
+@export var filled_border := Color(0.561, 0.686, 0.376, 0.90):
 	set(value):
 		if filled_border == value:
 			return
 		filled_border = value
 		_rebuild()
 ## Border of a locked slot.
-@export var locked_border := Color(0.30, 0.26, 0.20, 0.75):
+@export var locked_border := Color(0.337, 0.376, 0.322, 0.75):
 	set(value):
 		if locked_border == value:
 			return
@@ -317,6 +317,21 @@ func set_slot(
 		"font_size",
 		empty_marker_font_size if state == SlotState.EMPTY else title_font_size
 	)
+	# A slot stacks an abbreviation over a level, so each sits in its own band. A slot
+	# carrying only one of the two - an empty marker, or a relic with no counter to
+	# report - has nothing to stack, and a lone line in the upper band reads as a slot
+	# with something missing under it. It is given the whole square to be centred in
+	# instead, which also keeps it centred whatever the font's own metrics happen to be.
+	var nudge := Vector2(roundf(content_offset_x), roundf(content_offset_y))
+	if state == SlotState.EMPTY or level_text.is_empty():
+		_slot_titles[index].position = nudge
+		_slot_titles[index].size = Vector2(slot_size, slot_size)
+	else:
+		_slot_titles[index].position = Vector2(
+			nudge.x,
+			roundf(slot_size * title_offset_scale) + nudge.y
+		)
+		_slot_titles[index].size = Vector2(slot_size, slot_size * 0.34)
 	_slot_levels[index].text = level_text
 	_slot_levels[index].visible = not level_text.is_empty()
 	var accented := accent.a > 0.0
@@ -327,29 +342,29 @@ func set_slot(
 			# and the abbreviation is the part that has to survive at this size.
 			_slot_titles[index].add_theme_color_override(
 				"font_color",
-				accent.lerp(Color(1.0, 1.0, 1.0), 0.72) if accented else Color(0.84, 1.0, 0.88)
+				accent.lerp(Color(1.0, 1.0, 1.0), 0.72) if accented else Color(0.910, 0.875, 0.784)
 			)
 			_slot_levels[index].add_theme_color_override(
 				"font_color",
-				accent.lerp(Color(1.0, 1.0, 1.0), 0.35) if accented else Color(0.55, 0.92, 0.70)
+				accent.lerp(Color(1.0, 1.0, 1.0), 0.35) if accented else Color(0.663, 0.690, 0.608)
 			)
 		SlotState.LOCKED:
 			_slot_titles[index].add_theme_color_override(
 				"font_color",
-				Color(0.52, 0.46, 0.36)
+				Color(0.337, 0.376, 0.322)
 			)
 			_slot_levels[index].add_theme_color_override(
 				"font_color",
-				Color(0.44, 0.39, 0.31)
+				Color(0.337, 0.376, 0.322)
 			)
 		_:
 			_slot_titles[index].add_theme_color_override(
 				"font_color",
-				Color(0.40, 0.55, 0.50)
+				Color(0.337, 0.376, 0.322)
 			)
 			_slot_levels[index].add_theme_color_override(
 				"font_color",
-				Color(0.33, 0.46, 0.42)
+				Color(0.337, 0.376, 0.322)
 			)
 
 

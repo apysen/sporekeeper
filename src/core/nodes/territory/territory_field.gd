@@ -2,6 +2,21 @@ class_name TerritoryField
 extends Node2D
 
 const TERRITORY_SHADER := preload("res://assets/shaders/territory_field.gdshader")
+## The v3 painting made to wrap by scripts/make_green_wash_tile.py. The vendor jpg
+## it comes from is not seamless, and the anti-repetition blend cannot hide a hard
+## wrap edge: every sample carries the same one.
+const GREEN_WASH_TEXTURE := preload("res://assets/textures/green_wash_v3.png")
+## What hostile ground is painted with: the Green painting recoloured to the Rot
+## hue by scripts/make_rot_wash_tile.py, so the two washes cannot drift apart in
+## brushwork or seam quality. It is read at its own offset into the sheet, which is
+## what stops a front looking like one image recoloured down the middle.
+const ROT_WASH_TEXTURE := preload("res://assets/textures/rot_wash_v3.png")
+## What the board itself is made of. Neutral ground is this and nothing else.
+const PAPER_TEXTURE := preload("res://assets/textures/paper_v1.png")
+## Utility noise, not art: one varies the inside of a wash, the other decides how
+## ragged its boundary comes out.
+const WATERCOLOR_NOISE_TEXTURE := preload("res://assets/textures/watercolor_noise_v2.png")
+const EDGE_NOISE_TEXTURE := preload("res://assets/textures/edge_noise_v2.png")
 
 signal metrics_changed(
 	player_percent: float,
@@ -21,6 +36,11 @@ enum DebugView {
 	MATURITY,
 	CONTROL,
 	ROOT,
+	GREEN_MASK,
+	PAPER,
+	EDGE_NOISE,
+	GREEN_FIELD,
+	WATERCOLOR_NOISE,
 }
 
 ## The four root stages the Root Metabolism doc asks a player to be able to read off
@@ -105,6 +125,64 @@ class OvergrowResult:
 
 
 @export var tuning: TerritoryPrototypeTuning
+## The painted sheet Green ground is cut out of. Clearing it falls back to the
+## procedural plant colour, which is what the debug views and the tests read.
+@export var green_wash_texture: Texture2D = GREEN_WASH_TEXTURE
+## The painted sheet hostile ground is cut out of. Clearing it falls back to the
+## procedural rot colour the same way Green does.
+@export var rot_wash_texture: Texture2D = ROT_WASH_TEXTURE
+## The paper the board is painted on, which is all Neutral ground is. Clearing it
+## falls back to the flat dark ground the prototype shipped with.
+@export var paper_texture: Texture2D = PAPER_TEXTURE
+## Interior variation for both washes. Never ownership: what is Green and what is
+## Rot stays entirely the field's business.
+@export var watercolor_noise_texture: Texture2D = WATERCOLOR_NOISE_TEXTURE
+## Displaces the ownership field before it is thresholded, which is what makes a
+## boundary ragged rather than drawing a ragged line along a smooth one.
+@export var edge_noise_texture: Texture2D = EDGE_NOISE_TEXTURE
+
+@export_group("Watercolour")
+## World pixels one repeat of the paper covers. Kept away from the wash's own
+## period so the two do not line their landmarks up into a grid.
+@export_range(256.0, 2000.0, 10.0) var paper_tile_px := 760.0
+## World pixels one repeat of the interior noise covers, and how far it moves the
+## brightness of a wash. Past about a tenth the territory reads as patchy rather
+## than as painted.
+@export_range(64.0, 1600.0, 10.0) var watercolor_noise_tile_px := 420.0
+@export_range(0.0, 0.5, 0.005) var watercolor_variation := 0.08
+## World pixels one repeat of the edge noise covers, and how far the boundary wanders
+## from where the simulation put it. In pixels, not field units: control crosses its
+## threshold gently, so a fixed displacement in field units wanders a few pixels at a
+## hard frontier and tens of pixels across softly held ground.
+@export_range(32.0, 1200.0, 5.0) var edge_noise_tile_px := 280.0
+@export_range(0.0, 40.0, 0.5) var edge_distortion_px := 7.0
+## Pixels the edge bleeds over. Smaller is a sharper line, larger is a wetter one.
+@export_range(0.0, 20.0, 0.1) var edge_softness_px := 2.5
+## Where paint starts, as a fraction of the ownership threshold. Below one the washes
+## reach toward each other and meet at a seam of paper rather than being held apart by
+## a band of it. Cosmetic: ownership itself never moves.
+@export_range(0.0, 1.0, 0.05) var paint_threshold_scale := 0.35
+## How far the paint reaches past ownership at a front, in pixels of control
+## gradient. Paper is the ground the board is made of and Green and Rot are laid on
+## top of it, so the coat has to carry across the hair where control changes hands.
+## Open board has no gradient to speak of, so this cannot paint it.
+@export_range(0.0, 40.0, 0.5) var front_paint_bias := 6.0
+@export_group("")
+## World pixels one repeat of the wash covers. This is apparent scale, not source
+## resolution: larger means fewer repeats and bigger pigment features.
+@export var green_wash_tile_px := 640.0
+## Art tuning for the anti-repetition blend, not gameplay constants. The painting is
+## sampled three times - as painted, quarter turned, and mirrored - so its landmarks
+## drift out of alignment instead of reinforcing one square repeat. The primary
+## sample stays dominant; equal thirds flatten the watercolour's character.
+@export_group("Green Wash Anti-Repetition")
+@export_range(0.5, 2.0, 0.01) var wash_secondary_scale := 0.86
+@export_range(0.5, 2.0, 0.01) var wash_tertiary_scale := 1.16
+@export_range(0.0, 1.0, 0.01) var wash_secondary_weight := 0.22
+@export_range(0.0, 1.0, 0.01) var wash_tertiary_weight := 0.12
+@export var wash_secondary_offset := Vector2(0.37, 0.19)
+@export var wash_tertiary_offset := Vector2(0.11, 0.53)
+@export_group("")
 
 var simulation_paused := false
 var debug_view := DebugView.TERRITORY
@@ -1832,6 +1910,16 @@ func get_debug_view_name() -> String:
 			return "MATURITY"
 		DebugView.CONTROL:
 			return "CONTROL FIELD"
+		DebugView.GREEN_MASK:
+			return "GREEN MASK"
+		DebugView.PAPER:
+			return "PAPER"
+		DebugView.EDGE_NOISE:
+			return "EDGE NOISE"
+		DebugView.GREEN_FIELD:
+			return "GREEN FIELD"
+		DebugView.WATERCOLOR_NOISE:
+			return "WATERCOLOUR NOISE"
 		_:
 			return "TERRITORY"
 
@@ -2376,6 +2464,58 @@ func _configure_material() -> void:
 	_field_material.set_shader_parameter("deep_root_threshold", tuning.deep_root_threshold)
 	_field_material.set_shader_parameter("debug_view", debug_view)
 	_field_material.set_shader_parameter("bramble_enabled", _bramble_enabled)
+	# The wash is stencilled by the same control channel the rest of the presentation
+	# reads, through the same cubic reconstruction, so Green ground cannot end up
+	# with two different silhouettes. The field size goes across because the shader
+	# samples the wash in arena pixels: that is what keeps the pigment still while
+	# Green grows, shrinks, or has holes cut into it.
+	_field_material.set_shader_parameter("green_wash_tex", green_wash_texture)
+	_field_material.set_shader_parameter("green_wash_enabled", green_wash_texture != null)
+	_field_material.set_shader_parameter("rot_wash_tex", rot_wash_texture)
+	_field_material.set_shader_parameter("rot_wash_enabled", rot_wash_texture != null)
+	# Static art, bound once. Paper needs no mask of its own: it is simply what is
+	# there before anything has claimed the ground.
+	_field_material.set_shader_parameter("paper_tex", paper_texture)
+	_field_material.set_shader_parameter("paper_enabled", paper_texture != null)
+	_field_material.set_shader_parameter(
+		"watercolor_noise_tex", watercolor_noise_texture
+	)
+	_field_material.set_shader_parameter("edge_noise_tex", edge_noise_texture)
+	_field_material.set_shader_parameter("paper_tile_px", paper_tile_px)
+	_field_material.set_shader_parameter(
+		"watercolor_noise_tile_px", watercolor_noise_tile_px
+	)
+	_field_material.set_shader_parameter("watercolor_variation", watercolor_variation)
+	_field_material.set_shader_parameter("edge_noise_tile_px", edge_noise_tile_px)
+	_field_material.set_shader_parameter("edge_distortion_px", edge_distortion_px)
+	_field_material.set_shader_parameter("edge_softness_px", edge_softness_px)
+	_field_material.set_shader_parameter("paint_threshold_scale", paint_threshold_scale)
+	_field_material.set_shader_parameter("front_paint_bias", front_paint_bias)
+	_field_material.set_shader_parameter("field_size_px", tuning.arena_size)
+	_field_material.set_shader_parameter("wash_tile_px", green_wash_tile_px)
+	# A repeat is square in world pixels only if the source is square. Passing each
+	# painting's own proportions keeps its brush strokes the shape they were painted.
+	_field_material.set_shader_parameter(
+		"wash_aspect", _wash_aspect_of(green_wash_texture)
+	)
+	_field_material.set_shader_parameter(
+		"rot_wash_aspect", _wash_aspect_of(rot_wash_texture)
+	)
+	_field_material.set_shader_parameter("secondary_scale", wash_secondary_scale)
+	_field_material.set_shader_parameter("tertiary_scale", wash_tertiary_scale)
+	_field_material.set_shader_parameter("secondary_weight", wash_secondary_weight)
+	_field_material.set_shader_parameter("tertiary_weight", wash_tertiary_weight)
+	_field_material.set_shader_parameter("secondary_offset", wash_secondary_offset)
+	_field_material.set_shader_parameter("tertiary_offset", wash_tertiary_offset)
+
+
+func _wash_aspect_of(wash: Texture2D) -> float:
+	if wash == null:
+		return 1.0
+	var size := wash.get_size()
+	if size.x <= 0.0:
+		return 1.0
+	return size.y / size.x
 
 
 func _apply_pending_commands() -> void:

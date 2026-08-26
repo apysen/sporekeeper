@@ -3644,9 +3644,55 @@ func _draw_enemy(enemy: EnemyState) -> void:
 		EnemyRole.HUNTER:
 			draw_circle(enemy.position, enemy.radius + 2.0, Color(0.08, 0.02, 0.03, 0.92))
 			draw_circle(enemy.position, enemy.radius, Color("ff625b"))
+		EnemyRole.RUSHER:
+			# A Hunter that arrives before Bramble can take hold, so it is drawn as one
+			# that is already moving: the same red, swept into a wedge that points where
+			# it is going, with the streaks of its own speed trailing behind it. A player
+			# has to be able to tell at a glance which red body is the one that will not
+			# be slowed on the way in.
+			var heading := Vector2.RIGHT
+			if player != null:
+				var toward_player := enemy.position.direction_to(player.get_arena_position())
+				if toward_player.length_squared() > 0.01:
+					heading = toward_player
+			var flank := heading.orthogonal()
+			var nose := enemy.position + heading * (enemy.radius + 5.0)
+			var tail := enemy.position - heading * (enemy.radius * 0.7)
+			for streak_index in range(2):
+				var side := flank * (enemy.radius * (0.45 + 0.35 * float(streak_index)))
+				draw_line(
+					tail + side,
+					tail - heading * (7.0 + 5.0 * float(streak_index)) + side,
+					Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
+					2.0,
+					true
+				)
+				draw_line(
+					tail - side,
+					tail - heading * (7.0 + 5.0 * float(streak_index)) - side,
+					Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
+					2.0,
+					true
+				)
+			draw_colored_polygon(
+				PackedVector2Array([
+					nose,
+					tail + flank * enemy.radius,
+					tail - flank * enemy.radius,
+				]),
+				Color(0.09, 0.02, 0.03, 0.92)
+			)
+			draw_colored_polygon(
+				PackedVector2Array([
+					nose - heading * 2.5,
+					tail + flank * (enemy.radius - 2.5),
+					tail - flank * (enemy.radius - 2.5),
+				]),
+				Color("ff7a4a")
+			)
 			draw_line(
-				enemy.position + Vector2(-5.0, -4.0),
-				enemy.position + Vector2(6.0, 0.0),
+				enemy.position + heading * (enemy.radius * 0.2),
+				nose - heading * 3.0,
 				Color("ffe1b8"),
 				2.0,
 				true
@@ -3662,6 +3708,33 @@ func _draw_enemy(enemy: EnemyState) -> void:
 					2.0,
 					true
 				)
+		EnemyRole.HEAVY_GRAZER:
+			# The Grazer's orange, plated. It eats the same ground and cannot be shoved off
+			# it, so what it says about itself is weight: a hide too thick to move, blunt
+			# tusks rather than the ordinary Grazer's fine ones, and a body that fills its
+			# own outline instead of sitting inside it.
+			draw_circle(enemy.position, enemy.radius + 5.0, Color(0.10, 0.05, 0.01, 0.95))
+			draw_circle(enemy.position, enemy.radius + 2.0, Color("6b3312"))
+			draw_circle(enemy.position, enemy.radius - 1.0, Color("e07a2a"))
+			for plate_index in range(6):
+				var plate_angle := TAU * float(plate_index) / 6.0 + float(enemy.id % 6) * 0.18
+				var plate_direction := Vector2.from_angle(plate_angle)
+				draw_line(
+					enemy.position + plate_direction * (enemy.radius - 4.0),
+					enemy.position + plate_direction * (enemy.radius + 2.0),
+					Color("8f4a18"),
+					3.0,
+					true
+				)
+			for tusk in [Vector2.RIGHT, Vector2.LEFT]:
+				draw_line(
+					enemy.position + tusk * (enemy.radius - 2.0),
+					enemy.position + tusk * (enemy.radius + 8.0),
+					Color("ffd9a0"),
+					4.5,
+					true
+				)
+			draw_circle(enemy.position, 4.5, Color("40190a"))
 		EnemyRole.SABOTEUR:
 			var top := enemy.position + Vector2(0.0, -enemy.radius)
 			var right := enemy.position + Vector2(enemy.radius, 0.0)
@@ -3700,6 +3773,53 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				2.5,
 				true
 			)
+		EnemyRole.SIEGE_CORRUPTOR:
+			# A Corruptor that gets worse the longer it is left alone, so the one thing it
+			# has to show is how far along it already is. The ring closes as its conversion
+			# compounds toward the cap and springs open again the moment it is hit, which
+			# makes 'deal with it now' a thing the player can see rather than infer.
+			var escalation_fraction := 0.0
+			if enemy.territory_action_escalation_cap > 1.0:
+				escalation_fraction = clampf(
+					(enemy.territory_escalation - 1.0)
+					/ (enemy.territory_action_escalation_cap - 1.0),
+					0.0,
+					1.0
+				)
+			draw_circle(
+				enemy.position,
+				enemy.radius + 6.0,
+				Color(0.34, 0.02, 0.30, 0.30 + 0.30 * escalation_fraction)
+			)
+			for siege_spike in range(8):
+				var spike_direction := Vector2.from_angle(TAU * float(siege_spike) / 8.0)
+				draw_line(
+					enemy.position + spike_direction * (enemy.radius - 2.0),
+					enemy.position + spike_direction * (
+						enemy.radius + 4.0 + 5.0 * escalation_fraction
+					),
+					Color(0.85, 0.30, 1.0, 0.55 + 0.40 * escalation_fraction),
+					2.5,
+					true
+				)
+			draw_circle(enemy.position, enemy.radius, Color("7a1f9c"))
+			draw_circle(enemy.position, enemy.radius - 6.0, Color("2b0838"))
+			draw_circle(
+				enemy.position,
+				maxf(2.0, (enemy.radius - 6.0) * escalation_fraction),
+				Color(1.0, 0.52, 0.95, 0.85)
+			)
+			if escalation_fraction > 0.0:
+				draw_arc(
+					enemy.position,
+					enemy.radius + 3.0,
+					-PI * 0.5,
+					-PI * 0.5 + TAU * escalation_fraction,
+					28,
+					Color("ff86e8"),
+					2.5,
+					true
+				)
 		EnemyRole.COLONIZER:
 			draw_circle(enemy.position, enemy.radius + 4.0, Color(0.02, 0.26, 0.30, 0.46))
 			for pod_index in range(3):

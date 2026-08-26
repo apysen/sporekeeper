@@ -28,7 +28,17 @@ extends Node2D
 ## Button that shows or hides authored arena annotation labels.
 @export var annotations_button: Button
 
+@export_group("Interface Text")
+## Wording for the states a control does not sit in at rest. The resting wording
+## is the text on the node itself; these are what it swaps to.
+@export var pause_resume_text := "RESUME  [SPACE]"
+@export var annotations_show_text := "SHOW LABELS  [H]"
+
 var _hud_accumulator := 0.0
+## Every dynamic line in the lab, as the scene authored it, captured before
+## anything writes to a control. The lab is arranged in the editor like anything
+## else, so the editor owns its wording too.
+var _authored := AuthoredText.new()
 
 
 func _ready() -> void:
@@ -36,6 +46,18 @@ func _ready() -> void:
 	assert(territory_field != null)
 	assert(overlay != null)
 	assert(grazer != null)
+
+	_authored.capture([
+		metrics_label,
+		performance_label,
+		status_label,
+		view_label,
+		pause_button,
+		reset_button,
+		grazer_button,
+		debug_view_button,
+		annotations_button,
+	])
 
 	territory_field.metrics_changed.connect(_on_metrics_changed)
 	overlay.seed_germinated.connect(_on_seed_germinated)
@@ -61,18 +83,13 @@ func _process(delta: float) -> void:
 	if _hud_accumulator < 0.20:
 		return
 	_hud_accumulator = 0.0
-	performance_label.text = (
-		"PERFORMANCE\n"
-		+ "FPS  %d\n" % Engine.get_frames_per_second()
-		+ "Field  %.2f ms avg  /  %.2f peak\n" % [
-			territory_field.get_average_step_ms(),
-			territory_field.get_peak_step_ms(),
-		]
-		+ "Render  %.2f ms avg  /  %.2f peak" % [
-			territory_field.get_average_render_ms(),
-			territory_field.get_peak_render_ms(),
-		]
-	)
+	_authored.write(performance_label, {
+		"fps": Engine.get_frames_per_second(),
+		"field_avg": "%.2f" % territory_field.get_average_step_ms(),
+		"field_peak": "%.2f" % territory_field.get_peak_step_ms(),
+		"render_avg": "%.2f" % territory_field.get_average_render_ms(),
+		"render_peak": "%.2f" % territory_field.get_peak_render_ms(),
+	})
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -121,21 +138,23 @@ func _on_metrics_changed(
 	mature_player_percent: float,
 	fragment_count: int
 ) -> void:
-	metrics_label.text = (
-		"FIELD METRICS\n"
-		+ "GREEN       %5.1f%%\n" % player_percent
-		+ "HOSTILE     %5.1f%%\n" % hostile_percent
-		+ "NEUTRAL     %5.1f%%\n" % neutral_percent
-		+ "MATURE GREEN %4.1f%%\n" % mature_player_percent
-		+ "GREEN REGIONS  %d" % fragment_count
-	)
+	_authored.write(metrics_label, {
+		"green": "%5.1f" % player_percent,
+		"hostile": "%5.1f" % hostile_percent,
+		"neutral": "%5.1f" % neutral_percent,
+		"mature": "%4.1f" % mature_player_percent,
+		"regions": fragment_count,
+	})
 
 
 func _toggle_pause() -> void:
 	territory_field.simulation_paused = not territory_field.simulation_paused
 	overlay.effects_paused = territory_field.simulation_paused
 	grazer.set_simulation_paused(territory_field.simulation_paused)
-	pause_button.text = "RESUME  [SPACE]" if territory_field.simulation_paused else "PAUSE  [SPACE]"
+	if territory_field.simulation_paused:
+		pause_button.text = pause_resume_text
+	else:
+		_authored.write(pause_button)
 	_set_status("Simulation paused." if territory_field.simulation_paused else "Simulation resumed.")
 
 
@@ -146,7 +165,7 @@ func _reset_prototype() -> void:
 	grazer.stop()
 	overlay.clear_effects()
 	territory_field.reset_field()
-	pause_button.text = "PAUSE  [SPACE]"
+	_authored.write(pause_button)
 	_set_status("Arena reset to the Phase A comparison fixture.")
 
 
@@ -167,13 +186,16 @@ func _cycle_debug_view() -> void:
 
 func _toggle_annotations() -> void:
 	var annotations_visible := overlay.toggle_annotations()
-	annotations_button.text = "HIDE LABELS  [H]" if annotations_visible else "SHOW LABELS  [H]"
+	if annotations_visible:
+		_authored.write(annotations_button)
+	else:
+		annotations_button.text = annotations_show_text
 
 
 func _update_view_label() -> void:
-	view_label.text = "VIEW  //  %s" % territory_field.get_debug_view_name()
-	debug_view_button.text = "NEXT VIEW  [M]"
+	_authored.write(view_label, {"view": territory_field.get_debug_view_name()})
+	_authored.write(debug_view_button)
 
 
 func _set_status(message: String) -> void:
-	status_label.text = message
+	_authored.write(status_label, {"event": message}, "{event}")

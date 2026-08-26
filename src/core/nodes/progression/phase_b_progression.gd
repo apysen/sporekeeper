@@ -103,6 +103,10 @@ enum EvolutionId {
 @export_range(0.0, 2.0, 0.05) var exhausted_draft_biomass_ratio := 0.75
 ## Upgrade-draft rerolls granted for an entire run.
 @export_range(0, 20, 1) var rerolls_per_run := 3
+## Seed for every draw the run makes. Zero rolls a fresh one per run, which is what
+## a played run wants; anything else pins the drafting so a run can be replayed or a
+## report reproduced.
+@export var authored_run_seed := 0
 
 @export_group("Upgrade Effects")
 ## Additive Thornshot damage multiplier granted by each Thornshot Power rank.
@@ -221,6 +225,27 @@ var _relic_rerolls_remaining := 0
 var _relic_reroll_used := false
 var _last_rerolled_relic_rarity := -1
 var _relic_random := RandomNumberGenerator.new()
+var _draft_random := RandomNumberGenerator.new()
+## The seed every draw in the run comes out of. Rolled fresh each run so two runs
+## are not handed the same three lines, and kept so one can be replayed: set it
+## before the first draft and the whole run's drafting repeats exactly.
+var run_seed := 0
+
+func set_run_seed(seed_value: int) -> void:
+	# Every draw in the run hangs off this. The cursor starts somewhere the seed
+	# chose rather than at the top of the enum, because a fixed starting point is
+	# what made the opening draft the same three lines in every run.
+	run_seed = seed_value
+	_draft_random.seed = seed_value ^ 0x9E3779B9
+	_relic_random.seed = seed_value ^ 0x85EBCA6B
+	_upgrade_offer_cursor = _draft_random.randi() % UpgradeId.size()
+
+
+func _roll_run_seed() -> int:
+	# Godot seeds the global generator differently on every launch, so this is a
+	# different run every time the game is started as well as every time it is reset.
+	return randi() | 1
+
 
 func _ready() -> void:
 	assert(evolutions != null, "PhaseBProgression requires PhaseBEvolutions")
@@ -242,12 +267,14 @@ func reset_progression() -> void:
 	if evolutions != null:
 		evolutions.reset_evolutions()
 	rerolls_remaining = rerolls_per_run
-	_upgrade_offer_cursor = 0
 	_relic_rerolls_remaining = relic_rerolls_per_run
 	_relic_reroll_used = false
 	_last_rerolled_relic_rarity = -1
-	# One owned source, fixed per run, so a replayed seed offers the same relics.
-	_relic_random.seed = 0x9E3779B9
+	# A run's draws come out of one seed, rolled fresh unless the scene pins one. The
+	# streams are separated by mixing constants rather than by being separate seeds,
+	# so a seed still describes the whole run and a relic draw cannot shift which
+	# upgrades a level offers.
+	set_run_seed(authored_run_seed if authored_run_seed != 0 else _roll_run_seed())
 	_pending_upgrade_options.clear()
 	_pending_relic_options.clear()
 	_pending_path_options.clear()
@@ -591,16 +618,6 @@ func tick_biomass(
 	biomass += earned
 	biomass_earned_total += earned
 	biomass_changed.emit(biomass, biomass_per_second)
-
-func set_biomass_from_network(reserve: float, per_second: float) -> void:
-	# Under the root economy the reserve is not Progression's to accumulate. It is
-	# held by the connected component that produced it, and this mirrors the main
-	# organism's so everything already reading `biomass` keeps working while the two
-	# economies are being compared.
-	biomass = maxf(0.0, reserve)
-	biomass_per_second = per_second
-	biomass_changed.emit(biomass, biomass_per_second)
-
 
 func get_selected_paths() -> PackedInt32Array:
 	# Whichever Paths the run is actually built out of, in one place, so anything that
@@ -1103,11 +1120,11 @@ func reroll_upgrade_choice() -> bool:
 	if _pending_upgrade_options.is_empty() or rerolls_remaining <= 0:
 		return false
 	var previous_offer := _pending_upgrade_options.duplicate()
-	# Advancing the cursor by one is not enough on its own. The offer is spread
-	# across the eligible pool, so a single step can land on the same three lines
-	# and the reroll looks like it did nothing. Keep stepping until the offer
-	# actually changes, and give up rather than spending a reroll on a pool that
-	# cannot produce a different one.
+	# A redraw can legitimately come back with the same three lines, and a reroll that
+	# appears to do nothing is a reroll the player believes is broken. Keep drawing -
+	# from a new cursor each time, so even a pool too small to shuffle eventually
+	# moves - and give up rather than spending a reroll on a pool that cannot produce
+	# a different offer at all.
 	for _attempt in range(UpgradeId.size()):
 		_upgrade_offer_cursor = (_upgrade_offer_cursor + 1) % UpgradeId.size()
 		_pending_upgrade_options.clear()
@@ -1167,19 +1184,49 @@ func _roll_upgrade_options() -> bool:
 	if evolution_slots > 0:
 		_pending_upgrade_options.append(EVOLUTION_DRAFT_OPTION)
 	var offer_count := mini(3 - evolution_slots, candidates.size())
-	# Spread the offers across the eligible pool instead of taking three adjacent
-	# entries, so a wide pre-commitment draft represents every path rather than
-	# the first few lines in enum order. The cursor still advances each level, so
-	# the sequence stays deterministic and reproducible from a run seed.
-	for index in range(offer_count):
-		var spread_index := 0
-		if offer_count > 1:
-			spread_index = roundi(
-				float(index) * float(candidates.size() - 1) / float(offer_count - 1)
-			)
-		_pending_upgrade_options.append(candidates[spread_index])
+	# The line the cursor is standing on is always offered, so the sequence still
+	# walks the whole pool over a run rather than leaving lines undrawn. The rest are
+	# drawn at random, preferring paths the offer does not already carry: a wide
+	# pre-commitment draft has to represent the board rather than three lines of one
+	# path, and that was the only thing the old even spread was really buying.
+	var drawn := PackedInt32Array()
+	if offer_count > 0:
+		drawn.append(candidates[0])
+	var remaining: Array[int] = []
+	for index in range(1, candidates.size()):
+		remaining.append(candidates[index])
+	_shuffle_upgrades(remaining)
+	while drawn.size() < offer_count:
+		var taken := -1
+		for index in range(remaining.size()):
+			if not _offer_carries_path(drawn, _get_upgrade_path(remaining[index])):
+				taken = index
+				break
+		if taken < 0:
+			taken = 0
+		drawn.append(remaining[taken])
+		remaining.remove_at(taken)
+	for upgrade_id in drawn:
+		_pending_upgrade_options.append(upgrade_id)
 	_upgrade_offer_cursor = (_upgrade_offer_cursor + 1) % UpgradeId.size()
 	return true
+
+func _shuffle_upgrades(upgrades: Array[int]) -> void:
+	# Fisher-Yates off the run's own generator rather than Array.shuffle, which draws
+	# from the global one: two runs with the same seed have to draft identically.
+	for index in range(upgrades.size() - 1, 0, -1):
+		var swap := _draft_random.randi() % (index + 1)
+		var held := upgrades[index]
+		upgrades[index] = upgrades[swap]
+		upgrades[swap] = held
+
+
+func _offer_carries_path(offer: PackedInt32Array, path_id: int) -> bool:
+	for upgrade_id in offer:
+		if _get_upgrade_path(upgrade_id) == path_id:
+			return true
+	return false
+
 
 func _update_evolution_readiness() -> void:
 	# What counts as a maxed path line is Progression's to know; what that means for

@@ -8,6 +8,110 @@ uniform float mature_threshold : hint_range(0.0, 1.0) = 0.66;
 uniform float deep_root_threshold : hint_range(0.0, 1.0) = 0.88;
 uniform bool bramble_enabled = false;
 
+// The hand-painted layers. A wash is sampled in field space, never in the space of
+// the shape it fills, so each behaves like an infinite painted sheet lying under the
+// arena that ownership stencils holes in: ground changing hands reveals more of a
+// painting that never moves, and losing it hides that painting again. Green and Rot
+// are two sheets over the same coordinates, so a front moving back and forth uncovers
+// the same pigment it did before rather than repainting the ground each time.
+uniform bool green_wash_enabled = false;
+uniform sampler2D green_wash_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform bool rot_wash_enabled = false;
+uniform sampler2D rot_wash_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform vec2 field_size_px = vec2(960.0, 540.0);
+// World pixels covered by one repeat of the wash. Larger means fewer, bigger
+// pigment features; this is an apparent-scale control, not the source resolution.
+uniform float wash_tile_px : hint_range(256.0, 1600.0) = 640.0;
+// Source height over width. A non-square painting would otherwise be stretched to
+// a square repeat, which distorts every brush stroke in it.
+uniform float wash_aspect : hint_range(0.25, 4.0) = 1.0;
+uniform float rot_wash_aspect : hint_range(0.25, 4.0) = 1.0;
+// Where on its own sheet the Rot wash is read from. Rot is painted out of the
+// same picture Green is, so without this the two would show identical pigment on
+// either side of a front and the border would read as one image recoloured down
+// the middle. Fixed, so a piece of ground still shows the same Rot every time it
+// is lost.
+uniform vec2 rot_wash_offset = vec2(0.41, 0.27);
+
+// Repetition is broken by sampling the one painting three times at different
+// orientations, scales, and offsets rather than by asking the art to hide its own
+// tiling. Each layer stays continuous across the whole field, so unlike per-tile
+// random rotation this cannot introduce new seams where previously matching edges
+// meet. The primary sample stays dominant: the other two are there to pull
+// landmarks out of alignment, not to turn the wash into a kaleidoscope.
+uniform float secondary_scale : hint_range(0.5, 2.0) = 0.86;
+uniform float tertiary_scale : hint_range(0.5, 2.0) = 1.16;
+uniform float secondary_weight : hint_range(0.0, 1.0) = 0.22;
+uniform float tertiary_weight : hint_range(0.0, 1.0) = 0.12;
+uniform vec2 secondary_offset = vec2(0.37, 0.19);
+uniform vec2 tertiary_offset = vec2(0.11, 0.53);
+
+// Paper is what the board is painted on, so it needs no ownership at all: it is
+// simply what is there when nothing has claimed the ground. Its own repetition is
+// broken far more weakly than a wash's - paper that draws attention to itself is
+// paper doing the wrong job.
+uniform bool paper_enabled = false;
+uniform sampler2D paper_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform float paper_tile_px : hint_range(256.0, 2000.0) = 760.0;
+uniform float paper_secondary_weight : hint_range(0.0, 0.5) = 0.18;
+uniform float paper_secondary_scale : hint_range(0.5, 2.0) = 0.89;
+uniform vec2 paper_secondary_offset = vec2(0.31, 0.47);
+
+// Interior variation for the washes. It decides how strong the pigment looks, and
+// never whether a pixel is Green or Rot: ownership stays entirely the field's.
+// Its repeat is deliberately unrelated to the wash's, so the two periods do not
+// line their landmarks up into a grid.
+uniform sampler2D watercolor_noise_tex : filter_linear, repeat_enable;
+uniform float watercolor_noise_tile_px : hint_range(64.0, 1600.0) = 420.0;
+uniform float watercolor_variation : hint_range(0.0, 0.5) = 0.08;
+
+// Edge noise moves the boundary before it is thresholded rather than drawing a
+// ragged outline over a smooth one. Because it displaces the field itself, outer
+// borders, interior holes, thin bridges, fragments and Clover wounds all come out
+// ragged from the same few lines, and none of them needs its own case.
+//
+// Measured in pixels rather than in field units. The guide's constants assume a
+// mask that snaps from nothing to everything inside a cell; this field is control,
+// which crosses its threshold gently, so a fixed displacement in field units
+// wanders a few pixels at a hard frontier and tens of pixels across ground that is
+// only softly held - painting Green over neutral board. Scaling by how fast the
+// field changes across one pixel makes the edge wander the same distance
+// everywhere, and leaves flat interiors and open neutral ground untouched, because
+// where nothing is changing there is no edge to move.
+uniform sampler2D edge_noise_tex : filter_linear, repeat_enable;
+uniform float edge_noise_tile_px : hint_range(32.0, 1200.0) = 280.0;
+uniform float edge_distortion_px : hint_range(0.0, 40.0) = 7.0;
+uniform float rot_edge_scale : hint_range(0.5, 1.5) = 0.95;
+uniform float edge_softness_px : hint_range(0.0, 20.0) = 2.5;
+// Where paint starts, as a fraction of the ownership threshold. Below one the two
+// washes reach toward each other and meet at a thin seam of paper instead of being
+// held apart by a band of it: the simulation's neutral strip is real, but a run
+// reads its front as a place where two materials meet, not as a third material.
+// Cosmetic only - ownership itself never moves.
+uniform float paint_threshold_scale : hint_range(0.0, 1.0) = 0.35;
+
+// How far the paint reaches past ownership at a front, in pixels of control
+// gradient. Open board never has a gradient worth speaking of, so this cannot paint
+// it; a front has nothing but gradient, so this carries the coat across the hair
+// where control changes hands.
+uniform float front_paint_bias : hint_range(0.0, 40.0) = 6.0;
+
+vec2 wash_coordinates(vec2 uv, float aspect) {
+	return uv * field_size_px / vec2(wash_tile_px, wash_tile_px * aspect);
+}
+
+vec3 sample_wash(sampler2D wash, vec2 wash_uv) {
+	// A: the painting as it was made. B: the same painting turned a quarter turn.
+	// C: the same painting mirrored. Different scales and offsets keep the three
+	// from landing their landmarks on top of each other.
+	vec2 uv_b = vec2(-wash_uv.y, wash_uv.x) * secondary_scale + secondary_offset;
+	vec2 uv_c = vec2(-wash_uv.x, wash_uv.y) * tertiary_scale + tertiary_offset;
+	float primary_weight = max(0.0, 1.0 - secondary_weight - tertiary_weight);
+	return texture(wash, wash_uv).rgb * primary_weight
+		+ texture(wash, uv_b).rgb * secondary_weight
+		+ texture(wash, uv_c).rgb * tertiary_weight;
+}
+
 vec4 cubic_weights(float offset) {
 	vec4 distances = vec4(1.0, 2.0, 3.0, 4.0) - offset;
 	vec4 cubes = distances * distances * distances;
@@ -72,23 +176,108 @@ void fragment() {
 		-control
 	);
 
-	vec3 neutral_color = vec3(0.045, 0.062, 0.086) + detail * 0.010;
-	vec3 plant_color = mix(
+	vec2 local_px = UV * field_size_px;
+
+	// Paper. What the arena is painted on, and therefore what Neutral ground simply
+	// is - no mask, no ownership, nothing to reveal it.
+	vec3 paper_color = vec3(0.045, 0.062, 0.086) + detail * 0.010;
+	if (paper_enabled) {
+		vec2 paper_uv = local_px / paper_tile_px;
+		vec2 paper_turned = vec2(-paper_uv.y, paper_uv.x) * paper_secondary_scale
+			+ paper_secondary_offset;
+		paper_color = mix(
+			texture(paper_tex, paper_uv).rgb,
+			texture(paper_tex, paper_turned).rgb,
+			paper_secondary_weight
+		);
+	}
+
+	// The two washes, each read off its own sheet at fixed field coordinates.
+	vec3 green_color = mix(
 		vec3(0.035, 0.34, 0.14),
 		vec3(0.22, 0.80, 0.31),
 		clamp(maturity * 0.72 + max(control, 0.0) * 0.28, 0.0, 1.0)
 	);
-	plant_color += detail * mix(0.018, 0.055, maturity);
-	vec3 hostile_color = mix(
+	green_color += detail * mix(0.018, 0.055, maturity);
+	if (green_wash_enabled) {
+		green_color = sample_wash(green_wash_tex, wash_coordinates(UV, wash_aspect));
+	}
+	vec3 rot_color = mix(
 		vec3(0.43, 0.035, 0.095),
 		vec3(0.82, 0.055, 0.14),
 		clamp(maturity * 0.36 + max(-control, 0.0) * 0.64, 0.0, 1.0)
 	);
-	hostile_color += detail * vec3(0.040, 0.010, 0.014);
+	rot_color += detail * vec3(0.040, 0.010, 0.014);
+	if (rot_wash_enabled) {
+		rot_color = sample_wash(
+			rot_wash_tex,
+			wash_coordinates(UV, rot_wash_aspect) + rot_wash_offset
+		);
+	}
 
-	vec3 field_color = neutral_color;
-	field_color = mix(field_color, plant_color, player_weight);
-	field_color = mix(field_color, hostile_color, hostile_weight);
+	// Interior variation, applied to both washes together so they stay two states of
+	// one medium rather than two materials that happen to be adjacent.
+	float watercolor_noise = texture(
+		watercolor_noise_tex,
+		local_px / watercolor_noise_tile_px
+	).r;
+	float watercolor_multiplier = 1.0
+		+ (watercolor_noise - 0.5) * 2.0 * watercolor_variation;
+	green_color *= watercolor_multiplier;
+	rot_color *= watercolor_multiplier;
+
+	// Whether this ground is painted at all, and which of the two materials paints it,
+	// are different questions and are answered separately. Paper is the ground the
+	// board is made of: Green and Rot are laid on top of it, so a piece of ground that
+	// either of them holds is covered, and Paper is what is left where neither does.
+	//
+	// The coverage is one field, torn once. Deriving it from two independently torn
+	// fields cannot work however they are combined: at a front the noise pulls both of
+	// them inward at the same pixel, and a gap both of them opened is a gap that shows
+	// the board through the middle of the organism.
+	float paint_threshold = ownership_threshold * paint_threshold_scale;
+	float control_step = max(fwidth(control), 0.00001);
+
+	// One tear, applied to control itself, and everything below reads the torn field.
+	// Tearing the coverage alone left the handover between Green and Rot running down
+	// the untorn line - a clean edge through the middle of a contested front, with the
+	// ragged one only where the organism met the board.
+	float edge_noise = texture(edge_noise_tex, local_px / edge_noise_tile_px).r;
+	float edge_centered = (edge_noise - 0.5) * 2.0;
+	float torn_control = control + edge_centered * edge_distortion_px * control_step;
+
+	// A front is ground held by two sides at once, and at the hair where control
+	// crosses zero it is held by neither. Locally that pixel is indistinguishable from
+	// open board - the same control, the same everything - except that control is
+	// changing fast across it, which on open board it never is. So the claim is allowed
+	// to lean on that: steep ground is ground between two owners, and it is painted.
+	float claim = abs(torn_control) + front_paint_bias * control_step - paint_threshold;
+	float claim_smooth = clamp(0.5 + claim, 0.0, 1.0);
+	float claim_step = max(fwidth(claim_smooth), 0.00001);
+	float claim_bleed = max(edge_softness_px * claim_step, 0.0005);
+	float claimed = smoothstep(0.5 - claim_bleed, 0.5 + claim_bleed, claim_smooth);
+
+	// Which material, off the same torn field, handed over across a couple of pixels.
+	// Both boundaries therefore wander together and cannot open a gap between them.
+	float share_bleed = max(edge_softness_px * control_step, 0.0005);
+	float green_share = smoothstep(-share_bleed, share_bleed, torn_control);
+	float green_weight = claimed * green_share;
+	float rot_weight = claimed * (1.0 - green_share);
+	float paper_weight = 1.0 - claimed;
+	// Kept for the analytic views, which are read for where a material reaches rather
+	// than for what the paint does.
+	float green_field = clamp(0.5 + (torn_control - paint_threshold), 0.0, 1.0);
+	float rot_field = clamp(0.5 + (-torn_control - paint_threshold), 0.0, 1.0);
+	// Nothing is laid along a boundary: no gathered pigment, no darkened rim, no line.
+	// Where a material ends is decided by the noise that tore its field and by nothing
+	// else, so every edge on the board is the same cut.
+	// The two materials hand over to each other first, and the result is laid onto
+	// the Paper as one coat.
+	vec3 neutral_color = paper_color;
+	vec3 plant_color = green_color;
+	vec3 hostile_color = rot_color;
+	vec3 material_color = mix(rot_color, green_color, green_share);
+	vec3 field_color = mix(paper_color, material_color, claimed);
 
 	if (debug_view == 1) {
 		vec3 plant_maturity = mix(vec3(0.025, 0.08, 0.04), vec3(0.72, 1.0, 0.22), maturity);
@@ -129,20 +318,24 @@ void fragment() {
 	}
 
 	float contour_aa = max(fwidth(control), 0.0001);
-	float player_contour = 1.0 - smoothstep(
-		contour_aa * 0.28,
-		contour_aa * 1.35,
-		abs(control - ownership_threshold)
-	);
-	float hostile_contour = 1.0 - smoothstep(
-		contour_aa * 0.28,
-		contour_aa * 1.35,
-		abs(control + ownership_threshold)
-	);
-	vec3 player_line = vec3(0.42, 1.0, 0.69);
-	vec3 hostile_line = vec3(1.0, 0.27, 0.38);
-	field_color = mix(field_color, player_line, player_contour * 0.78);
-	field_color = mix(field_color, hostile_line, hostile_contour * 0.74);
+	// The analytic views are read for where the boundary is, so they keep their
+	// hard contour. The painted view does not: pigment gathering at a wet edge is
+	// the boundary treatment now, and a bright line over it would only be an
+	// outline drawn round a watercolour.
+	if (debug_view != 0) {
+		float player_contour = 1.0 - smoothstep(
+			contour_aa * 0.28,
+			contour_aa * 1.35,
+			abs(control - ownership_threshold)
+		);
+		float hostile_contour = 1.0 - smoothstep(
+			contour_aa * 0.28,
+			contour_aa * 1.35,
+			abs(control + ownership_threshold)
+		);
+		field_color = mix(field_color, vec3(0.42, 1.0, 0.69), player_contour * 0.78);
+		field_color = mix(field_color, vec3(1.0, 0.27, 0.38), hostile_contour * 0.74);
+	}
 	if (bramble_enabled && debug_view == 0) {
 		float bramble_band = 1.0 - smoothstep(
 			contour_aa * 0.55,
@@ -174,23 +367,39 @@ void fragment() {
 		field_color = mix(field_color, bramble_tip, thorn_points * 0.92 * tip_weight);
 	}
 
-	if (debug_view == 0) {
-		field_color += vec3(0.05, 0.16, 0.22) * pressure;
-	}
+	// Pressure used to be tinted into the painted view, which put a cyan lift along
+	// exactly the ground that was being pushed outward - an outline that appeared
+	// wherever territory was expanding and faded once it settled. It reads as an edge
+	// treatment, so it is gone from the paint; the CONTROL view still carries it for
+	// anyone who needs to see where the field is pushing.
 
-	float mask_aa = max(fwidth(mask) * 1.4, 0.006);
-	float claimable = smoothstep(0.5 - mask_aa, 0.5 + mask_aa, mask);
+	// Unclaimable ground is torn by the same noise as everything else rather than
+	// being cut cleanly and then outlined. It is the one edge on the board that never
+	// moves, so it is the one most obviously drawn if it is drawn at all.
+	float mask_step = max(fwidth(mask), 0.00001);
+	float rock_field = clamp(mask + edge_centered * edge_distortion_px * mask_step, 0.0, 1.0);
+	float mask_aa = max(edge_softness_px * mask_step, 0.0005);
+	float claimable = smoothstep(0.5 - mask_aa, 0.5 + mask_aa, rock_field);
 	float basalt_strata = sin(UV.y * 215.0 + sin(UV.x * 47.0) * 2.2);
 	float basalt_grain = sin((UV.x - UV.y) * 310.0) * 0.5;
 	vec3 rock_color = vec3(0.095, 0.100, 0.105);
 	rock_color += basalt_strata * 0.014 + basalt_grain * 0.006;
 	vec3 final_color = mix(rock_color, field_color, claimable);
-	float rock_contour = 1.0 - smoothstep(
-		mask_aa * 0.28,
-		mask_aa * 1.35,
-		abs(mask - 0.5)
-	);
-	final_color = mix(final_color, vec3(0.42, 0.43, 0.44), rock_contour * 0.82);
+
+	// The layers on their own. Each answers one question about the stack, so a
+	// misbehaving edge can be traced to the field data, the noise, or the paint
+	// without having to guess which of the three produced it.
+	if (debug_view == 4) {
+		final_color = vec3(player_weight);
+	} else if (debug_view == 5) {
+		final_color = paper_color;
+	} else if (debug_view == 6) {
+		final_color = vec3(edge_noise);
+	} else if (debug_view == 7) {
+		final_color = vec3(green_field);
+	} else if (debug_view == 8) {
+		final_color = vec3(watercolor_noise);
+	}
 
 	COLOR = vec4(max(final_color, vec3(0.0)), 1.0);
 }

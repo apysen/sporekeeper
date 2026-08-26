@@ -21,7 +21,6 @@ enum ChoiceKind {
 	UPGRADE,
 	RELIC,
 	PATH,
-	METAMORPHOSIS,
 }
 
 @export_group("Gameplay Components")
@@ -37,12 +36,9 @@ enum ChoiceKind {
 @export var progression: PhaseBProgression
 ## Evolutions component owning every Evolution's state and tuning.
 @export var evolutions: PhaseBEvolutions
-## Ecosystem Metabolism component that automates the Biomass economy and owns
-## Photosynthesis, Meristem, Cambium, their Breakthroughs, and Overgrow.
+## Ecosystem Metabolism component that reads Mass, Push and Hold out of the run's
+## lifetime earnings and owns Overgrow.
 @export var metabolism: PhaseBMetabolism
-## Root Metabolism's component reserves. While its flag is off it produces nothing
-## and Progression's territory-percentage formula still drives Biomass.
-@export var root_network: PhaseBRootNetwork
 ## The Clover machine. Territory is staked here and the reels pay out in Path events.
 ## Biomass is never touched, so a run can gamble away its body without ever losing the
 ## growth its lifetime earnings already bought.
@@ -92,20 +88,6 @@ enum ChoiceKind {
 ## Stick deflection that counts as the player reaching for the controller. Below it
 ## a resting stick cannot flicker the focus ring on by itself.
 @export_range(0.05, 1.0, 0.01) var controller_stick_deadzone := 0.35
-
-@export_group("Root Network")
-## Seconds between rebuilds of the drawn root layer. It follows the topology cadence
-## rather than the frame rate: the doc asks for low-frequency root updates, and an
-## organism does not change shape between two frames.
-@export_range(0.05, 2.0, 0.05) var root_layer_interval_seconds := 0.50
-## Vessels drawn per component. Enough to read as a network, few enough that the root
-## layer never competes with enemies or projectiles for attention.
-@export_range(2, 64, 1) var root_vessels_per_component := 14
-## Anchor points sampled for the fine root mat Root's own path grows under the Green.
-## Rebuilt on the same slow clock as the vessels, for the same reason.
-@export_range(0, 400, 4) var root_mat_anchors := 160
-## Seconds a release runs hot through the vessels after it is spent.
-@export_range(0.0, 4.0, 0.1) var root_surge_seconds := 0.9
 
 @export_group("Root Development")
 ## How long Conductive Roots leaves its new reach on screen after being bought.
@@ -177,27 +159,16 @@ enum ChoiceKind {
 @export var choice_button_four: Button
 ## Button that spends one of the run's rerolls to redraw the current upgrade offer.
 @export var choice_reroll_button: Button
-## Development control for the Rooting domain. The bar it draws is how close the
-## main organism's reserve is to affording the next development, which is the same
-## for all four.
-@export var rooting_button: PhaseBMetabolismButton
-## Development control for the Storage domain; see Rooting Button.
-@export var storage_button: PhaseBMetabolismButton
-## Development control for the Circulation domain; see Rooting Button.
-@export var circulation_button: PhaseBMetabolismButton
-## Development control for the Anchoring domain; see Rooting Button.
-@export var anchoring_button: PhaseBMetabolismButton
+## Readout for the Mass axis. Nothing here is pressed: the bar it draws is how far
+## the run's lifetime earnings have carried this axis toward its next rank, which is
+## the same for all three.
+@export var mass_button: PhaseBMetabolismButton
+## Readout for the Push axis; see Mass Button.
+@export var push_button: PhaseBMetabolismButton
+## Readout for the Hold axis; see Mass Button.
+@export var hold_button: PhaseBMetabolismButton
 ## Button that releases a share of the Reserve into the frontier the player aims at.
 @export var overgrow_button: Button
-## Deep Root: drives the Reserve into the ground around the aim as establishment.
-## Unlocked by developing Rooting.
-@export var deep_root_button: Button
-## Pressurize: empties the Reserve as one outward shove. Unlocked by Storage.
-@export var pressurize_button: Button
-## Translocate: drags home what the cut-off colonies hold. Unlocked by Circulation.
-@export var translocate_button: Button
-## Regenerate: spends the Reserve sealing damaged ground. Unlocked by Anchoring.
-@export var regenerate_button: Button
 ## Label that reports what the organism is holding and what it cannot reach.
 @export var metabolism_label: Label
 ## Bottom drawer that owns every detailed Biomass decision. Closed by default: the
@@ -309,10 +280,57 @@ enum ChoiceKind {
 @export var setting_button_ui_scale: Button
 @export var setting_button_hud_detail: Button
 
+@export_group("Interface Text")
+## Wording for the states a control does not sit in at rest, so every line the
+## game can print is edited in the editor rather than in code. The resting wording
+## is the text on the node itself; these are the alternates it swaps to. All of
+## them take named placeholders - {like_this} - and a placeholder that matches
+## nothing is printed as typed, which is how a misspelt name shows itself.
+@export var wave_grace_template := "WAVE {wave} IN {seconds}s"
+@export var clock_complete_text := "CLEAR THE FIELD"
+@export var clock_detailed_template := (
+	"{clock} REMAINING    MASS {mass}  PUSH {push}  HOLD {hold}"
+)
+@export var wager_stake_template := "{stake}   {percent}% TERRITORY"
+@export var odds_live_template := "JACKPOT {jackpot}%    BUST {bust}%"
+@export var odds_high_roller_suffix := "    HIGH ROLLER"
+@export var odds_high_roller_countdown_template := "    HIGH ROLLER IN {spins}"
+@export_multiline var metabolism_complete_template := (
+	"LIFETIME BIOMASS {lifetime}
+FULLY DEVELOPED"
+)
+@export var biomass_button_open_text := "CLOSE  [B]"
+@export var fullscreen_exit_text := "EXIT FULLSCREEN"
+@export var volume_unavailable_text := "UNAVAILABLE"
+@export var choice_header_upgrade := "ROOT MEMORY"
+@export var choice_header_relic := "ELITE RELIC"
+@export var choice_header_primary_path := "PRIMARY PLANT PATH"
+@export var choice_header_support_path := "SUPPORT PLANT PATH"
+@export var choice_header_secondary_path := "SECONDARY PLANT PATH"
+@export_multiline var choice_evolution_template := "{name}   EVOLUTION
+{detail}"
+@export_multiline var choice_upgrade_template := (
+	"{name}   LEVEL {level} → {next}
+{detail}"
+)
+@export_multiline var choice_relic_template := "{name}   {rarity}
+{detail}"
+@export_multiline var choice_path_template := "{name}
+{detail}"
+@export var result_victory_header := "FRONTIER HELD"
+@export var result_defeat_header := "THE FRONTIER WITHERED"
+@export_multiline var result_detail_template := (
+	"{detail}
+
+Time  {time}    Level  {level}    Green  {green}%"
+)
+@export var action_aiming_template := "{action}  CHOOSE TARGET"
+@export var action_cooldown_template := "{action}  {seconds}s"
+
 var choice_buttons: Array[Button] = []
 var metabolism_buttons: Array[PhaseBMetabolismButton] = []
-## Action buttons indexed by PhaseBMetabolism.ActionId, so one loop drives all five
-## and a new verb is one entry rather than a fifth copy of the same update code.
+## Action buttons indexed by PhaseBMetabolism.ActionId, so a second verb is one entry
+## rather than a second copy of the same update code.
 var action_buttons: Array[Button] = []
 ## Setting buttons indexed by PhaseBDisplaySettings.OptionId, so one loop drives
 ## all seven and an eighth option is one entry rather than a seventh copy.
@@ -320,11 +338,10 @@ var setting_buttons: Array[Button] = []
 
 var _run_state := RunState.RUNNING
 var _final_stand_announced := false
-## The growth-line caption as authored on the label, captured before anything
-## overwrites it, so editing the text in the editor survives into play. Two integer
-## placeholders receive the filled and total slots, one receives the filled count,
-## and text with none is shown exactly as authored.
-var _slots_label_format := "GROWTH LINES  //  %d OF %d"
+## Every dynamic line in the interface, as the scene authored it. Captured once,
+## before anything writes to a control, so what is typed in the editor is what the
+## game prints - wording, spacing, order, and which values appear at all.
+var _authored := AuthoredText.new()
 var _choice_kind := ChoiceKind.NONE
 var _choice_ids := PackedInt32Array()
 var _zero_territory_remaining := 0.0
@@ -363,7 +380,6 @@ var _reel_incoming := PackedInt32Array([5, 5, 5])
 var _reel_offset := PackedFloat32Array([0.0, 0.0, 0.0])
 var _reel_rest_a := PackedFloat32Array([0.0, 0.0, 0.0])
 var _reel_rest_b := PackedFloat32Array([0.0, 0.0, 0.0])
-var _root_layer_accumulator := 0.0
 ## Whether the last input came from a controller. The focus ring is a controller
 ## affordance: with a mouse in hand it is a white box sitting on a button nobody is
 ## about to press, so it is only shown once a pad is actually being used.
@@ -394,7 +410,6 @@ func _ready() -> void:
 	assert(root_director != null, "PhaseBPrototype requires PhaseBRootDirector")
 	assert(man_eater != null, "PhaseBPrototype requires PhaseBManEater")
 	assert(metabolism != null, "PhaseBPrototype requires PhaseBMetabolism")
-	assert(root_network != null, "PhaseBPrototype requires PhaseBRootNetwork")
 	assert(slot_machine != null, "PhaseBPrototype requires PhaseBSlotMachine")
 	assert(wager_layer != null, "PhaseBPrototype requires TerritoryWagerLayer")
 	assert(clover_odds != null, "PhaseBPrototype requires PhaseBCloverOdds")
@@ -421,10 +436,9 @@ func _ready() -> void:
 		choice_button_four,
 	]
 	metabolism_buttons = [
-		rooting_button,
-		storage_button,
-		circulation_button,
-		anchoring_button,
+		mass_button,
+		push_button,
+		hold_button,
 	]
 	setting_buttons = [
 		setting_button_friendly_effects,
@@ -437,13 +451,7 @@ func _ready() -> void:
 	]
 	# Indexed by ActionId, so the order of this array is the order of the enum and not
 	# a second opinion about it.
-	action_buttons = [
-		overgrow_button,
-		deep_root_button,
-		pressurize_button,
-		translocate_button,
-		regenerate_button,
-	]
+	action_buttons = [overgrow_button]
 	var required_interface_controls: Array[Control] = [
 		health_bar,
 		health_label,
@@ -467,15 +475,10 @@ func _ready() -> void:
 		choice_button_three,
 		choice_button_four,
 		choice_reroll_button,
-		rooting_button,
-		storage_button,
-		circulation_button,
-		anchoring_button,
+		mass_button,
+		push_button,
+		hold_button,
 		overgrow_button,
-		deep_root_button,
-		pressurize_button,
-		translocate_button,
-		regenerate_button,
 		metabolism_label,
 		reset_button,
 		result_panel,
@@ -491,6 +494,27 @@ func _ready() -> void:
 		pause_restart_button,
 		pause_quit_button,
 	]
+	# Before a single frame runs, and so before anything below overwrites a control:
+	# from here on the editor owns the wording and this script only fills in numbers.
+	_authored.capture(required_interface_controls)
+	_authored.capture([
+		wager_label,
+		odds_label,
+		all_in_label,
+		biomass_button,
+		banner_label,
+		_metabolism_reserve_label(),
+	])
+	_authored.capture(setting_buttons)
+	_authored.capture(action_buttons)
+	# Tooltips are authored the same way, on the same nodes.
+	_authored.capture(required_interface_controls, "tooltip_text")
+	_authored.capture(setting_buttons, "tooltip_text")
+	_authored.capture(action_buttons, "tooltip_text")
+	# An axis button draws its wording through a child caption, so its template is
+	# the button's own `display_text` rather than the Button `text` nothing shows.
+	_authored.capture(metabolism_buttons, "display_text")
+	_authored.capture(metabolism_buttons, "tooltip_text")
 	for interface_control in required_interface_controls:
 		assert(
 			interface_control != null,
@@ -513,8 +537,6 @@ func _ready() -> void:
 	wave_director.boss_arrived.connect(_on_boss_arrived)
 	wave_director.final_invasion_began.connect(_on_final_invasion_began)
 	wave_director.cleanup_began.connect(_on_cleanup_began)
-	if slots_label != null:
-		_slots_label_format = slots_label.text
 	spore_director.status_requested.connect(_set_status)
 	bloom_director.status_requested.connect(_set_status)
 	combat.boss_erupted.connect(_on_boss_erupted)
@@ -548,12 +570,7 @@ func _ready() -> void:
 			continue
 		hover_region.mouse_entered.connect(_on_slot_hover_changed.bind(true))
 		hover_region.mouse_exited.connect(_on_slot_hover_changed.bind(false))
-	root_network.developed.connect(_on_root_developed)
-	root_network.metamorphosis_choice_requested.connect(_on_metamorphosis_requested)
-	root_network.metamorphosed.connect(_on_metamorphosed)
-	root_network.support_pulsed.connect(_on_support_pulsed)
-	root_network.colony_isolated.connect(_on_colony_isolated)
-	root_network.colony_reconnected.connect(_on_colony_reconnected)
+	metabolism.system_unlocked.connect(_on_system_unlocked)
 	metabolism.status_requested.connect(_set_status)
 	relic_director.status_requested.connect(_set_status)
 	progression.relics_changed.connect(relic_director.apply_relics)
@@ -575,8 +592,6 @@ func _ready() -> void:
 
 	for index in range(choice_buttons.size()):
 		choice_buttons[index].pressed.connect(_choose_displayed_option.bind(index))
-	for index in range(metabolism_buttons.size()):
-		metabolism_buttons[index].pressed.connect(_develop_root_system.bind(index))
 	for index in range(action_buttons.size()):
 		if action_buttons[index] == null:
 			continue
@@ -635,7 +650,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	# be a live overlay where readability permits, and holding it means the player
 	# cannot leave it up by accident while the battlefield needs them.
 	if event is InputEventKey and not event.echo and event.keycode == KEY_TAB:
-		_set_root_inspect(event.pressed)
 		get_viewport().set_input_as_handled()
 		return
 	if not (event is InputEventKey and event.pressed and not event.echo):
@@ -653,13 +667,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_R:
 			reset_run()
 		KEY_F4:
-			# Development is slow on purpose and the physiology is the part of the run
-			# least likely to be reached by hand, so the debug key grants ranks rather
-			# than reserve: what needs exercising is what the domains do, not the wait.
-			for domain_id in range(metabolism_buttons.size()):
-				root_network.debug_grant_development(domain_id)
+			# The ladder is slow on purpose and the physique is the part of the run
+			# least likely to be reached by hand, so the debug key pays the run the
+			# lifetime earnings a rank costs rather than writing the rank itself.
+			for system_id in range(metabolism_buttons.size()):
+				metabolism.debug_grant_axis(system_id)
 			_apply_progression_modifiers()
-			_set_status("Debug: every developmental domain advanced one rank.")
+			_set_status("Debug: every physical axis advanced one rank.")
 		KEY_F2:
 			# The guide's wager debug, printed rather than drawn: what it has to show is
 			# eight numbers about one region, and eight numbers are easier to read in a
@@ -791,9 +805,16 @@ func _report_man_eater_state() -> void:
 func advance_run(delta: float) -> void:
 	if delta <= 0.0 or _run_state != RunState.RUNNING:
 		return
-	# Two economies, one flag apart. The root network produces into the reserves of
-	# the components that earned it and Progression mirrors the main organism's; with
-	# the flag off nothing is produced and the old percentage formula still runs.
+	# The reserve is Progression's, produced by how much Green the run holds and how
+	# much of it has matured. Earning is also what develops the three physical axes,
+	# so a run that holds ground is a run that becomes physically capable of holding
+	# more of it.
+	progression.tick_biomass(
+		delta,
+		territory_field.get_player_percent(),
+		territory_field.get_mature_player_percent(),
+		root_director.get_biomass_yield_multiplier()
+	)
 	slot_machine.advance(delta)
 	slot_machine.advance_preview(delta, player.get_arena_position())
 	clover_jackpots.advance(delta)
@@ -801,21 +822,6 @@ func advance_run(delta: float) -> void:
 	_advance_all_in_countdown()
 	_advance_lever(delta)
 	_advance_reels(delta)
-	root_network.advance(delta, player.get_arena_position())
-	_advance_root_layer(delta)
-	# The marker follows the colony rather than being spawned once, so ground that is
-	# still out there keeps saying so instead of having said it once.
-	overlay.set_isolated_colonies(
-		root_network.get_isolated_colony_positions(),
-		root_network.get_isolated_colony_reserves()
-	)
-	# The reserve is not Progression's to accumulate: it is held by the components that
-	# produced it, and this mirrors the main organism's so everything already reading
-	# `biomass` keeps working.
-	progression.set_biomass_from_network(
-		root_network.get_primary_reserve(),
-		root_network.get_primary_generation_per_second()
-	)
 
 	wave_director.advance(delta)
 	# Path milestones share the panel with relic rewards and land on the same wave
@@ -875,7 +881,6 @@ func reset_run() -> void:
 	territory_field.reset_field()
 	progression.reset_progression()
 	metabolism.reset_metabolism()
-	root_network.reset_network()
 	clover_odds.reset_odds()
 	clover_jackpots.reset_jackpots()
 	all_in_grace.reset_grace()
@@ -1036,11 +1041,14 @@ func _update_reroll_button() -> void:
 		choice_reroll_button.visible = true
 		var relic_rerolls := progression.get_relic_rerolls_remaining()
 		choice_reroll_button.disabled = relic_rerolls <= 0
-		choice_reroll_button.text = "REROLL  (%d LEFT)" % relic_rerolls
+		_authored.write(choice_reroll_button, {"left": relic_rerolls})
 		return
 	choice_reroll_button.visible = _choice_kind == ChoiceKind.UPGRADE
 	choice_reroll_button.disabled = progression.rerolls_remaining <= 0
-	choice_reroll_button.text = "REROLL  (%d LEFT)" % progression.rerolls_remaining
+	_authored.write(
+		choice_reroll_button,
+		{"left": progression.rerolls_remaining},
+	)
 
 
 func _on_relic_choice_requested(options: PackedInt32Array) -> void:
@@ -1057,21 +1065,16 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 	_update_reroll_button()
 	match kind:
 		ChoiceKind.UPGRADE:
-			choice_header.text = "ROOT MEMORY"
+			choice_header.text = choice_header_upgrade
 		ChoiceKind.RELIC:
-			choice_header.text = "ELITE RELIC"
-		ChoiceKind.METAMORPHOSIS:
-			var domain_id := root_network.get_pending_metamorphosis_domain()
-			choice_header.text = "%s METAMORPHOSIS" % (
-				PhaseBRootNetwork.get_development_name(domain_id).to_upper()
-			)
+			choice_header.text = choice_header_relic
 		ChoiceKind.PATH:
 			if progression.is_pending_primary_path_choice():
-				choice_header.text = "PRIMARY PLANT PATH"
+				choice_header.text = choice_header_primary_path
 			elif progression.has_secondary_path():
-				choice_header.text = "SUPPORT PLANT PATH"
+				choice_header.text = choice_header_support_path
 			else:
-				choice_header.text = "SECONDARY PLANT PATH"
+				choice_header.text = choice_header_secondary_path
 	for index in range(choice_buttons.size()):
 		var button := choice_buttons[index]
 		if index >= _choice_ids.size():
@@ -1082,41 +1085,36 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 		var option_id := _choice_ids[index]
 		if kind == ChoiceKind.UPGRADE and option_id == PhaseBProgression.EVOLUTION_DRAFT_OPTION:
 			var pair_evolution := progression.get_pair_evolution_id()
-			button.text = "%s   EVOLUTION\n%s" % [
-				PhaseBEvolutions.get_evolution_name(pair_evolution),
-				PhaseBEvolutions.get_evolution_description(pair_evolution),
-			]
+			button.text = AuthoredText.render(choice_evolution_template, {
+				"name": PhaseBEvolutions.get_evolution_name(pair_evolution),
+				"detail": PhaseBEvolutions.get_evolution_description(pair_evolution),
+			})
 		elif kind == ChoiceKind.UPGRADE:
 			var current_upgrade_level := progression.get_upgrade_level(option_id)
-			button.text = "%s   LEVEL %d → %d\n%s" % [
-				PhaseBProgression.get_upgrade_name(option_id),
-				current_upgrade_level,
-				current_upgrade_level + 1,
-				progression.get_upgrade_description(option_id),
-			]
+			button.text = AuthoredText.render(choice_upgrade_template, {
+				"name": PhaseBProgression.get_upgrade_name(option_id),
+				"level": current_upgrade_level,
+				"next": current_upgrade_level + 1,
+				"detail": progression.get_upgrade_description(option_id),
+			})
 		elif kind == ChoiceKind.RELIC:
 			# Rarity is the readout of how much the relic changes, so it is named
 			# on the button rather than only implied by the effect text.
-			button.text = "%s   %s\n%s" % [
-				PhaseBProgression.get_relic_name(option_id),
-				PhaseBRelicCatalog.get_rarity_name(
+			button.text = AuthoredText.render(choice_relic_template, {
+				"name": PhaseBProgression.get_relic_name(option_id),
+				"rarity": PhaseBRelicCatalog.get_rarity_name(
 					PhaseBRelicCatalog.get_rarity(option_id)
 				),
-				progression.get_relic_description(option_id),
-			]
+				"detail": progression.get_relic_description(option_id),
+			})
 			button.modulate = PhaseBRelicCatalog.get_rarity_color(
 				PhaseBRelicCatalog.get_rarity(option_id)
 			)
-		elif kind == ChoiceKind.METAMORPHOSIS:
-			button.text = "%s\n%s" % [
-				PhaseBRootNetwork.get_metamorphosis_name(option_id),
-				PhaseBRootNetwork.get_metamorphosis_description(option_id),
-			]
 		else:
-			button.text = "%s\n%s" % [
-				PhaseBProgression.get_path_name(option_id).to_upper(),
-				PhaseBProgression.get_path_description(option_id),
-			]
+			button.text = AuthoredText.render(choice_path_template, {
+				"name": PhaseBProgression.get_path_name(option_id).to_upper(),
+				"detail": PhaseBProgression.get_path_description(option_id),
+			})
 	choice_panel.visible = true
 	_refresh_simulation_pause()
 
@@ -1154,8 +1152,6 @@ func _choose_displayed_option(index: int) -> void:
 	elif prior_kind == ChoiceKind.RELIC:
 		if progression.choose_relic(selected_id):
 			_set_status("Relic claimed: %s." % PhaseBProgression.get_relic_name(selected_id))
-	elif prior_kind == ChoiceKind.METAMORPHOSIS:
-		root_network.choose_metamorphosis(selected_id)
 	else:
 		if progression.choose_path(selected_id):
 			_set_status("Path rooted: %s." % PhaseBProgression.get_path_name(selected_id))
@@ -1198,8 +1194,17 @@ func _on_display_settings_changed() -> void:
 	# happened to be made in.
 	if interface_layer != null:
 		var ui_scale := display_settings.get_ui_scale()
-		interface_layer.transform = Transform2D.IDENTITY.scaled(
-			Vector2(ui_scale, ui_scale)
+		# Scaled about the middle of the screen rather than about the origin. A
+		# CanvasLayer scales from its corner, so every setting other than 100% slid the
+		# whole interface toward one corner of the screen - 128 pixels up and left at
+		# 80%, 160 down and right at 125% - and the pause menu, which is centred by its
+		# own anchors, went with it.
+		var screen_centre := get_viewport().get_visible_rect().size * 0.5
+		interface_layer.transform = Transform2D(
+			0.0,
+			Vector2(ui_scale, ui_scale),
+			0.0,
+			screen_centre - screen_centre * ui_scale
 		)
 	_update_setting_buttons()
 	if is_node_ready():
@@ -1218,17 +1223,20 @@ func _update_setting_buttons() -> void:
 			continue
 		# The name and the current value on one line, because a settings row that only
 		# says its value makes the player remember which row is which.
-		button.text = "%s   %s" % [
-			PhaseBDisplaySettings.get_option_name(option_id),
-			PhaseBDisplaySettings.get_choice_name(
+		var option_values := {
+			"name": PhaseBDisplaySettings.get_option_name(option_id),
+			"value": PhaseBDisplaySettings.get_choice_name(
 				option_id,
 				display_settings.get_choice(option_id)
 			),
-		]
-		button.tooltip_text = "%s\n\n%s" % [
-			PhaseBDisplaySettings.get_option_name(option_id),
-			PhaseBDisplaySettings.get_option_description(option_id),
-		]
+			"detail": PhaseBDisplaySettings.get_option_description(option_id),
+		}
+		# Each row names itself on its own node, so a row can be renamed, reordered
+		# or reworded without this loop knowing anything about it.
+		_authored.write(button, option_values, "{name}   {value}")
+		_authored.write(
+			button, option_values, "{name}\n\n{detail}", "tooltip_text"
+		)
 
 
 func _toggle_metabolism_drawer() -> void:
@@ -1238,7 +1246,10 @@ func _toggle_metabolism_drawer() -> void:
 func _set_metabolism_drawer_open(open: bool) -> void:
 	_drawer_open = open
 	metabolism_drawer.visible = open
-	biomass_button.text = "BIOMASS  [B]" if not open else "CLOSE  [B]"
+	if open:
+		biomass_button.text = biomass_button_open_text
+	else:
+		_authored.write(biomass_button)
 	if open:
 		_update_metabolism_controls()
 
@@ -1248,7 +1259,9 @@ func _show_banner(text: String) -> void:
 	# Nothing here earns a permanent HUD section.
 	if banner_label == null:
 		return
-	banner_label.text = text
+	# The wording of an event is the event's own; how the banner frames it is the
+	# banner's, and that is on the node.
+	_authored.write(banner_label, {"event": text}, "{event}")
 	banner_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_banner_remaining = banner_seconds
 
@@ -1301,47 +1314,16 @@ func _press_action(action_id: int) -> void:
 		_set_status(_describe_unavailable_action(action_id))
 		_update_metabolism_controls()
 		return
-	if action_id == PhaseBMetabolism.ActionId.TRANSLOCATE:
-		_perform_translocate()
-		return
 	_begin_overgrow_aim(action_id)
 
 
 func _describe_unavailable_action(action_id: int) -> String:
-	# Why it cannot be pressed, in the words of the thing that is missing. "Not enough
-	# Biomass" on a locked action is a lie the player would act on.
+	# Why it cannot be pressed, in the words of the thing that is missing.
 	var name := PhaseBMetabolism.get_action_name(action_id)
-	if not metabolism.is_action_unlocked(action_id):
-		return "%s needs %s developed first." % [
-			name,
-			PhaseBRootNetwork.get_development_name(
-				PhaseBMetabolism.get_action_domain(action_id)
-			),
-		]
 	var cooldown := metabolism.get_action_cooldown_remaining(action_id)
 	if cooldown > 0.0:
 		return "%s is still recovering: %.1fs." % [name, cooldown]
-	if action_id == PhaseBMetabolism.ActionId.TRANSLOCATE:
-		return "Nothing is stranded in an outlying colony to bring home."
-	return "Not enough Biomass banked in the main organism for %s yet." % name
-
-
-func _perform_translocate() -> void:
-	# The one action with no aim. It is answered at the colonies it emptied rather than
-	# at the player, because that is where the Biomass actually came from.
-	var colonies := root_network.get_isolated_colony_positions()
-	if not metabolism.try_translocate(player.get_arena_position()):
-		_set_status(_describe_unavailable_action(PhaseBMetabolism.ActionId.TRANSLOCATE))
-		_update_metabolism_controls()
-		return
-	for colony in colonies:
-		overlay.spawn_sever_pulse(colony)
-	overlay.spawn_root_surge(
-		territory_field.get_component_centroid(root_network.get_primary_component()),
-		root_surge_seconds
-	)
-	combat.play_plant_explosion_sfx()
-	_update_metabolism_controls()
+	return "Not enough Biomass banked for %s yet." % name
 
 
 func _begin_overgrow_aim(action_id: int = PhaseBMetabolism.ActionId.OVERGROW) -> void:
@@ -1410,20 +1392,9 @@ func _move_overgrow_aim(local_position: Vector2) -> void:
 
 
 func _get_overgrow_reach() -> float:
-	# What the ring actually shows has to be what the release actually favours, or
-	# Circulation would widen the effect without widening the aim. Two of the actions
-	# reach differently from the rest, and the ring has to say which one is armed.
-	var reach := metabolism.overgrow_focus_radius
-	match _aiming_action:
-		PhaseBMetabolism.ActionId.REGENERATE:
-			reach = metabolism.regenerate_radius
-		PhaseBMetabolism.ActionId.DEEP_ROOT:
-			reach = (
-				metabolism.deep_root_radius_multiplier
-				* territory_field.tuning.player_stamp_radius_cells
-				* (territory_field.tuning.arena_size.x / float(territory_field.get_grid_width()))
-			)
-	return reach * root_network.get_reach_multiplier()
+	# What the ring shows has to be what the release actually favours, or the aim
+	# would promise ground the discharge never reaches.
+	return metabolism.overgrow_focus_radius
 
 
 func _release_overgrow_at(local_position: Vector2) -> void:
@@ -1431,120 +1402,18 @@ func _release_overgrow_at(local_position: Vector2) -> void:
 	_overgrow_aiming = false
 	overlay.clear_overgrow_aim()
 	var performed := false
-	match action_id:
-		PhaseBMetabolism.ActionId.OVERGROW:
-			performed = metabolism.try_overgrow(local_position)
-		PhaseBMetabolism.ActionId.DEEP_ROOT:
-			performed = metabolism.try_deep_root(local_position)
-		PhaseBMetabolism.ActionId.PRESSURIZE:
-			performed = metabolism.try_pressurize(local_position)
-		PhaseBMetabolism.ActionId.REGENERATE:
-			performed = metabolism.try_regenerate(local_position)
+	if action_id == PhaseBMetabolism.ActionId.OVERGROW:
+		performed = metabolism.try_overgrow(local_position)
 	if performed:
 		overlay.spawn_discharge_pulse(local_position)
 		# The release is seen leaving the organism through its own vessels before it
 		# reaches the ground it was aimed at.
-		overlay.spawn_root_surge(
-			territory_field.get_component_centroid(root_network.get_primary_component()),
-			root_surge_seconds
-		)
 		combat.play_plant_explosion_sfx()
 	else:
 		# The reserve can drain between opening the aim and committing it, because the
 		# run does not stop while the player is choosing.
 		_set_status(_describe_unavailable_action(action_id))
 	_update_metabolism_controls()
-
-
-func _develop_root_system(domain_id: int) -> void:
-	if not root_network.try_develop(domain_id):
-		_set_status(
-			"The organism is already becoming something; answer that first."
-			if root_network.has_pending_metamorphosis()
-			else "Not enough Biomass banked in the main organism to develop yet."
-		)
-		_update_metabolism_controls()
-		return
-	_update_metabolism_controls()
-
-
-func _set_root_inspect(enabled: bool) -> void:
-	# Everything the inspect layer shows is state the simulation already holds and the
-	# normal HUD deliberately does not carry. Nothing here is permanent.
-	overlay.set_root_inspect(enabled)
-	if enabled:
-		overlay.set_root_reserves(_describe_root_reserves())
-		_set_status(
-			"Root network: %s of %s banked, %.1f/s, %d rooted, %d colonies."
-			% [
-				_format_compact(root_network.get_primary_reserve()),
-				_format_compact(root_network.get_primary_capacity()),
-				root_network.get_primary_generation_per_second(),
-				roundi(territory_field.get_rooted_territory_percent()),
-				root_network.get_isolated_component_count(),
-			]
-		)
-	else:
-		overlay.set_root_reserves([])
-
-
-func _describe_root_reserves() -> Array:
-	# Each component's own reserve, drawn at that component. A colony's Biomass is not
-	# a sidebar row: it belongs to a place on the battlefield.
-	var described: Array = []
-	var primary := root_network.get_primary_component()
-	for component_id in range(territory_field.get_component_count()):
-		if territory_field.get_component_cells(component_id) <= 0:
-			continue
-		described.append({
-			"position": territory_field.get_component_centroid(component_id),
-			"reserve": root_network.get_component_reserve(component_id),
-			"capacity": root_network.get_component_capacity(component_id),
-			"primary": component_id == primary,
-		})
-	return described
-
-
-func _advance_root_layer(delta: float) -> void:
-	# The drawn network follows the simulated one on its own clock. Rebuilding it every
-	# frame would cost a full sampling pass per frame to show something that changes
-	# twice a second.
-	overlay.set_root_demand(player.get_arena_position())
-	_root_layer_accumulator += delta
-	if _root_layer_accumulator < root_layer_interval_seconds:
-		return
-	_root_layer_accumulator = 0.0
-	# Root's signature on the battlefield. Every run has the metabolism's vessels;
-	# only a run that took the Root path grows a visible mat of hairs into the ground
-	# it is holding, and it thickens as the path's own lines are ranked up. Root is
-	# the path about what held ground becomes, so what it changes is what held ground
-	# looks like.
-	var root_rank := progression.get_path_rank_fraction(PhaseBProgression.PathId.ROOT)
-	if root_rank <= 0.0:
-		overlay.set_root_mat(PackedVector2Array(), 0.0)
-	else:
-		overlay.set_root_mat(
-			territory_field.sample_rooted_ground(root_mat_anchors),
-			root_rank
-		)
-	var primary := root_network.get_primary_component()
-	var vessels: Array = []
-	for component_id in range(territory_field.get_component_count()):
-		var endpoints := territory_field.sample_component_vessels(
-			component_id,
-			root_vessels_per_component
-		)
-		if endpoints.is_empty():
-			continue
-		vessels.append({
-			"heart": territory_field.get_component_centroid(component_id),
-			"endpoints": endpoints,
-			# Only the organism the run can actually spend from carries flow. A colony
-			# keeps its roots and loses its pulses, which is how the battlefield says
-			# it has been cut off without a line of text saying so.
-			"flowing": component_id == primary,
-		})
-	overlay.set_root_vessels(vessels)
 
 
 func _on_lever_input(event: InputEvent) -> void:
@@ -1776,33 +1645,37 @@ func _update_slot_controls() -> void:
 		# The machine stays visible and says exactly what is missing. Hiding it would
 		# make the requirement invisible, and a large tutorial panel would make a
 		# two-number condition look like a system.
-		wager_label.text = "MINIMUM BUY-IN"
-		if odds_label != null:
-			odds_label.text = "%.1f / %.1f%% ESTABLISHED" % [
-				slot_machine.get_established_fraction() * 100.0,
-				slot_machine.minimum_buyin_established_fraction * 100.0,
-			]
+		_authored.write(wager_label)
+		_authored.write(odds_label, {
+			"held": "%.1f" % (slot_machine.get_established_fraction() * 100.0),
+			"need": "%.1f" % (
+				slot_machine.minimum_buyin_established_fraction * 100.0
+			),
+		})
 	else:
-		wager_label.text = "%s   %d%% TERRITORY" % [
-			stake_name,
-			roundi(slot_machine.get_stake_fraction() * 100.0),
-		]
+		_authored.write_variant(wager_label, wager_stake_template, {
+			"stake": stake_name,
+			"percent": roundi(slot_machine.get_stake_fraction() * 100.0),
+		})
 		if odds_label != null:
 			# The printed odds are the odds this spin will actually roll, after drought
 			# protection and after Bust suppression. The backend may protect the player
 			# from ugly randomness; the readout may not misreport what it did.
 			var odds := slot_machine.get_effective_odds()
-			odds_label.text = "JACKPOT %d%%    BUST %d%%" % [
-				roundi(float(odds["positive"]) * 100.0),
-				roundi(float(odds["triple_bust"]) * 100.0),
-			]
+			_authored.write_variant(odds_label, odds_live_template, {
+				"jackpot": roundi(float(odds["positive"]) * 100.0),
+				"bust": roundi(float(odds["triple_bust"]) * 100.0),
+			})
 			# High Roller's counter is always visible, because a doubled spin the player
 			# only finds out about afterwards is a coin flip rather than a decision.
 			var countdown := clover_odds.get_high_roller_countdown()
 			if countdown == 1:
-				odds_label.text += "    HIGH ROLLER"
+				odds_label.text += odds_high_roller_suffix
 			elif countdown > 1:
-				odds_label.text += "    HIGH ROLLER IN %d" % (countdown - 1)
+				odds_label.text += AuthoredText.render(
+					odds_high_roller_countdown_template,
+					{"spins": countdown - 1},
+				)
 	lever_grab.mouse_default_cursor_shape = (
 		Control.CURSOR_POINTING_HAND if slot_machine.can_spin() else Control.CURSOR_ARROW
 	)
@@ -2143,128 +2016,33 @@ func _on_all_in_grace_failed() -> void:
 func _advance_all_in_countdown() -> void:
 	if all_in_label == null:
 		return
-	if not all_in_grace.is_active():
-		all_in_label.visible = false
-		return
-	all_in_label.visible = true
+	# Written whether or not the grace is running, and only then shown or hidden: a
+	# countdown that is written for the first time as it appears spends the run
+	# holding its unfilled template, ready to be seen by anything that reveals it.
+	all_in_label.visible = all_in_grace.is_active()
 	# Tenths, continuously, and the same number the deadline behind it is counting. A
 	# countdown that disagrees with the rule it represents is worse than no countdown.
-	all_in_label.text = "%.1f\nRECLAIM %d%%" % [
-		all_in_grace.get_remaining_seconds(),
-		roundi(all_in_grace.recovery_threshold * 100.0),
-	]
+	_authored.write(all_in_label, {
+		"seconds": "%.1f" % all_in_grace.get_remaining_seconds(),
+		"reclaim": roundi(all_in_grace.recovery_threshold * 100.0),
+	})
 
 
-func _on_root_developed(domain_id: int, level: int, _cost: float) -> void:
-	# The doc will not accept a development that only changes a number. Each one
-	# answers on the battlefield the moment it is bought, in the terms it changed.
-	var organism := root_network.get_primary_component()
-	var heart := territory_field.get_component_centroid(organism)
-	match domain_id:
-		PhaseBRootNetwork.DomainId.ROOTING:
-			# Young Green visibly thickens: the domain's own effect, run once at
-			# strength, so what it does is what announces it.
-			territory_field.queue_maturity_support(player.get_arena_position(), 0.10, 5.0)
-			overlay.spawn_discharge_pulse(player.get_arena_position())
-		PhaseBRootNetwork.DomainId.STORAGE:
-			# Storage organs form where the reserves actually live.
-			for component_id in range(territory_field.get_component_count()):
-				if territory_field.get_component_cells(component_id) <= 0:
-					continue
-				overlay.spawn_reconnection_pulse(
-					territory_field.get_component_centroid(component_id)
-				)
-		PhaseBRootNetwork.DomainId.CIRCULATION:
-			# The new reach, shown at the size it now is, from the player outward and
-			# from the organism it travels through.
-			overlay.set_overgrow_aim(player.get_arena_position(), _get_overgrow_reach())
-			overlay.spawn_discharge_pulse(player.get_arena_position())
-			overlay.spawn_discharge_pulse(heart)
-			_conductive_reveal_remaining = conductive_reveal_seconds
-		PhaseBRootNetwork.DomainId.ANCHORING:
-			# Anchoring is the one domain whose effect is a refusal rather than a
-			# growth, so it cannot be shown by making something bigger. The organism's
-			# whole outline is struck instead: every component's heart at once, which
-			# reads as the tissue setting rather than as the tissue spreading.
-			for component_id in range(territory_field.get_component_count()):
-				if territory_field.get_component_cells(component_id) <= 0:
-					continue
-				overlay.spawn_sever_pulse(
-					territory_field.get_component_centroid(component_id)
-				)
-			combat.play_old_growth_sfx()
-	_apply_progression_modifiers()
-	var action_id := _find_action_for_domain(domain_id)
-	var unlocked_now := (
-		action_id >= 0
-		and level == metabolism.action_unlock_rank
-	)
-	if unlocked_now:
-		# A domain's first rank hands the run a verb it did not have. That is the fifth
-		# unfolding layer arriving, and it is announced over the battlefield rather
-		# than appearing quietly in a drawer the player may not have open.
-		_show_banner("%s UNLOCKED" % PhaseBMetabolism.get_action_name(action_id))
+func _on_system_unlocked(system_id: int) -> void:
+	# An axis arriving is the economy gaining a capability, and it is announced over
+	# the battlefield rather than appearing quietly in a drawer the player may not
+	# have open. Nothing is bought: from here it develops on what the run earns.
+	if system_id == PhaseBMetabolism.SystemId.PHOTOSYNTHESIS:
+		return
+	_show_banner(PhaseBMetabolism.get_axis_name(system_id).to_upper())
 	_set_status(
-		"%s developed to rank %d. %s"
+		"%s — %s. It develops on its own out of what the run earns."
 		% [
-			PhaseBRootNetwork.get_development_name(domain_id),
-			level,
-			(
-				PhaseBMetabolism.get_action_summary(action_id)
-				if unlocked_now
-				else PhaseBRootNetwork.get_development_summary(domain_id)
-			),
+			PhaseBMetabolism.get_system_name(system_id),
+			PhaseBMetabolism.get_axis_summary(system_id),
 		]
 	)
-
-
-func _find_action_for_domain(domain_id: int) -> int:
-	for action_id in range(action_buttons.size()):
-		if PhaseBMetabolism.get_action_domain(action_id) == domain_id:
-			return action_id
-	return -1
-
-
-func _on_metamorphosis_requested(domain_id: int, options: PackedInt32Array) -> void:
-	# A metamorphosis is a permanent architectural fork, so it announces itself over
-	# the battlefield and then holds the run while it is answered. It is the last thing
-	# the economy ever reveals, and it should feel like it.
-	_show_banner("%s RANK %d
-METAMORPHOSIS READY" % [
-		PhaseBRootNetwork.get_development_name(domain_id).to_upper(),
-		root_network.get_development_level(domain_id),
-	])
-	_show_choice(ChoiceKind.METAMORPHOSIS, options)
-
-
-func _on_metamorphosed(domain_id: int, metamorphosis_id: int) -> void:
-	# The organism becomes a different kind of thing, and every part of it says so at
-	# once: a pulse at the heart of every component the run holds, because what changed
-	# is the architecture rather than one place in it.
-	for component_id in range(territory_field.get_component_count()):
-		if territory_field.get_component_cells(component_id) <= 0:
-			continue
-		overlay.spawn_reconnection_pulse(
-			territory_field.get_component_centroid(component_id)
-		)
-	combat.play_old_growth_sfx()
-	_apply_progression_modifiers()
-	_show_banner(PhaseBRootNetwork.get_metamorphosis_name(metamorphosis_id))
-	_set_status("%s — %s" % [
-		PhaseBRootNetwork.get_metamorphosis_name(metamorphosis_id),
-		PhaseBRootNetwork.get_metamorphosis_description(metamorphosis_id),
-	])
-	# The verb the domain unlocks may only now have become reachable, and the drawer
-	# is where the player finds that out.
 	_update_metabolism_controls()
-	if domain_id < 0:
-		return
-
-
-func _on_support_pulsed(local_position: Vector2, _biomass: float) -> void:
-	# Cardiac Pumping's beat. A pumped circulation that looks exactly like a continuous
-	# one is two names for one mechanic, so the beat is visible at the moment it lands.
-	overlay.spawn_discharge_pulse(local_position)
 
 
 func _on_production_milestone_reached(per_second: float, _index: int) -> void:
@@ -2285,7 +2063,7 @@ func _apply_progression_modifiers() -> void:
 	# Rapid Rooting rides in on the same multiplier the rest of the run's maturation
 	# uses, so establishment has one place it is decided rather than two.
 	root_director.apply_modifiers(
-		progression.get_maturation_multiplier() * root_network.get_maturation_multiplier()
+		progression.get_maturation_multiplier()
 	)
 	territory_field.tuning.maturity_resistance_bonus = (
 		_base_maturity_resistance_bonus * progression.get_resistance_multiplier()
@@ -2327,7 +2105,6 @@ func _apply_progression_modifiers() -> void:
 	territory_field.set_cohesion_multiplier(
 		metabolism.get_cohesion_multiplier()
 		* root_director.get_cohesion_multiplier()
-		* root_network.get_anchor_resistance_multiplier()
 	)
 	# Mass, as the bulk driving force in the field's critical-radius test. A Mass
 	# build lowers the radius an isolated patch has to reach to survive, so its
@@ -2344,7 +2121,6 @@ func _apply_progression_modifiers() -> void:
 		_base_small_fragment_decay
 		* metabolism.get_fragment_decay_multiplier()
 		* root_director.get_fragment_decay_multiplier()
-		* root_network.get_anchor_fragment_decay_multiplier()
 	)
 	_update_metabolism_controls()
 	_update_hud()
@@ -2376,7 +2152,10 @@ func _on_health_changed(current: float, maximum: float) -> void:
 		return
 	health_bar.max_value = maximum
 	health_bar.value = current
-	health_label.text = "HP  %d / %d" % [roundi(current), roundi(maximum)]
+	_authored.write(health_label, {
+		"current": roundi(current),
+		"maximum": roundi(maximum),
+	})
 
 
 func _on_player_died() -> void:
@@ -2388,7 +2167,11 @@ func _on_xp_changed(level: int, current_xp: int, required_xp: int) -> void:
 		return
 	xp_bar.max_value = required_xp
 	xp_bar.value = current_xp
-	xp_label.text = "LEVEL %d     XP %d / %d" % [level, current_xp, required_xp]
+	_authored.write(xp_label, {
+		"level": level,
+		"xp": current_xp,
+		"need": required_xp,
+	})
 
 
 func _on_biomass_changed(current: float, per_second: float) -> void:
@@ -2398,25 +2181,13 @@ func _on_biomass_changed(current: float, per_second: float) -> void:
 	# when a decision is actually affordable; everything else lives in the drawer.
 	# One line, matching the tray's own layout: the heading it used to carry cost a
 	# line of the tray and repeated what the column already says.
-	# Reserve against capacity, because the ceiling is a real thing the run can hit and
-	# then has to decide about. The ready state is a bud rather than a dot: the doc asks
-	# for a change of silhouette, not a brighter version of the same one, so it cannot
-	# be confused with anything else on the line.
-	var capacity := root_network.get_primary_capacity()
-	var ready_bud := "   ❦" if root_network.can_develop() else ""
-	biomass_label.text = "%s / %s        +%.1f/s%s" % [
-		_format_compact(root_network.get_primary_reserve()),
-		_format_compact(capacity),
-		per_second,
-		ready_bud,
-	]
-	# Full is a state worth seeing without reading: production is being thrown away,
-	# and Storage is the domain that answers it.
-	biomass_label.modulate = (
-		Color("ffe9a1")
-		if root_network.get_primary_reserve() >= capacity - 0.5
-		else Color("c7ffa1")
-	)
+	# Nothing is banked against a ceiling and nothing here is pressed, so the line is
+	# what the run holds and what it is earning. What the earning has developed is a
+	# question the drawer answers.
+	_authored.write(biomass_label, {
+		"held": _format_compact(progression.biomass),
+		"gain": "%.1f" % per_second,
+	})
 	_update_metabolism_controls()
 
 
@@ -2458,7 +2229,7 @@ func _on_territory_metrics_changed(
 	if not is_node_ready():
 		return
 	territory_bar.value = player_percent
-	territory_label.text = "GREEN TERRITORY  %.1f%%" % player_percent
+	_authored.write(territory_label, {"green": "%.1f" % player_percent})
 
 
 func _finish_run(victory: bool, detail: String) -> void:
@@ -2466,14 +2237,14 @@ func _finish_run(victory: bool, detail: String) -> void:
 		return
 	_run_state = RunState.VICTORY if victory else RunState.DEFEAT
 	_refresh_simulation_pause()
-	result_header.text = "FRONTIER HELD" if victory else "THE FRONTIER WITHERED"
-	result_header.modulate = Color("91ffaf") if victory else Color("ff7e80")
-	result_detail.text = "%s\n\nTime  %s    Level  %d    Green  %.1f%%" % [
-		detail,
-		_format_time(get_elapsed_seconds()),
-		progression.current_level,
-		territory_field.get_player_percent(),
-	]
+	result_header.text = result_victory_header if victory else result_defeat_header
+	result_header.modulate = Color("b2cb82") if victory else Color("a45f6c")
+	result_detail.text = AuthoredText.render(result_detail_template, {
+		"detail": detail,
+		"time": _format_time(get_elapsed_seconds()),
+		"level": progression.current_level,
+		"green": "%.1f" % territory_field.get_player_percent(),
+	})
 	result_panel.visible = true
 
 
@@ -2575,7 +2346,7 @@ func _configure_volume_control() -> void:
 	_sfx_bus_index = AudioServer.get_bus_index(audio_settings.sfx_bus_name)
 	if _sfx_bus_index < 0:
 		pause_volume_slider.set_value_no_signal(0.0)
-		pause_volume_value.text = "UNAVAILABLE"
+		pause_volume_value.text = volume_unavailable_text
 	else:
 		var sfx_linear_volume := 0.0
 		if not AudioServer.is_bus_mute(_sfx_bus_index):
@@ -2592,7 +2363,7 @@ func _configure_volume_control() -> void:
 	_music_bus_index = AudioServer.get_bus_index(audio_settings.music_bus_name)
 	if _music_bus_index < 0:
 		pause_music_volume_slider.set_value_no_signal(0.0)
-		pause_music_volume_value.text = "UNAVAILABLE"
+		pause_music_volume_value.text = volume_unavailable_text
 	else:
 		var music_linear_volume := 0.0
 		if not AudioServer.is_bus_mute(_music_bus_index):
@@ -2625,7 +2396,10 @@ func _on_sfx_volume_changed(value: float) -> void:
 
 
 func _update_volume_label() -> void:
-	pause_volume_value.text = "%d%%" % roundi(pause_volume_slider.value)
+	_authored.write(
+		pause_volume_value,
+		{"percent": roundi(pause_volume_slider.value)},
+	)
 
 
 func _on_music_volume_changed(value: float) -> void:
@@ -2643,7 +2417,10 @@ func _on_music_volume_changed(value: float) -> void:
 
 
 func _update_music_volume_label() -> void:
-	pause_music_volume_value.text = "%d%%" % roundi(pause_music_volume_slider.value)
+	_authored.write(
+		pause_music_volume_value,
+		{"percent": roundi(pause_music_volume_slider.value)},
+	)
 
 
 func _toggle_fullscreen() -> void:
@@ -2653,16 +2430,18 @@ func _toggle_fullscreen() -> void:
 		if enter_fullscreen
 		else DisplayServer.WINDOW_MODE_WINDOWED
 	)
-	pause_fullscreen_button.text = (
-		"EXIT FULLSCREEN" if enter_fullscreen else "ENTER FULLSCREEN"
-	)
+	if enter_fullscreen:
+		pause_fullscreen_button.text = fullscreen_exit_text
+	else:
+		_authored.write(pause_fullscreen_button)
 	call_deferred("_update_fullscreen_button")
 
 
 func _update_fullscreen_button() -> void:
-	pause_fullscreen_button.text = (
-		"EXIT FULLSCREEN" if _is_fullscreen() else "ENTER FULLSCREEN"
-	)
+	if _is_fullscreen():
+		pause_fullscreen_button.text = fullscreen_exit_text
+	else:
+		_authored.write(pause_fullscreen_button)
 
 
 func _is_fullscreen() -> bool:
@@ -2699,51 +2478,59 @@ func _update_hud() -> void:
 		0.0,
 		wave_director.run_duration_seconds - get_elapsed_seconds()
 	)
-	var wave_text := "WAVE %d" % get_current_wave_number()
-	if is_wave_grace_period_active():
-		wave_text = "WAVE %d IN %02ds" % [
-			get_current_wave_number(),
-			ceili(get_wave_grace_remaining_seconds()),
-		]
-	var clock_text := "%s REMAINING" % _format_time(remaining)
+	var wave_values := {
+		"wave": get_current_wave_number(),
+		"seconds": "%02d" % ceili(get_wave_grace_remaining_seconds()),
+	}
+	var clock_values := {
+		"clock": _format_time(remaining),
+		"mass": metabolism.get_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS),
+		"push": metabolism.get_level(PhaseBMetabolism.SystemId.MERISTEM),
+		"hold": metabolism.get_level(PhaseBMetabolism.SystemId.CAMBIUM),
+	}
+	var clock_template := _authored.template(clock_label)
 	if wave_director.is_complete():
 		# No clock left to report: what remains between the player and victory is the
 		# hostiles still standing.
-		clock_text = "CLEAR THE FIELD"
+		clock_template = clock_complete_text
 	elif display_settings.is_hud_detailed():
 		# Detailed reveals more of the same line rather than adding a second one: the
 		# doc rules out a separate design, so what changes is how much this says.
-		clock_text = "%s REMAINING   //   MASS %d  PUSH %d  HOLD %d" % [
-			_format_time(remaining),
-			metabolism.get_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS),
-			metabolism.get_level(PhaseBMetabolism.SystemId.MERISTEM),
-			metabolism.get_level(PhaseBMetabolism.SystemId.CAMBIUM),
-		]
+		clock_template = clock_detailed_template
 	# Absence communicates zero: the hostile count is a warning, so it appears only
 	# while there is something to warn about.
 	var hostiles := combat.get_active_enemy_count()
 	# One node each, placed by the scene. They shared a label until the gap between
 	# them was a run of spaces inside a format string, which meant neither could be
 	# moved, coloured, or sized without editing code and counting spaces.
-	wave_label.text = wave_text
-	clock_label.text = clock_text
+	if is_wave_grace_period_active():
+		_authored.write_variant(wave_label, wave_grace_template, wave_values)
+	else:
+		_authored.write(wave_label, wave_values)
+	_authored.write_variant(clock_label, clock_template, clock_values)
 	# Its own node, so it can be placed and seen in the editor rather than being
 	# concatenated onto a line that has no room for it. The text is always written
 	# and only the visibility is switched, so what the scene declares is the shape
 	# it always carries.
-	hostile_label.text = "%d HOSTILES" % hostiles
+	_authored.write(hostile_label, {"hostiles": hostiles})
 	hostile_label.visible = hostiles > 0
 	var threshold := spore_director.get_seed_kill_threshold()
-	territory_label.tooltip_text = "Seed progress: %d / %d kills" % [
-		spore_director.get_kills_toward_seed(),
-		threshold,
-	]
+	_authored.write(
+		territory_label,
+		{"kills": spore_director.get_kills_toward_seed(), "needed": threshold},
+		"Seed progress: {kills} / {needed} kills",
+		"tooltip_text",
+	)
 	match progression.evolution_status:
 		PhaseBProgression.EvolutionStatus.READY:
-			evolution_label.text = "%s" % (
-				PhaseBEvolutions.get_evolution_name(progression.get_pair_evolution_id())
+			_authored.write(
+				evolution_label,
+				{"evolution": PhaseBEvolutions.get_evolution_name(
+					progression.get_pair_evolution_id()
+				)},
+				"{evolution}",
 			)
-			evolution_label.modulate = Color("e9ff72")
+			evolution_label.modulate = Color("b2cb82")
 		PhaseBProgression.EvolutionStatus.EVOLVED:
 			# The evolution line was emptied when the sidebar was decluttered: what the
 			# run evolved into is already read out by the growth-line row underneath,
@@ -2757,24 +2544,15 @@ func _update_hud() -> void:
 			evolution_label.modulate = Color("93aab0")
 	# The relics heading is a fixed word the scene owns; the run's Paths are read
 	# from the slots beneath it rather than from this line.
+	_advance_all_in_countdown()
 	_update_relic_slots()
-	slots_label.text = _format_slots_caption()
+	_authored.write(slots_label, {
+		"filled": progression.get_slotted_upgrades().size(),
+		"total": progression.get_upgrade_slot_count(),
+	})
 	_update_upgrade_slots()
 	_update_metabolism_controls()
 
-
-func _format_slots_caption() -> String:
-	# The authored caption decides how much it wants to say: both counts, just the
-	# filled one, or nothing at all beyond its own words.
-	var placeholders := _slots_label_format.count("%d")
-	if placeholders >= 2:
-		return _slots_label_format % [
-			progression.get_slotted_upgrades().size(),
-			progression.get_upgrade_slot_count(),
-		]
-	if placeholders == 1:
-		return _slots_label_format % progression.get_slotted_upgrades().size()
-	return _slots_label_format
 
 
 func _update_relic_slots() -> void:
@@ -3027,150 +2805,152 @@ func _update_metabolism_controls() -> void:
 
 
 func _update_development_controls() -> void:
-	# One price for all four, shown on all four, because the choice is meant to be
-	# about what the organism needs rather than about what is affordable.
-	var cost := root_network.get_development_cost()
-	var affordable := root_network.can_develop()
-	for domain_id in range(metabolism_buttons.size()):
-		var button := metabolism_buttons[domain_id]
+	# A readout, not a shop. Nothing here is pressed: each axis shows the rank the
+	# run's lifetime earnings have carried it to, and how far along it is toward the
+	# next one. An axis the run has not discovered yet is absent rather than greyed
+	# out, so the drawer grows with the run.
+	var closest_axis := -1
+	var closest_cost := 0.0
+	for system_id in range(metabolism_buttons.size()):
+		var button := metabolism_buttons[system_id]
 		if button == null:
 			continue
-		button.visible = true
-		var level := root_network.get_development_level(domain_id)
-		var metamorphosis := root_network.get_metamorphosis(domain_id)
-		# Once a domain has become something, the button says what it became rather than
-		# repeating the generic caption every domain shares. The name is the state.
-		var caption := (
-			PhaseBRootNetwork.get_metamorphosis_name(metamorphosis).capitalize()
-			if metamorphosis != PhaseBRootNetwork.MetamorphosisId.NONE
-			else PhaseBRootNetwork.get_development_caption(domain_id)
-		)
-		button.set_display_text("%s   RANK %d
-[ DEVELOP  %s ]   %s" % [
-			PhaseBRootNetwork.get_development_name(domain_id).to_upper(),
-			level,
-			_format_compact(cost),
-			caption,
-		])
+		var unlocked := metabolism.is_system_unlocked(system_id)
+		button.visible = unlocked
+		var level := metabolism.get_level(system_id)
+		var progress := metabolism.get_axis_progress(system_id)
+		var remaining := metabolism.get_next_rank_cost(system_id)
+		# A locked axis is filled in and then hidden rather than skipped: a row that is
+		# only ever written once it unlocks sits there holding its unfilled template,
+		# which is what the player would see the instant anything revealed it.
+		if unlocked and remaining > 0.0 and (closest_axis < 0 or remaining < closest_cost):
+			closest_axis = system_id
+			closest_cost = remaining
+		# The axis names itself on its own button. This fills in the rank and the
+		# progress; what the row is called, and in what order, is the scene.
+		var axis_values := {
+			"axis": PhaseBMetabolism.get_axis_name(system_id).to_upper(),
+			"rank": level,
+			"progress": roundi(progress * 100.0),
+			"summary": PhaseBMetabolism.get_axis_summary(system_id),
+			"name": PhaseBMetabolism.get_system_name(system_id),
+			"detail": PhaseBMetabolism.get_system_description(system_id),
+			"remaining": _format_compact(remaining),
+			"paths": _describe_axis_paths(system_id),
+		}
+		button.set_display_text(AuthoredText.render(
+			_authored.template(
+				button,
+				"{axis}   RANK {rank}\n[ {progress}% ]   {summary}",
+				"display_text",
+			),
+			axis_values,
+		))
 		var meter := button.get_meter()
 		if meter != null:
-			# Progress toward affording the next one, which is the same for all four and
-			# is the only thing there is to fill.
-			meter.value = clampf(
-				root_network.get_primary_reserve() / maxf(1.0, cost),
-				0.0,
-				1.0
-			)
-		var lines := PackedStringArray([
-			PhaseBRootNetwork.get_development_name(domain_id),
-			PhaseBRootNetwork.get_development_summary(domain_id),
-			"",
-			"Rank %d. The next development costs %s Biomass, whichever of the four it is."
-				% [level, _format_compact(cost)],
-		])
-		var action_id := _find_action_for_domain(domain_id)
-		if action_id >= 0:
-			lines.append(
-				"Unlocks %s." % PhaseBMetabolism.get_action_name(action_id)
-				if level < metabolism.action_unlock_rank
-				else "%s unlocked." % PhaseBMetabolism.get_action_name(action_id)
-			)
-		if metamorphosis != PhaseBRootNetwork.MetamorphosisId.NONE:
-			lines.append("%s — %s" % [
-				PhaseBRootNetwork.get_metamorphosis_name(metamorphosis),
-				PhaseBRootNetwork.get_metamorphosis_description(metamorphosis),
-			])
-		else:
-			var remaining := root_network.metamorphosis_rank - level
-			if remaining > 0:
-				lines.append("Metamorphosis in %d rank(s)." % remaining)
-		button.tooltip_text = "\n".join(lines)
-		button.disabled = not affordable
-	if metabolism_drawer != null:
-		var reserve_label := metabolism_drawer.get_node_or_null("Reserve") as Label
-		if reserve_label != null:
-			reserve_label.text = "BIOMASS %s" % _format_compact(
-				root_network.get_primary_reserve()
-			)
+			meter.value = progress
+		# Nothing is bought, so nothing is ever unaffordable. The control is left
+		# enabled rather than disabled: a greyed-out readout reads as broken.
+		button.disabled = false
+		_authored.write(
+			button,
+			axis_values,
+			String.chr(10).join(PackedStringArray([
+				"{name}",
+				"{detail}",
+				"",
+				"Rank {rank}. It develops on its own out of the Biomass this run has earned; the next rank arrives {remaining} Biomass from now.",
+				"{paths} leans toward this axis.",
+			])),
+			"tooltip_text",
+		)
+	_authored.write(
+		_metabolism_reserve_label(),
+		{"biomass": _format_compact(progression.biomass)},
+	)
 	metabolism_label.visible = true
-	var stranded := metabolism.get_stranded_reserve()
-	if root_network.has_pending_metamorphosis():
-		metabolism_label.text = "THE ORGANISM IS CHANGING — ANSWER THE FORK"
-	elif stranded > 1.0:
-		metabolism_label.text = "STRANDED IN COLONIES: %s" % _format_compact(stranded)
+	var lifetime_values := {
+		"lifetime": _format_compact(metabolism.get_lifetime_biomass()),
+		"axis": (
+			PhaseBMetabolism.get_axis_name(closest_axis).to_upper()
+			if closest_axis >= 0
+			else ""
+		),
+		"cost": _format_compact(closest_cost),
+	}
+	if closest_axis < 0:
+		_authored.write_variant(
+			metabolism_label, metabolism_complete_template, lifetime_values
+		)
 	else:
-		metabolism_label.text = "NEXT DEVELOPMENT: %s" % _format_compact(cost)
+		_authored.write(metabolism_label, lifetime_values)
+
+
+func _metabolism_reserve_label() -> Label:
+	# Placed in the drawer scene rather than exported, because it is the drawer's
+	# own line and nothing outside the drawer reads it.
+	if metabolism_drawer == null:
+		return null
+	return metabolism_drawer.get_node_or_null("Reserve") as Label
+
+
+func _describe_axis_paths(system_id: int) -> String:
+	# Which Paths lean this axis, named rather than implied, because the leaning is
+	# the only influence the player has over where the ladder goes.
+	var named := PackedStringArray()
+	for path_id in PhaseBMetabolism.get_axis_paths(system_id):
+		named.append(PhaseBProgression.get_path_name(path_id))
+	return " and ".join(named)
 
 
 func _update_action_controls() -> void:
-	# Five verbs, one loop. An action the organism cannot yet perform is not on screen
-	# at all rather than sitting there disabled: the drawer grows with the run, the
-	# same rule the axes used to follow when they were still being discovered.
+	# One verb, one loop, so a second discharge is an entry in the array rather than a
+	# second copy of this.
 	for action_id in range(action_buttons.size()):
 		var button := action_buttons[action_id]
 		if button == null:
 			continue
-		var unlocked := metabolism.is_action_unlocked(action_id)
-		button.visible = unlocked
-		if not unlocked:
-			continue
+		button.visible = true
 		var name := PhaseBMetabolism.get_action_name(action_id)
 		var cooldown := metabolism.get_action_cooldown_remaining(action_id)
+		var action_values := {
+			"action": name,
+			"seconds": "%.1f" % cooldown,
+			"cost": _format_compact(metabolism.get_action_cost(action_id)),
+		}
 		if _overgrow_aiming and _aiming_action == action_id:
-			button.text = "%s  CHOOSE TARGET" % name
+			_authored.write_variant(button, action_aiming_template, action_values)
 		elif cooldown > 0.0:
-			button.text = "%s  %.1fs" % [name, cooldown]
-		elif action_id == PhaseBMetabolism.ActionId.TRANSLOCATE:
-			# Translocate does not spend the organism's reserve, so a cost on it would
-			# be a number that never comes off the bar the player is watching. What it
-			# is worth is what is out there to fetch.
-			button.text = "%s  %s" % [name, _format_compact(metabolism.get_stranded_reserve())]
+			_authored.write_variant(button, action_cooldown_template, action_values)
 		else:
-			button.text = "%s  %s" % [
-				name,
-				_format_compact(metabolism.get_action_cost(action_id)),
-			]
+			_authored.write(button, action_values)
 		button.disabled = not metabolism.can_perform(action_id)
+		action_values["summary"] = PhaseBMetabolism.get_action_summary(action_id)
+		action_values["share"] = "%d" % roundi(
+			metabolism.overgrow_reserve_fraction * 100.0
+		)
 		var lines := PackedStringArray([
-			name,
-			PhaseBMetabolism.get_action_summary(action_id),
+			"{action}",
+			"{summary}",
+			"",
+			"Spends {share}% of the reserve.",
 		])
-		if action_id == PhaseBMetabolism.ActionId.TRANSLOCATE:
-			lines.append("")
-			lines.append("%d%% of what the colonies hold survives the journey." % roundi(
-				metabolism.translocate_recovery_fraction * 100.0
-			))
-		else:
-			lines.append("")
-			lines.append("Spends %d%% of the main organism's reserve." % roundi(
-				_get_action_reserve_fraction(action_id) * 100.0
-			))
 		if action_id == PhaseBMetabolism.ActionId.OVERGROW:
-			lines.append("This organism's split: %d%% Mass, %d%% Push, %d%% Hold." % [
-				roundi(metabolism.get_identity_share(
-					PhaseBMetabolism.SystemId.PHOTOSYNTHESIS
-				) * 100.0),
-				roundi(metabolism.get_identity_share(
-					PhaseBMetabolism.SystemId.MERISTEM
-				) * 100.0),
-				roundi(metabolism.get_identity_share(
-					PhaseBMetabolism.SystemId.CAMBIUM
-				) * 100.0),
-			])
-		button.tooltip_text = "\n".join(lines)
-
-
-func _get_action_reserve_fraction(action_id: int) -> float:
-	match action_id:
-		PhaseBMetabolism.ActionId.OVERGROW:
-			return metabolism.overgrow_reserve_fraction
-		PhaseBMetabolism.ActionId.DEEP_ROOT:
-			return metabolism.deep_root_reserve_fraction
-		PhaseBMetabolism.ActionId.PRESSURIZE:
-			return metabolism.pressurize_reserve_fraction
-		PhaseBMetabolism.ActionId.REGENERATE:
-			return metabolism.regenerate_reserve_fraction
-	return 0.0
+			action_values["mass"] = roundi(metabolism.get_identity_share(
+				PhaseBMetabolism.SystemId.PHOTOSYNTHESIS
+			) * 100.0)
+			action_values["push"] = roundi(metabolism.get_identity_share(
+				PhaseBMetabolism.SystemId.MERISTEM
+			) * 100.0)
+			action_values["hold"] = roundi(metabolism.get_identity_share(
+				PhaseBMetabolism.SystemId.CAMBIUM
+			) * 100.0)
+			lines.append(
+				"This organism's split: {mass}% Mass, {push}% Push, {hold}% Hold."
+			)
+		_authored.write(
+			button, action_values, String.chr(10).join(lines), "tooltip_text"
+		)
 
 
 func _format_time(seconds: float) -> String:

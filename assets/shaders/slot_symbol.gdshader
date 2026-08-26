@@ -21,14 +21,27 @@ void fragment() {
 	// leave the diagonals of a leaf or a thorn unlined, which is where these shapes are
 	// thinnest and hardest to read.
 	vec2 diagonal = step_size * 0.7071;
-	float ring = texture(TEXTURE, UV + vec2(step_size.x, 0.0)).a;
-	ring = max(ring, texture(TEXTURE, UV + vec2(-step_size.x, 0.0)).a);
-	ring = max(ring, texture(TEXTURE, UV + vec2(0.0, step_size.y)).a);
-	ring = max(ring, texture(TEXTURE, UV + vec2(0.0, -step_size.y)).a);
-	ring = max(ring, texture(TEXTURE, UV + vec2(diagonal.x, diagonal.y)).a);
-	ring = max(ring, texture(TEXTURE, UV + vec2(-diagonal.x, diagonal.y)).a);
-	ring = max(ring, texture(TEXTURE, UV + vec2(diagonal.x, -diagonal.y)).a);
-	ring = max(ring, texture(TEXTURE, UV + vec2(-diagonal.x, -diagonal.y)).a);
+	// A tap that lands off the texture clamps to the edge texel rather than reading
+	// nothing, so on art that reaches its own border the ring smears along that border
+	// and closes into a square. Taps outside the texture contribute nothing instead.
+	float ring = 0.0;
+	vec2 taps[8] = {
+		vec2(step_size.x, 0.0),
+		vec2(-step_size.x, 0.0),
+		vec2(0.0, step_size.y),
+		vec2(0.0, -step_size.y),
+		vec2(diagonal.x, diagonal.y),
+		vec2(-diagonal.x, diagonal.y),
+		vec2(diagonal.x, -diagonal.y),
+		vec2(-diagonal.x, -diagonal.y)
+	};
+	for (int index = 0; index < 8; index++) {
+		vec2 at = UV + taps[index];
+		if (at.x < 0.0 || at.x > 1.0 || at.y < 0.0 || at.y > 1.0) {
+			continue;
+		}
+		ring = max(ring, texture(TEXTURE, at).a);
+	}
 	// The shape sits on top of its own ring, so a thin stem keeps its fill instead of
 	// being swallowed by the outline creeping in from both sides.
 	vec3 rgb = mix(outline_color.rgb, fill_color.rgb, shape);
