@@ -46,7 +46,7 @@ data/                           Authored Resource instances; no mutable run stat
   assets/ui/                  Imported UI art and the StyleBoxTexture resources
                               that dress the panels, buttons, slots and bars
       evolutions/               The fifteen Plant path-pair evolutions
-      weapons/                  Thornshot and element-level combat definitions
+      weapons/                  Cane and element-level combat definitions
   enemies/                      Roles, variants, elite modifiers, and bosses
   objectives/                   Optional wave-objective definitions and rewards
   progression/                  Unlocks, collection entries, and difficulty data
@@ -151,7 +151,7 @@ registry owned by the relevant system.
 Mutable values that must survive scene replacement or supported run suspension
 belong in `src/core/entities/`. Entity state contains stable identifiers and
 serializable values, never nodes, callables, signals, textures, or direct
-Resource ownership. Examples include selected paths, six upgrade-line slots,
+Resource ownership. Examples include selected paths, 13 Adaptation-line slots,
 line levels, acquired relic IDs, evolution state, Biomass purchases, difficulty,
 and collection discoveries.
 
@@ -198,7 +198,7 @@ extension contract is in `docs/territory_simulation_architecture.md`.
 
 The run framework is shared across elements: fixed-screen arena, continuous
 territory, movement-only input, automatic attacks, personal HP, Territory %,
-waves, six upgrade-line slots, two-path commitment, relic rewards, one pairing
+waves, 13 Adaptation-line slots, two-path commitment, relic rewards, one pairing
 evolution, Biomass, objectives, and meta progression.
 
 Each element is a content package within that framework. Plant supplies its own

@@ -25,6 +25,15 @@ uniform float edge_softness : hint_range(0.001, 0.5) = 0.09;
 uniform float boundary_boost : hint_range(0.0, 1.0) = 0.30;
 uniform float boundary_width : hint_range(0.001, 0.6) = 0.22;
 
+// Mirrored from the territory field's material by the layer that owns this, never
+// authored twice. The highlight is torn by the same noise as the ground's own border,
+// at the same tile and the same displacement, so the region reads as a patch of the
+// board being marked rather than as a smooth decal laid over ragged Green.
+uniform sampler2D edge_noise_tex : filter_linear, repeat_enable;
+uniform float edge_noise_tile_px : hint_range(32.0, 1200.0) = 280.0;
+uniform float edge_distortion_px : hint_range(0.0, 40.0) = 7.0;
+uniform vec2 field_size_px = vec2(960.0, 540.0);
+
 vec4 cubic_weights(float offset) {
 	vec4 distances = vec4(1.0, 2.0, 3.0, 4.0) - offset;
 	vec4 cubes = distances * distances * distances;
@@ -68,8 +77,18 @@ void fragment() {
 		vertical_mix
 	);
 
+	// One tear, applied to the reconstructed selection before it is thresholded, so
+	// the contour wanders instead of being drawn ragged over a smooth one. Scaled by
+	// how fast coverage changes across a pixel, which is what makes the edge wander
+	// the same distance everywhere and leaves the flat interior untouched.
+	vec2 local_px = UV * field_size_px;
+	float edge_noise = texture(edge_noise_tex, local_px / edge_noise_tile_px).r;
+	float edge_centered = (edge_noise - 0.5) * 2.0;
+	float coverage_step = max(fwidth(coverage), 0.00001);
+	float torn_coverage = coverage + edge_centered * edge_distortion_px * coverage_step;
+
 	float half_edge = edge_softness * 0.5;
-	float inside = smoothstep(edge_midpoint - half_edge, edge_midpoint + half_edge, coverage);
+	float inside = smoothstep(edge_midpoint - half_edge, edge_midpoint + half_edge, torn_coverage);
 	if (inside <= 0.0) {
 		discard;
 	}
@@ -79,7 +98,7 @@ void fragment() {
 	float interior = smoothstep(
 		edge_midpoint + half_edge,
 		edge_midpoint + half_edge + boundary_width,
-		coverage
+		torn_coverage
 	);
 	float rim = inside * (1.0 - interior);
 

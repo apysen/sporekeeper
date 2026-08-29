@@ -40,6 +40,10 @@ class SeedVisual:
 	## which is what stops a chain of Seeds accelerating each other without end.
 	var grant_cooldown := 0.0
 	var marker := SeedMarker.NONE
+	## Which way this Seed is lying, so a scattered field of them does not read as one
+	## sprite stamped over and over. Taken from the id rather than rolled, so a Seed
+	## faces the same way every frame and a replayed run looks identical.
+	var facing := 0.0
 
 
 class BloomVisual:
@@ -135,6 +139,26 @@ var _isolated_colony_reserves := PackedFloat32Array()
 var _overgrow_aim_active := false
 var _overgrow_aim_position := Vector2.ZERO
 var _overgrow_aim_radius := 0.0
+
+@export_group("Catalyst Art")
+## Painted Seed. Optional: without it the Seed falls back to the authored circle.
+@export var seed_texture: Texture2D
+## The Seed art's visible bounds inside its own image, in 0-1 texture coordinates.
+## The painting is not centred in its canvas - its content sits low and right of the
+## middle - so the drawing has to be told where the art actually is. Without this the
+## sprite would hang below and right of the point the Seed really occupies, and every
+## ring, bar and marker drawn at that point would sit off its face.
+@export var seed_texture_content := Rect2(0.1775, 0.12125, 0.67625, 0.82125)
+## Multiplier on how large the art is drawn against the Seed's own radius. One draws
+## the art exactly as wide as the circle it replaces.
+@export_range(0.25, 4.0, 0.05) var seed_art_scale := 1.0
+## Painted Bloom, on the same terms.
+@export var bloom_texture: Texture2D
+## The Bloom art is centred in its canvas already, so this is very close to the full
+## image. It is still measured rather than assumed, so a repaint that shifts cannot
+## quietly pull the sprite off centre.
+@export var bloom_texture_content := Rect2(0.0078125, 0.013672, 0.984375, 0.978516)
+@export_range(0.25, 4.0, 0.05) var bloom_art_scale := 1.0
 
 @export_group("Presentation")
 ## Presentation options. Optional: without it everything is drawn at full strength,
@@ -238,13 +262,6 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	_draw_flight_globs()
-	draw_rect(
-		Rect2(Vector2.ZERO, tuning.arena_size),
-		Color("6d7f8f"),
-		false,
-		2.0,
-		true
-	)
 	if show_annotations:
 		_draw_annotation(Vector2(58.0, 58.0), "OPEN GROUND", Color("79d59b"))
 		_draw_annotation(Vector2(427.0, 272.0), "CHOKE", Color("8bd5ff"))
@@ -299,8 +316,15 @@ func _draw() -> void:
 		var radius := 8.0 + progress * 11.0
 		var glow_alpha := 0.36 + progress * 0.46
 		draw_circle(bloom.position, radius + 7.0, Color(0.26, 1.0, 0.70, glow_alpha * 0.22))
-		draw_circle(bloom.position, radius, Color(0.08, 0.25, 0.15, 0.96))
-		draw_circle(bloom.position, radius, Color("70ffd0"), false, 2.5, true)
+		if not _draw_catalyst_art(
+			bloom_texture,
+			bloom_texture_content,
+			bloom.position,
+			radius * 2.0 * bloom_art_scale,
+			Color(1.0, 1.0, 1.0, 1.0)
+		):
+			draw_circle(bloom.position, radius, Color(0.08, 0.25, 0.15, 0.96))
+			draw_circle(bloom.position, radius, Color("70ffd0"), false, 2.5, true)
 		draw_arc(
 			bloom.position,
 			radius + 5.0,
@@ -311,20 +335,23 @@ func _draw() -> void:
 			3.0,
 			true
 		)
-		draw_line(
-			bloom.position + Vector2(-5.0, 2.0),
-			bloom.position + Vector2(0.0, -8.0),
-			Color("a9ffca"),
-			2.0,
-			true
-		)
-		draw_line(
-			bloom.position + Vector2(0.0, -8.0),
-			bloom.position + Vector2(7.0, 2.0),
-			Color("a9ffca"),
-			2.0,
-			true
-		)
+		if bloom_texture == null:
+			# The chevron is the authored Bloom's petal shorthand. The painting has
+			# petals of its own, so this would only sit on top of them.
+			draw_line(
+				bloom.position + Vector2(-5.0, 2.0),
+				bloom.position + Vector2(0.0, -8.0),
+				Color("a9ffca"),
+				2.0,
+				true
+			)
+			draw_line(
+				bloom.position + Vector2(0.0, -8.0),
+				bloom.position + Vector2(7.0, 2.0),
+				Color("a9ffca"),
+				2.0,
+				true
+			)
 		_draw_catalyst_durability(
 			bloom.position,
 			radius,
@@ -337,8 +364,17 @@ func _draw() -> void:
 		var progress := 1.0 - clampf(seed.remaining / seed.duration, 0.0, 1.0)
 		var breathe := sin(progress * TAU * 3.0) * 1.5
 		var radius := 9.0 + progress * 5.0 + breathe
-		draw_circle(seed.position, radius, Color(0.13, 0.20, 0.10, 0.92), true, -1.0, true)
-		draw_circle(seed.position, radius, Color("b5ff69"), false, 2.0, true)
+		var seed_painted := _draw_catalyst_art(
+			seed_texture,
+			seed_texture_content,
+			seed.position,
+			radius * 2.0 * seed_art_scale,
+			Color(1.0, 1.0, 1.0, 1.0),
+			seed.facing
+		)
+		if not seed_painted:
+			draw_circle(seed.position, radius, Color(0.13, 0.20, 0.10, 0.92), true, -1.0, true)
+			draw_circle(seed.position, radius, Color("b5ff69"), false, 2.0, true)
 		draw_arc(
 			seed.position,
 			radius + 5.0,
@@ -349,7 +385,16 @@ func _draw() -> void:
 			3.0,
 			true
 		)
-		draw_line(seed.position + Vector2(0.0, -4.0), seed.position + Vector2(5.0, -10.0), Color("d9ff9c"), 2.0, true)
+		if not seed_painted:
+			# The little sprout is shorthand for a Seed on the authored circle. The
+			# painting has its own, so drawing this over it reads as a stray mark.
+			draw_line(
+				seed.position + Vector2(0.0, -4.0),
+				seed.position + Vector2(5.0, -10.0),
+				Color("d9ff9c"),
+				2.0,
+				true
+			)
 		if seed.marker != SeedMarker.NONE:
 			# A relic that claims one particular Seed has to say which one, or the
 			# player cannot defend it.
@@ -394,6 +439,8 @@ func spawn_seed(
 	seed.maximum_health = maxf(0.01, durability)
 	seed.health = seed.maximum_health
 	seed.id = _next_seed_id
+	# The golden angle, so consecutive Seeds never land on similar facings.
+	seed.facing = fmod(float(seed.id) * 2.39996, TAU)
 	seed.shield_charges = _default_seed_shield_charges
 	_next_seed_id += 1
 	_seeds.append(seed)
@@ -1170,6 +1217,50 @@ func _draw_annotation(local_position: Vector2, label: String, color: Color) -> v
 		font_size,
 		color
 	)
+
+
+func _draw_catalyst_art(
+	texture: Texture2D,
+	content: Rect2,
+	centre: Vector2,
+	diameter: float,
+	tint: Color,
+	facing: float = 0.0
+) -> bool:
+	# Draws a painting so that the middle of what is actually painted lands on the
+	# point the catalyst occupies, whatever margin the artist left around it. Both
+	# the position and the size are taken from the content box rather than from the
+	# image, so the rings and bars drawn at the same point stay concentric with the
+	# art and two paintings with different margins still come out the same size.
+	if texture == null or diameter <= 0.0:
+		return false
+	var texture_size := Vector2(texture.get_width(), texture.get_height())
+	if texture_size.x <= 0.0 or texture_size.y <= 0.0:
+		return false
+	var content_pixels := Vector2(
+		maxf(1.0, content.size.x * texture_size.x),
+		maxf(1.0, content.size.y * texture_size.y)
+	)
+	# The longer side of the content is what meets the diameter, so a tall painting
+	# is not cropped and a wide one does not overhang.
+	var art_scale := diameter / maxf(content_pixels.x, content_pixels.y)
+	var content_centre := (content.position + content.size * 0.5) * texture_size
+	var art_rect := Rect2(-content_centre * art_scale, texture_size * art_scale)
+	if is_zero_approx(facing):
+		draw_texture_rect(
+			texture,
+			Rect2(centre + art_rect.position, art_rect.size),
+			false,
+			tint
+		)
+		return true
+	# Rotating about the content centre rather than the image centre, so a painting
+	# with an off-centre subject spins on its own middle instead of orbiting a point
+	# beside it. The transform is reset immediately: it applies to every later draw.
+	draw_set_transform(centre, facing, Vector2.ONE)
+	draw_texture_rect(texture, art_rect, false, tint)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	return true
 
 
 func _draw_catalyst_durability(

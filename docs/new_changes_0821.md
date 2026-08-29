@@ -3,6 +3,10 @@
 > **Scope note:** Sections 1–6 from the previous design-changes Markdown are already implemented and are intentionally omitted here.
 >
 > The current balancing target is the **12-minute dev build**. The eventual full game can still target approximately **25–30 minute runs**, but all current pacing, difficulty, Evolution timing, and build-completion tuning should be based on the 12-minute version.
+>
+> **Historical note (2026-08-27):** this file preserves the earlier design snapshot.
+> Its Thornshot sections are superseded by `Sporekeeper_Cane_Weapon_Rework.md` and
+> `upgrade_paths_reference.md`; Thornshot and all three universal lines are no longer live.
 
 ---
 
@@ -1119,4 +1123,3 @@ They should instead offer roughly equal **decision value**.
 - The player should be able to skip the Evolution upgrade and invest both post-Evolution slots into the third Path without feeling like they made an obviously incorrect choice.
 
 > **Level 0 Evolution should already be satisfying. Level 5 should make the player laugh at how absurd the build has become.**
-

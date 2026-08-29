@@ -109,6 +109,18 @@ enum Id {
 	SIDE_POT,
 	HIGH_ROLLER,
 	THE_HOUSE_ALWAYS_LOSES,
+	# Thistle.
+	SEEDHEAD,
+	PHYLLOTAXIS,
+	CROWN_OF_THORNS,
+	# Vine.
+	RECURVE,
+	TRELLIS,
+	TWINING,
+	# Fruit.
+	THICK_RIND,
+	BANK_SHOT,
+	DROPPED_SEED,
 }
 
 
@@ -206,6 +218,24 @@ static func get_relic_name(relic_id: int) -> String:
 			return "High Roller"
 		Id.THE_HOUSE_ALWAYS_LOSES:
 			return "The House Always Loses"
+		Id.SEEDHEAD:
+			return "Seedhead"
+		Id.PHYLLOTAXIS:
+			return "Phyllotaxis"
+		Id.CROWN_OF_THORNS:
+			return "Crown of Thorns"
+		Id.RECURVE:
+			return "Recurve"
+		Id.TRELLIS:
+			return "Trellis"
+		Id.TWINING:
+			return "Twining"
+		Id.THICK_RIND:
+			return "Thick Rind"
+		Id.BANK_SHOT:
+			return "Bank Shot"
+		Id.DROPPED_SEED:
+			return "Dropped Seed"
 	return "Unknown Relic"
 
 
@@ -213,11 +243,11 @@ static func get_relic_description(relic_id: int) -> String:
 	# Player-facing text stays one short line. The rule, not its numbers.
 	match relic_id:
 		Id.PREDATORS_EYE:
-			return "Every 10th Thornshot volley takes one extra target."
+			return "Every 10th Cane sweep reaches 35% farther."
 		Id.FOLLOW_THROUGH:
-			return "A Thornshot kill gives the next volley +1 Pierce."
+			return "A Cane kill gives the next connecting sweep +35% damage."
 		Id.ADRENAL_RESPONSE:
-			return "Taking damage makes your next three volleys fire faster."
+			return "Taking damage makes your next three Cane sweeps arrive faster."
 		Id.CLEAN_FINISH:
 			return "Clearing the field of hostiles restores health."
 		Id.OVERPOPULATION:
@@ -225,7 +255,7 @@ static func get_relic_description(relic_id: int) -> String:
 		Id.LAST_BASTION:
 			return "Losing a lot of Green at once grants speed and attack rate."
 		Id.BLOOD_IN_THE_WATER:
-			return "Thornshot prioritises badly wounded enemies."
+			return "Cane deals 25% more damage to badly wounded enemies."
 		Id.SALVAGE_RIGHTS:
 			return "Elite kills drop a Biomass cache."
 		Id.INSURANCE_POLICY:
@@ -233,7 +263,7 @@ static func get_relic_description(relic_id: int) -> String:
 		Id.RECYCLING_BIN:
 			return "Your first relic reroll keeps at least the rarity it replaced."
 		Id.UNDERDOG:
-			return "Thornshot takes an extra target while you are swarmed."
+			return "Cane attacks 30% faster while you are swarmed."
 		Id.ENCORE:
 			return "Every third relic trigger repeats once, weaker."
 		Id.GREEN_THUMB:
@@ -300,6 +330,24 @@ static func get_relic_description(relic_id: int) -> String:
 			return "Every seventh spin doubles the jackpot and doubles the Bust."
 		Id.THE_HOUSE_ALWAYS_LOSES:
 			return "Each Triple Bust permanently cuts Bust odds. The third one is on the house."
+		Id.SEEDHEAD:
+			return "A collapsing Thistle fires one final 1.5x volley, once per lifetime."
+		Id.PHYLLOTAXIS:
+			return "Every fifth firing cycle adds five 55%-damage thorns."
+		Id.CROWN_OF_THORNS:
+			return "Every twelfth network cycle commands a 55%-damage bonus volley."
+		Id.RECURVE:
+			return "An Apical hit shortens the next opposite Cane cooldown by 20%."
+		Id.TRELLIS:
+			return "Consecutive Apical sweeps widen the Apical zone by 5pp, up to three stacks."
+		Id.TWINING:
+			return "Every fourth Cane sweep repeats after 0.3s at 55% damage."
+		Id.THICK_RIND:
+			return "Fruit ignore the first enemy collision's momentum loss."
+		Id.BANK_SHOT:
+			return "The first wall bounce keeps 90% momentum and empowers the next collision by 40%."
+		Id.DROPPED_SEED:
+			return "Every third completed roll ejects one smaller forward Fruitseed."
 	return ""
 
 
@@ -317,8 +365,13 @@ static func get_rarity(relic_id: int) -> int:
 		Id.GREEN_MANURE, Id.SEEDBED, Id.TANGLED_WAKE, Id.STORED_SAP, Id.HIGH_ROLLER:
 			return Rarity.RARE
 		Id.ENCORE, Id.WORLD_SEED, Id.PATIENT_ZERO, Id.PERENNIAL, Id.THE_HEDGE, \
-		Id.WORLD_TREE, Id.MAN_EATER, Id.RETURN_STROKE, Id.THE_HOUSE_ALWAYS_LOSES:
+		Id.WORLD_TREE, Id.MAN_EATER, Id.RETURN_STROKE, Id.THE_HOUSE_ALWAYS_LOSES, \
+		Id.CROWN_OF_THORNS, Id.TWINING, Id.DROPPED_SEED:
 			return Rarity.LEGENDARY
+		Id.SEEDHEAD, Id.RECURVE, Id.THICK_RIND:
+			return Rarity.UNCOMMON
+		Id.PHYLLOTAXIS, Id.TRELLIS, Id.BANK_SHOT:
+			return Rarity.RARE
 	return Rarity.COMMON
 
 
@@ -377,6 +430,12 @@ static func get_owning_path(relic_id: int) -> int:
 			return PhaseBProgression.PathId.ROOT
 		Id.GLEANING_HOOK, Id.GREEN_MANURE, Id.RETURN_STROKE:
 			return PhaseBProgression.PathId.PRUNING
+		Id.SEEDHEAD, Id.PHYLLOTAXIS, Id.CROWN_OF_THORNS:
+			return PhaseBProgression.PathId.THISTLE
+		Id.RECURVE, Id.TRELLIS, Id.TWINING:
+			return PhaseBProgression.PathId.VINE
+		Id.THICK_RIND, Id.BANK_SHOT, Id.DROPPED_SEED:
+			return PhaseBProgression.PathId.FRUIT
 	return PhaseBProgression.UNSELECTED_PATH
 
 

@@ -71,6 +71,29 @@
 [ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/phase_b_wager_slider.gd" id="111_wager_slider"]
 [ext_resource type="Texture2D" uid="uid://brgx0c7yrekb" path="res://assets/ui/kenney/wager_knob_footprint.png" id="112_wager_knob_footprint"]
 [ext_resource type="StyleBox" path="res://assets/ui/empty_style.tres" id="113_empty_style"]
+[ext_resource type="AudioStream" uid="uid://ccskaego25mxw" path="res://assets/sfx/lever_pull.wav" id="114_lever_sfx"]
+[ext_resource type="AudioStream" uid="uid://d4b547i831715" path="res://assets/sfx/reel_click.wav" id="115_reel_sfx"]
+[ext_resource type="AudioStream" uid="uid://claxf5xw710a3" path="res://assets/sfx/jackpot.wav" id="116_jackpot_sfx"]
+[ext_resource type="Texture2D" uid="uid://c5i5acfk08rlo" path="res://assets/art/seed/seed.png" id="117_seed_art"]
+[ext_resource type="Texture2D" uid="uid://bjtqiob5lt3x1" path="res://assets/art/bloom/bloom_512x512_teal.png" id="118_bloom_art"]
+[ext_resource type="Script" uid="uid://dtiy1kqr3wume" path="res://src/core/nodes/territory/territory_aftergrowth_layer.gd" id="119_aftergrowth_layer"]
+[ext_resource type="Script" uid="uid://bwe81wquypf6w" path="res://src/core/nodes/territory/territory_obstacle_layer.gd" id="120_obstacle_layer"]
+[ext_resource type="StyleBox" uid="uid://b5op5esvwk6sv" path="res://assets/ui/wx_fantasy_button.tres" id="121_btn"]
+[ext_resource type="StyleBox" uid="uid://bn7byuq70ndfl" path="res://assets/ui/wx_fantasy_button_hover.tres" id="122_btn_hover"]
+[ext_resource type="StyleBox" uid="uid://c4qacuvts2rif" path="res://assets/ui/wx_fantasy_button_pressed.tres" id="123_btn_pressed"]
+[ext_resource type="Script" uid="uid://bh1e2xkdue8q3" path="res://src/core/nodes/elements/phase_b_adaptation_director.gd" id="124_adaptation_director"]
+[ext_resource type="Shader" uid="uid://521ery5p6wjw" path="res://assets/shaders/botanical_art_watercolor.gdshader" id="125_botanical_shader"]
+[ext_resource type="Texture2D" uid="uid://cont5v1jne8sq" path="res://assets/art/shared/watercolor_granulation.png" id="126_granulation"]
+[ext_resource type="Texture2D" uid="uid://ey44dnfyoi0r" path="res://assets/ui/kenney/frame_circle.png" id="127_circle_frame"]
+[ext_resource type="StyleBox" path="res://assets/ui/circle_slot_style.tres" id="128_circle_style"]
+[ext_resource type="Texture2D" uid="uid://clat12ctf147k" path="res://assets/ui/kenney/divider-fade-003.png" id="129_divider_fade"]
+
+[sub_resource type="ShaderMaterial" id="BotanicalArtMaterial"]
+shader = ExtResource("125_botanical_shader")
+shader_parameter/granulation_texture = ExtResource("126_granulation")
+shader_parameter/granulation_strength = 0.44
+shader_parameter/granulation_scale = 1.45
+shader_parameter/paper_lift = 0.1
 
 [sub_resource type="ShaderMaterial" id="TerritoryMaterial"]
 shader = ExtResource("9_territory_shader")
@@ -104,6 +127,15 @@ shader_parameter/paper_secondary_offset = Vector2(0.31, 0.47)
 shader_parameter/watercolor_noise_tex = ExtResource("9_watercolor_noise")
 shader_parameter/watercolor_noise_tile_px = 420.0
 shader_parameter/watercolor_variation = 0.08
+shader_parameter/wall_color = Color(0.231, 0.251, 0.208, 1)
+shader_parameter/rock_base_color = Color(0.318, 0.282, 0.227, 1)
+shader_parameter/rock_shadow_color = Color(0.161, 0.165, 0.141, 1)
+shader_parameter/rock_shadow_depth = 1.0
+shader_parameter/rock_highlight_lift = 0.035
+shader_parameter/wall_border_cells = 2.0
+shader_parameter/board_edge_cells = 0.5
+shader_parameter/rock_mottle_tile_px = 220.0
+shader_parameter/rock_texture_amount = 1.0
 shader_parameter/edge_noise_tex = ExtResource("9_edge_noise")
 shader_parameter/edge_noise_tile_px = 280.0
 shader_parameter/edge_distortion_px = 7.0
@@ -122,6 +154,9 @@ shader_parameter/edge_midpoint = 0.5
 shader_parameter/edge_softness = 0.09
 shader_parameter/boundary_boost = 0.3
 shader_parameter/boundary_width = 0.22
+shader_parameter/edge_noise_tile_px = 280.0
+shader_parameter/edge_distortion_px = 7.0
+shader_parameter/field_size_px = Vector2(960, 540)
 
 [sub_resource type="AtlasTexture" id="AtlasCabinet"]
 atlas = ExtResource("26_slot_cabinet")
@@ -171,7 +206,7 @@ region = Rect2(138, 0, 627, 624)
 atlas = ExtResource("26_slot_lever_down")
 region = Rect2(138, 0, 627, 624)
 
-[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "audio_settings", "ambient_music_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "mass_button", "push_button", "hold_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "biomass_button", "banner_label", "reset_button", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_restart_button", "pause_quit_button", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight", "setting_button_ui_scale", "setting_button_hud_detail")]
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "mass_button", "push_button", "hold_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "biomass_button", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -182,6 +217,7 @@ evolutions = NodePath("GameplayComponents/Evolutions")
 metabolism = NodePath("GameplayComponents/Metabolism")
 slot_machine = NodePath("GameplayComponents/SlotMachine")
 wager_layer = NodePath("WagerLayer")
+aftergrowth_layer = NodePath("AftergrowthLayer")
 clover_odds = NodePath("GameplayComponents/CloverOdds")
 wager_selector = NodePath("GameplayComponents/WagerSelector")
 clover_jackpots = NodePath("GameplayComponents/CloverJackpots")
@@ -194,8 +230,12 @@ bramble_director = NodePath("Paths/BrambleDirector")
 root_director = NodePath("Paths/RootDirector")
 man_eater = NodePath("Paths/ManEater")
 pruning_director = NodePath("Paths/PruningDirector")
+adaptation_director = NodePath("Paths/AdaptationDirector")
 audio_settings = NodePath("GameplayComponents/AudioSettings")
 ambient_music_audio = NodePath("AmbientMusic")
+slot_lever_audio = NodePath("SlotLeverSfx")
+slot_reel_audio = NodePath("SlotReelSfx")
+slot_jackpot_audio = NodePath("SlotJackpotSfx")
 health_bar = NodePath("Interface/SidePanel/HealthBar")
 health_label = NodePath("Interface/SidePanel/HealthLabel")
 territory_bar = NodePath("Interface/SidePanel/TerritoryBar")
@@ -207,10 +247,10 @@ clock_label = NodePath("Interface/SidePanel/ClockLabel")
 hostile_label = NodePath("Interface/SidePanel/HostileLabel")
 biomass_label = NodePath("Interface/UpgradeTray/BiomassLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
-relics_label = NodePath("Interface/SidePanel/RelicsLabel")
-relic_slots = NodePath("Interface/SidePanel/RelicSlots")
-slots_label = NodePath("Interface/UpgradeTray/Slots")
-upgrade_slots = NodePath("Interface/UpgradeTray/UpgradeSlots")
+relics_label = NodePath("Interface/UpgradeTray/RelicsLabel")
+relic_slots = NodePath("Interface/UpgradeTray/RelicSlots")
+slots_label = NodePath("Interface/SidePanel/UpgradeSection/Slots")
+upgrade_slots = NodePath("Interface/SidePanel/UpgradeSection/Path1Frame/Path1Slots")
 choice_panel = NodePath("Interface/ChoicePanel")
 choice_header = NodePath("Interface/ChoicePanel/Header")
 choice_button_one = NodePath("Interface/ChoicePanel/Choice1")
@@ -237,7 +277,6 @@ lever_up = NodePath("Interface/SidePanel/SlotMachine/LeverUp")
 lever_down = NodePath("Interface/SidePanel/SlotMachine/LeverDown")
 biomass_button = NodePath("Interface/UpgradeTray/BiomassButton")
 banner_label = NodePath("Interface/Banner")
-reset_button = NodePath("Interface/SidePanel/ResetButton")
 result_panel = NodePath("Interface/ResultPanel")
 result_header = NodePath("Interface/ResultPanel/Header")
 result_detail = NodePath("Interface/ResultPanel/Detail")
@@ -248,23 +287,27 @@ pause_volume_value = NodePath("Interface/PauseOverlay/PausePanel/VolumeValue")
 pause_music_volume_slider = NodePath("Interface/PauseOverlay/PausePanel/MusicVolumeSlider")
 pause_music_volume_value = NodePath("Interface/PauseOverlay/PausePanel/MusicVolumeValue")
 pause_fullscreen_button = NodePath("Interface/PauseOverlay/PausePanel/FullscreenButton")
-pause_restart_button = NodePath("Interface/PauseOverlay/PausePanel/RestartButton")
+pause_settings_button = NodePath("Interface/PauseOverlay/PausePanel/SettingsButton")
+pause_settings_panel = NodePath("Interface/PauseOverlay/PauseSettingsPanel")
+pause_settings_back_button = NodePath("Interface/PauseOverlay/PauseSettingsPanel/BackButton")
+pause_panel = NodePath("Interface/PauseOverlay/PausePanel")
+pause_glossary_button = NodePath("Interface/PauseOverlay/PausePanel/GlossaryButton")
 pause_quit_button = NodePath("Interface/PauseOverlay/PausePanel/QuitButton")
+debug_help_label = NodePath("Interface/PauseOverlay/DebugHelp")
 display_settings = NodePath("GameplayComponents/DisplaySettings")
 clover_telemetry = NodePath("GameplayComponents/CloverTelemetry")
 interface_layer = NodePath("Interface")
-setting_button_friendly_effects = NodePath("Interface/PauseOverlay/PausePanel/FriendlyEffects")
-setting_button_enemy_telegraphs = NodePath("Interface/PauseOverlay/PausePanel/EnemyTelegraphs")
-setting_button_territory_detail = NodePath("Interface/PauseOverlay/PausePanel/TerritoryDetail")
-setting_button_damage_numbers = NodePath("Interface/PauseOverlay/PausePanel/DamageNumbers")
-setting_button_player_highlight = NodePath("Interface/PauseOverlay/PausePanel/PlayerHighlight")
-setting_button_ui_scale = NodePath("Interface/PauseOverlay/PausePanel/UiScale")
-setting_button_hud_detail = NodePath("Interface/PauseOverlay/PausePanel/HudDetail")
+setting_button_friendly_effects = NodePath("Interface/PauseOverlay/PauseSettingsPanel/FriendlyEffects")
+setting_button_enemy_telegraphs = NodePath("Interface/PauseOverlay/PauseSettingsPanel/EnemyTelegraphs")
+setting_button_territory_detail = NodePath("Interface/PauseOverlay/PauseSettingsPanel/TerritoryDetail")
+setting_button_damage_numbers = NodePath("Interface/PauseOverlay/PauseSettingsPanel/DamageNumbers")
+setting_button_player_highlight = NodePath("Interface/PauseOverlay/PauseSettingsPanel/PlayerHighlight")
 
 [node name="GameplayComponents" type="Node" parent="." unique_id=8230641]
 
 [node name="DisplaySettings" type="Node" parent="GameplayComponents" unique_id=928815901]
 script = ExtResource("106_display_settings")
+default_choices = PackedInt32Array()
 
 [node name="CloverTelemetry" type="Node" parent="GameplayComponents" unique_id=928815902 node_paths=PackedStringArray("slot_machine", "clover_odds", "territory_field", "all_in_grace", "wave_director")]
 script = ExtResource("107_clover_telemetry")
@@ -277,7 +320,7 @@ wave_director = NodePath("../WaveDirector")
 [node name="AudioSettings" type="Node" parent="GameplayComponents" unique_id=928815850]
 script = ExtResource("11_audio_settings")
 
-[node name="Progression" type="Node" parent="GameplayComponents" unique_id=1946342540 node_paths=PackedStringArray("evolutions", "bramble_director", "root_director", "spore_director", "bloom_director", "pruning_director", "metabolism")]
+[node name="Progression" type="Node" parent="GameplayComponents" unique_id=1946342540 node_paths=PackedStringArray("evolutions", "bramble_director", "root_director", "spore_director", "bloom_director", "pruning_director", "adaptation_director", "metabolism")]
 script = ExtResource("6_progression")
 rerolls_per_run = 20
 evolutions = NodePath("../Evolutions")
@@ -286,6 +329,7 @@ root_director = NodePath("../../Paths/RootDirector")
 spore_director = NodePath("../../Paths/SporeDirector")
 bloom_director = NodePath("../../Paths/BloomDirector")
 pruning_director = NodePath("../../Paths/PruningDirector")
+adaptation_director = NodePath("../../Paths/AdaptationDirector")
 metabolism = NodePath("../Metabolism")
 
 [node name="Evolutions" type="Node" parent="GameplayComponents" unique_id=1946342541 node_paths=PackedStringArray("progression")]
@@ -340,6 +384,22 @@ combat = NodePath("../../CombatDirector")
 stream = ExtResource("10_forest_music")
 autoplay = true
 bus = &"Music"
+
+[node name="SlotLeverSfx" type="AudioStreamPlayer" parent="." unique_id=418357876]
+stream = ExtResource("114_lever_sfx")
+volume_db = -6.0
+bus = &"SFX"
+
+[node name="SlotReelSfx" type="AudioStreamPlayer" parent="." unique_id=418357877]
+stream = ExtResource("115_reel_sfx")
+volume_db = -6.0
+max_polyphony = 3
+bus = &"SFX"
+
+[node name="SlotJackpotSfx" type="AudioStreamPlayer" parent="." unique_id=418357878]
+stream = ExtResource("116_jackpot_sfx")
+volume_db = -6.0
+bus = &"SFX"
 
 [node name="Background" type="ColorRect" parent="." unique_id=423038185]
 offset_right = 1280.0
@@ -396,6 +456,7 @@ script = ExtResource("24_root_director")
 territory_field = NodePath("../../TerritoryField")
 progression = NodePath("../../GameplayComponents/Progression")
 relic_director = NodePath("../../GameplayComponents/RelicDirector")
+network_bonus_per_level = 0.25
 
 [node name="ManEater" type="Node2D" parent="Paths" unique_id=771204553 node_paths=PackedStringArray("territory_field", "overlay", "combat", "progression")]
 z_index = 3
@@ -406,7 +467,7 @@ overlay = NodePath("../../PrototypeOverlay")
 combat = NodePath("../../CombatDirector")
 progression = NodePath("../../GameplayComponents/Progression")
 
-[node name="PruningDirector" type="Node2D" parent="Paths" unique_id=1477020933 node_paths=PackedStringArray("evolutions", "territory_field", "overlay", "combat", "progression", "relic_director")]
+[node name="PruningDirector" type="Node2D" parent="Paths" unique_id=1477020933 node_paths=PackedStringArray("evolutions", "territory_field", "overlay", "combat", "progression", "relic_director", "root_director")]
 z_index = 3
 position = Vector2(24, 104)
 script = ExtResource("25_pruning_director")
@@ -416,8 +477,26 @@ overlay = NodePath("../../PrototypeOverlay")
 combat = NodePath("../../CombatDirector")
 progression = NodePath("../../GameplayComponents/Progression")
 relic_director = NodePath("../../GameplayComponents/RelicDirector")
+root_director = NodePath("../RootDirector")
 upkeep_cells_per_second = 15.0
 upkeep_escalation_per_second = 5.0
+
+[node name="AdaptationDirector" type="Node2D" parent="Paths" unique_id=1477020934 node_paths=PackedStringArray("progression", "evolutions", "player", "territory_field", "overlay", "combat", "spore_director", "bloom_director", "bramble_director", "root_director", "pruning_director")]
+z_index = 4
+material = SubResource("BotanicalArtMaterial")
+position = Vector2(24, 104)
+script = ExtResource("124_adaptation_director")
+progression = NodePath("../../GameplayComponents/Progression")
+evolutions = NodePath("../../GameplayComponents/Evolutions")
+player = NodePath("../../Player")
+territory_field = NodePath("../../TerritoryField")
+overlay = NodePath("../../PrototypeOverlay")
+combat = NodePath("../../CombatDirector")
+spore_director = NodePath("../SporeDirector")
+bloom_director = NodePath("../BloomDirector")
+bramble_director = NodePath("../BrambleDirector")
+root_director = NodePath("../RootDirector")
+pruning_director = NodePath("../PruningDirector")
 
 [node name="TerritoryField" type="Node2D" parent="." unique_id=407699690]
 z_index = 1
@@ -425,6 +504,14 @@ material = SubResource("TerritoryMaterial")
 position = Vector2(24, 104)
 script = ExtResource("2_field")
 tuning = ExtResource("7_territory_tuning")
+
+[node name="AftergrowthLayer" type="Node2D" parent="." unique_id=1412417560 node_paths=PackedStringArray("territory_field", "display_settings")]
+z_index = 1
+position = Vector2(24, 104)
+script = ExtResource("119_aftergrowth_layer")
+tuning = ExtResource("7_territory_tuning")
+territory_field = NodePath("../TerritoryField")
+display_settings = NodePath("../GameplayComponents/DisplaySettings")
 
 [node name="WagerLayer" type="Node2D" parent="." unique_id=1412417559 node_paths=PackedStringArray("territory_field")]
 z_index = 2
@@ -436,12 +523,15 @@ territory_field = NodePath("../TerritoryField")
 
 [node name="PrototypeOverlay" type="Node2D" parent="." unique_id=1412417558 node_paths=PackedStringArray("territory_field")]
 z_index = 2
+material = SubResource("BotanicalArtMaterial")
 position = Vector2(24, 104)
 script = ExtResource("3_overlay")
 tuning = ExtResource("7_territory_tuning")
 territory_field = NodePath("../TerritoryField")
+seed_texture = ExtResource("117_seed_art")
+bloom_texture = ExtResource("118_bloom_art")
 
-[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "display_settings", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile", "heavy_grazer_profile", "rusher_profile", "siege_corruptor_profile")]
+[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "display_settings", "root_director", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile", "heavy_grazer_profile", "rusher_profile", "siege_corruptor_profile")]
 z_index = 3
 position = Vector2(24, 104)
 script = ExtResource("5_combat")
@@ -450,6 +540,7 @@ territory_field = NodePath("../TerritoryField")
 overlay = NodePath("../PrototypeOverlay")
 audio_settings = NodePath("../GameplayComponents/AudioSettings")
 display_settings = NodePath("../GameplayComponents/DisplaySettings")
+root_director = NodePath("../Paths/RootDirector")
 hunter_profile = NodePath("EnemyProfiles/Hunter")
 grazer_profile = NodePath("EnemyProfiles/Grazer")
 elite_profile = NodePath("EnemyProfiles/EliteRootbreaker")
@@ -462,7 +553,7 @@ colony_core_profile = NodePath("EnemyProfiles/ColonyCore")
 heavy_grazer_profile = NodePath("EnemyProfiles/HeavyGrazer")
 rusher_profile = NodePath("EnemyProfiles/Rusher")
 siege_corruptor_profile = NodePath("EnemyProfiles/SiegeCorruptor")
-thornshot_shoot_sfx = ExtResource("15_shoot_sfx")
+cane_swing_sfx = ExtResource("15_shoot_sfx")
 xp_collect_sfx = ExtResource("16_xp_sfx")
 plant_explosion_sfx = ExtResource("17_explosion_sfx")
 old_growth_sfx = ExtResource("18_old_growth_sfx")
@@ -653,6 +744,13 @@ territory_action_strength = 2.6
 territory_action_radius_multiplier = 2.8
 emit_eruption_signal = true
 
+[node name="ObstacleLayer" type="Node2D" parent="." unique_id=1412417561 node_paths=PackedStringArray("territory_field")]
+z_index = 10
+position = Vector2(24, 104)
+script = ExtResource("120_obstacle_layer")
+tuning = ExtResource("7_territory_tuning")
+territory_field = NodePath("../TerritoryField")
+
 [node name="Player" type="Node2D" parent="." unique_id=597159367 node_paths=PackedStringArray("territory_field")]
 z_index = 4
 script = ExtResource("4_player")
@@ -665,23 +763,8 @@ layer = 8
 offset_left = 1004.0
 offset_top = 24.0
 offset_right = 1256.0
-offset_bottom = 709.0
+offset_bottom = 712.0
 theme_override_styles/panel = ExtResource("30_panel_style")
-
-[node name="DebugHelp" type="Label" parent="Interface/SidePanel" unique_id=2105709273]
-layout_mode = 0
-offset_left = 16.0
-offset_top = 552.0
-offset_right = 236.0
-offset_bottom = 625.0
-theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
-theme_override_font_sizes/font_size = 10
-text = "DEV CONTROLS
-F4 ECONOMY    F5 ROOT VIEW
-TAB INSPECT    F6 +2M
-F7 XP    F8 MASTERY
-F9 BOSS    F10 RELIC"
-horizontal_alignment = 1
 
 [node name="WaveLabel" type="Label" parent="Interface/SidePanel" unique_id=70920556]
 layout_mode = 0
@@ -794,9 +877,9 @@ show_percentage = false
 [node name="EvolutionLabel" type="Label" parent="Interface/SidePanel" unique_id=1376313058]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 473.0
+offset_top = 491.0
 offset_right = 236.0
-offset_bottom = 507.0
+offset_bottom = 525.0
 theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
 theme_override_font_sizes/font_size = 10
 vertical_alignment = 1
@@ -994,25 +1077,433 @@ text = "{held} / {need}% ESTABLISHED"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="RelicsLabel" type="Label" parent="Interface/SidePanel" unique_id=600132886]
+[node name="UpgradeSection" type="Control" parent="Interface/SidePanel" unique_id=1622654853]
+anchors_preset = 0
+offset_left = 14.0
+offset_top = 446.0
+offset_right = 238.0
+offset_bottom = 674.0
+
+[node name="Slots" type="Label" parent="Interface/SidePanel/UpgradeSection" unique_id=2019162875]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 18.0
+offset_right = 220.0
+offset_bottom = 32.0
+theme_override_colors/font_color = Color(0.769, 0.604, 0.314, 1)
+theme_override_font_sizes/font_size = 15
+text = "ADAPTATIONS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Path1Frame" type="Control" parent="Interface/SidePanel/UpgradeSection" unique_id=1622654854]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_top = 34.0
+offset_right = 224.0
+offset_bottom = 76.0
+mouse_filter = 2
+
+[node name="Connector" type="ColorRect" parent="Interface/SidePanel/UpgradeSection/Path1Frame" unique_id=401831102]
+layout_mode = 0
+offset_left = 42.0
+offset_top = 21.0
+offset_right = 202.0
+offset_bottom = 22.0
+mouse_filter = 2
+color = Color(0.407, 0.663, 0.416, 0.6)
+
+[node name="Path1EmblemFrame" type="Control" parent="Interface/SidePanel/UpgradeSection/Path1Frame" unique_id=845718519]
+anchors_preset = 0
+offset_left = 8.0
+offset_top = 3.0
+offset_right = 44.0
+offset_bottom = 39.0
+mouse_filter = 2
+
+[node name="Frame" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path1Frame/Path1EmblemFrame" unique_id=1897556779]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("127_circle_frame")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Path1EmblemLabel" type="Label" parent="Interface/SidePanel/UpgradeSection/Path1Frame/Path1EmblemFrame" unique_id=980134398]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 11
+text = "?"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Path1EmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path1Frame/Path1EmblemFrame"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Path1Label" type="Label" parent="Interface/SidePanel/UpgradeSection/Path1Frame" unique_id=956645885]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+offset_left = 38.0
+offset_top = 3.0
+offset_right = 216.0
+offset_bottom = 16.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 9
+text = "PATH 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Path1Slots" type="Control" parent="Interface/SidePanel/UpgradeSection/Path1Frame" unique_id=1904772311]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_left = 72.0
+offset_top = 9.0
+offset_right = 192.0
+offset_bottom = 33.0
+script = ExtResource("20_upgrade_slots")
+slot_count = 4
+slot_size = 24.0
+slot_spacing = 8.0
+title_font_size = 7
+level_font_size = 6
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.38
+empty_marker_font_size = 12
+title_offset_scale = 0.12
+level_offset_scale = 0.45
+slot_texture_style = ExtResource("35_slot_style")
+
+[node name="Path2Frame" type="Control" parent="Interface/SidePanel/UpgradeSection" unique_id=1622654855]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_top = 78.0
+offset_right = 224.0
+offset_bottom = 120.0
+mouse_filter = 2
+
+[node name="Connector" type="ColorRect" parent="Interface/SidePanel/UpgradeSection/Path2Frame" unique_id=212496851]
+layout_mode = 0
+offset_left = 42.0
+offset_top = 21.0
+offset_right = 202.0
+offset_bottom = 22.0
+mouse_filter = 2
+color = Color(0.608, 0.408, 0.71, 0.6)
+
+[node name="Path2EmblemFrame" type="Control" parent="Interface/SidePanel/UpgradeSection/Path2Frame" unique_id=1467635543]
+anchors_preset = 0
+offset_left = 8.0
+offset_top = 3.0
+offset_right = 44.0
+offset_bottom = 39.0
+mouse_filter = 2
+
+[node name="Frame" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path2Frame/Path2EmblemFrame" unique_id=1955830727]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("127_circle_frame")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Path2EmblemLabel" type="Label" parent="Interface/SidePanel/UpgradeSection/Path2Frame/Path2EmblemFrame" unique_id=1833348290]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 11
+text = "?"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Path2EmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path2Frame/Path2EmblemFrame"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Path2Label" type="Label" parent="Interface/SidePanel/UpgradeSection/Path2Frame" unique_id=1552377363]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+offset_left = 38.0
+offset_top = 3.0
+offset_right = 216.0
+offset_bottom = 16.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 9
+text = "PATH 2"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Path2Slots" type="Control" parent="Interface/SidePanel/UpgradeSection/Path2Frame" unique_id=802765856]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_left = 72.0
+offset_top = 9.0
+offset_right = 192.0
+offset_bottom = 33.0
+script = ExtResource("20_upgrade_slots")
+slot_count = 4
+slot_size = 24.0
+slot_spacing = 8.0
+title_font_size = 7
+level_font_size = 6
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.38
+empty_marker_font_size = 12
+title_offset_scale = 0.12
+level_offset_scale = 0.45
+slot_texture_style = ExtResource("35_slot_style")
+
+[node name="EvolutionConnectorLeft" type="TextureRect" parent="Interface/SidePanel/UpgradeSection" unique_id=359834929]
+modulate = Color(0.698, 0.525, 0.286, 0.72)
+layout_mode = 0
+offset_left = 51.0
+offset_top = 140.0
+offset_right = 99.0
+offset_bottom = 147.0
+mouse_filter = 2
+texture = ExtResource("129_divider_fade")
+expand_mode = 1
+stretch_mode = 5
+flip_h = true
+
+[node name="EvolutionConnectorRight" type="TextureRect" parent="Interface/SidePanel/UpgradeSection" unique_id=158974115]
+modulate = Color(0.698, 0.525, 0.286, 0.72)
+layout_mode = 0
+offset_left = 125.0
+offset_top = 140.0
+offset_right = 173.0
+offset_bottom = 147.0
+mouse_filter = 2
+texture = ExtResource("129_divider_fade")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="EvolutionTreeLabel" type="Label" parent="Interface/SidePanel/UpgradeSection" unique_id=1645679534]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+offset_left = 4.0
+offset_top = 116.0
+offset_right = 220.0
+offset_bottom = 129.0
+theme_override_colors/font_color = Color(0.769, 0.604, 0.314, 1)
+theme_override_font_sizes/font_size = 9
+text = "EVOLUTION"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="EvolutionSlot" type="Control" parent="Interface/SidePanel/UpgradeSection" unique_id=233446713]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_left = 92.0
+offset_top = 124.0
+offset_right = 132.0
+offset_bottom = 164.0
+script = ExtResource("20_upgrade_slots")
+slot_count = 1
+slot_size = 40.0
+slot_spacing = 0.0
+title_font_size = 7
+level_font_size = 6
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.42
+empty_marker_font_size = 15
+title_offset_scale = 0.14
+level_offset_scale = 0.49
+slot_texture_style = ExtResource("128_circle_style")
+
+[node name="SupportFrame" type="Control" parent="Interface/SidePanel/UpgradeSection" unique_id=1622654856]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_top = 168.0
+offset_right = 224.0
+offset_bottom = 210.0
+mouse_filter = 2
+
+[node name="Connector" type="ColorRect" parent="Interface/SidePanel/UpgradeSection/SupportFrame" unique_id=1012923834]
+layout_mode = 0
+offset_left = 42.0
+offset_top = 21.0
+offset_right = 202.0
+offset_bottom = 22.0
+mouse_filter = 2
+color = Color(0.698, 0.525, 0.286, 0.6)
+
+[node name="SupportEmblemFrame" type="Control" parent="Interface/SidePanel/UpgradeSection/SupportFrame" unique_id=375242430]
+anchors_preset = 0
+offset_left = 8.0
+offset_top = 3.0
+offset_right = 44.0
+offset_bottom = 39.0
+mouse_filter = 2
+
+[node name="Frame" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/SupportFrame/SupportEmblemFrame" unique_id=581388484]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("127_circle_frame")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="SupportEmblemLabel" type="Label" parent="Interface/SidePanel/UpgradeSection/SupportFrame/SupportEmblemFrame" unique_id=1958752602]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 11
+text = "?"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SupportEmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/SupportFrame/SupportEmblemFrame"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="SupportEmblemLock" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/SupportFrame/SupportEmblemFrame" unique_id=1530046220]
+unique_name_in_owner = true
+modulate = Color(0.561, 0.592, 0.502, 0.9)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("21_lock_icon")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="SupportPathLabel" type="Label" parent="Interface/SidePanel/UpgradeSection/SupportFrame" unique_id=1309225896]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+offset_left = 38.0
+offset_top = 3.0
+offset_right = 216.0
+offset_bottom = 16.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 9
+text = "SUPPORT PATH"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SupportSlots" type="Control" parent="Interface/SidePanel/UpgradeSection/SupportFrame" unique_id=1398802496]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_left = 72.0
+offset_top = 9.0
+offset_right = 192.0
+offset_bottom = 33.0
+script = ExtResource("20_upgrade_slots")
+slot_count = 4
+slot_size = 24.0
+slot_spacing = 8.0
+title_font_size = 7
+level_font_size = 6
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.38
+empty_marker_font_size = 12
+title_offset_scale = 0.12
+level_offset_scale = 0.45
+slot_texture_style = ExtResource("35_slot_style")
+
+[node name="UpgradeTray" type="Panel" parent="Interface" unique_id=1622654852]
+offset_left = 24.0
+offset_top = 651.0
+offset_right = 984.0
+offset_bottom = 708.0
+theme_override_styles/panel = ExtResource("31_tray_style")
+
+[node name="RelicsLabel" type="Label" parent="Interface/UpgradeTray" unique_id=600132886]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 460.0
-offset_right = 236.0
-offset_bottom = 478.0
+offset_top = 9.0
+offset_right = 96.0
+offset_bottom = 49.0
 theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 20
 text = "RELICS"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="RelicSlots" type="Control" parent="Interface/SidePanel" unique_id=1188305471]
+[node name="RelicSlots" type="Control" parent="Interface/UpgradeTray" unique_id=1188305471]
 anchors_preset = 0
-offset_left = 16.0
-offset_top = 482.0
-offset_right = 236.0
-offset_bottom = 516.0
+offset_left = 102.0
+offset_top = 12.0
+offset_right = 476.0
+offset_bottom = 46.0
 script = ExtResource("20_upgrade_slots")
 slot_count = 6
 slot_size = 33.0
@@ -1026,32 +1517,12 @@ title_offset_scale = 0.07
 level_offset_scale = 0.4
 slot_texture_style = ExtResource("35_slot_style")
 
-[node name="ResetButton" type="Button" parent="Interface/SidePanel" unique_id=65171965]
-layout_mode = 0
-offset_left = 16.0
-offset_top = 624.0
-offset_right = 236.0
-offset_bottom = 662.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "RESTART RUN  [R]"
-
-[node name="UpgradeTray" type="Panel" parent="Interface" unique_id=1622654852]
-offset_left = 24.0
-offset_top = 651.0
-offset_right = 984.0
-offset_bottom = 708.0
-theme_override_styles/panel = ExtResource("31_tray_style")
-
 [node name="BiomassLabel" type="Label" parent="Interface/UpgradeTray" unique_id=533912317]
 layout_mode = 0
 offset_left = 576.0
-offset_top = 15.0
+offset_top = 17.0
 offset_right = 716.0
-offset_bottom = 32.006805
+offset_bottom = 34.006805
 scale = Vector2(1.47, 1.47)
 theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
 theme_override_font_sizes/font_size = 10
@@ -1059,24 +1530,12 @@ text = "{held}        +{gain}/s"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="Slots" type="Label" parent="Interface/UpgradeTray" unique_id=2019162875]
-layout_mode = 0
-offset_left = 17.0
-offset_top = 9.0
-offset_right = 96.0
-offset_bottom = 49.0
-theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
-theme_override_font_sizes/font_size = 10
-text = "UPGRADES"
-vertical_alignment = 1
-autowrap_mode = 2
-
 [node name="BiomassButton" type="Button" parent="Interface/UpgradeTray" unique_id=1904772312]
 layout_mode = 0
 offset_left = 790.0
-offset_top = 7.0
+offset_top = 9.0
 offset_right = 947.0
-offset_bottom = 45.0
+offset_bottom = 49.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
 theme_override_font_sizes/font_size = 11
@@ -1084,19 +1543,6 @@ theme_override_styles/normal = ExtResource("37_biomass_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "BIOMASS  [B]"
-
-[node name="UpgradeSlots" type="Control" parent="Interface/UpgradeTray" unique_id=1904772311]
-anchors_preset = 0
-offset_left = 102.0
-offset_top = 7.0
-offset_right = 476.0
-offset_bottom = 49.0
-script = ExtResource("20_upgrade_slots")
-locked_icon = ExtResource("21_lock_icon")
-locked_icon_scale = 0.37
-title_offset_scale = 0.21
-level_offset_scale = 0.46
-slot_texture_style = ExtResource("35_slot_style")
 
 [node name="MetabolismDrawer" type="Panel" parent="Interface" unique_id=771320544]
 visible = false
@@ -1372,8 +1818,8 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "Thornshot Power  1/5
-+28% Thornshot damage"
+text = "Seed Production  1/5
+1 Seed per kill threshold"
 
 [node name="Choice2" type="Button" parent="Interface/ChoicePanel" unique_id=1706058646]
 layout_mode = 0
@@ -1386,8 +1832,8 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "Thornshot Tempo  1/5
-12% faster Thornshot attacks"
+text = "Growth Mass  1/5
++22% Seed growth mass"
 
 [node name="Choice3" type="Button" parent="Interface/ChoicePanel" unique_id=178445218]
 layout_mode = 0
@@ -1401,7 +1847,8 @@ theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "Seed Production  1/5
-One fewer kill required per Seed"
+One fewer kill required per Seed
+ROOTED 1.74x → Seeds germinate in 0.78s instead of 1.35s"
 
 [node name="Choice4" type="Button" parent="Interface/ChoicePanel" unique_id=612884907]
 layout_mode = 0
@@ -1493,6 +1940,21 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.003, 0.008, 0.011, 0.82)
 
+[node name="DebugHelp" type="Label" parent="Interface/PauseOverlay" unique_id=2105709273]
+layout_mode = 0
+offset_left = 780.0
+offset_top = 238.0
+offset_right = 1000.0
+offset_bottom = 311.0
+theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
+theme_override_font_sizes/font_size = 10
+text = "DEV CONTROLS
+F4 ECONOMY    F5 ROOT VIEW
+TAB INSPECT    F6 +2M
+F7 XP    F8 MASTERY
+F9 BOSS    F10 RELIC"
+horizontal_alignment = 1
+
 [node name="PausePanel" type="Panel" parent="Interface/PauseOverlay" unique_id=349622250]
 layout_mode = 1
 anchors_preset = 8
@@ -1500,10 +1962,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -390.0
-offset_top = -235.0
-offset_right = 390.0
-offset_bottom = 255.0
+offset_left = -231.0
+offset_top = -280.0
+offset_right = 231.0
+offset_bottom = 280.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = ExtResource("30_panel_style")
@@ -1511,9 +1973,9 @@ theme_override_styles/panel = ExtResource("30_panel_style")
 [node name="Header" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=752714992]
 layout_mode = 0
 offset_left = 24.0
-offset_top = 24.0
+offset_top = 46.0
 offset_right = 436.0
-offset_bottom = 58.0
+offset_bottom = 80.0
 theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
 theme_override_font_sizes/font_size = 25
 text = "FRONTIER PAUSED"
@@ -1546,7 +2008,22 @@ offset_left = 40.0
 offset_top = 128.0
 offset_right = 420.0
 offset_bottom = 152.0
+theme_override_icons/grabber = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("112_wager_knob_footprint")
+theme_override_icons/tick = ExtResource("112_wager_knob_footprint")
+theme_override_styles/slider = ExtResource("113_empty_style")
+theme_override_styles/grabber_area = ExtResource("113_empty_style")
+theme_override_styles/grabber_area_highlight = ExtResource("113_empty_style")
 value = 100.0
+script = ExtResource("111_wager_slider")
+track_style = ExtResource("106_wager_track")
+fill_style = ExtResource("107_wager_fill")
+tick_length = 0.0
+knob_size = 26.0
+grabber_texture = ExtResource("108_wager_grabber")
+grabber_hover_texture = ExtResource("109_wager_grabber_hover")
+grabber_pressed_texture = ExtResource("110_wager_grabber_pressed")
 
 [node name="MusicVolumeLabel" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=1062121371]
 layout_mode = 0
@@ -1575,7 +2052,22 @@ offset_left = 40.0
 offset_top = 190.0
 offset_right = 420.0
 offset_bottom = 214.0
+theme_override_icons/grabber = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("112_wager_knob_footprint")
+theme_override_icons/tick = ExtResource("112_wager_knob_footprint")
+theme_override_styles/slider = ExtResource("113_empty_style")
+theme_override_styles/grabber_area = ExtResource("113_empty_style")
+theme_override_styles/grabber_area_highlight = ExtResource("113_empty_style")
 value = 100.0
+script = ExtResource("111_wager_slider")
+track_style = ExtResource("106_wager_track")
+fill_style = ExtResource("107_wager_fill")
+tick_length = 0.0
+knob_size = 26.0
+grabber_texture = ExtResource("108_wager_grabber")
+grabber_hover_texture = ExtResource("109_wager_grabber_hover")
+grabber_pressed_texture = ExtResource("110_wager_grabber_pressed")
 
 [node name="Divider" type="HSeparator" parent="Interface/PauseOverlay/PausePanel" unique_id=1990565945]
 layout_mode = 0
@@ -1609,120 +2101,150 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "ENTER FULLSCREEN"
 
-[node name="RestartButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=1139312943]
+[node name="SettingsButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=349622253]
 layout_mode = 0
 offset_left = 40.0
-offset_top = 366.0
+offset_top = 362.0
 offset_right = 420.0
-offset_bottom = 414.0
+offset_bottom = 410.0
+focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "RESTART RUN"
+text = "SETTINGS"
+
+[node name="GlossaryButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=1139312943]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 414.0
+offset_right = 420.0
+offset_bottom = 462.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "GLOSSARY"
 
 [node name="QuitButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=651669992]
 layout_mode = 0
 offset_left = 40.0
-offset_top = 424.0
+offset_top = 472.0
 offset_right = 420.0
-offset_bottom = 472.0
+offset_bottom = 520.0
 theme_override_colors/font_color = Color(0.643, 0.373, 0.424, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "QUIT TO DESKTOP"
 
-[node name="SettingsHeader" type="Label" parent="Interface/PauseOverlay/PausePanel" unique_id=921100000]
+[node name="PauseSettingsPanel" type="Panel" parent="Interface/PauseOverlay" unique_id=349622251]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -280.0
+offset_right = 250.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="SettingsHeader" type="Label" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=921100000]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 28.0
-offset_right = 748.0
-offset_bottom = 52.0
+offset_left = 40.0
+offset_top = 22.0
+offset_right = 460.0
+offset_bottom = 56.0
 theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
 theme_override_font_sizes/font_size = 13
 text = "PRESENTATION"
 
-[node name="FriendlyEffects" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100001]
+[node name="FriendlyEffects" type="Button" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=921100001]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 62.0
-offset_right = 748.0
-offset_bottom = 100.0
+offset_left = 40.0
+offset_top = 68.0
+offset_right = 460.0
+offset_bottom = 116.0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
 text = "FRIENDLY EFFECTS   {value}"
 
-[node name="EnemyTelegraphs" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100002]
+[node name="EnemyTelegraphs" type="Button" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=921100002]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 108.0
-offset_right = 748.0
-offset_bottom = 146.0
+offset_left = 40.0
+offset_top = 122.0
+offset_right = 460.0
+offset_bottom = 170.0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
 text = "ENEMY TELEGRAPHS   {value}"
 
-[node name="TerritoryDetail" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100003]
+[node name="TerritoryDetail" type="Button" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=921100003]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 154.0
-offset_right = 748.0
-offset_bottom = 192.0
+offset_left = 40.0
+offset_top = 176.0
+offset_right = 460.0
+offset_bottom = 224.0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
 text = "TERRITORY DETAIL   {value}"
 
-[node name="DamageNumbers" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100004]
+[node name="DamageNumbers" type="Button" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=921100004]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 200.0
-offset_right = 748.0
-offset_bottom = 238.0
+offset_left = 40.0
+offset_top = 230.0
+offset_right = 460.0
+offset_bottom = 278.0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
 text = "DAMAGE NUMBERS   {value}"
 
-[node name="PlayerHighlight" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100005]
+[node name="PlayerHighlight" type="Button" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=921100005]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 246.0
-offset_right = 748.0
-offset_bottom = 284.0
+offset_left = 40.0
+offset_top = 284.0
+offset_right = 460.0
+offset_bottom = 332.0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
 text = "PLAYER HIGHLIGHT   {value}"
 
-[node name="UiScale" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100006]
+[node name="BackButton" type="Button" parent="Interface/PauseOverlay/PauseSettingsPanel" unique_id=349622252]
 layout_mode = 0
-offset_left = 452.0
-offset_top = 292.0
-offset_right = 748.0
-offset_bottom = 330.0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "UI SCALE   {value}"
-
-[node name="HudDetail" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=921100007]
-layout_mode = 0
-offset_left = 452.0
+offset_left = 40.0
 offset_top = 338.0
-offset_right = 748.0
-offset_bottom = 376.0
+offset_right = 460.0
+offset_bottom = 386.0
+focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "HUD DETAIL   {value}"
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "BACK  [ESC]"

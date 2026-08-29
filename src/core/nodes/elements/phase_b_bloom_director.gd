@@ -25,15 +25,12 @@ class Glob:
 	## Which generation of a chained Bloom threw this glob, so a Seed it cracks open
 	## joins that chain instead of restarting it.
 	var chain_depth := 0
-	## Obstacle faces this glob has already run down. Bounded so a lump caught in a
-	## corner settles instead of grinding along the geometry forever.
+	## Bounces this glob has already taken. Bounded so a lump caught in a corner
+	## settles instead of ricocheting around the geometry forever.
 	var wall_contacts := 0
-	## The face this glob is currently running down, and how long it stays wetted to
-	## it. A liquid that has touched a surface clings to it: that is what holds paint
-	## against a wall while the rest of its motion carries it along, and without it a
-	## glob simply glances off and flies away.
-	var wall_normal := Vector2.ZERO
-	var wall_cling_remaining := 0.0
+	## A face-splash has turned this flight into a wet surface run. Maintenance
+	## contacts then update its tangent without charging another impact or bounce.
+	var wall_attached := false
 	var radius_cells := 0.0
 	var conversion := 1.0
 	var trail_remaining := 0.0
@@ -64,6 +61,17 @@ class Glob:
 @export_range(0.0, 2.0, 0.01) var bloom_force_per_level := 0.25
 ## Compounding interval multiplier per Bloom Frequency rank; lower produces Blooms faster.
 @export_range(0.1, 1.0, 0.01) var bloom_interval_multiplier_per_level := 0.86
+
+@export_group("Aftergrowth and Suppression")
+## Temporary control one Aftergrowth rank leaves on Green a Bloom touches. Held on
+## the field apart from real control, so losing it is never losing Green.
+@export_range(0.0, 200.0, 1.0) var aftergrowth_per_level := 8.0
+## Territory damage one Suppression rank takes off an enemy the Bloom struck.
+@export_range(0.0, 0.5, 0.01) var suppression_per_level := 0.08
+## How long both windows last. Shared on purpose: the two lines are one tempo
+## window seen from the ground and from the enemy, and they are meant to open and
+## close together. Tune the amounts before ever reaching for this.
+@export_range(0.5, 30.0, 0.5) var bloom_tempo_window_seconds := 4.0
 
 @export_group("Automatic Bloom")
 ## Seconds after a run reset before the first automatic Bloom is planted.
@@ -150,31 +158,34 @@ class Glob:
 @export_range(0.0, 40.0, 0.1) var neutral_drag_per_second := 2.6
 ## Drag per second over the run's own Green. Paint slides on wet paint.
 @export_range(0.0, 40.0, 0.1) var green_drag_per_second := 0.7
-## Share of its speed a glob keeps each time it runs down an obstacle. Only the
-## motion along the face survives a hit at all; this is the rest of what the impact
-## costs it. High because these faces are meant to be slippery — paint runs down
-## basalt rather than gripping it.
-@export_range(0.0, 1.0, 0.01) var wall_slide_retention := 0.88
-## How much of the motion driving into a face comes back out of it. Paint is not
-## bouncy, so this stays near zero; a little keeps globs from hugging the surface.
-@export_range(0.0, 1.0, 0.01) var wall_restitution := 0.06
-## How hard a wetted glob is held against the face it is running down, in pixels
-## per second squared. This stands in for what gravity does to paint on a wall: it
-## is what keeps the material on the surface while the rest of its motion carries it
-## along, instead of letting it glance off into open ground.
-@export_range(0.0, 4000.0, 10.0) var wall_cling_acceleration := 900.0
-## How much closer together a glob lays its trail while it is running down a face.
-## Material on a surface leaves a continuous streak rather than the spaced droplets
-## of something in free flight, and that streak is most of what a wall hit paints.
-@export_range(0.05, 1.0, 0.05) var wall_streak_spacing_scale := 0.55
-## How long a glob stays wetted to a face after touching it.
-@export_range(0.0, 4.0, 0.05) var wall_cling_seconds := 0.85
+## Coefficient of restitution: how much of the speed driving into a face comes back
+## out of it. Energy goes as the square of speed, so 0.45 returns about a fifth of
+## what the glob arrived with - a wet lump that clearly rebounds without behaving
+## like rubber. The rest is not lost bookkeeping: it is the impact splat.
+@export_range(0.0, 1.0, 0.01) var wall_restitution := 0.45
+## Coefficient of friction along the face. Applied as a Coulomb impulse limited by
+## the normal impulse, so a square-on hit scrubs off far more sideways speed than a
+## graze does, and a glob can never have its direction reversed by friction alone.
+@export_range(0.0, 2.0, 0.01) var wall_friction := 0.35
+## Small inward share retained while wet paint runs along a face. It makes the next
+## sub-step re-sample a curved or stair-stepped obstacle normal instead of carrying
+## the first contact tangent away from the rock in a perfectly straight line.
+@export_range(0.0, 0.25, 0.005) var wall_adhesion_fraction := 0.10
+## Longest a single motion sub-step may be, in cells. A glob leaves at over 600
+## pixels a second and a cell is under nine pixels wide, so a whole frame of travel
+## is longer than the thinnest wall on the board. Integrated in one go a fast lump
+## passes straight through basalt; bouncing makes that far worse than sliding did,
+## because the contact it misses is the one that decides where it goes next.
+@export_range(0.05, 2.0, 0.05) var flight_substep_cells := 0.5
+## Ceiling on those sub-steps, so a pathological speed cannot cost an unbounded
+## amount of work in one frame.
+@export_range(1, 64, 1) var maximum_flight_substeps := 12
 ## How square-on a contact has to be before it marks the face at all. A glob that
 ## merely grazes a rock leaves its streak and carries on; stamping a splat for every
 ## glancing touch costs the frame far more than it shows.
 @export_range(0.0, 1.0, 0.01) var minimum_face_splash_share := 0.22
-## Obstacle faces one glob may run down before it settles. Without a bound a lump
-## caught in a corner can grind along the geometry indefinitely.
+## Bounces one glob may take before it settles. Without a bound a lump caught in a
+## corner can ricochet around the geometry indefinitely.
 @export_range(0, 12, 1) var maximum_wall_contacts := 4
 ## Cells a glob is held off a face after hitting it, so the next step begins in open
 ## ground instead of colliding with the same cell again.
@@ -305,7 +316,14 @@ func advance(delta: float) -> void:
 	if origin.x >= 0.0 and territory_field.is_claimable_at_local(origin):
 		overlay.plant_bloom(origin, get_windup_seconds(), 0, bloom_durability)
 		status_requested.emit("Bloom charging on the Green frontier facing the threat.")
-	_bloom_remaining = bloom_interval_seconds * get_bloom_interval_multiplier()
+	# Root Network: the next Bloom is drawn out of the ground this one rooted in, so
+	# an ecosystem blooming off old Green comes back around sooner. The same rule
+	# already decides how hard that Bloom lands; here it decides how often.
+	_bloom_remaining = (
+		bloom_interval_seconds
+		* get_bloom_interval_multiplier()
+		/ maxf(0.01, _get_root_interval_multiplier(origin))
+	)
 
 func plant_chained_bloom(local_position: Vector2, chain_depth: int) -> bool:
 	# Super Bloom's chain: a germination asks for the next generation, and the
@@ -472,10 +490,8 @@ func on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
 	var is_super_bloom := chain_depth > 0
 	# Root Network: a Bloom erupting out of Mature ground pushes harder than one
 	# opening on ground the run only just claimed.
-	var force := get_bloom_force_multiplier() * (
-		1.0
-		+ root_director.get_network_bonus()
-		* territory_field.get_maturity_at_local(local_position)
+	var force := get_bloom_force_multiplier() * root_director.get_network_multiplier_here(
+		local_position
 	)
 	var expansion := progression.get_expansion_multiplier()
 	var super_multiplier := evolutions.chained_bloom_multiplier if is_super_bloom else 1.0
@@ -543,10 +559,60 @@ func on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
 			else PhaseBCombatDirector.DeathSource.BLOOM,
 		chain_depth
 	)
+	# The tempo window. Queued after the splatter so the shield is stamped once the
+	# Bloom's own conversion has been applied in the same step, which is what lets it
+	# cover ground the Bloom has just taken as well as ground already held.
+	_apply_tempo_window(
+		local_position,
+		territory_field.tuning.bloom_radius_cells * sqrt(expansion) * grand_scale,
+		pixels_per_cell
+	)
 	status_requested.emit(
 		"Super Bloom detonated; wall-shadowed ground remains untouched."
 		if is_super_bloom
 		else "Bloom splattered: central splat, globs, satellites, and streaks."
+	)
+
+
+func _apply_tempo_window(
+	local_position: Vector2,
+	radius_cells: float,
+	pixels_per_cell: float
+) -> void:
+	# Two halves of one window: the ground gets something disposable to lose, and the
+	# things eating it get worse at eating. Neither touches damage, radius, pressure,
+	# conversion or maturity - Bloom Force and Root already own those.
+	var shield := get_aftergrowth_shield()
+	if shield > 0.0:
+		territory_field.queue_aftergrowth(
+			local_position,
+			radius_cells,
+			shield,
+			bloom_tempo_window_seconds
+		)
+	var suppression := get_suppression_share()
+	if suppression > 0.0:
+		combat.apply_suppression_in_radius(
+			local_position,
+			radius_cells * pixels_per_cell,
+			suppression,
+			bloom_tempo_window_seconds
+		)
+
+
+func get_aftergrowth_shield() -> float:
+	return aftergrowth_per_level * float(
+		progression.get_upgrade_level(PhaseBProgression.UpgradeId.AFTERGROWTH)
+	)
+
+
+func get_suppression_share() -> float:
+	return clampf(
+		suppression_per_level * float(
+			progression.get_upgrade_level(PhaseBProgression.UpgradeId.SUPPRESSION)
+		),
+		0.0,
+		0.95
 	)
 
 func get_landing_maturity_reinforcement() -> float:
@@ -727,6 +793,15 @@ func get_bloom_force_line_multiplier() -> float:
 		progression.get_upgrade_level(PhaseBProgression.UpgradeId.BLOOM_FORCE)
 	)
 
+func _get_root_interval_multiplier(origin: Vector2) -> float:
+	# No frontier was found, so there is no ground to have drawn on: the cadence
+	# falls back to the path's own interval rather than sampling a position the
+	# field would only clamp back inside itself.
+	if origin.x < 0.0:
+		return 1.0
+	return root_director.get_network_multiplier_here(origin)
+
+
 func get_bloom_interval_multiplier() -> float:
 	return pow(
 		bloom_interval_multiplier_per_level,
@@ -779,8 +854,7 @@ func _launch_glob(
 		glob.conversion = conversion
 		glob.chain_depth = chain_depth
 		glob.wall_contacts = 0
-		glob.wall_normal = Vector2.ZERO
-		glob.wall_cling_remaining = 0.0
+		glob.wall_attached = false
 		glob.trail_remaining = glob_trail_spacing
 		glob.travelled = 0.0
 		_globs_launched += 1
@@ -816,31 +890,45 @@ func _advance_globs(delta: float) -> void:
 
 
 func _advance_glob(glob: Glob, delta: float) -> void:
-	var step := glob.velocity * delta
-	var next_position := glob.position + step
-	# Basalt and the arena edge are surfaces, not sinks. Paint thrown at a wall does
-	# not stop dead and it does not vanish: it hits, loses everything it had driving
-	# into the face, and what it had running along the face carries it down the wall
-	# until it runs out and pools at the foot. A very slippery surface is exactly the
-	# case where almost none of that along-the-face motion is taken away.
-	if (
-		not territory_field.contains_local_point(next_position)
-		or not territory_field.is_claimable_at_local(next_position)
-	):
-		if not _run_down_obstacle(glob, next_position):
-			_land_glob(glob)
-		return
-	glob.position = next_position
-	glob.travelled += step.length()
-
-	# While it is still wetted to a face, it is held against it. This is what makes
-	# the paint run down the wall rather than glance off it: what carries it along
-	# the surface is untouched, but it is not free to leave.
-	if glob.wall_cling_remaining > 0.0:
-		glob.wall_cling_remaining -= delta
-		glob.velocity -= glob.wall_normal * wall_cling_acceleration * delta
-		if glob.wall_cling_remaining <= 0.0:
-			glob.wall_normal = Vector2.ZERO
+	# Basalt and the arena edge are surfaces, not sinks. A lump thrown at a wall does
+	# not stop dead and it does not vanish: it marks the face with what was driving
+	# into it and rebounds with what is left, carrying on across the board.
+	#
+	# The motion is integrated in sub-steps short enough that nothing can cross a
+	# wall without being tested against it. A single frame of travel at launch speed
+	# is longer than the thinnest basalt on the board, and a missed contact does not
+	# merely look wrong here - it is the contact that decides the whole rest of the
+	# trajectory.
+	var frame_travel := glob.velocity.length() * delta
+	var cell_pixels := (
+		territory_field.tuning.arena_size.x / float(territory_field.tuning.field_size.x)
+	)
+	var substep_limit := maxf(1.0, cell_pixels * flight_substep_cells)
+	var substeps := clampi(
+		ceili(frame_travel / substep_limit),
+		1,
+		maximum_flight_substeps
+	)
+	var substep_delta := delta / float(substeps)
+	var moved := 0.0
+	for _substep in range(substeps):
+		# Read from the current velocity every time, so the sub-steps after a bounce
+		# travel along the new heading rather than finishing the old one.
+		var step := glob.velocity * substep_delta
+		var next_position := glob.position + step
+		if (
+			not territory_field.contains_local_point(next_position)
+			or not territory_field.is_claimable_at_local(next_position)
+		):
+			if not _bounce_off_obstacle(glob, next_position):
+				glob.travelled += moved
+				_land_glob(glob)
+				return
+			continue
+		glob.position = next_position
+		moved += step.length()
+	glob.travelled += moved
+	var step_length := moved
 
 	# Air drag first, and it is the reason a splatter looks the way it does: it acts
 	# on the droplet's cross-section and is resisted by its Mass, so deceleration
@@ -868,21 +956,15 @@ func _advance_glob(glob: Glob, delta: float) -> void:
 
 	# The streak is the trail of something moving, so it is laid down as the glob
 	# travels rather than stamped along a ray decided in advance.
-	glob.trail_remaining -= step.length()
+	glob.trail_remaining -= step_length
 	if glob.trail_remaining <= 0.0 and glob_trail_spacing > 0.0:
-		# Material running down a face leaves a continuous streak on it, not the
-		# spaced droplets of something in free flight. Without this a glob spent most
-		# of what it carried on the slide and deposited almost nothing.
-		var spacing_scale := 1.0
-		if glob.wall_cling_remaining > 0.0:
-			spacing_scale = wall_streak_spacing_scale
-		glob.trail_remaining = glob_trail_spacing * spacing_scale
+		glob.trail_remaining = glob_trail_spacing
 		# Spending a share of the remaining Mass per splat means the closer the
 		# splats are laid the faster the glob bleeds out, so a streak with three
 		# times the marks arrived carrying nothing. What the trail costs is charged
 		# by the distance covered instead, which leaves the material a glob spends
 		# per pixel the same whether it is streaking a face or crossing open ground.
-		var trail_mass := glob.mass * glob_trail_mass_share * spacing_scale
+		var trail_mass := glob.mass * glob_trail_mass_share
 		if trail_mass > 0.0:
 			glob.mass = maxf(0.0, glob.mass - trail_mass)
 			territory_field.queue_splat(
@@ -897,7 +979,7 @@ func _advance_glob(glob: Glob, delta: float) -> void:
 		_land_glob(glob)
 
 
-func _run_down_obstacle(glob: Glob, contact_position: Vector2) -> bool:
+func _bounce_off_obstacle(glob: Glob, contact_position: Vector2) -> bool:
 	# Returns false when the glob is spent and should deposit where it lies.
 	if glob.wall_contacts >= maximum_wall_contacts:
 		return false
@@ -917,8 +999,9 @@ func _run_down_obstacle(glob: Glob, contact_position: Vector2) -> bool:
 	# a wall and dragging a loaded brush across it.
 	var speed := glob.velocity.length()
 	var head_on := clampf(absf(into) / maxf(1.0, speed), 0.0, 1.0)
+	var was_attached := glob.wall_attached
 	var splash_mass := glob.mass * head_on
-	if head_on > minimum_face_splash_share and splash_mass > 0.0:
+	if not was_attached and head_on > minimum_face_splash_share and splash_mass > 0.0:
 		glob.mass = maxf(0.0, glob.mass - splash_mass)
 		territory_field.queue_splat(
 			glob.position,
@@ -934,13 +1017,44 @@ func _run_down_obstacle(glob: Glob, contact_position: Vector2) -> bool:
 			landing_maturity_ceiling,
 			get_landing_maturity_reinforcement()
 		)
-	glob.velocity -= normal * into * (1.0 + wall_restitution)
-	glob.velocity *= wall_slide_retention
-	glob.wall_contacts += 1
-	glob.wall_normal = normal
-	glob.wall_cling_remaining = wall_cling_seconds
-	# Held a hair off the surface so the next step starts in open ground rather than
-	# re-colliding with the same cell forever.
+	if head_on > minimum_face_splash_share:
+		glob.wall_attached = true
+	# Collision response, resolved on the two axes separately because they are two
+	# different physical things. A contact heavy enough to splash is wet adhesion:
+	# its normal component is spent on the face and only its tangential component
+	# runs onward. A true graze leaves no face splat and may still rebound. This keeps
+	# paint against the rock it visibly marked instead of letting restitution throw
+	# it back into open ground after a long run along the surface.
+	var normal_velocity := normal * into
+	var tangent_velocity := glob.velocity - normal_velocity
+	var effective_restitution := (
+		0.0 if glob.wall_attached else wall_restitution
+	)
+	# Impulse per unit mass. Mass cancels for a collision against static geometry,
+	# which is why a heavy lump and a fine droplet rebound off basalt alike.
+	var normal_impulse := (1.0 + effective_restitution) * absf(into)
+	# The first impact pays friction. Tiny follow-up contacts exist only to follow
+	# the changing face normal; charging friction on every sub-step would make the
+	# same surface arbitrarily stickier at a higher simulation rate.
+	var friction_impulse := 0.0 if was_attached else wall_friction * normal_impulse
+	var tangent_speed := tangent_velocity.length()
+	if tangent_speed <= friction_impulse:
+		# Friction can bring the glob to rest along the face but can never drag it
+		# backwards: the impulse is capped at what is left, never overshot.
+		tangent_velocity = Vector2.ZERO
+	else:
+		tangent_velocity -= tangent_velocity.normalized() * friction_impulse
+	glob.velocity = tangent_velocity - normal_velocity * effective_restitution
+	if glob.wall_attached and tangent_velocity.length_squared() > 0.0001:
+		glob.velocity -= (
+			normal
+			* tangent_velocity.length()
+			* wall_adhesion_fraction
+		)
+	if not was_attached:
+		glob.wall_contacts += 1
+	# Held a hair off the surface so the next sub-step starts in open ground rather
+	# than re-colliding with the same cell forever.
 	var pixels_per_cell := (
 		territory_field.tuning.arena_size.x / float(territory_field.tuning.field_size.x)
 	)

@@ -67,9 +67,9 @@ class SweepState:
 @export var root_director: PhaseBRootDirector
 
 @export_group("Universal")
-## Core Weapon volleys between Predator's Eye's extra target.
+## Cane sweeps between Predator's Eye reach extensions.
 @export_range(2, 40, 1) var predators_eye_interval := 10
-## Seconds a Follow Through pierce bonus stays armed after a kill.
+## Seconds a Follow Through damage bonus stays armed after a Cane kill.
 @export_range(0.1, 10.0, 0.1) var follow_through_seconds := 2.0
 ## Core Weapon attacks sped up by one Adrenal Response trigger.
 @export_range(1, 10, 1) var adrenal_response_charges := 3
@@ -98,11 +98,11 @@ class SweepState:
 @export_range(1.0, 3.0, 0.05) var last_bastion_speed_multiplier := 1.35
 ## Core Weapon cooldown multiplier granted by Last Bastion; lower fires faster.
 @export_range(0.1, 1.0, 0.01) var last_bastion_attack_multiplier := 0.65
-## Health fraction below which Blood in the Water prioritises an enemy.
+## Health fraction below which Blood in the Water amplifies Cane damage.
 @export_range(0.05, 0.9, 0.01) var blood_in_the_water_threshold := 0.20
 ## Biomass an elite kill drops under Salvage Rights.
 @export_range(1.0, 400.0, 1.0) var salvage_rights_biomass := 26.0
-## Enemies that must be near the player for Underdog's extra target.
+## Enemies that must be near the player for Underdog's faster Cane cadence.
 @export_range(2, 40, 1) var underdog_enemy_count := 8
 ## Radius in pixels Underdog counts enemies inside.
 @export_range(40.0, 600.0, 5.0) var underdog_radius_pixels := 190.0

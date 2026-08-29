@@ -32,12 +32,16 @@ signal jackpot_ended(path_id: int)
 @export_range(1.0, 60.0, 0.5) var bramble_seconds := 10.0
 ## Seconds of maxed Pruning per win.
 @export_range(1.0, 60.0, 0.5) var pruning_seconds := 10.0
+## Thistle, Vine, and Fruit are active battlefield systems rather than one-shot
+## board events. Ten seconds gives each enough time to express at least one full
+## cadence while their four standard lines are held at rank 5.
+@export_range(1.0, 60.0, 0.5) var adaptation_seconds := 10.0
 ## How long Spore and Bloom stay lit. Both resolve as one discrete board-wide event
 ## rather than as a duration, but the material they throw is still in the air a moment
 ## later and has to land at the strength it was launched with.
 @export_range(0.5, 20.0, 0.5) var discrete_seconds := 3.0
 
-var _remaining := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+var _remaining := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
 
 func reset_jackpots() -> void:
@@ -55,6 +59,8 @@ func get_path_seconds(path_id: int) -> float:
 			return bramble_seconds
 		PhaseBProgression.PathId.PRUNING:
 			return pruning_seconds
+		PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.VINE, PhaseBProgression.PathId.FRUIT:
+			return adaptation_seconds
 		_:
 			return discrete_seconds
 

@@ -19,6 +19,8 @@ extends Node2D
 
 signal status_requested(message: String)
 signal cycle_pruned(claimed_cells: int, cuttings: int)
+## Captures the ring before reset for Deadheading, Espalier, and Graft.
+signal ring_released(cuttings: int, charge: float, facing: Vector2, intentional: bool)
 
 enum CuttingState {
 	INACTIVE,
@@ -65,6 +67,9 @@ class Cutting:
 ## Relic component consulted for the Pruning relics. Optional: without it the
 ## path behaves exactly as authored.
 @export var relic_director: PhaseBRelicDirector
+## Root component supplying the Root Network amplification a cut reads. Optional:
+## without it a Cutting is worth the same whatever age of Green it came out of.
+@export var root_director: PhaseBRootDirector
 
 @export_group("Pruning Lines")
 ## Additive multiplier per Harvest Rate rank on how fast the ring strips the ground
@@ -614,7 +619,7 @@ func _run_harvest(delta: float) -> void:
 		return
 	# Nothing left underfoot, so there is nothing feeding the ring any longer.
 	if get_orbit_count() > 0:
-		_release_ring("PRUNING — nothing left underfoot; the ring fired.")
+		_release_ring("PRUNING — nothing left underfoot; the ring fired.", false)
 	_holding = false
 	_charge = 0.0
 	_hold_seconds = 0.0
@@ -700,7 +705,7 @@ func _harvest(wanted_cells: int) -> int:
 	var raised := _raise_cuttings(harvest, mini(int(floor(_cutting_debt)), room))
 	_cutting_debt -= float(raised)
 	_bury_pioneer_seeds(harvest)
-	_fire_deadfall_volley()
+	_fire_deadfall_volley(harvest)
 	cycle_pruned.emit(harvest.cell_count, raised)
 	return raised
 
@@ -789,7 +794,14 @@ func _raise_cuttings(harvest: TerritoryField.PruneHarvest, wanted: int) -> int:
 	var count := clampi(wanted, 0, maximum_cuttings_per_step)
 	if count <= 0 or harvest.positions.is_empty():
 		return 0
-	var damage := cutting_damage * get_pruning_cutting_damage_multiplier()
+	# Root Network: a spike is only as hard as the wood it was cut from, so the
+	# damage rides the age of the ground this cycle actually took rather than the
+	# maturity left behind after the cut — the harvest has already removed it.
+	var damage := (
+		cutting_damage
+		* get_pruning_cutting_damage_multiplier()
+		* get_harvest_root_multiplier(harvest)
+	)
 	var raised := 0
 	for index in range(count):
 		var cutting := _get_inactive_cutting()
@@ -807,6 +819,20 @@ func _raise_cuttings(harvest: TerritoryField.PruneHarvest, wanted: int) -> int:
 		raised += 1
 	_cuttings_launched += raised
 	return raised
+
+func get_harvest_root_multiplier(harvest: TerritoryField.PruneHarvest) -> float:
+	# How old the cut was, as the share of it that came out of Mature ground. Every
+	# other path scales Root by the maturity under a single effect; a harvest is a
+	# patch rather than a point, so its own Mature share is that same measure. The
+	# position is the cut's centre, which is what lets an Annual Rings region or a
+	# Seedbed patch deepen the Network for a ring turning inside it.
+	if root_director == null or harvest.cell_count <= 0:
+		return 1.0
+	return root_director.get_network_multiplier_at(
+		combat.player.get_arena_position(),
+		float(harvest.mature_cell_count) / float(harvest.cell_count)
+	)
+
 
 func get_replacement_seconds() -> float:
 	# Deadfall's payoff is the rate itself. The Evolution takes the ring from
@@ -969,9 +995,13 @@ func _apply_orbit_damage() -> void:
 				notify_ring_kill(false)
 			_hit_cooldowns[enemy_id] = orbit_hit_cooldown_seconds
 
-func _release_ring(message: String) -> void:
+func _release_ring(message: String, intentional: bool = true) -> void:
 	var released := 0
-	var payout := 1.0 + get_launch_charge_damage_bonus() * _charge
+	var release_charge := _charge
+	var release_facing := combat.player.get_facing_direction()
+	var payout := 1.0 + get_launch_charge_damage_bonus() * release_charge
+	var espalier_rank := get_evolution_rank(PhaseBProgression.EvolutionId.ESPALIER)
+	var orbiting := get_orbit_count()
 	for cutting in _cuttings:
 		if cutting.state != CuttingState.ORBITING:
 			continue
@@ -979,6 +1009,24 @@ func _release_ring(message: String) -> void:
 		# reason to hold one.
 		cutting.damage *= payout
 		_launch_cutting(cutting, true)
+		if espalier_rank >= 1:
+			var fan_progress := (
+				0.5
+				if orbiting <= 1
+				else float(released) / float(orbiting - 1)
+			)
+			var fan_angle := lerpf(-PI * 0.25, PI * 0.25, fan_progress)
+			cutting.velocity = (
+				release_facing.rotated(fan_angle) * cutting_speed_pixels_per_second
+			)
+			if espalier_rank >= 2:
+				var elongation_bonus := 0.10 * float(
+					progression.get_upgrade_level(
+						PhaseBProgression.UpgradeId.VINE_ELONGATION
+					)
+				)
+				cutting.remaining *= 1.0 + elongation_bonus
+				cutting.maximum_travel *= 1.0 + elongation_bonus
 		released += 1
 	_release_stored_sap()
 	_charge = 0.0
@@ -990,7 +1038,45 @@ func _release_ring(message: String) -> void:
 	if released <= 0:
 		return
 	_rings_released += 1
+	ring_released.emit(released, release_charge, release_facing, intentional)
 	status_requested.emit(message)
+
+
+func fire_espalier_fan(count: int, facing: Vector2, damage_scale: float) -> int:
+	## Rank 5's second fan spends no Green and cannot report another release. It
+	## reuses the Cutting pool and collision resolver, so Pierce and walls stay exact.
+	var wanted := mini(maxi(0, count), cutting_pool_size)
+	var fired := 0
+	var rank := get_evolution_rank(PhaseBProgression.EvolutionId.ESPALIER)
+	for index in range(wanted):
+		var cutting := _get_inactive_cutting()
+		if cutting == null:
+			break
+		var progress := 0.5 if wanted <= 1 else float(index) / float(wanted - 1)
+		var angle := lerpf(-PI * 0.25, PI * 0.25, progress)
+		cutting.state = CuttingState.LAUNCHED
+		cutting.position = combat.player.get_arena_position()
+		cutting.velocity = facing.rotated(angle) * cutting_speed_pixels_per_second
+		cutting.remaining = cutting_lifetime_seconds
+		if rank >= 2:
+			cutting.remaining *= 1.0 + 0.10 * float(
+				progression.get_upgrade_level(PhaseBProgression.UpgradeId.VINE_ELONGATION)
+			)
+		cutting.damage = (
+			cutting_damage
+			* get_pruning_cutting_damage_multiplier()
+			* maxf(0.0, damage_scale)
+		)
+		cutting.pierce_remaining = cutting_pierce
+		cutting.pierce_falloff = cutting_pierce_falloff
+		cutting.last_hit_enemy_id = -1
+		cutting.travelled = 0.0
+		cutting.returning = false
+		cutting.maximum_travel = cutting_speed_pixels_per_second * cutting.remaining
+		cutting.spin = angle
+		fired += 1
+	_cuttings_launched += fired
+	return fired
 
 func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 	cutting.remaining -= delta
@@ -998,7 +1084,13 @@ func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 		_finish_cutting(cutting)
 		return
 	var step := cutting.velocity * delta
-	cutting.position += step
+	var next_position := cutting.position + step
+	# Cuttings are physical blades. Test the entire frame segment against the shared
+	# obstacle mask so a fast spike cannot tunnel through a thin wall or rock.
+	if not territory_field.is_growth_path_clear(cutting.position, next_position):
+		_finish_cutting(cutting)
+		return
+	cutting.position = next_position
 	if cutting.maximum_travel > 0.0 and not cutting.returning:
 		cutting.travelled += step.length()
 		if cutting.travelled >= cutting.maximum_travel:
@@ -1043,7 +1135,7 @@ func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 		cutting.state = CuttingState.INACTIVE
 
 
-func _fire_deadfall_volley() -> void:
+func _fire_deadfall_volley(harvest: TerritoryField.PruneHarvest) -> void:
 	## Deadfall Volley: every cycle throws a ring of heavy spikes outward on top of
 	## whatever the harvest raised. They come from the cut rather than from the ring, so
 	## the volley does not eat the orbit the player is holding.
@@ -1057,6 +1149,7 @@ func _fire_deadfall_volley() -> void:
 		cutting_damage
 		* get_pruning_cutting_damage_multiplier()
 		* evolutions.splinterstorm_volley_damage_scale
+		* get_harvest_root_multiplier(harvest)
 	)
 	var launched := 0
 	for index in range(spikes):

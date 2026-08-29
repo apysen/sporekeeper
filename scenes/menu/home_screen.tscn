@@ -1,0 +1,366 @@
+[gd_scene format=3 uid="uid://cbsir45nitkf"]
+
+[ext_resource type="Script" uid="uid://bxemd8p8klwb3" path="res://src/core/nodes/menu/home_screen.gd" id="1_home"]
+[ext_resource type="Script" uid="uid://ca800f7dbuwb1" path="res://src/core/nodes/run/phase_b_display_settings.gd" id="2_display_settings"]
+[ext_resource type="Script" uid="uid://cwuy2wawxa2cl" path="res://src/core/nodes/run/phase_b_audio_settings.gd" id="3_audio_settings"]
+[ext_resource type="StyleBox" uid="uid://dntud22nnvk3h" path="res://assets/ui/wx_panel_ornate.tres" id="4_panel_ornate"]
+[ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/phase_b_wager_slider.gd" id="7_slider"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_track.tres" id="8_track"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_fill.tres" id="9_fill"]
+[ext_resource type="Texture2D" uid="uid://lmti7co0xiyr" path="res://assets/ui/kenney/wager_grabber.png" id="10_grabber"]
+[ext_resource type="Texture2D" uid="uid://chxr84qbg23ry" path="res://assets/ui/kenney/wager_grabber_hover.png" id="11_grabber_hover"]
+[ext_resource type="Texture2D" uid="uid://douyogsg7iwsg" path="res://assets/ui/kenney/wager_grabber_pressed.png" id="12_grabber_pressed"]
+[ext_resource type="Texture2D" uid="uid://brgx0c7yrekb" path="res://assets/ui/kenney/wager_knob_footprint.png" id="13_knob_footprint"]
+[ext_resource type="StyleBox" path="res://assets/ui/empty_style.tres" id="14_empty"]
+[ext_resource type="StyleBox" uid="uid://b5op5esvwk6sv" path="res://assets/ui/wx_fantasy_button.tres" id="15_btn"]
+[ext_resource type="StyleBox" uid="uid://bn7byuq70ndfl" path="res://assets/ui/wx_fantasy_button_hover.tres" id="16_btn_hover"]
+[ext_resource type="StyleBox" uid="uid://c4qacuvts2rif" path="res://assets/ui/wx_fantasy_button_pressed.tres" id="17_btn_pressed"]
+
+[node name="HomeScreen" type="Control" unique_id=1691155363 node_paths=PackedStringArray("display_settings", "audio_settings", "menu_page", "settings_page", "play_button", "campaign_button", "settings_button", "quit_button", "settings_back_button", "fullscreen_button", "sfx_slider", "sfx_value", "music_slider", "music_value", "setting_buttons")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_home")
+display_settings = NodePath("DisplaySettings")
+audio_settings = NodePath("AudioSettings")
+menu_page = NodePath("MenuPage")
+settings_page = NodePath("SettingsPage")
+play_button = NodePath("MenuPage/PlayButton")
+campaign_button = NodePath("MenuPage/CampaignButton")
+settings_button = NodePath("MenuPage/SettingsButton")
+quit_button = NodePath("MenuPage/QuitButton")
+settings_back_button = NodePath("SettingsPage/BackButton")
+fullscreen_button = NodePath("SettingsPage/FullscreenButton")
+sfx_slider = NodePath("SettingsPage/SfxSlider")
+sfx_value = NodePath("SettingsPage/SfxValue")
+music_slider = NodePath("SettingsPage/MusicSlider")
+music_value = NodePath("SettingsPage/MusicValue")
+setting_buttons = [NodePath("SettingsPage/Option0"), NodePath("SettingsPage/Option1"), NodePath("SettingsPage/Option2"), NodePath("SettingsPage/Option3"), NodePath("SettingsPage/Option4")]
+
+[node name="DisplaySettings" type="Node" parent="." unique_id=877913100]
+script = ExtResource("2_display_settings")
+
+[node name="AudioSettings" type="Node" parent="." unique_id=327752747]
+script = ExtResource("3_audio_settings")
+
+[node name="Background" type="ColorRect" parent="." unique_id=2015124018]
+layout_mode = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.09, 0.102, 0.082, 1)
+
+[node name="MenuPage" type="Control" parent="." unique_id=1272372330]
+anchors_preset = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+
+[node name="TitlePanel" type="Panel" parent="MenuPage" unique_id=1270654780]
+layout_mode = 0
+offset_left = 340.0
+offset_top = 96.0
+offset_right = 940.0
+offset_bottom = 252.0
+mouse_filter = 2
+theme_override_styles/panel = ExtResource("4_panel_ornate")
+
+[node name="Title" type="Label" parent="MenuPage/TitlePanel" unique_id=754029842]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 47.0
+offset_right = 570.0
+offset_bottom = 109.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 54
+text = "SPOREKEEPER"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PlayButton" type="Button" parent="MenuPage" unique_id=1239612251]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 459.0
+offset_right = 790.0
+offset_bottom = 516.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "QUICK"
+
+[node name="CampaignButton" type="Button" parent="MenuPage" unique_id=1239612252]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 390.0
+offset_right = 790.0
+offset_bottom = 447.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "CAMPAIGN"
+
+[node name="SettingsButton" type="Button" parent="MenuPage" unique_id=1079352698]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 528.0
+offset_right = 790.0
+offset_bottom = 585.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="MenuPage" unique_id=1249133510]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 597.0
+offset_right = 790.0
+offset_bottom = 654.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "QUIT"
+
+[node name="Credit" type="Label" parent="MenuPage" unique_id=1588237158]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 675.0
+offset_right = 790.0
+offset_bottom = 683.0
+theme_override_colors/font_color = Color(0.42, 0.45, 0.38, 1)
+theme_override_font_sizes/font_size = 11
+text = "UI borders by Kenney (CC0)"
+horizontal_alignment = 1
+
+[node name="SettingsPage" type="Panel" parent="." unique_id=2108359308]
+visible = false
+layout_mode = 0
+offset_left = 336.0
+offset_top = 12.0
+offset_right = 944.0
+offset_bottom = 712.0
+theme_override_styles/panel = ExtResource("4_panel_ornate")
+
+[node name="Header" type="Label" parent="SettingsPage" unique_id=1172898353]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 20.0
+offset_right = 574.0
+offset_bottom = 56.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 24
+text = "SETTINGS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SfxLabel" type="Label" parent="SettingsPage" unique_id=1844973951]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 70.0
+offset_right = 300.0
+offset_bottom = 92.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+text = "SFX VOLUME"
+
+[node name="SfxValue" type="Label" parent="SettingsPage" unique_id=1573288479]
+layout_mode = 0
+offset_left = 450.0
+offset_top = 70.0
+offset_right = 568.0
+offset_bottom = 92.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 12
+text = "100%"
+horizontal_alignment = 2
+
+[node name="SfxSlider" type="HSlider" parent="SettingsPage" unique_id=1280630321]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 96.0
+offset_right = 568.0
+offset_bottom = 132.0
+theme_override_icons/grabber = ExtResource("13_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("13_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("13_knob_footprint")
+theme_override_icons/tick = ExtResource("13_knob_footprint")
+theme_override_styles/slider = ExtResource("14_empty")
+theme_override_styles/grabber_area = ExtResource("14_empty")
+theme_override_styles/grabber_area_highlight = ExtResource("14_empty")
+value = 100.0
+script = ExtResource("7_slider")
+track_style = ExtResource("8_track")
+fill_style = ExtResource("9_fill")
+tick_length = 0.0
+knob_size = 26.0
+grabber_texture = ExtResource("10_grabber")
+grabber_hover_texture = ExtResource("11_grabber_hover")
+grabber_pressed_texture = ExtResource("12_grabber_pressed")
+
+[node name="MusicLabel" type="Label" parent="SettingsPage" unique_id=362618188]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 144.0
+offset_right = 300.0
+offset_bottom = 166.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+text = "MUSIC VOLUME"
+
+[node name="MusicValue" type="Label" parent="SettingsPage" unique_id=2039847070]
+layout_mode = 0
+offset_left = 450.0
+offset_top = 144.0
+offset_right = 568.0
+offset_bottom = 166.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 12
+text = "100%"
+horizontal_alignment = 2
+
+[node name="MusicSlider" type="HSlider" parent="SettingsPage" unique_id=716363787]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 170.0
+offset_right = 568.0
+offset_bottom = 206.0
+theme_override_icons/grabber = ExtResource("13_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("13_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("13_knob_footprint")
+theme_override_icons/tick = ExtResource("13_knob_footprint")
+theme_override_styles/slider = ExtResource("14_empty")
+theme_override_styles/grabber_area = ExtResource("14_empty")
+theme_override_styles/grabber_area_highlight = ExtResource("14_empty")
+value = 100.0
+script = ExtResource("7_slider")
+track_style = ExtResource("8_track")
+fill_style = ExtResource("9_fill")
+tick_length = 0.0
+knob_size = 26.0
+grabber_texture = ExtResource("10_grabber")
+grabber_hover_texture = ExtResource("11_grabber_hover")
+grabber_pressed_texture = ExtResource("12_grabber_pressed")
+
+[node name="Option0" type="Button" parent="SettingsPage" unique_id=1616829374]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 214.0
+offset_right = 568.0
+offset_bottom = 262.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "FRIENDLY EFFECTS   FULL"
+
+[node name="Option1" type="Button" parent="SettingsPage" unique_id=1031737181]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 268.0
+offset_right = 568.0
+offset_bottom = 316.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "ENEMY TELEGRAPHS   FULL"
+
+[node name="Option2" type="Button" parent="SettingsPage" unique_id=1344543773]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 322.0
+offset_right = 568.0
+offset_bottom = 370.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "TERRITORY DETAIL   FULL"
+
+[node name="Option3" type="Button" parent="SettingsPage" unique_id=1426669601]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 376.0
+offset_right = 568.0
+offset_bottom = 424.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "DAMAGE NUMBERS   ALL"
+
+[node name="Option4" type="Button" parent="SettingsPage" unique_id=1366813396]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 430.0
+offset_right = 568.0
+offset_bottom = 478.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "PLAYER HIGHLIGHT   SUBTLE"
+
+[node name="FullscreenButton" type="Button" parent="SettingsPage" unique_id=63855232]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 484.0
+offset_right = 568.0
+offset_bottom = 532.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "FULLSCREEN"
+
+[node name="BackButton" type="Button" parent="SettingsPage" unique_id=220546672]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 538.0
+offset_right = 568.0
+offset_bottom = 586.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "BACK  [ESC]"

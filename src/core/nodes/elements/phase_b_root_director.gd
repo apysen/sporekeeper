@@ -152,6 +152,22 @@ func get_network_bonus_at(local_position: Vector2) -> float:
 	return bonus
 
 
+func get_network_multiplier_at(local_position: Vector2, ground_maturity: float) -> float:
+	# The whole Root Network rule in one place: amplification where the effect is
+	# happening, scaled by the age of the ground under it. Every consumer was
+	# writing this same expression by hand and reading the global bonus while
+	# doing it, which is how Annual Rings and Seedbed came to amplify nothing.
+	return 1.0 + get_network_bonus_at(local_position) * clampf(ground_maturity, 0.0, 1.0)
+
+
+func get_network_multiplier_here(local_position: Vector2) -> float:
+	# Same rule for callers that have not already sampled the ground themselves.
+	return get_network_multiplier_at(
+		local_position,
+		territory_field.get_maturity_at_local(local_position)
+	)
+
+
 func apply_modifiers(field_maturation_multiplier: float) -> void:
 	# Root's rules are field rules. The Biomass multiplier is read by whoever ticks
 	# the economy rather than pushed anywhere.

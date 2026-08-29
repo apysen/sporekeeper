@@ -1,14 +1,28 @@
 class_name PhaseBPrototype
 extends Node2D
 
+const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
+
 ## Placeholder reel faces. Each stands for one Path, plus the Clover wild and the Bust.
 const SYMBOL_SEED := preload("res://assets/art/slots/symbols/symbol_seed.svg")
 const SYMBOL_FLOWER := preload("res://assets/art/slots/symbols/symbol_flower.svg")
 const SYMBOL_BRAMBLE := preload("res://assets/art/slots/symbols/symbol_bramble.svg")
 const SYMBOL_ROOT := preload("res://assets/art/slots/symbols/symbol_root.svg")
 const SYMBOL_CUTTING := preload("res://assets/art/slots/symbols/symbol_cutting.svg")
+const SYMBOL_THISTLE := preload("res://assets/art/slots/symbols/symbol_thistle.svg")
+const SYMBOL_VINE := preload("res://assets/art/slots/symbols/symbol_vine.svg")
+const SYMBOL_FRUIT := preload("res://assets/art/slots/symbols/symbol_fruit.svg")
 const SYMBOL_WILD := preload("res://assets/art/slots/symbols/symbol_wild.svg")
 const SYMBOL_BUST := preload("res://assets/art/slots/symbols/symbol_bust.svg")
+
+const ADAPTATION_ICON_SPORE := preload("res://assets/art/adaptation_icons/spore/spore.png")
+const ADAPTATION_ICON_BLOOM := preload("res://assets/art/adaptation_icons/bloom/bloom_512x512.png")
+const ADAPTATION_ICON_BRAMBLE := preload("res://assets/art/adaptation_icons/bramble/bramble.png")
+const ADAPTATION_ICON_ROOT := preload("res://assets/art/adaptation_icons/root/root.png")
+const ADAPTATION_ICON_PRUNING := preload("res://assets/art/adaptation_icons/pruning/pruning.png")
+const ADAPTATION_ICON_THISTLE := preload("res://assets/art/adaptation_icons/thistle/thistle.svg")
+const ADAPTATION_ICON_VINE := preload("res://assets/art/adaptation_icons/vine/vine.png")
+const ADAPTATION_ICON_FRUIT := preload("res://assets/art/adaptation_icons/fruit/red-apple.png")
 
 enum RunState {
 	RUNNING,
@@ -30,7 +44,7 @@ enum ChoiceKind {
 @export var overlay: TerritoryPrototypeOverlay
 ## Player component whose health and movement state this run coordinates.
 @export var player: PhaseBPlayer
-## Combat component responsible for enemies, Thornshot, damage, pickups, and combat audio.
+## Combat component responsible for enemies, Cane, damage, pickups, and combat audio.
 @export var combat: PhaseBCombatDirector
 ## Progression component responsible for XP drafts, Biomass, relics, and evolution.
 @export var progression: PhaseBProgression
@@ -47,6 +61,10 @@ enum ChoiceKind {
 ## pass inside the effects overlay: a CanvasItem carries one material, and the wager
 ## needs a shader of its own to come out smooth instead of as a grid of lit cells.
 @export var wager_layer: TerritoryWagerLayer
+## Layer drawing the temporary shield a Bloom leaves on the Green it touched. Its own
+## node for the same reason the wager highlight is: it belongs to the ground rather
+## than to the effects drawn on top of it.
+@export var aftergrowth_layer: TerritoryAftergrowthLayer
 ## Chance, drought protection, and the construction of the visible reel faces.
 @export var clover_odds: PhaseBCloverOdds
 ## Which cells a given stake would take right now.
@@ -73,6 +91,8 @@ enum ChoiceKind {
 @export var man_eater: PhaseBManEater
 ## Pruning component that owns the cycle, its Cuttings, and Pruned Ground.
 @export var pruning_director: PhaseBPruningDirector
+## Runtime for Thistle turrets, Vine pair effects, rolling Fruit, and their relics.
+@export var adaptation_director: PhaseBAdaptationDirector
 ## Shared SFX and music bus names plus the pause-slider output caps.
 @export var audio_settings: PhaseBAudioSettings
 
@@ -112,6 +132,14 @@ enum ChoiceKind {
 @export_group("Interface Wiring")
 ## Audio player that starts and loops the authored ambient forest theme.
 @export var ambient_music_audio: AudioStreamPlayer
+## The lever going down. Optional, like the two below it: a scene without the player
+## simply runs the machine silently rather than failing to load.
+@export var slot_lever_audio: AudioStreamPlayer
+## One reel coming to rest. Polyphonic, because three reels stop close together and
+## the third click must not cut the second one off.
+@export var slot_reel_audio: AudioStreamPlayer
+## A jackpot landing, path or Clover alike.
+@export var slot_jackpot_audio: AudioStreamPlayer
 ## Progress bar that displays the player's current health fraction.
 @export var health_bar: ProgressBar
 ## Label that displays current and maximum player health numerically.
@@ -141,7 +169,7 @@ enum ChoiceKind {
 ## Label used for milestone, combat, upgrade, and failure-status messages.
 ## Row of rounded slots showing which relics the run holds.
 @export var relic_slots: PhaseBUpgradeSlots
-## Label that summarizes the six upgrade-line slots in the bottom tray.
+## Label that names the 13-position Adaptations tree in the side HUD.
 @export var slots_label: Label
 ## Row of rounded slots showing the growth lines the run has taken.
 @export var upgrade_slots: PhaseBUpgradeSlots
@@ -232,7 +260,6 @@ enum ChoiceKind {
 ## Large transient banner over the battlefield for major progression events.
 @export var banner_label: Label
 ## Side-panel button that resets the current run to its initial state.
-@export var reset_button: Button
 ## Panel shown when the run reaches victory or defeat.
 @export var result_panel: Panel
 ## Heading label used for the victory or defeat result.
@@ -253,13 +280,35 @@ enum ChoiceKind {
 @export var pause_music_volume_value: Label
 ## Button that toggles between windowed and fullscreen display modes.
 @export var pause_fullscreen_button: Button
-## Button that resets the current run while the pause menu is open.
-@export var pause_restart_button: Button
+## Opens the presentation options. They used to sit on the pause panel all at once,
+## which made pausing mid-fight a wall of rows to read past to reach Resume.
+@export var pause_settings_button: Button
+## The page those options moved to, shown in place of the pause panel rather than on
+## top of it, so there is only ever one thing to read.
+@export var pause_settings_panel: Control
+@export var pause_settings_back_button: Button
+@export var pause_panel: Control
+## Opens the alphabetized mechanics reference.
+@export var pause_glossary_button: Button
 ## Button that exits the running game application.
 @export var pause_quit_button: Button
 
 @export_group("Presentation Settings")
 ## The presentation options the pause menu edits and the battlefield reads.
+@export_group("Development")
+## The debug keys, and the card in the side panel that lists them. Off hides both: the
+## keys stop responding and the list stops being shown, so a build handed to someone
+## else cannot advertise controls it will not answer, and cannot answer controls it
+## does not advertise. One switch for both, because the two drifting apart is the only
+## way this is confusing.
+@export var dev_controls_enabled := true:
+	set(value):
+		dev_controls_enabled = value
+		_refresh_dev_controls()
+## The card itself, hidden along with the keys.
+@export var debug_help_label: Label
+
+@export_group("Collaborators")
 @export var display_settings: PhaseBDisplaySettings
 ## Per-spin record of what the Clover machine did. Off unless a playtest turns it
 ## on, and never read by the machine: an instrument that fed back into the thing it
@@ -277,8 +326,6 @@ enum ChoiceKind {
 @export var setting_button_territory_detail: Button
 @export var setting_button_damage_numbers: Button
 @export var setting_button_player_highlight: Button
-@export var setting_button_ui_scale: Button
-@export var setting_button_hud_detail: Button
 
 @export_group("Interface Text")
 ## Wording for the states a control does not sit in at rest, so every line the
@@ -313,6 +360,11 @@ FULLY DEVELOPED"
 	"{name}   LEVEL {level} → {next}
 {detail}"
 )
+## Row added under a line the Root Network amplifies, on the draft buttons and in the
+## upgrade hover alike. It names the multiplier and then the number the line actually
+## resolves to once Mature ground has been applied, so the player is never left to do
+## the arithmetic themselves.
+@export_multiline var root_potency_note_template := "ROOTED {multiplier}x → {effect}"
 @export_multiline var choice_relic_template := "{name}   {rarity}
 {detail}"
 @export_multiline var choice_path_template := "{name}
@@ -385,7 +437,6 @@ var _reel_rest_b := PackedFloat32Array([0.0, 0.0, 0.0])
 ## about to press, so it is only shown once a pad is actually being used.
 var _controller_active := false
 ## Authored row lengths, captured before the rows are trimmed to what the run has.
-var _maximum_upgrade_slots := 8
 var _maximum_relic_slots := 6
 var _hud_accumulator := 0.0
 var _base_natural_spread_rate := 0.0
@@ -393,11 +444,33 @@ var _base_maturity_resistance_bonus := 0.0
 var _base_pressure_advection := 0.0
 var _base_small_fragment_decay := 0.0
 var _pause_menu_open := false
+var _pause_settings_open := false
+var _glossary_button: Button
+var _mechanics_help: PhaseBMechanicsHelp
 var _sfx_bus_index := -1
 var _music_bus_index := -1
+@onready var _secondary_upgrade_slots: PhaseBUpgradeSlots = %Path2Slots
+@onready var _evolution_upgrade_slot: PhaseBUpgradeSlots = %EvolutionSlot
+@onready var _support_upgrade_slots: PhaseBUpgradeSlots = %SupportSlots
+@onready var _path_one_label: Label = %Path1Label
+@onready var _path_two_label: Label = %Path2Label
+@onready var _support_path_label: Label = %SupportPathLabel
+@onready var _evolution_tree_label: Label = %EvolutionTreeLabel
+@onready var _path_one_emblem: Label = %Path1EmblemLabel
+@onready var _path_two_emblem: Label = %Path2EmblemLabel
+@onready var _support_path_emblem: Label = %SupportEmblemLabel
+@onready var _path_one_emblem_icon: TextureRect = %Path1EmblemIcon
+@onready var _path_two_emblem_icon: TextureRect = %Path2EmblemIcon
+@onready var _support_path_emblem_icon: TextureRect = %SupportEmblemIcon
+@onready var _support_path_emblem_lock: TextureRect = %SupportEmblemLock
 
 
 func _ready() -> void:
+	var run_mode := RUN_MODE.get_selected()
+	wave_director.configure_mode(run_mode)
+	progression.configure_mode(run_mode)
+	PhaseBNinePatchButtonBorder.install_under(self)
+	PhaseBNinePatchPanelBorder.install_under(self)
 	assert(territory_field != null, "PhaseBPrototype requires TerritoryField")
 	assert(overlay != null, "PhaseBPrototype requires TerritoryPrototypeOverlay")
 	assert(player != null, "PhaseBPrototype requires PhaseBPlayer")
@@ -422,8 +495,6 @@ func _ready() -> void:
 	assert(metabolism_drawer != null, "PhaseBPrototype requires the Biomass drawer")
 	# The authored row lengths are the ceiling the run grows toward, so they are
 	# read once before either row is trimmed to what the run currently holds.
-	if upgrade_slots != null:
-		_maximum_upgrade_slots = upgrade_slots.slot_count
 	if relic_slots != null:
 		_maximum_relic_slots = relic_slots.slot_count
 	assert(biomass_button != null, "PhaseBPrototype requires the Biomass drawer button")
@@ -446,8 +517,6 @@ func _ready() -> void:
 		setting_button_territory_detail,
 		setting_button_damage_numbers,
 		setting_button_player_highlight,
-		setting_button_ui_scale,
-		setting_button_hud_detail,
 	]
 	# Indexed by ActionId, so the order of this array is the order of the enum and not
 	# a second opinion about it.
@@ -480,7 +549,6 @@ func _ready() -> void:
 		hold_button,
 		overgrow_button,
 		metabolism_label,
-		reset_button,
 		result_panel,
 		result_header,
 		result_detail,
@@ -491,7 +559,7 @@ func _ready() -> void:
 		pause_music_volume_slider,
 		pause_music_volume_value,
 		pause_fullscreen_button,
-		pause_restart_button,
+		pause_glossary_button,
 		pause_quit_button,
 	]
 	# Before a single frame runs, and so before anything below overwrites a control:
@@ -578,6 +646,7 @@ func _ready() -> void:
 	biomass_button.pressed.connect(_toggle_metabolism_drawer)
 	metabolism.production_milestone_reached.connect(_on_production_milestone_reached)
 	pruning_director.status_requested.connect(_set_status)
+	adaptation_director.status_requested.connect(_set_status)
 	progression.upgrade_choice_requested.connect(_on_upgrade_choice_requested)
 	progression.relic_choice_requested.connect(_on_relic_choice_requested)
 	progression.path_choice_requested.connect(_on_path_choice_requested)
@@ -605,13 +674,17 @@ func _ready() -> void:
 	metabolism.injection_started.connect(_on_injection_started)
 	choice_reroll_button.pressed.connect(_reroll_upgrade_choice)
 	progression.rerolls_changed.connect(_on_rerolls_changed)
-	reset_button.pressed.connect(reset_run)
 	pause_resume_button.pressed.connect(_close_pause_menu)
 	pause_volume_slider.value_changed.connect(_on_sfx_volume_changed)
 	pause_music_volume_slider.value_changed.connect(_on_music_volume_changed)
 	pause_fullscreen_button.pressed.connect(_toggle_fullscreen)
-	pause_restart_button.pressed.connect(_restart_from_pause_menu)
+	if pause_settings_button != null:
+		pause_settings_button.pressed.connect(_show_pause_settings.bind(true))
+	if pause_settings_back_button != null:
+		pause_settings_back_button.pressed.connect(_show_pause_settings.bind(false))
+	pause_glossary_button.pressed.connect(_open_glossary)
 	pause_quit_button.pressed.connect(_quit_from_pause_menu)
+	_build_mechanics_help()
 	_configure_ambient_music()
 	_configure_volume_control()
 	_update_fullscreen_button()
@@ -619,7 +692,7 @@ func _ready() -> void:
 	overlay.show_annotations = false
 	_capture_reel_rest_positions()
 	reset_run()
-
+	_refresh_dev_controls()
 
 func _process(delta: float) -> void:
 	# The focus runs on its own clock outside the run, because the whole point of the
@@ -632,6 +705,11 @@ func _process(delta: float) -> void:
 		and not is_pair_cinematic_active()
 	):
 		advance_run(delta)
+	# Rebuilt every frame rather than on the HUD's tenth-of-a-second clock: the shield
+	# is being eaten in real time and a stuttering sheet would read as the shield
+	# itself flickering. The layer costs nothing while no shield exists.
+	if aftergrowth_layer != null:
+		aftergrowth_layer.refresh()
 	_hud_accumulator += delta
 	if _hud_accumulator >= 0.10:
 		_hud_accumulator = 0.0
@@ -650,12 +728,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	# be a live overlay where readability permits, and holding it means the player
 	# cannot leave it up by accident while the battlefield needs them.
 	if event is InputEventKey and not event.echo and event.keycode == KEY_TAB:
+		if not dev_controls_enabled:
+			return
 		get_viewport().set_input_as_handled()
 		return
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	if event.keycode == KEY_ESCAPE:
-		if _pause_menu_open:
+		if _mechanics_help != null and _mechanics_help.is_glossary_open():
+			_close_glossary()
+			get_viewport().set_input_as_handled()
+			return
+		if _pause_menu_open and _pause_settings_open:
+			# Escape backs out of the settings page first, so the key never closes the
+			# whole menu out from under a player who only opened a page with it.
+			_show_pause_settings(false)
+		elif _pause_menu_open:
 			_close_pause_menu()
 		elif _choice_kind == ChoiceKind.NONE:
 			_open_pause_menu()
@@ -663,9 +751,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _pause_menu_open:
 		return
+	# Reset and the Biomass drawer come first and are never gated: both are advertised
+	# on the interface itself rather than on the dev card, and a player pressing them
+	# is using the game rather than inspecting it.
 	match event.keycode:
 		KEY_R:
 			reset_run()
+			return
+		KEY_B:
+			_toggle_metabolism_drawer()
+			return
+	# Everything past here is a debug key and answers only while the dev controls are on.
+	if not dev_controls_enabled:
+		return
+	match event.keycode:
 		KEY_F4:
 			# The ladder is slow on purpose and the physique is the part of the run
 			# least likely to be reached by hand, so the debug key pays the run the
@@ -710,8 +809,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			# needs a way to be offered relics without farming elites.
 			if progression.request_relic_choice():
 				_set_status("Debug: a relic reward is on the table.")
-		KEY_B:
-			_toggle_metabolism_drawer()
 		KEY_F11:
 			_report_man_eater_state()
 
@@ -904,9 +1001,10 @@ func reset_run() -> void:
 	bloom_director.reset_director()
 	man_eater.reset_man_eater()
 	pruning_director.reset_director()
+	adaptation_director.reset_adaptations()
 	_refresh_simulation_pause()
 	_apply_progression_modifiers()
-	_set_status("The frontier is alive. Move with WASD; Thornshot fires automatically.")
+	_set_status("The frontier is alive. Move with WASD; Cane sweeps automatically.")
 	_update_hud()
 
 
@@ -1062,10 +1160,16 @@ func _on_path_choice_requested(options: PackedInt32Array, _selecting_primary: bo
 func _show_choice(kind: int, options: PackedInt32Array) -> void:
 	_choice_kind = kind
 	_choice_ids = options.duplicate()
+	if _mechanics_help != null:
+		_mechanics_help.hide_tooltip()
 	_update_reroll_button()
 	match kind:
 		ChoiceKind.UPGRADE:
-			choice_header.text = choice_header_upgrade
+			choice_header.text = (
+				choice_header_support_path
+				if progression.is_pending_support_upgrade_choice()
+				else choice_header_upgrade
+			)
 		ChoiceKind.RELIC:
 			choice_header.text = choice_header_relic
 		ChoiceKind.PATH:
@@ -1091,11 +1195,18 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 			})
 		elif kind == ChoiceKind.UPGRADE:
 			var current_upgrade_level := progression.get_upgrade_level(option_id)
+			# What the rank buys, and under it what the Root Network makes of the
+			# line once it is taken. The draft is where the choice is made, so the
+			# amplified number belongs on the button and not only in the hover.
+			var detail := progression.get_upgrade_description(option_id)
+			var rooted := _get_root_potency_note(option_id)
+			if not rooted.is_empty():
+				detail += "\n%s" % rooted
 			button.text = AuthoredText.render(choice_upgrade_template, {
 				"name": PhaseBProgression.get_upgrade_name(option_id),
 				"level": current_upgrade_level,
 				"next": current_upgrade_level + 1,
-				"detail": progression.get_upgrade_description(option_id),
+				"detail": detail,
 			})
 		elif kind == ChoiceKind.RELIC:
 			# Rarity is the readout of how much the relic changes, so it is named
@@ -1115,6 +1226,9 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 				"name": PhaseBProgression.get_path_name(option_id).to_upper(),
 				"detail": PhaseBProgression.get_path_description(option_id),
 			})
+		# Reward explanations are rendered by PhaseBMechanicsHelp. Leaving the native
+		# tooltip empty prevents a delayed duplicate from appearing over the styled cards.
+		button.tooltip_text = ""
 	choice_panel.visible = true
 	_refresh_simulation_pause()
 
@@ -1127,6 +1241,7 @@ func _choose_displayed_option(index: int) -> void:
 	_choice_kind = ChoiceKind.NONE
 	_choice_ids.clear()
 	choice_panel.visible = false
+	_mechanics_help.hide_tooltip()
 	_update_reroll_button()
 	if prior_kind == ChoiceKind.UPGRADE and selected_id == PhaseBProgression.EVOLUTION_DRAFT_OPTION:
 		var evolved_pair := _get_path_pair_label()
@@ -1138,6 +1253,7 @@ func _choose_displayed_option(index: int) -> void:
 	elif prior_kind == ChoiceKind.UPGRADE:
 		var committed_path := progression.get_upgrade_committed_path(selected_id)
 		var commits_primary := not progression.has_primary_path()
+		var commits_secondary := progression.has_primary_path() and not progression.has_secondary_path()
 		if progression.choose_upgrade(selected_id):
 			if committed_path == PhaseBProgression.UNSELECTED_PATH:
 				_set_status(
@@ -1146,7 +1262,11 @@ func _choose_displayed_option(index: int) -> void:
 			else:
 				_set_status("Upgrade rooted: %s. Your %s path is now %s." % [
 					PhaseBProgression.get_upgrade_name(selected_id),
-					"primary" if commits_primary else "secondary",
+					(
+						"primary"
+						if commits_primary
+						else ("secondary" if commits_secondary else "support")
+					),
 					PhaseBProgression.get_path_name(committed_path),
 				])
 	elif prior_kind == ChoiceKind.RELIC:
@@ -1181,7 +1301,7 @@ func _request_due_path_choice() -> void:
 		progression.is_tertiary_path_available()
 		and elapsed >= wave_director.tertiary_path_choice_seconds
 	):
-		progression.request_tertiary_path_choice()
+		progression.request_tertiary_upgrade_choice()
 
 
 func _cycle_setting(option_id: int) -> void:
@@ -1193,19 +1313,7 @@ func _on_display_settings_changed() -> void:
 	# each having its own listener would apply them in whatever order the connections
 	# happened to be made in.
 	if interface_layer != null:
-		var ui_scale := display_settings.get_ui_scale()
-		# Scaled about the middle of the screen rather than about the origin. A
-		# CanvasLayer scales from its corner, so every setting other than 100% slid the
-		# whole interface toward one corner of the screen - 128 pixels up and left at
-		# 80%, 160 down and right at 125% - and the pause menu, which is centred by its
-		# own anchors, went with it.
-		var screen_centre := get_viewport().get_visible_rect().size * 0.5
-		interface_layer.transform = Transform2D(
-			0.0,
-			Vector2(ui_scale, ui_scale),
-			0.0,
-			screen_centre - screen_centre * ui_scale
-		)
+		interface_layer.transform = Transform2D.IDENTITY
 	_update_setting_buttons()
 	if is_node_ready():
 		_update_hud()
@@ -1440,6 +1548,7 @@ func _pull_lever() -> void:
 	# wager is world-fixed: the player may run anywhere, and the ground on the table is
 	# the ground that was on the table when the lever went down.
 	wager_layer.set_wager_cells(slot_machine.get_committed_cells(), true)
+	_play_slot_sfx(slot_lever_audio)
 	_lever_seated = true
 	_lever_seat_remaining = lever_seat_seconds
 	_refresh_lever()
@@ -1601,6 +1710,12 @@ func _symbol_fill(symbol: int) -> Color:
 			return Color(0.60, 0.42, 0.88)
 		CloverSlot.Symbol.PRUNING:
 			return Color(0.25, 0.72, 0.77)
+		CloverSlot.Symbol.THISTLE:
+			return Color(0.72, 0.38, 0.70)
+		CloverSlot.Symbol.VINE:
+			return Color(0.30, 0.66, 0.42)
+		CloverSlot.Symbol.FRUIT:
+			return Color(0.92, 0.48, 0.22)
 		CloverSlot.Symbol.CLOVER:
 			return Color(0.31, 0.79, 0.35)
 		_:
@@ -1696,6 +1811,12 @@ func _symbol_texture(symbol: int) -> Texture2D:
 			return SYMBOL_ROOT
 		CloverSlot.Symbol.PRUNING:
 			return SYMBOL_CUTTING
+		CloverSlot.Symbol.THISTLE:
+			return SYMBOL_THISTLE
+		CloverSlot.Symbol.VINE:
+			return SYMBOL_VINE
+		CloverSlot.Symbol.FRUIT:
+			return SYMBOL_FRUIT
 		CloverSlot.Symbol.BUST:
 			return SYMBOL_BUST
 		_:
@@ -1715,6 +1836,7 @@ func _on_reels_started(stake: int, committed_cells: PackedInt32Array) -> void:
 
 
 func _on_reel_stopped(_reel_index: int, _symbol: int) -> void:
+	_play_slot_sfx(slot_reel_audio)
 	_refresh_reels()
 
 
@@ -1815,6 +1937,13 @@ func _on_spin_resolved(outcome: int, path_symbol: int, stake: int) -> void:
 	if outcome == CloverSlot.Outcome.PATH_JACKPOT:
 		detail = "%s JACKPOT" % CloverSlot.get_symbol_name(path_symbol).to_upper()
 	_set_status("%s  —  %s." % [" / ".join(faces), detail])
+	# Once per spin, here rather than in the jackpot handlers: a Triple Clover raises
+	# one clover_jackpot and eight path_jackpots, and the sound is about the spin.
+	if (
+		outcome == CloverSlot.Outcome.PATH_JACKPOT
+		or outcome == CloverSlot.Outcome.TRIPLE_CLOVER
+	):
+		_play_slot_sfx(slot_jackpot_audio)
 	match outcome:
 		CloverSlot.Outcome.TRIPLE_CLOVER:
 			_show_banner("CLOVER")
@@ -1838,7 +1967,8 @@ func _on_path_jackpot(path_symbol: int, jackpot_scale: float) -> void:
 	# The jackpot runs the real Path at its ceiling rather than a casino-only imitation
 	# of it: every line of that Path reads as maxed for as long as the loan lasts, and
 	# the Path's own director does the rest without knowing the casino exists. Root,
-	# Bramble and Pruning are durations and stack by time; Spore and Bloom are one
+	# Bramble, Pruning, Thistle, Vine, and Fruit are durations and stack by time;
+	# Spore and Bloom are one
 	# discrete board-wide event each and stack by simply happening again.
 	var path_id := _path_id_for_symbol(path_symbol)
 	if path_id < 0:
@@ -1856,6 +1986,8 @@ func _on_path_jackpot(path_symbol: int, jackpot_scale: float) -> void:
 			pruning_director.grant_free_cuttings(
 				clampi(roundi(4.0 * jackpot_scale), 2, 12)
 			)
+		PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.VINE, PhaseBProgression.PathId.FRUIT:
+			adaptation_director.fire_slot_jackpot(path_id, jackpot_scale)
 
 
 func _on_jackpot_window_changed(path_id: int, total_seconds: float) -> void:
@@ -1874,7 +2006,7 @@ func _on_jackpot_window_ended(_path_id: int) -> void:
 
 
 func _on_clover_jackpot(_jackpot_scale: float) -> void:
-	# Triple Clover fires all five at once and lets them coexist. Serialising them would
+	# Triple Clover fires all eight at once and lets them coexist. Serialising them would
 	# turn the biggest result the machine has into a queue.
 	_show_banner("CLOVER JACKPOT")
 
@@ -1975,6 +2107,12 @@ func _path_id_for_symbol(symbol: int) -> int:
 			return PhaseBProgression.PathId.BRAMBLE
 		CloverSlot.Symbol.PRUNING:
 			return PhaseBProgression.PathId.PRUNING
+		CloverSlot.Symbol.THISTLE:
+			return PhaseBProgression.PathId.THISTLE
+		CloverSlot.Symbol.VINE:
+			return PhaseBProgression.PathId.VINE
+		CloverSlot.Symbol.FRUIT:
+			return PhaseBProgression.PathId.FRUIT
 		_:
 			return -1
 
@@ -2068,12 +2206,17 @@ func _apply_progression_modifiers() -> void:
 	territory_field.tuning.maturity_resistance_bonus = (
 		_base_maturity_resistance_bonus * progression.get_resistance_multiplier()
 	)
-	combat.set_combat_modifiers(
-		progression.get_thornshot_damage_multiplier(),
-		progression.get_thornshot_cooldown_multiplier(),
-		progression.get_thornshot_target_count()
-	)
+	# Cane has no universal upgrade lines. Vine's four lines are pushed by the
+	# AdaptationDirector after this baseline reset once that path is active.
+	combat.set_cane_modifiers(1.0, 1.0, 1.0, 0.0)
+	adaptation_director.apply_modifiers()
 	bramble_director.apply_modifiers(root_director.get_network_bonus())
+	# Sporulation runs for any active Spore run, at the base rate, with the line on
+	# top of it: the same shape as Bramble's coverage and its Ensnare Rate line.
+	combat.set_sporulation_modifiers(
+		progression.has_path_active(PhaseBProgression.PathId.SPORE),
+		spore_director.get_sporulation_rate_multiplier()
+	)
 	var evolution_rank := progression.get_evolution_upgrade_level()
 	combat.set_evolution_upgrade_modifiers(
 		evolutions.briar_payload_trigger_bonus if evolution_rank >= 2 else 0.0,
@@ -2248,8 +2391,89 @@ func _finish_run(victory: bool, detail: String) -> void:
 	result_panel.visible = true
 
 
+func _refresh_dev_controls() -> void:
+	# Guarded because an exported setter runs while the scene is still being built, long
+	# before the label it wants to hide has been resolved.
+	if not is_node_ready() or debug_help_label == null:
+		return
+	debug_help_label.visible = dev_controls_enabled
+
+
 func is_pause_menu_open() -> bool:
 	return _pause_menu_open
+
+
+func _build_mechanics_help() -> void:
+	_mechanics_help = PhaseBMechanicsHelp.new()
+	interface_layer.add_child(_mechanics_help)
+	_mechanics_help.glossary_closed.connect(_on_glossary_closed)
+	# The dimmer is visual only. Leaving it out of hit testing keeps the visible
+	# Adaptation and relic slots inspectable while simulation is paused.
+	pause_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pause_dim := pause_overlay.get_node_or_null("Dim") as Control
+	if pause_dim != null:
+		pause_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_glossary_button = pause_glossary_button
+	for reward_button in choice_buttons:
+		reward_button.mouse_entered.connect(_on_reward_hovered.bind(reward_button))
+	for row in [relic_slots, upgrade_slots, _secondary_upgrade_slots, _evolution_upgrade_slot, _support_upgrade_slots]:
+		if row == null:
+			continue
+		row.slot_hovered.connect(_on_hud_slot_hovered.bind(row))
+		row.slot_unhovered.connect(_mechanics_help.source_exited)
+
+
+func _on_reward_hovered(button: Button) -> void:
+	if _choice_kind == ChoiceKind.NONE or not button.visible:
+		return
+	var panel_rect := choice_panel.get_global_rect()
+	var anchor := Rect2(panel_rect.end.x, button.get_global_rect().position.y, 0.0, 0.0)
+	_mechanics_help.show_reward_tooltips(button.text, anchor)
+
+
+func _on_hud_slot_hovered(index: int, row: PhaseBUpgradeSlots) -> void:
+	var description := row.get_slot_tooltip(index)
+	if description.is_empty():
+		return
+	var title := description.get_slice("\n", 0).strip_edges()
+	_mechanics_help.show_hud_tooltip(
+		title, _tooltip_body(description, title), row.get_slot_global_rect(index)
+	)
+
+
+func _tooltip_body(value: String, title: String) -> String:
+	var body := value.strip_edges()
+	if body.begins_with(title):
+		body = body.trim_prefix(title).strip_edges()
+	return body
+
+
+func _open_glossary() -> void:
+	pause_panel.visible = false
+	pause_settings_panel.visible = false
+	_mechanics_help.open_glossary()
+
+
+func _close_glossary() -> void:
+	_mechanics_help.close_glossary()
+
+
+func _on_glossary_closed() -> void:
+	if _pause_menu_open:
+		pause_panel.visible = true
+
+
+func _show_pause_settings(open: bool) -> void:
+	_pause_settings_open = open
+	if pause_panel != null:
+		pause_panel.visible = not open
+	if pause_settings_panel != null:
+		pause_settings_panel.visible = open
+	if _mechanics_help != null and _mechanics_help.is_glossary_open():
+		_mechanics_help.close_glossary()
+	if open:
+		_update_setting_buttons()
+	_refresh_focus_ring()
 
 
 func _open_pause_menu() -> void:
@@ -2259,6 +2483,9 @@ func _open_pause_menu() -> void:
 		return
 	_pause_menu_open = true
 	pause_overlay.visible = true
+	# Always opens on the menu itself. A player who left settings open last time is
+	# pausing now because something is happening, not to read options again.
+	_show_pause_settings(false)
 	_update_fullscreen_button()
 	_refresh_simulation_pause()
 	# Focus is only taken for a controller. A mouse player gets no ring to explain.
@@ -2312,10 +2539,6 @@ func _close_pause_menu() -> void:
 	_refresh_simulation_pause()
 
 
-func _restart_from_pause_menu() -> void:
-	reset_run()
-
-
 func _quit_from_pause_menu() -> void:
 	get_tree().quit()
 
@@ -2351,6 +2574,12 @@ func _configure_volume_control() -> void:
 		var sfx_linear_volume := 0.0
 		if not AudioServer.is_bus_mute(_sfx_bus_index):
 			sfx_linear_volume = db_to_linear(AudioServer.get_bus_volume_db(_sfx_bus_index))
+		# The saved choice wins over whatever the bus happens to sit at, so a volume
+		# set on the home screen is still in force once the run loads.
+		var saved_sfx := PhaseBDisplaySettings.load_volume("sfx", -1.0)
+		if saved_sfx >= 0.0:
+			sfx_linear_volume = saved_sfx * audio_settings.sfx_max_linear_volume
+			_apply_bus_volume(_sfx_bus_index, sfx_linear_volume)
 		pause_volume_slider.set_value_no_signal(
 			clampf(
 				sfx_linear_volume / maxf(audio_settings.sfx_max_linear_volume, 0.0001),
@@ -2368,6 +2597,10 @@ func _configure_volume_control() -> void:
 		var music_linear_volume := 0.0
 		if not AudioServer.is_bus_mute(_music_bus_index):
 			music_linear_volume = db_to_linear(AudioServer.get_bus_volume_db(_music_bus_index))
+		var saved_music := PhaseBDisplaySettings.load_volume("music", -1.0)
+		if saved_music >= 0.0:
+			music_linear_volume = saved_music * audio_settings.music_max_linear_volume
+			_apply_bus_volume(_music_bus_index, music_linear_volume)
 		pause_music_volume_slider.set_value_no_signal(
 			clampf(
 				music_linear_volume / maxf(
@@ -2393,6 +2626,25 @@ func _on_sfx_volume_changed(value: float) -> void:
 	if not muted:
 		AudioServer.set_bus_volume_db(_sfx_bus_index, linear_to_db(linear_volume))
 	_update_volume_label()
+	PhaseBDisplaySettings.save_volume("sfx", clampf(value / 100.0, 0.0, 1.0))
+
+
+func _play_slot_sfx(voice: AudioStreamPlayer) -> void:
+	# Every slot-machine sound goes out the same door. The players sit on the SFX bus,
+	# which is where the run's 20% output cap lives, so none of them can be louder than
+	# the rest of the game's effects however the stream itself was recorded.
+	if voice == null or voice.stream == null:
+		return
+	voice.play()
+
+
+func _apply_bus_volume(bus_index: int, linear_volume: float) -> void:
+	if bus_index < 0:
+		return
+	var muted := linear_volume <= 0.0001
+	AudioServer.set_bus_mute(bus_index, muted)
+	if not muted:
+		AudioServer.set_bus_volume_db(bus_index, linear_to_db(linear_volume))
 
 
 func _update_volume_label() -> void:
@@ -2414,6 +2666,7 @@ func _on_music_volume_changed(value: float) -> void:
 	if not muted:
 		AudioServer.set_bus_volume_db(_music_bus_index, linear_to_db(linear_volume))
 	_update_music_volume_label()
+	PhaseBDisplaySettings.save_volume("music", clampf(value / 100.0, 0.0, 1.0))
 
 
 func _update_music_volume_label() -> void:
@@ -2465,6 +2718,7 @@ func _set_simulation_paused(paused: bool) -> void:
 	overlay.effects_paused = paused
 	player.set_simulation_paused(paused)
 	combat.set_simulation_paused(paused)
+	adaptation_director.set_simulation_paused(paused)
 
 
 func _update_hud() -> void:
@@ -2625,42 +2879,252 @@ func _get_initials(source: String) -> String:
 func _update_upgrade_slots() -> void:
 	if upgrade_slots == null:
 		return
-	var slotted := progression.get_slotted_upgrades()
-	var unlocked := progression.get_upgrade_slot_count()
-	# The strip shows what the run has plus the one slot it is working toward, so
-	# the interface visibly grows instead of opening on a row of padlocks.
-	upgrade_slots.slot_count = mini(_maximum_upgrade_slots, unlocked + 1)
-	for index in range(upgrade_slots.get_slot_count()):
-		if index < slotted.size():
-			var upgrade_id := slotted[index]
-			upgrade_slots.set_slot(
+	var has_line_space := (
+		progression.get_slotted_upgrades().size() < progression.get_upgrade_slot_count()
+	)
+	_update_path_upgrade_row(
+		upgrade_slots,
+		_path_one_label,
+		_path_one_emblem,
+		_path_one_emblem_icon,
+		progression.primary_path,
+		"PATH 1",
+		has_line_space
+	)
+	_update_path_upgrade_row(
+		_secondary_upgrade_slots,
+		_path_two_label,
+		_path_two_emblem,
+		_path_two_emblem_icon,
+		progression.secondary_path,
+		"PATH 2",
+		has_line_space
+	)
+	_update_evolution_tree_slot()
+	_update_support_upgrade_row(has_line_space)
+
+
+func _update_path_upgrade_row(
+	row: PhaseBUpgradeSlots,
+	path_label: Label,
+	emblem: Label,
+	emblem_icon: TextureRect,
+	path_id: int,
+	fallback_label: String,
+	has_line_space: bool
+) -> void:
+	row.slot_count = 4
+	var selected := path_id != PhaseBProgression.UNSELECTED_PATH
+	path_label.text = (
+		PhaseBProgression.get_path_name(path_id).to_upper()
+		if selected
+		else fallback_label
+	)
+	var accent := _get_path_hud_color(path_id) if selected else Color("596052")
+	_set_path_emblem(emblem, emblem_icon, path_id, selected, accent)
+	var path_upgrades := _get_path_upgrade_ids(path_id) if selected else PackedInt32Array()
+	for index in range(4):
+		if not selected or index >= path_upgrades.size():
+			_set_locked_tree_slot(row, index, "Choose this Path to reveal its upgrade lines.")
+			continue
+		var upgrade_id := path_upgrades[index]
+		var level := progression.get_owned_upgrade_level(upgrade_id)
+		if level > 0:
+			row.set_slot(
 				index,
 				_get_upgrade_abbreviation(upgrade_id),
-				# The slot shows the rank alone; the hover carries it against the cap.
-				"%d" % progression.get_upgrade_level(upgrade_id),
+				"%d" % level,
 				_build_upgrade_tooltip(upgrade_id),
-				PhaseBUpgradeSlots.SlotState.FILLED
+				PhaseBUpgradeSlots.SlotState.FILLED,
+				accent
 			)
-		elif index < unlocked:
-			upgrade_slots.set_slot(
+		elif has_line_space:
+			row.set_slot(
 				index,
-				upgrade_slots.empty_marker,
+				row.empty_marker,
 				"",
-				"Empty growth slot.\nTake a new upgrade line at a level-up to fill it.",
-				PhaseBUpgradeSlots.SlotState.EMPTY
+				"%s\nAvailable on an upgrade draft." % PhaseBProgression.get_upgrade_name(upgrade_id),
+				PhaseBUpgradeSlots.SlotState.EMPTY,
+				accent
 			)
 		else:
-			upgrade_slots.set_slot(
+			_set_locked_tree_slot(
+				row,
 				index,
-				"",
-				"",
-				(
-					"Locked growth slot.\nClaiming your pair Evolution consolidates "
-					+ "both paths into one slot and opens %d more, so the support "
-					+ "path can be developed without replacing what you already have."
-				) % progression.evolution_bonus_upgrade_slots,
-				PhaseBUpgradeSlots.SlotState.LOCKED
+				"%s\nAll current growth-line slots are occupied." % PhaseBProgression.get_upgrade_name(upgrade_id)
 			)
+
+
+func _update_evolution_tree_slot() -> void:
+	_evolution_upgrade_slot.slot_count = 1
+	var pair_id := progression.get_pair_evolution_id()
+	match progression.evolution_status:
+		PhaseBProgression.EvolutionStatus.EVOLVED:
+			var evolution_name := PhaseBEvolutions.get_evolution_name(progression.active_evolution)
+			var upgrade_id := PhaseBEvolutions.get_evolution_upgrade_id(progression.active_evolution)
+			_evolution_tree_label.text = evolution_name
+			_evolution_upgrade_slot.set_slot(
+				0,
+				_get_initials(evolution_name),
+				"%d" % progression.get_evolution_upgrade_level(),
+				_build_upgrade_tooltip(upgrade_id),
+				PhaseBUpgradeSlots.SlotState.FILLED,
+				Color("d4a94f")
+			)
+		PhaseBProgression.EvolutionStatus.READY:
+			var evolution_name := PhaseBEvolutions.get_evolution_name(pair_id)
+			_evolution_tree_label.text = evolution_name
+			_evolution_upgrade_slot.set_slot(
+				0,
+				_evolution_upgrade_slot.empty_marker,
+				"",
+				"%s is ready to claim." % evolution_name,
+				PhaseBUpgradeSlots.SlotState.EMPTY,
+				Color("d4a94f")
+			)
+		_:
+			_evolution_tree_label.text = "EVOLUTION"
+			_set_locked_tree_slot(
+				_evolution_upgrade_slot,
+				0,
+				"Evolution is locked until one line from each selected Path reaches maximum rank."
+			)
+
+
+func _update_support_upgrade_row(has_line_space: bool) -> void:
+	var evolved := progression.evolution_status == PhaseBProgression.EvolutionStatus.EVOLVED
+	_support_path_emblem.visible = false
+	_support_path_emblem_icon.visible = false
+	_support_path_emblem_lock.visible = not evolved
+	if not evolved:
+		_update_path_upgrade_row(
+			_support_upgrade_slots,
+			_support_path_label,
+			_support_path_emblem,
+			_support_path_emblem_icon,
+			PhaseBProgression.UNSELECTED_PATH,
+			"SUPPORT PATH",
+			false
+		)
+		_support_path_emblem.visible = false
+		_support_path_emblem_icon.visible = false
+		return
+	if not progression.has_tertiary_path():
+		_support_path_label.text = "CHOOSE SUPPORT"
+		_support_path_emblem.visible = true
+		_support_path_emblem_icon.visible = false
+		_support_path_emblem.text = "+"
+		_support_path_emblem.modulate = Color("d4a94f")
+		_support_upgrade_slots.slot_count = 4
+		for index in range(4):
+			_support_upgrade_slots.set_slot(
+				index,
+				_support_upgrade_slots.empty_marker,
+				"",
+				"Claim a support Path to reveal this upgrade line.",
+				PhaseBUpgradeSlots.SlotState.EMPTY,
+				Color("d4a94f")
+			)
+		return
+	_update_path_upgrade_row(
+		_support_upgrade_slots,
+		_support_path_label,
+		_support_path_emblem,
+		_support_path_emblem_icon,
+		progression.tertiary_path,
+		"SUPPORT PATH",
+		has_line_space
+	)
+
+
+func _set_path_emblem(
+	label: Label,
+	icon: TextureRect,
+	path_id: int,
+	selected: bool,
+	accent: Color
+) -> void:
+	label.visible = not selected
+	icon.visible = selected
+	if not selected:
+		label.text = "?"
+		label.modulate = accent.lightened(0.22)
+		icon.texture = null
+		return
+	label.text = ""
+	icon.texture = _get_path_emblem_texture(path_id)
+	icon.modulate = _get_path_emblem_tint(path_id, accent)
+
+
+func _get_path_emblem_texture(path_id: int) -> Texture2D:
+	match path_id:
+		PhaseBProgression.PathId.SPORE:
+			return ADAPTATION_ICON_SPORE
+		PhaseBProgression.PathId.BLOOM:
+			return ADAPTATION_ICON_BLOOM
+		PhaseBProgression.PathId.BRAMBLE:
+			return ADAPTATION_ICON_BRAMBLE
+		PhaseBProgression.PathId.ROOT:
+			return ADAPTATION_ICON_ROOT
+		PhaseBProgression.PathId.PRUNING:
+			return ADAPTATION_ICON_PRUNING
+		PhaseBProgression.PathId.THISTLE:
+			return ADAPTATION_ICON_THISTLE
+		PhaseBProgression.PathId.VINE:
+			return ADAPTATION_ICON_VINE
+		PhaseBProgression.PathId.FRUIT:
+			return ADAPTATION_ICON_FRUIT
+	return null
+
+
+func _get_path_emblem_tint(path_id: int, accent: Color) -> Color:
+	# Bloom and Fruit already carry their authored colour. The remaining source
+	# art is white/off-white and takes on the path colour here without duplicating
+	# recoloured raster files.
+	if path_id in [PhaseBProgression.PathId.BLOOM, PhaseBProgression.PathId.FRUIT]:
+		return Color.WHITE
+	return accent.lightened(0.22)
+
+
+func _set_locked_tree_slot(row: PhaseBUpgradeSlots, index: int, tooltip: String) -> void:
+	row.set_slot(
+		index,
+		"",
+		"",
+		tooltip,
+		PhaseBUpgradeSlots.SlotState.LOCKED
+	)
+
+
+func _get_path_upgrade_ids(path_id: int) -> PackedInt32Array:
+	var ids := PackedInt32Array()
+	if path_id == PhaseBProgression.UNSELECTED_PATH:
+		return ids
+	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+		if progression._get_upgrade_path(upgrade_id) == path_id:
+			ids.append(upgrade_id)
+	return ids
+
+
+func _get_path_hud_color(path_id: int) -> Color:
+	match path_id:
+		PhaseBProgression.PathId.SPORE:
+			return Color("68a96a")
+		PhaseBProgression.PathId.BLOOM:
+			return Color("9b68b5")
+		PhaseBProgression.PathId.BRAMBLE:
+			return Color("798f45")
+		PhaseBProgression.PathId.ROOT:
+			return Color("b18449")
+		PhaseBProgression.PathId.PRUNING:
+			return Color("b66255")
+		PhaseBProgression.PathId.THISTLE:
+			return Color("a76ca8")
+		PhaseBProgression.PathId.VINE:
+			return Color("4f9c76")
+		PhaseBProgression.PathId.FRUIT:
+			return Color("c17d45")
+	return Color("596052")
 
 
 func _get_upgrade_abbreviation(upgrade_id: int) -> String:
@@ -2675,15 +3139,25 @@ func _build_upgrade_tooltip(upgrade_id: int) -> String:
 	lines.append("%s   %d/%d" % [
 		PhaseBProgression.get_upgrade_name(upgrade_id),
 		level,
-		progression.maximum_upgrade_level,
+		progression.get_upgrade_maximum_level(upgrade_id),
 	])
 	var per_rank := progression.get_upgrade_description(upgrade_id)
 	if not per_rank.is_empty():
-		var rank_label := "Next rank" if level < progression.maximum_upgrade_level else "Maxed"
+		var rank_label := (
+			"Next rank"
+			if level < progression.get_upgrade_maximum_level(upgrade_id)
+			else "Maxed"
+		)
 		lines.append("%s: %s" % [rank_label, per_rank])
 	var resolved := _get_upgrade_resolved_effect(upgrade_id)
 	if not resolved.is_empty():
 		lines.append("Now: %s" % resolved)
+	# The Root Network row sits under the base number rather than replacing it, so
+	# the hover shows what the line is worth on its own and what Mature ground turns
+	# that into, in that order.
+	var rooted := _get_root_potency_note(upgrade_id)
+	if not rooted.is_empty():
+		lines.append(rooted)
 	return "\n".join(lines)
 
 
@@ -2691,28 +3165,24 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 	# The finished numbers, read from the same values the systems use, so the hover
 	# text can never drift from what the run is actually doing.
 	match upgrade_id:
-		PhaseBProgression.UpgradeId.THORNSHOT_POWER:
-			var damage := combat.thornshot_damage * progression.get_thornshot_damage_multiplier()
-			return "%.1f damage per Thornshot (+%d%%)" % [
-				damage,
-				roundi((progression.get_thornshot_damage_multiplier() - 1.0) * 100.0),
-			]
-		PhaseBProgression.UpgradeId.THORNSHOT_TEMPO:
-			var interval := (
-				combat.thornshot_cooldown_seconds
-				* progression.get_thornshot_cooldown_multiplier()
-			)
-			return "%.2fs between volleys (%.1f per second)" % [
-				interval,
-				1.0 / maxf(0.01, interval),
-			]
-		PhaseBProgression.UpgradeId.THORNSHOT_VOLLEY:
-			return "%d enemies targeted at once" % progression.get_thornshot_target_count()
 		PhaseBProgression.UpgradeId.SEED_PRODUCTION:
 			return "%d kills per Seed" % spore_director.get_seed_kill_threshold()
 		PhaseBProgression.UpgradeId.GROWTH_MASS:
 			return "%d%% Seed growth mass" % roundi(
 				spore_director.get_seed_mass_multiplier() * 100.0
+			)
+		PhaseBProgression.UpgradeId.SPORULATION:
+			var spore_rate := (
+				combat.sporulation_per_second
+				* spore_director.get_sporulation_rate_multiplier()
+			)
+			return "%.2f%% Spore per second, Overgrown after %.0fs on Green" % [
+				spore_rate * 100.0,
+				1.0 / maxf(0.0001, spore_rate),
+			]
+		PhaseBProgression.UpgradeId.FRUITING_BODIES:
+			return "%d%% of germinations inside your Green raise a colony" % roundi(
+				spore_director.get_fruiting_body_chance() * 100.0
 			)
 		PhaseBProgression.UpgradeId.BLOOM_FORCE:
 			return "%d%% Bloom force, %.0f Bloom damage" % [
@@ -2724,6 +3194,16 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 				bloom_director.bloom_interval_seconds
 				* bloom_director.get_bloom_interval_multiplier()
 			)
+		PhaseBProgression.UpgradeId.AFTERGROWTH:
+			return "%d temporary control on Bloomed Green for %.0fs" % [
+				roundi(bloom_director.get_aftergrowth_shield()),
+				bloom_director.bloom_tempo_window_seconds,
+			]
+		PhaseBProgression.UpgradeId.SUPPRESSION:
+			return "%d%% less Territory damage for %.0fs after a Bloom" % [
+				roundi(bloom_director.get_suppression_share() * 100.0),
+				bloom_director.bloom_tempo_window_seconds,
+			]
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT:
 			return "up to %d%% slow when fully Entangled" % roundi(
 				bramble_director.get_slow_fraction() * 100.0
@@ -2784,6 +3264,59 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 				pruning_director.get_charge_seconds(),
 				roundi(pruning_director.get_launch_charge_damage_bonus() * 100.0),
 			]
+		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING:
+			return "%d thorns per normal turret firing event" % (
+				1 + progression.get_upgrade_level(upgrade_id)
+			)
+		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE:
+			var thistle_speed := 1.0 + 0.15 * float(progression.get_upgrade_level(upgrade_id))
+			return "one turret firing event every %.3fs" % (
+				adaptation_director.thistle_attack_interval / thistle_speed
+			)
+		PhaseBProgression.UpgradeId.THISTLE_BURR:
+			return "%d full-damage ricochets per thorn" % (
+				progression.get_upgrade_level(upgrade_id)
+			)
+		PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT:
+			return "%d%% critical chance per impact at %.0fx damage" % [
+				roundi(10.0 * float(progression.get_upgrade_level(upgrade_id))),
+				adaptation_director.thistle_critical_multiplier,
+			]
+		PhaseBProgression.UpgradeId.VINE_ELONGATION:
+			return "%.0f px Cane/Vine reach" % combat.get_cane_reach()
+		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION:
+			return "%.1f damage before Apical, Root, and relic modifiers" % (
+				combat.cane_damage
+				* (1.0 + 0.25 * float(progression.get_upgrade_level(upgrade_id)))
+			)
+		PhaseBProgression.UpgradeId.VINE_TURGOR:
+			var vine_speed := 1.0 + 0.15 * float(progression.get_upgrade_level(upgrade_id))
+			return "one automatic sweep every %.3fs before relic timing" % (
+				combat.cane_cooldown_seconds / vine_speed
+			)
+		PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE:
+			return "%.2fx damage in the outer 25%% of reach" % (
+				1.0 + 0.25 * float(progression.get_upgrade_level(upgrade_id))
+			)
+		PhaseBProgression.UpgradeId.FRUIT_SET:
+			return "%d Fruit per normal release" % (
+				1 + progression.get_upgrade_level(upgrade_id)
+			)
+		PhaseBProgression.UpgradeId.FRUIT_RIPENING:
+			var ripening := 1.0 + 0.25 * float(progression.get_upgrade_level(upgrade_id))
+			return "%.1f collision damage, up to %.1f terminal damage" % [
+				adaptation_director.fruit_collision_damage * ripening,
+				adaptation_director.fruit_terminal_explosion_damage * ripening,
+			]
+		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM:
+			return "%.0f px unobstructed stopping distance" % (
+				adaptation_director.fruit_roll_distance_pixels
+				* (1.0 + 0.20 * float(progression.get_upgrade_level(upgrade_id)))
+			)
+		PhaseBProgression.UpgradeId.FRUIT_GERMINATION:
+			return "%d%% Fruit-created Green area" % roundi(
+				(1.0 + 0.20 * float(progression.get_upgrade_level(upgrade_id))) * 100.0
+			)
 	if PhaseBEvolutions.get_upgrade_evolution(upgrade_id) != PhaseBProgression.EvolutionId.NONE:
 		# An Evolution line's ranks each do something different, so what it is doing
 		# now is the description of the rank the run has actually reached.
@@ -2794,6 +3327,122 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 			upgrade_id,
 			evolution_level
 		)
+	return ""
+
+
+func _get_root_potency_note(upgrade_id: int) -> String:
+	# The finished Root Network row for a line, or nothing at all. A run without Root
+	# and every line the Network does not touch return empty, so the row appears only
+	# where it is true rather than as a permanent piece of furniture.
+	var effect := _get_root_potency_effect(upgrade_id)
+	if effect.is_empty():
+		return ""
+	return AuthoredText.render(root_potency_note_template, {
+		"multiplier": "%.2f" % (1.0 + root_director.get_network_bonus()),
+		"effect": effect,
+	})
+
+
+func _get_root_potency_effect(upgrade_id: int) -> String:
+	# What this line resolves to on fully Mature ground, read through the same
+	# amplification the systems apply. Full maturity is the honest headline: it is
+	# the ceiling the Network reaches, and every consumer scales down from it with
+	# the age of the ground the effect actually happens on.
+	if root_director == null:
+		return ""
+	var bonus := root_director.get_network_bonus()
+	if bonus <= 0.0:
+		return ""
+	var multiplier := 1.0 + bonus
+	match upgrade_id:
+		PhaseBProgression.UpgradeId.SEED_PRODUCTION:
+			return "Seeds germinate in %.2fs instead of %.2fs" % [
+				territory_field.tuning.seed_charge_seconds / multiplier,
+				territory_field.tuning.seed_charge_seconds,
+			]
+		PhaseBProgression.UpgradeId.GROWTH_MASS:
+			return "%d%% Seed growth mass" % roundi(
+				spore_director.get_seed_mass_multiplier() * multiplier * 100.0
+			)
+		PhaseBProgression.UpgradeId.SPORULATION:
+			var rooted_spore := (
+				combat.sporulation_per_second
+				* spore_director.get_sporulation_rate_multiplier()
+				* multiplier
+			)
+			return "%.2f%% Spore per second, Overgrown after %.0fs" % [
+				rooted_spore * 100.0,
+				1.0 / maxf(0.0001, rooted_spore),
+			]
+		PhaseBProgression.UpgradeId.FRUITING_BODIES:
+			return "colonies apply %d%% Spore per cloud, %d%% on rupture" % [
+				roundi(combat.fruiting_body_cloud_spore * multiplier * 100.0),
+				roundi(combat.fruiting_body_rupture_spore * multiplier * 100.0),
+			]
+		PhaseBProgression.UpgradeId.BLOOM_FORCE:
+			return "%d%% Bloom force, %.0f Bloom damage" % [
+				roundi(bloom_director.get_bloom_force_multiplier() * multiplier * 100.0),
+				bloom_director.bloom_damage
+				* bloom_director.get_bloom_force_multiplier()
+				* multiplier,
+			]
+		PhaseBProgression.UpgradeId.BLOOM_FREQUENCY:
+			return "a Bloom every %.1fs" % (
+				bloom_director.bloom_interval_seconds
+				* bloom_director.get_bloom_interval_multiplier()
+				/ multiplier
+			)
+		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE:
+			var rate := (
+				combat.bramble_entanglement_per_second
+				* bramble_director.get_ensnare_multiplier()
+				* multiplier
+			)
+			return "fully Entangled after %.1fs on Green" % (1.0 / maxf(0.01, rate))
+		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION:
+			return "%.0f px knockback on territory attackers" % (
+				bramble_director.get_repulsion_pixels() * multiplier
+			)
+		PhaseBProgression.UpgradeId.PRUNING_CUTTING_DAMAGE:
+			return "%.0f per launched Cutting" % (
+				pruning_director.cutting_damage
+					* pruning_director.get_pruning_cutting_damage_multiplier()
+					* multiplier
+			)
+		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, \
+		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, \
+		PhaseBProgression.UpgradeId.THISTLE_BURR, \
+		PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT:
+			return "%.1f damage per ordinary thorn" % (
+				adaptation_director.thistle_damage * multiplier
+			)
+		PhaseBProgression.UpgradeId.VINE_ELONGATION, \
+		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION, \
+		PhaseBProgression.UpgradeId.VINE_TURGOR, \
+		PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE:
+			var rooted_vine_damage := (
+				combat.cane_damage
+				* (1.0 + 0.25 * float(
+					progression.get_upgrade_level(
+						PhaseBProgression.UpgradeId.VINE_LIGNIFICATION
+					)
+				))
+				* multiplier
+			)
+			return "%.1f Vine damage before Apical/relic modifiers" % rooted_vine_damage
+		PhaseBProgression.UpgradeId.FRUIT_SET, \
+		PhaseBProgression.UpgradeId.FRUIT_RIPENING, \
+		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, \
+		PhaseBProgression.UpgradeId.FRUIT_GERMINATION:
+			var rooted_ripening := 1.0 + 0.25 * float(
+				progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUIT_RIPENING)
+			)
+			return "%.1f collision, up to %.1f terminal damage" % [
+				adaptation_director.fruit_collision_damage * rooted_ripening * multiplier,
+				adaptation_director.fruit_terminal_explosion_damage * rooted_ripening * multiplier,
+			]
+		PhaseBProgression.UpgradeId.ROOT_POTENCY:
+			return "Seeds, Blooms, thorns, and Cuttings out of Mature ground"
 	return ""
 
 

@@ -1,0 +1,15 @@
+[gd_resource type="StyleBoxTexture" format=3 uid="uid://bn7byuq70ndfl"]
+
+[ext_resource type="Texture2D" uid="uid://c3p3vk1oy7nrh" path="res://assets/ui/fantasy/panel_border_button.png" id="1_texture"]
+
+[resource]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+texture = ExtResource("1_texture")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+modulate_color = Color(1, 1, 0.9, 1)

@@ -218,6 +218,12 @@ func get_arena_position() -> Vector2:
 	return territory_field.to_local(global_position)
 
 
+func get_facing_direction() -> Vector2:
+	## Snapshot-safe facing for directional automatic attacks. The Cane asks once at
+	## sweep start, so turning during its presentation cannot bend the authored arc.
+	return _facing
+
+
 func set_simulation_paused(paused: bool) -> void:
 	simulation_paused = paused
 

@@ -8,8 +8,8 @@ Survivor GDD. Launching the project now opens
 ## Controls
 
 - Move with WASD or the arrow keys.
-- Thornshot aims and fires automatically at the nearest enemy within its limited
-  range.
+- Cane automatically sweeps the 90° sector Grandma faces. Selecting Vine turns the
+  stroke green and auto-aims each sweep into the valid sector containing the most enemies.
 - Spend earned Biomass with the five buttons in the right-hand panel.
 - Commit to a primary Plant path at 00:45 and a different secondary path at
   03:00, or claim either earlier by taking an upgrade from that path; each path
@@ -64,7 +64,7 @@ The principal editing surfaces are:
 | Select this node | Adjust these Inspector groups |
 | --- | --- |
 | `Player` | Health, movement speed and radius, Green healing rate and maturity threshold |
-| `CombatDirector` | Thornshot, Bramble flat and max-health thorn chip damage, tick width, Entanglement build and decay, hedge crossing and damage bonuses, horde pressure, Grasping Roots holds and immunity, Repulsion distance and cooldown, Old Growth eruption damage, radius, cooldown and chaining, Briar Pod and Briar Trap pools, combat audio, hit feedback, pool limits, and shared navigation clearance |
+| `CombatDirector` | Cane sweep damage/cadence/reach/sector targeting, Bramble flat and max-health thorn chip damage, Entanglement, roots and Repulsion, Old Growth, Briar Pod/Trap pools, combat audio, hit feedback, pool limits, and shared navigation clearance |
 | Any node under `EnemyProfiles` | Health, speed, contact damage, XP, size, target priority, movement and territory behaviors, action cadence/strength, grazing burst and recovery window, catalyst sensing, preferred range, and Colony Core limits |
 | `WaveDirector` | Run and path-choice milestones, Final Stand naming, wave/grace cadence, spawn rate, Grazer pack cycle and surge waves, specialist introduction times/cycles, per-wave XP/territory growth, and end-of-run enemy scaling |
 | `BrambleDirector` | Bramble's base resistance, Entanglement slow and potency, Ensnare rate, Grasping Roots duration and immunity, and Repulsion distance |
@@ -72,7 +72,8 @@ The principal editing surfaces are:
 | `ManEater` | Hunger per enemy-second and its threshold, the telegraph, jaw radius, Bite damage and the elite and boss shares, and the Green the meal comes back as |
 | `SporeDirector` | Seed durability, kills per Seed, Briar Pods and Tangleburst, and the Seed Bank's storage, threshold, spread, and Mast Year delay |
 | `BloomDirector` | Bloom timing, telegraph, damage and durability, Super Bloom chain depth and cascade, Flowering Season charge and Echo Blooms, and Thornburst harvest yield and Briar Trap strength |
-| `Progression` | XP curve, rerolls per run, path-specific draft eligibility, maximum upgrade level, Seed threshold, Spore/Bloom/Bramble/Root upgrade effects, Biomass economy, and relic effects |
+| `AdaptationDirector` | Thistle turret/thorn pools, Vine pair triggers, Fruit velocity/trails/terminal bursts, and all new Evolution/relic runtime rules |
+| `Progression` | XP curve, rerolls, eight-path eligibility, ordinary/Evolution rank ceilings, Biomass economy, and relic effects |
 | `Metabolism` | Level costs and their growth, when Pressure and Cohesion unlock, the material a purchase injects, Breakthrough interval and effects, Overgrow's share and cooldown, and the production milestones |
 | `AudioSettings` | SFX/Music buses and the linear output represented by 100% on each pause-menu slider |
 | `TerritoryField` | Expand its `Tuning` resource to adjust authoritative field simulation, Seed/Bloom shapes, maturation, Age, territory resistance, and the Bramble hedge development curve |
@@ -136,25 +137,15 @@ mass. Bloom is about the existing ecosystem erupting outward, so its lines raise
 Bloom frequency and force.
 
 Enemy deaths drop magnetic XP. Level-ups pause the simulation and offer up to
-three eligible choices. Thornshot Power and Thornshot Tempo are universal;
-Seed Production and Growth Mass belong to Spore; Bloom Force and Bloom
-Frequency belong to Bloom; Entanglement, Ensnare Rate, Grasping Roots, and
-Repulsion belong to Bramble; Maturation Speed, Biomass Yield, Mature
-Strength, and Root Potency belong to Root. Bramble durability and Root
-regeneration are no longer lines of their own: selecting Bramble supplies its
-frontier resistance outright, and regrowth rides along with Mature Strength,
-because both overlapped too heavily to be worth a draft slot. While either path slot is still open, drafts draw
-from every line and spread their three offers across the whole pool, so the
-opening choice is a real decision rather than Thornshot Power versus Thornshot
-Tempo. Taking a line from an uncommitted path is the commitment itself: the run
-adopts that path into the next open slot, and the matching milestone no longer
-asks. A run can therefore lock both of its paths purely through drafting.
-Taking only universal lines leaves the commitment open for the 00:45 and 03:00
-milestones to resolve as before. Once both paths are committed, drafts narrow to
-universal lines and lines from those two paths. Already-maxed lines remain
-excluded, and the run still supports six occupied five-level upgrade lines.
+three eligible choices. Cane has no upgrade lines. Each of the eight Paths—Spore,
+Bloom, Bramble, Root, Pruning, Thistle, Vine, and Fruit—owns four five-rank lines.
+While either Path slot is open, drafts spread offers across all enabled Paths; taking
+a line from an uncommitted Path fills the next slot immediately. Once both slots are
+committed, drafts narrow to those Paths until the Evolution opens a tertiary support
+slot. Already-maxed lines remain excluded, and the Evolution grants two additional
+line slots when claimed.
 
-The primary-path milestone offers all four implemented paths. The later
+The primary-path milestone offers all eight implemented paths. The later
 secondary milestone offers only the remaining paths, permanently locking a
 two-path run. Maxing one line associated with each selected path marks its pair
 Evolution Ready, and the evolution is then offered directly in the level-up
@@ -433,7 +424,7 @@ offered, and turns on by itself the day that layer lands.
 
 Relics that change a rule parameter are pushed straight into the component that
 owns the rule: Predator's Eye, Follow Through, Adrenal Response, Blood in the
-Water, Underdog and Deep Snare live inside combat's own Thornshot and contact
+Water, Underdog and Deep Snare live inside combat's own Cane and contact
 rules, Canopy lives on the player's damage rule, Regrowth is a field layer, and
 Hard Husk is a property of every Seed the overlay makes. Everything with a
 counter, a cooldown, a per-wave limit, or a persistent object is run by
@@ -460,10 +451,11 @@ hold a global cooldown, and Gleaning Hook caps what it can bank in one hold.
 ## Implementation and validation
 
 The territory field remains a deterministic packed-array simulation. Combat
-uses preallocated pools sized for 160 enemies, 96 Thornshot projectiles, and 180
-XP pickups, with at most 130 active enemies. Prototype visuals are procedural
-vector shapes, so the playable build does not currently require external art
-assets and remains sharp at the 1280 by 720 reference viewport.
+uses preallocated pools sized for 160 enemies, 96 generic secondary projectiles,
+and 180 XP pickups, with at most 130 active enemies. Cane allocates no projectile;
+Thistle and Fruit use their own bounded pools. Bloom, Seed, Fruit, and Fruitseed use
+raster botanical art with shared watercolor granulation, while telegraphs and field
+layers remain procedural at the 1280 by 720 reference viewport.
 
 Run all headless behavior and performance checks with:
 
@@ -482,6 +474,10 @@ Biomass modifiers, Super Bloom propagation, wall-shadowed radial damage, every
 specialist action, Colony Core placement and growth, specialist wave scheduling,
 per-wave XP and territory-pressure scaling, five-second wave grace countdowns,
 Inspector-authored enemy profiles, timeline milestones, victory, and HP defeat.
+It also checks all eight slot faces and mappings, immediate Thistle/Vine/Fruit
+jackpot events, Vine dense-sector targeting, per-Fruit trail painting and seeded art
+variation, planted Fruit damage/cooldown order, tiled NinePatch button borders, and
+the shared high-contrast botanical watercolor material.
 The navigation probe also verifies that
 Corruptors, Wardens, Colonizers, and catalyst-hunting Saboteurs route around
 obstacles without corner stalls.
@@ -491,9 +487,12 @@ frame budget.
 
 ## Art status
 
-No external assets are required for this phase to function. A later art pass
-can replace the procedural Gardener, six core enemy roles, Colony Core, elite,
-boss, projectile, pickup, Seed, Bloom, and Bramble drawings independently of the
-authoritative gameplay.
+The live scene uses supplied raster paintings for Seed, Bloom, six randomized Fruit
+variants, and the Dropped Seed relic. They share
+`assets/shaders/botanical_art_watercolor.gdshader` and the generated
+`assets/art/shared/watercolor_granulation.png`, with intentionally strong pigment
+pooling, paper lift, and translucent-edge breakup. Procedural fallbacks and the
+remaining Gardener, enemy, projectile, pickup, and Bramble drawings can still be
+replaced independently of authoritative gameplay.
 The territory shader and arena mask should remain separate from decorative art
 so appearance cannot change ownership or collision results.

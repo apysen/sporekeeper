@@ -1,6 +1,8 @@
 class_name PhaseBWaveDirector
 extends Node
 
+const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
+
 signal wave_began(wave_number: int)
 signal elite_arrived
 signal boss_arrived
@@ -13,22 +15,22 @@ signal cleanup_began
 
 @export_group("Run Timeline")
 ## Total run length in seconds; reaching this time completes the survival objective.
-@export_range(60.0, 1200.0, 1.0) var run_duration_seconds := 720.0
+@export_range(60.0, 1800.0, 1.0) var run_duration_seconds := 720.0
 ## Elapsed run time in seconds when the elite is first scheduled to spawn.
-@export_range(10.0, 600.0, 1.0) var elite_time_seconds := 150.0
+@export_range(10.0, 1800.0, 1.0) var elite_time_seconds := 150.0
 ## Elapsed run time in seconds when the Burrower boss is first scheduled to spawn.
-@export_range(20.0, 900.0, 1.0) var boss_time_seconds := 360.0
+@export_range(20.0, 1800.0, 1.0) var boss_time_seconds := 360.0
 ## Elapsed run time in seconds when final-invasion spawning begins.
-@export_range(30.0, 1100.0, 1.0) var final_invasion_time_seconds := 600.0
+@export_range(30.0, 1800.0, 1.0) var final_invasion_time_seconds := 600.0
 ## Elapsed run time in seconds when reinforcements stop and cleanup begins.
-@export_range(30.0, 1150.0, 1.0) var cleanup_time_seconds := 690.0
+@export_range(30.0, 1800.0, 1.0) var cleanup_time_seconds := 690.0
 ## Elapsed run time when the player commits to the first of Plant's three paths.
-@export_range(0.0, 600.0, 1.0) var primary_path_choice_seconds := 75.0
+@export_range(0.0, 1800.0, 1.0) var primary_path_choice_seconds := 75.0
 ## Elapsed run time when the player commits to a second path and locks the run pairing.
-@export_range(0.0, 900.0, 1.0) var secondary_path_choice_seconds := 180.0
+@export_range(0.0, 1800.0, 1.0) var secondary_path_choice_seconds := 180.0
 ## Earliest elapsed run time at which an evolved run is offered its support path.
 ## A run that evolves later than this is offered the path as soon as it evolves.
-@export_range(0.0, 1200.0, 1.0) var tertiary_path_choice_seconds := 480.0
+@export_range(0.0, 1800.0, 1.0) var tertiary_path_choice_seconds := 480.0
 
 @export_group("Wave Cadence")
 ## Length of each numbered pressure wave in seconds.
@@ -74,13 +76,13 @@ signal cleanup_began
 
 @export_group("Role Introductions")
 ## Elapsed run time when regular packs begin including catalyst-hunting Saboteurs.
-@export_range(0.0, 1100.0, 1.0) var saboteur_intro_seconds := 75.0
+@export_range(0.0, 1800.0, 1.0) var saboteur_intro_seconds := 75.0
 ## Elapsed run time when regular packs begin including territory-converting Corruptors.
-@export_range(0.0, 1100.0, 1.0) var corruptor_intro_seconds := 180.0
+@export_range(0.0, 1800.0, 1.0) var corruptor_intro_seconds := 180.0
 ## Elapsed run time when regular packs begin including hostile-Core-building Colonizers.
-@export_range(0.0, 1100.0, 1.0) var colonizer_intro_seconds := 285.0
+@export_range(0.0, 1800.0, 1.0) var colonizer_intro_seconds := 285.0
 ## Elapsed run time when regular packs begin including maturity-suppressing Wardens.
-@export_range(0.0, 1100.0, 1.0) var warden_intro_seconds := 420.0
+@export_range(0.0, 1800.0, 1.0) var warden_intro_seconds := 420.0
 ## Reinforcement-pack cycle used after introduction; every Nth pack includes a Saboteur.
 @export_range(2, 30, 1) var saboteur_pack_cycle := 5
 ## Reinforcement-pack cycle used after introduction; every Nth pack includes a Corruptor.
@@ -93,15 +95,15 @@ signal cleanup_began
 @export_group("Late Specialists")
 ## Elapsed run time when Grazers begin arriving as the immovable Heavy variant.
 ## Late, because it is the answer to a frontier the run has had time to build.
-@export_range(0.0, 1100.0, 1.0) var heavy_grazer_intro_seconds := 330.0
+@export_range(0.0, 1800.0, 1.0) var heavy_grazer_intro_seconds := 330.0
 ## Share of Grazer spawns that arrive Heavy once introduced.
 @export_range(0.0, 1.0, 0.01) var heavy_grazer_share := 0.45
 ## Elapsed run time when regular packs begin including fast Rushers.
-@export_range(0.0, 1100.0, 1.0) var rusher_intro_seconds := 300.0
+@export_range(0.0, 1800.0, 1.0) var rusher_intro_seconds := 300.0
 ## Reinforcement-pack cycle used after introduction; every Nth pack leads with a Rusher.
 @export_range(2, 30, 1) var rusher_pack_cycle := 6
 ## Elapsed run time when Corruptors begin arriving as the escalating Siege variant.
-@export_range(0.0, 1100.0, 1.0) var siege_corruptor_intro_seconds := 420.0
+@export_range(0.0, 1800.0, 1.0) var siege_corruptor_intro_seconds := 420.0
 ## Share of Corruptor spawns that arrive as Siege Corruptors once introduced.
 @export_range(0.0, 1.0, 0.01) var siege_corruptor_share := 0.5
 
@@ -110,7 +112,7 @@ signal cleanup_began
 ## design note ties this to the run's own progression rather than the clock, and
 ## the clock is the honest approximation of it: by here a run has a pairing, a
 ## build, and something for a rule change to be a change to.
-@export_range(0.0, 1100.0, 1.0) var elite_modifier_intro_seconds := 300.0
+@export_range(0.0, 1800.0, 1.0) var elite_modifier_intro_seconds := 300.0
 
 var elapsed_seconds := 0.0
 var announced_wave_number := 1
@@ -126,6 +128,35 @@ var _grazer_pack_sequence := 0
 ## alternate deterministically instead of being rolled. A run should not be able to
 ## get eight Heavy Grazers in a row because the dice said so.
 var _variant_sequence := 0
+
+
+func configure_mode(mode: int) -> void:
+	# Quick retains the original 12-minute tuning. Campaign stretches the authored
+	# milestones and introduces a gentler XP curve so 30 minutes keeps producing
+	# meaningful adaptation choices while its final pressure still escalates.
+	if mode != RUN_MODE.Id.CAMPAIGN:
+		return
+	run_duration_seconds = 1800.0
+	elite_time_seconds = 375.0
+	boss_time_seconds = 900.0
+	final_invasion_time_seconds = 1500.0
+	cleanup_time_seconds = 1725.0
+	primary_path_choice_seconds = 180.0
+	secondary_path_choice_seconds = 450.0
+	tertiary_path_choice_seconds = 1200.0
+	early_spawn_interval_seconds = 1.35
+	late_spawn_interval_seconds = 0.38
+	final_spawn_interval_seconds = 0.14
+	final_health_scale = 3.0
+	final_contact_damage_scale = 2.0
+	saboteur_intro_seconds = 188.0
+	corruptor_intro_seconds = 450.0
+	colonizer_intro_seconds = 713.0
+	warden_intro_seconds = 1050.0
+	heavy_grazer_intro_seconds = 825.0
+	rusher_intro_seconds = 750.0
+	siege_corruptor_intro_seconds = 1050.0
+	elite_modifier_intro_seconds = 750.0
 
 
 func _ready() -> void:

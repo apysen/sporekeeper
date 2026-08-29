@@ -417,7 +417,7 @@ The Phase A territory sandbox must verify:
 10. Deformation, splatter, pressure, and recovery remain readable and satisfying
     at the agreed stress load.
 
-Phase B must additionally verify that Thornshot deaths, baseline Seeds, Spore,
+Phase B must additionally verify that Cane/Adaptation deaths, baseline Seeds, Spore,
 Bloom, Bramble, a small relic pool, all three available pairing evolutions
 claimed from the level-up draft, XP, and Biomass interact through the documented
 boundaries. Automated tests should

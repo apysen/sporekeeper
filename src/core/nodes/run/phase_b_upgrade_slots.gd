@@ -18,6 +18,9 @@ enum SlotState {
 	LOCKED,
 }
 
+signal slot_hovered(index: int)
+signal slot_unhovered
+
 @export_group("Layout")
 ## Slots drawn in the row, including the ones an Evolution unlocks later.
 @export_range(1, 16, 1) var slot_count := 8:
@@ -210,6 +213,7 @@ enum SlotState {
 		_rebuild()
 
 var _slot_panels: Array[Panel] = []
+var _slot_tooltips: Array[String] = []
 var _slot_titles: Array[Label] = []
 var _slot_levels: Array[Label] = []
 var _slot_locks: Array[TextureRect] = []
@@ -263,7 +267,13 @@ func get_slot_tooltip(index: int) -> String:
 	# Read back for tests and for anything that wants to mirror the hover text.
 	if index < 0 or index >= _slot_panels.size():
 		return ""
-	return _slot_panels[index].tooltip_text
+	return _slot_tooltips[index]
+
+
+func get_slot_global_rect(index: int) -> Rect2:
+	if index < 0 or index >= _slot_panels.size():
+		return Rect2()
+	return _slot_panels[index].get_global_rect()
 
 
 func get_slot_border_color(index: int) -> Color:
@@ -271,6 +281,9 @@ func get_slot_border_color(index: int) -> Color:
 	## anything that wants to mirror the row, the same way the tooltip is.
 	if index < 0 or index >= _slot_panels.size():
 		return Color(0.0, 0.0, 0.0, 0.0)
+	var border := _slot_panels[index].get_node_or_null("NinePatchBorder") as NinePatchRect
+	if border != null and border.texture != null:
+		return border.modulate
 	var style := _slot_panels[index].get_theme_stylebox("panel")
 	if style is StyleBoxFlat:
 		return (style as StyleBoxFlat).border_color
@@ -306,7 +319,8 @@ func set_slot(
 	if index < 0 or index >= _slot_panels.size():
 		return
 	var panel := _slot_panels[index]
-	panel.tooltip_text = tooltip
+	_slot_tooltips[index] = tooltip
+	panel.tooltip_text = ""
 	panel.add_theme_stylebox_override("panel", _build_style(state, accent))
 	# A locked slot says everything it needs to with the icon alone.
 	var locked := state == SlotState.LOCKED
@@ -373,6 +387,7 @@ func _build_slots() -> void:
 		remove_child(child)
 		child.queue_free()
 	_slot_panels.clear()
+	_slot_tooltips.clear()
 	_slot_titles.clear()
 	_slot_levels.clear()
 	_slot_locks.clear()
@@ -384,10 +399,13 @@ func _build_slots() -> void:
 		panel.position = Vector2(float(index) * (slot_size + slot_spacing), 0.0)
 		panel.size = Vector2(slot_size, slot_size)
 		panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		panel.mouse_entered.connect(slot_hovered.emit.bind(index))
+		panel.mouse_exited.connect(slot_unhovered.emit)
 		panel.add_theme_stylebox_override("panel", _build_style(SlotState.EMPTY))
 		# Generated rather than authored, so the children are never written into the
 		# scene: the row is rebuilt from these properties every time it loads.
 		add_child(panel, false, Node.INTERNAL_MODE_FRONT)
+		_slot_tooltips.append("")
 
 		var title := Label.new()
 		title.name = "Title"
@@ -447,6 +465,9 @@ func _build_slots() -> void:
 		_slot_titles.append(title)
 		_slot_levels.append(level)
 		_slot_locks.append(lock)
+	# Relic capacity changes rebuild this row during a run. Install the real
+	# NinePatchRect borders on every rebuild, not only during scene startup.
+	PhaseBNinePatchPanelBorder.install_under(self)
 
 
 func _build_style(state: int, accent := Color(0.0, 0.0, 0.0, 0.0)) -> StyleBox:

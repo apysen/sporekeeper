@@ -130,7 +130,7 @@ func _run_navigation_fixture(
 	prototype.player.reset_player()
 	prototype.player.global_position = prototype.territory_field.to_global(target)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var enemy_id := prototype.combat.spawn_enemy(
 		role,
 		start
@@ -167,7 +167,7 @@ func _run_saboteur_catalyst_fixture(prototype: PhaseBPrototype) -> void:
 	prototype.player.global_position = prototype.territory_field.to_global(Vector2(850.0, 450.0))
 	prototype.combat.reset_combat()
 	prototype.overlay.clear_effects()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	prototype.overlay.spawn_seed(catalyst_target, 60.0, 0, 1.0)
 	var enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.SABOTEUR,
@@ -207,7 +207,7 @@ func _run_colonizer_spacing_fixture(prototype: PhaseBPrototype) -> void:
 	prototype.player.global_position = prototype.territory_field.to_global(target)
 	prototype.combat.reset_combat()
 	prototype.overlay.clear_effects()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.COLONIZER,
 		start

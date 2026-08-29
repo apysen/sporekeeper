@@ -228,7 +228,7 @@ func roll_outcome(stake: int) -> int:
 
 
 func pick_path() -> int:
-	## Uniform across the five Paths. Pity belongs to the question of whether anything
+	## Uniform across the eight Paths. Pity belongs to the question of whether anything
 	## was won; steering which Path arrives would make the machine an upgrade dispenser
 	## with a lever on it.
 	return CloverSlot.PATH_SYMBOLS[_rng.randi_range(0, CloverSlot.PATH_SYMBOLS.size() - 1)]

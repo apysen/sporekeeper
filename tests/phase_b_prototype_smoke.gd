@@ -32,6 +32,9 @@ func _run() -> void:
 	prototype.progression.offer_bramble_path = true
 	prototype.progression.offer_root_path = true
 	prototype.progression.offer_pruning_path = true
+	prototype.progression.offer_thistle_path = true
+	prototype.progression.offer_vine_path = true
+	prototype.progression.offer_fruit_path = true
 	# Drafting draws at random, and a suite whose drafts change between runs cannot
 	# be trusted when it fails. The seed is pinned here so every check below sees the
 	# same run; the block that covers the randomness clears it and rolls its own.
@@ -56,6 +59,43 @@ func _run() -> void:
 		and prototype.combat.elite_profile.get_parent().name == &"EnemyProfiles"
 		and prototype.combat.boss_profile.get_parent().name == &"EnemyProfiles",
 		"Phase B gameplay systems and all enemy profiles are authored as visible scene nodes"
+	)
+	# Texture-backed Button styles are presented by real NinePatchRect children.
+	# The Button keeps ownership of input and text, while only each border's center
+	# edge strips stretch. Every raster botanical painting shares the deliberately strong
+	# watercolor material rather than relying on per-asset treatment.
+	var ui_buttons := prototype.find_children("*", "Button", true, false)
+	var button_borders_are_sliced := not ui_buttons.is_empty()
+	for button_node in ui_buttons:
+		var button := button_node as Button
+		var border := button.get_node_or_null("NinePatchBorder") as NinePatchRect
+		button_borders_are_sliced = (
+			button_borders_are_sliced
+			and border != null
+			and border.axis_stretch_horizontal == NinePatchRect.AXIS_STRETCH_MODE_STRETCH
+			and border.axis_stretch_vertical == NinePatchRect.AXIS_STRETCH_MODE_STRETCH
+			and border.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		)
+	var botanical_material := prototype.overlay.material as ShaderMaterial
+	var fruit_material := prototype.adaptation_director.material as ShaderMaterial
+	var fruit_art_loaded := PhaseBAdaptationDirector.FRUIT_TEXTURES.size() == 6
+	for fruit_texture in PhaseBAdaptationDirector.FRUIT_TEXTURES:
+		fruit_art_loaded = fruit_art_loaded and fruit_texture != null
+	_check(
+		button_borders_are_sliced,
+		"every run Button owns a correctly sliced NinePatchRect border"
+	)
+	_check(
+		botanical_material != null
+		and fruit_material != null
+		and botanical_material.shader == fruit_material.shader
+		and float(botanical_material.get_shader_parameter("granulation_strength")) >= 0.40
+		and float(botanical_material.get_shader_parameter("paper_lift")) >= 0.10
+		and prototype.overlay.seed_texture != null
+		and prototype.overlay.bloom_texture != null
+		and fruit_art_loaded
+		and PhaseBAdaptationDirector.FRUITSEED_TEXTURE != null,
+		"Bloom, Seed, all six Fruit paintings, and Fruitseed share visible watercolor granulation"
 	)
 	var original_hunter_health := prototype.combat.hunter_profile.maximum_health
 	var original_hunter_behavior := prototype.combat.hunter_profile.territory_behavior
@@ -414,14 +454,14 @@ func _run() -> void:
 	)
 	prototype.debug_advance_time(12.0)
 	prototype._open_pause_menu()
-	prototype.pause_restart_button.pressed.emit()
+	prototype.pause_glossary_button.pressed.emit()
 	_check(
-		prototype.get_run_state() == PhaseBPrototype.RunState.RUNNING
-		and is_zero_approx(prototype.get_elapsed_seconds())
-		and not prototype.is_pause_menu_open()
-		and not prototype.pause_overlay.visible,
-		"Restart Run resets the active run and closes the pause menu"
+		prototype._mechanics_help.is_glossary_open()
+		and prototype.is_pause_menu_open()
+		and prototype.pause_overlay.visible,
+		"Glossary opens from the pause menu without resuming simulation"
 	)
+	prototype._close_glossary()
 	_check(
 		prototype.pause_fullscreen_button.pressed.is_connected(
 			Callable(prototype, "_toggle_fullscreen")
@@ -436,6 +476,21 @@ func _run() -> void:
 	var hunter_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
 		hunter_position
+	)
+	# Cane's intentional 24-damage baseline now exactly kills the ordinary Hunter.
+	# Give this pooled Hunter enough fixture health to observe a non-lethal flash
+	# before the later automatic sweeps finish the kill being tested below.
+	var feedback_hunter := prototype.combat._find_enemy(hunter_id)
+	if feedback_hunter != null:
+		feedback_hunter.maximum_health = prototype.combat.cane_damage * 3.0
+		feedback_hunter.health = feedback_hunter.maximum_health
+		feedback_hunter.speed = 0.0
+	# Saved presentation settings belong to the player, not the test machine. This
+	# feedback fixture explicitly asks for full numbers so an existing user setting
+	# cannot turn the object under test off before the assertion observes it.
+	prototype.display_settings.set_choice(
+		PhaseBDisplaySettings.OptionId.DAMAGE_NUMBERS,
+		PhaseBDisplaySettings.DamageNumbers.FULL
 	)
 	var observed_hit_flash := false
 	var observed_damage_number := false
@@ -454,17 +509,17 @@ func _run() -> void:
 	_check(hunter_id != -1, "a pooled Hunter can be spawned")
 	_check(
 		not prototype.combat.is_enemy_active(hunter_id),
-		"automatic Thornshot targets and kills a nearby Hunter"
+		"the automatic base Cane kills a Hunter inside its facing sector"
 	)
 	_check(
-		prototype.combat.thornshot_shoot_sfx != null
-		and prototype.combat.get_thornshot_sfx_play_count() > 0
-		and prototype.combat._thornshot_audio.bus == prototype.audio_settings.sfx_bus_name,
-		"each successfully fired Thornshot plays the authored shoot SFX"
+		prototype.combat.cane_swing_sfx != null
+		and prototype.combat.get_cane_sfx_play_count() > 0
+		and prototype.combat._cane_audio.bus == prototype.audio_settings.sfx_bus_name,
+		"each automatic Cane sweep plays the authored swing SFX"
 	)
 	_check(
 		observed_hit_flash and observed_damage_number,
-		"Thornshot damage produces an enemy hit flash and a pooled floating number"
+		"Cane damage produces an enemy hit flash and a pooled floating number"
 	)
 	_check(prototype.combat.get_active_pickup_count() > 0, "enemy death produces pooled XP")
 	for pickup_index in range(3):
@@ -507,7 +562,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	var outside_range_position := (
 		prototype.player.get_arena_position()
-		+ Vector2(prototype.combat.thornshot_range_pixels + 150.0, 0.0)
+		+ Vector2(prototype.combat.cane_reach_pixels + 150.0, 0.0)
 	)
 	var outside_range_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
@@ -518,52 +573,65 @@ func _run() -> void:
 		outside_range_id != -1
 		and prototype.combat.is_enemy_active(outside_range_id)
 		and prototype.combat.get_active_projectile_count() == 0,
-		"Thornshot does not acquire or fire at an enemy beyond its authored range"
+		"Cane still sweeps without damaging an enemy beyond its authored reach"
 	)
 
 	prototype.combat.reset_combat()
-	var thornshot_wall_source := Vector2(
+	var cane_wall_source := Vector2(
 		prototype.territory_field.tuning.arena_size.x * 0.475,
 		prototype.territory_field.tuning.arena_size.y * 0.20
 	)
-	var thornshot_blocked_target := Vector2(
+	var cane_blocked_target := Vector2(
 		prototype.territory_field.tuning.arena_size.x * 0.56,
 		prototype.territory_field.tuning.arena_size.y * 0.20
 	)
-	var thornshot_visible_target := Vector2(
-		thornshot_wall_source.x,
+	var cane_visible_target := Vector2(
+		cane_wall_source.x,
 		prototype.territory_field.tuning.arena_size.y * 0.51
 	)
-	prototype.player.global_position = prototype.territory_field.to_global(thornshot_wall_source)
+	prototype.player.global_position = prototype.territory_field.to_global(cane_wall_source)
 	var blocked_target_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
-		thornshot_blocked_target
+		cane_blocked_target
 	)
 	var visible_target_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
-		thornshot_visible_target
+		cane_visible_target
 	)
-	var selected_visible_enemy := prototype.combat._get_nearest_enemy()
+	var dense_visible_direction := prototype.combat.get_densest_target_direction(
+		cane_wall_source,
+		500.0,
+		45.0,
+		Vector2.RIGHT
+	)
 	_check(
 		not prototype.territory_field.is_growth_path_clear(
-			thornshot_wall_source,
-			thornshot_blocked_target
+			cane_wall_source,
+			cane_blocked_target
 		)
 		and prototype.territory_field.is_growth_path_clear(
-			thornshot_wall_source,
-			thornshot_visible_target
+			cane_wall_source,
+			cane_visible_target
 		)
-		and thornshot_wall_source.distance_to(thornshot_blocked_target)
-		< thornshot_wall_source.distance_to(thornshot_visible_target)
-		and selected_visible_enemy != null
-		and selected_visible_enemy.id == visible_target_id,
-		"Thornshot skips a closer enemy behind basalt and acquires the nearest visible enemy"
+		and cane_wall_source.distance_to(cane_blocked_target)
+		< cane_wall_source.distance_to(cane_visible_target)
+		and absf(dense_visible_direction.angle_to(
+			cane_wall_source.direction_to(cane_visible_target)
+		)) < 0.001,
+		"dense-sector targeting ignores a closer enemy behind basalt"
 	)
-	prototype.combat._thornshot_remaining = 0.0
-	prototype.combat.simulate_step(1.0 / 60.0)
-	prototype.combat._thornshot_remaining = 999.0
-	for _visibility_step in range(30):
-		prototype.combat.simulate_step(1.0 / 60.0)
+	prototype.combat.perform_bonus_cane_sweep(Vector2.RIGHT, true)
+	var visible_reach_scale := (
+		cane_wall_source.distance_to(cane_visible_target)
+		/ prototype.combat.get_cane_reach()
+		+ 0.1
+	)
+	prototype.combat.perform_bonus_cane_sweep(
+		cane_wall_source.direction_to(cane_visible_target),
+		false,
+		1.0,
+		visible_reach_scale
+	)
 	_check(
 		prototype.combat.get_enemy_health(visible_target_id)
 		< prototype.combat.hunter_profile.maximum_health
@@ -571,43 +639,44 @@ func _run() -> void:
 			prototype.combat.get_enemy_health(blocked_target_id),
 			prototype.combat.hunter_profile.maximum_health
 		),
-		"the fired Thornshot damages only the unobstructed target"
+		"Cane sectors damage an unobstructed enemy but never pass through basalt"
 	)
 
 	prototype.player.reset_player()
 	prototype.combat.reset_combat()
-	var original_pierce := prototype.combat.thornshot_pierce
-	prototype.combat.thornshot_pierce = 2
-	var shot_origin := prototype.player.get_arena_position()
-	var near_enemy_id := prototype.combat.spawn_enemy(
+	var sweep_origin := prototype.player.get_arena_position()
+	var upper_enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
-		shot_origin + Vector2(100.0, 0.0)
+		sweep_origin + Vector2(58.0, -18.0)
 	)
-	var beyond_travel_id := prototype.combat.spawn_enemy(
+	var lower_enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
-		shot_origin + Vector2(prototype.combat.thornshot_range_pixels + 80.0, 0.0)
+		sweep_origin + Vector2(68.0, 20.0)
 	)
-	prototype.combat.simulate_step(0.20)
-	prototype.combat._thornshot_remaining = 999.0
-	for _range_step in range(36):
-		prototype.combat.simulate_step(1.0 / 60.0)
+	var beyond_reach_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		sweep_origin + Vector2(prototype.combat.cane_reach_pixels + 80.0, 0.0)
+	)
+	var sector_hits := prototype.combat.perform_bonus_cane_sweep(Vector2.RIGHT, true)
 	_check(
-		prototype.combat.get_enemy_health(near_enemy_id)
+		sector_hits == 2
+		and prototype.combat.get_enemy_health(upper_enemy_id)
+		< prototype.combat.hunter_profile.maximum_health
+		and prototype.combat.get_enemy_health(lower_enemy_id)
 		< prototype.combat.hunter_profile.maximum_health
 		and is_equal_approx(
-			prototype.combat.get_enemy_health(beyond_travel_id),
+			prototype.combat.get_enemy_health(beyond_reach_id),
 			prototype.combat.hunter_profile.maximum_health
 		)
 		and prototype.combat.get_active_projectile_count() == 0,
-		"a piercing Thornshot expires at its range boundary instead of continuing across the arena"
+		"one Cane sector hits every in-reach enemy once and allocates no projectile"
 	)
-	prototype.combat.thornshot_pierce = original_pierce
 
 	prototype.combat.reset_combat()
 	var navigation_target := Vector2(310.0, 70.0)
 	var navigation_start := Vector2(650.0, 70.0)
 	prototype.player.global_position = prototype.territory_field.to_global(navigation_target)
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var navigating_enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
 		navigation_start
@@ -971,23 +1040,25 @@ func _run() -> void:
 	prototype.reset_run()
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
-	# A universal line has to be in the offer for this to be a test of taking one, and
-	# the draft draws at random: the cursor guarantees the line it stands on is offered.
-	prototype.progression._upgrade_offer_cursor = PhaseBProgression.UpgradeId.THORNSHOT_POWER
+	# Cane has no draft lines. Every opening growth line therefore belongs to a Path
+	# and taking it commits the corresponding primary slot immediately.
+	prototype.progression._upgrade_offer_cursor = PhaseBProgression.UpgradeId.THISTLE_CLUSTERING
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
-	var universal_options := prototype.progression.get_pending_upgrade_options()
-	var universal_index := 0
-	for option_index in range(universal_options.size()):
-		if (
-			prototype.progression._get_upgrade_path(universal_options[option_index])
-			== PhaseBProgression.UNSELECTED_PATH
-		):
-			universal_index = option_index
-			break
-	prototype._choose_displayed_option(universal_index)
+	var opening_path_options := prototype.progression.get_pending_upgrade_options()
+	var every_opening_line_has_a_path := true
+	for opening_option in opening_path_options:
+		every_opening_line_has_a_path = (
+			every_opening_line_has_a_path
+			and prototype.progression._get_upgrade_path(opening_option)
+			!= PhaseBProgression.UNSELECTED_PATH
+		)
+	var opening_line := opening_path_options[0]
+	var opening_path := prototype.progression._get_upgrade_path(opening_line)
+	prototype._choose_displayed_option(0)
 	_check(
-		not prototype.progression.has_primary_path(),
-		"taking a universal line leaves the path commitment open"
+		every_opening_line_has_a_path
+		and prototype.progression.primary_path == opening_path,
+		"Cane adds no universal draft clutter and the opening line commits its Path"
 	)
 
 	prototype.reset_run()
@@ -1131,8 +1202,8 @@ func _run() -> void:
 	var switched_off_line_draftable := prototype.progression._is_upgrade_draftable(
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 	)
-	var universal_line_still_draftable := prototype.progression._is_upgrade_draftable(
-		PhaseBProgression.UpgradeId.THORNSHOT_POWER
+	var other_path_line_still_draftable := prototype.progression._is_upgrade_draftable(
+		PhaseBProgression.UpgradeId.SEED_PRODUCTION
 	)
 	prototype.progression.offer_bramble_path = true
 	prototype.progression.reset_progression()
@@ -1141,7 +1212,7 @@ func _run() -> void:
 		and not narrowed_path_options.has(PhaseBProgression.PathId.BRAMBLE)
 		and narrowed_path_options.size() == PhaseBProgression.PathId.size() - 1
 		and not switched_off_line_draftable
-		and universal_line_still_draftable
+		and other_path_line_still_draftable
 		and prototype.progression._is_upgrade_draftable(
 			PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 		),
@@ -1293,22 +1364,31 @@ func _run() -> void:
 			prototype.territory_field._maturity[mature_index] = 1.0
 	prototype.overlay.clear_effects()
 	prototype.combat.reset_combat()
-	# Seed Bank banks dormant Seeds and releases them in one Germination Season.
+	# Claiming Seed Bank is itself a Season: the free wave lands at once rather than
+	# waiting out the clock, which is the power spike the Evolution is sold on.
 	prototype.spore_director._seed_bank_storage = 0.0
 	prototype.spore_director.advance(0.016)
-	var banked_without_season := prototype.overlay.get_active_seed_count()
+	var claim_season_seeds := prototype.overlay.get_active_seed_count()
+	prototype.overlay.clear_effects()
+	# From there the Season is a clock. Storage alone does not fire one; the interval
+	# elapsing does, and it spends what the Bank had stored.
 	prototype.spore_director._seed_bank_storage = (
 		prototype.evolutions.germination_season_threshold
 	)
 	prototype.spore_director.advance(0.016)
+	var seeds_before_interval := prototype.overlay.get_active_seed_count()
+	prototype.spore_director.advance(
+		prototype.evolutions.germination_season_interval
+	)
 	_check(
 		seed_bank_granted
 		and prototype.progression.active_evolution
 		== PhaseBProgression.EvolutionId.SEED_BANK
-		and banked_without_season == 0
+		and claim_season_seeds > 1
+		and seeds_before_interval == 0
 		and prototype.overlay.get_active_seed_count() > 1
 		and prototype.spore_director.get_seed_bank_storage() < 1.0,
-		"a Germination Season empties the Seed bank into many simultaneous Seeds"
+		"claiming Seed Bank fires a free Season, and later Seasons run on the clock"
 	)
 	prototype.overlay.clear_effects()
 
@@ -1347,7 +1427,7 @@ func _run() -> void:
 	prototype._apply_progression_modifiers()
 	prototype.territory_field.reset_field()
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	prototype.combat.set_bramble_modifiers(true, 0.30, 1.0, 0.0, 4.0, 0.0, true)
 	var field_width_og := prototype.territory_field.tuning.field_size.x
 	var interior_index := _find_deep_owned_cell(
@@ -1374,7 +1454,7 @@ func _run() -> void:
 		prototype.combat.get_active_root_eruption_count() - eruptions_before
 	)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 
 	# Mature interior erupts once the enemy standing on it is heavily Entangled.
 	prototype.territory_field._maturity[interior_index] = 1.0
@@ -1408,7 +1488,7 @@ func _run() -> void:
 
 	# A kill inside the Root Network wakes the ground under the next enemy.
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var cascade_enemy: PhaseBCombatDirector.EnemyState = _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.HUNTER,
@@ -1432,7 +1512,7 @@ func _run() -> void:
 	] = 3
 	prototype._apply_progression_modifiers()
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	cascade_enemy = _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.HUNTER,
@@ -1496,35 +1576,46 @@ func _run() -> void:
 	prototype.progression.debug_complete_evolution_requirements()
 	prototype.progression.grant_evolution_if_ready()
 	var evolution_before_support := prototype.progression.active_evolution
-	var offered_support := prototype.progression.request_tertiary_path_choice()
-	var support_options := prototype.progression.get_pending_path_options()
-	var support_excludes_pairing := (
-		not support_options.has(PhaseBProgression.PathId.SPORE)
-		and not support_options.has(PhaseBProgression.PathId.ROOT)
-	)
+	var evolution_line := PhaseBEvolutions.get_evolution_upgrade_id(evolution_before_support)
+	prototype.progression._upgrade_offer_cursor = PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
+	var offered_support := prototype.progression.request_tertiary_upgrade_choice()
+	var support_options := prototype.progression.get_pending_upgrade_options()
+	var support_excludes_pairing := true
+	for support_upgrade_id in support_options:
+		var offered_path := prototype.progression._get_upgrade_path(support_upgrade_id)
+		support_excludes_pairing = (
+			support_excludes_pairing
+			and offered_path != PhaseBProgression.PathId.SPORE
+			and offered_path != PhaseBProgression.PathId.ROOT
+		)
 	_check(
 		not tertiary_before_evolution
 		and prototype.progression.is_tertiary_path_available()
+		and prototype.progression.get_owned_upgrade_level(evolution_line) == 1
 		and offered_support
-		and support_options.size() == PhaseBProgression.PathId.size() - 2
+		and prototype.progression.is_pending_support_upgrade_choice()
+		and support_options.size() == 3
 		and support_excludes_pairing,
-		"claiming the Evolution frees a support slot offering only the unused paths"
+		"claiming Evolution grants rank 1 and offers real upgrades from unused support paths"
 	)
-	prototype.progression.choose_path(PhaseBProgression.PathId.BRAMBLE)
+	var support_upgrade := PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
+	var committed_support := prototype.progression.choose_upgrade(support_upgrade)
 	_check(
-		prototype.progression.tertiary_path == PhaseBProgression.PathId.BRAMBLE
+		committed_support
+		and prototype.progression.tertiary_path == PhaseBProgression.PathId.BRAMBLE
 		and prototype.progression.has_path(PhaseBProgression.PathId.BRAMBLE)
+		and prototype.progression.get_owned_upgrade_level(support_upgrade) == 1
 		and not prototype.progression.is_evolution_path(PhaseBProgression.PathId.BRAMBLE)
 		and prototype.progression.active_evolution == evolution_before_support
 		and prototype.progression.get_pair_evolution_id() == evolution_before_support
 		and not prototype.progression.is_tertiary_path_available(),
-		"the support path joins the build without re-rolling or adding an Evolution"
+		"choosing a rank-1 upgrade commits its Path as Support"
 	)
 	_check(
-		prototype.progression.get_upgrade_slot_count()
-		== slots_before_evolution + prototype.progression.evolution_bonus_upgrade_slots
-		and prototype.progression.evolution_bonus_upgrade_slots > 0,
-		"evolving widens the upgrade slots instead of replacing the lines already taken"
+		slots_before_evolution == 8
+		and prototype.progression.get_upgrade_slot_count() == 13
+		and prototype.progression.evolution_bonus_upgrade_slots == 5,
+		"evolving expands eight paired-path lines into all 13 Adaptation positions"
 	)
 	var support_line_draftable := prototype.progression._is_upgrade_draftable(
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
@@ -1536,54 +1627,297 @@ func _run() -> void:
 		support_line_draftable and not unused_line_draftable,
 		"drafts narrow to the support path once it is chosen"
 	)
-
-	# Thornshot Volley buys coverage: a wider volley takes different targets and
-	# only doubles up when there are fewer enemies in range than shots.
-	prototype.progression.reset_progression()
-	prototype._apply_progression_modifiers()
-	prototype.combat.reset_combat()
-	var volley_origin := prototype.player.get_arena_position()
-	var single_target_count := prototype.combat.get_thornshot_target_count()
-	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.THORNSHOT_VOLLEY
-	] = 2
-	prototype._apply_progression_modifiers()
-	var widened_target_count := prototype.combat.get_thornshot_target_count()
-	for volley_index in range(3):
-		prototype.combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
-			volley_origin + Vector2(40.0 + 12.0 * float(volley_index), 0.0)
+	var thirteen_line_build := PackedInt32Array([
+		PhaseBProgression.UpgradeId.SEED_PRODUCTION,
+		PhaseBProgression.UpgradeId.GROWTH_MASS,
+		PhaseBProgression.UpgradeId.SPORULATION,
+		PhaseBProgression.UpgradeId.FRUITING_BODIES,
+		PhaseBProgression.UpgradeId.ROOT_MATURATION,
+		PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD,
+		PhaseBProgression.UpgradeId.ROOT_MATURE_STRENGTH,
+		PhaseBProgression.UpgradeId.ROOT_POTENCY,
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT,
+		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE,
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS,
+		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION,
+		PhaseBEvolutions.get_evolution_upgrade_id(evolution_before_support),
+	])
+	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+		prototype.progression._upgrade_levels[upgrade_id] = 0
+	for index in range(thirteen_line_build.size() - 1):
+		var upgrade_id := thirteen_line_build[index]
+		prototype.progression._upgrade_levels[upgrade_id] = (
+			prototype.progression.get_upgrade_maximum_level(upgrade_id)
 		)
-	prototype.combat._thornshot_remaining = 0.0
-	prototype.combat.simulate_step(0.0)
-	var volley_projectiles := prototype.combat.get_active_projectile_count()
-	var volley_cues := prototype.combat.get_thornshot_sfx_play_count()
-	prototype.combat._collect_thornshot_targets(widened_target_count)
-	var distinct_targets: Array[int] = []
-	for volley_target in prototype.combat._thornshot_targets:
-		if not distinct_targets.has(volley_target.id):
-			distinct_targets.append(volley_target.id)
-	prototype.combat.reset_combat()
-	prototype.combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.HUNTER, volley_origin + Vector2(40.0, 0.0))
-	prototype.combat._collect_thornshot_targets(widened_target_count)
-	var lone_enemy_shots := prototype.combat._thornshot_targets.size()
-	prototype.combat.reset_combat()
-	prototype.progression.reset_progression()
-	prototype._apply_progression_modifiers()
+	var thirteenth_line := thirteen_line_build[thirteen_line_build.size() - 1]
+	prototype.progression._upgrade_offer_cursor = thirteenth_line
+	var offered_thirteenth_line := prototype.progression._roll_upgrade_options()
+	var thirteenth_line_is_present := (
+		prototype.progression.get_pending_upgrade_options().has(thirteenth_line)
+	)
+	var committed_thirteenth_line := prototype.progression.choose_upgrade(thirteenth_line)
 	_check(
-		single_target_count == 1
-		and widened_target_count == 3
-		and volley_projectiles == widened_target_count
-		and volley_cues == 1
-		and distinct_targets.size() == 3
-		and lone_enemy_shots == widened_target_count,
-		"Thornshot Volley fires one shot per distinct target and one cue per volley"
+		offered_thirteenth_line
+		and thirteenth_line_is_present
+		and committed_thirteenth_line
+		and prototype.progression.get_slotted_upgrades().size() == 13,
+		"the draft backend accepts a thirteenth distinct Adaptation line"
 	)
 
+	# Base Cane follows facing; Vine deliberately replaces that input with the
+	# targetable 90-degree sector holding the most enemies.
+	prototype.progression.reset_progression()
+	prototype._apply_progression_modifiers()
+	prototype.combat.reset_combat()
+	prototype.player._facing = Vector2.RIGHT
+	var cane_target_origin := prototype.player.get_arena_position()
+	var base_right_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		cane_target_origin + Vector2(62.0, 0.0)
+	)
+	var base_up_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		cane_target_origin + Vector2(0.0, -62.0)
+	)
+	prototype.combat._cane_remaining = 0.0
+	prototype.combat.simulate_step(0.0)
+	var base_follows_facing := (
+		prototype.combat.get_enemy_health(base_right_id)
+		< prototype.combat.hunter_profile.maximum_health
+		and is_equal_approx(
+			prototype.combat.get_enemy_health(base_up_id),
+			prototype.combat.hunter_profile.maximum_health
+		)
+	)
+	prototype.combat.reset_combat()
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.VINE,
+		PhaseBProgression.PathId.SPORE
+	)
+	prototype._apply_progression_modifiers()
+	var vine_down_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		cane_target_origin + Vector2(0.0, 62.0)
+	)
+	var vine_cluster_ids := PackedInt32Array()
+	for vine_index in range(3):
+		vine_cluster_ids.append(prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.HUNTER,
+			cane_target_origin + Vector2(-14.0 + 14.0 * float(vine_index), -66.0)
+		))
+	prototype.combat._cane_remaining = 0.0
+	prototype.combat.simulate_step(0.0)
+	var vine_cluster_hit := true
+	for vine_enemy_id in vine_cluster_ids:
+		vine_cluster_hit = (
+			vine_cluster_hit
+			and prototype.combat.get_enemy_health(vine_enemy_id)
+			< prototype.combat.hunter_profile.maximum_health
+		)
+	_check(
+		base_follows_facing
+		and vine_cluster_hit
+		and is_equal_approx(
+			prototype.combat.get_enemy_health(vine_down_id),
+			prototype.combat.hunter_profile.maximum_health
+		)
+		and absf(prototype.combat._cane_visual_facing.angle_to(Vector2.UP)) < 0.22
+		and prototype.combat.get_active_projectile_count() == 0,
+		"Vine auto-targets the densest valid sector while base Cane follows facing"
+	)
+
+	# Fruit uses the same dense-sector choice, but every member of a release owns its
+	# roll, art choice, trail spacing, planted fuse, and post-burst cooldown state.
+	var adaptations := prototype.adaptation_director
+	prototype.progression.reset_progression()
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.FRUIT,
+		PhaseBProgression.PathId.SPORE
+	)
+	prototype._apply_progression_modifiers()
+	prototype.territory_field.reset_field()
+	prototype.player.reset_player()
+	prototype.combat.reset_combat()
+	adaptations.reset_adaptations()
+	var fruit_origin := prototype.player.get_arena_position()
+	prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		fruit_origin + Vector2(0.0, 92.0)
+	)
+	for fruit_cluster_index in range(3):
+		prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.HUNTER,
+			fruit_origin + Vector2(-14.0 + 14.0 * float(fruit_cluster_index), -92.0)
+		)
+	adaptations._begin_normal_fruit_release()
+	var aimed_fruit = null
+	for candidate in adaptations._fruits:
+		if candidate.active and not candidate.dropped_seed:
+			aimed_fruit = candidate
+			break
+	_check(
+		aimed_fruit != null
+		and is_equal_approx(aimed_fruit.speed, 300.0)
+		and absf(aimed_fruit.velocity.normalized().angle_to(Vector2.UP)) < 0.22,
+		"Fruit starts at 300 px/s toward the densest targetable enemy sector"
+	)
+
+	# Clear the shared origin stamps, then move three Fruits once in three directions.
+	# A shared frame-level trail timer would produce only one branch here; independent
+	# segment accumulators must leave a command on every branch.
+	prototype.combat.reset_combat()
+	adaptations.reset_adaptations()
+	prototype.territory_field._commands.clear()
+	var trail_fruits: Array = []
+	for trail_direction in [Vector2.RIGHT, Vector2.UP, Vector2.LEFT]:
+		var trail_fruit = adaptations._spawn_fruit(fruit_origin, trail_direction)
+		if trail_fruit != null:
+			trail_fruits.append(trail_fruit)
+	prototype.territory_field._commands.clear()
+	if not trail_fruits.is_empty():
+		trail_fruits[0].remaining_distance = 0.0
+	for trail_fruit in trail_fruits:
+		adaptations._advance_fruit(trail_fruit, 0.12)
+	var fruit_origin_cell := prototype.territory_field.local_to_cell(fruit_origin)
+	var fruit_trail_right := false
+	var fruit_trail_up := false
+	var fruit_trail_left := false
+	var fruit_trail_splats := 0
+	for command in prototype.territory_field._commands:
+		if command.kind != TerritoryField.TerritoryCommand.Kind.SPLAT:
+			continue
+		fruit_trail_splats += 1
+		var cell_offset := command.cell_position - fruit_origin_cell
+		fruit_trail_right = fruit_trail_right or cell_offset.x > 0.5
+		fruit_trail_up = fruit_trail_up or cell_offset.y < -0.5
+		fruit_trail_left = fruit_trail_left or cell_offset.x < -0.5
+	var zero_distance_counter_did_not_stop: bool = (
+		not trail_fruits.is_empty()
+		and trail_fruits[0].active
+		and trail_fruits[0].speed > 0.0
+	)
+	_check(
+		trail_fruits.size() == 3
+		and fruit_trail_splats >= 3
+		and fruit_trail_right
+		and fruit_trail_up
+		and fruit_trail_left
+		and zero_distance_counter_did_not_stop,
+		"every Fruit paints its own rolling trail and only zero velocity can stop it"
+	)
+
+	# The art choice is run-seeded but genuinely varies per Fruit. Planted ordinary
+	# Fruit retains that choice; only the relic offspring uses Fruitseed art.
+	adaptations.reset_adaptations()
+	adaptations._random.seed = 0xC0FFEE
+	var fruit_art_indices := {}
+	var fruit_art_indices_valid := true
+	for art_roll_index in range(18):
+		var art_fruit = adaptations._spawn_fruit(
+			fruit_origin,
+			Vector2.RIGHT.rotated(0.02 * float(art_roll_index))
+		)
+		if art_fruit == null:
+			continue
+		fruit_art_indices[art_fruit.visual_index] = true
+		fruit_art_indices_valid = (
+			fruit_art_indices_valid
+			and art_fruit.visual_index >= 0
+			and art_fruit.visual_index < PhaseBAdaptationDirector.FRUIT_TEXTURES.size()
+		)
+	_check(
+		fruit_art_indices_valid and fruit_art_indices.size() >= 3,
+		"Fruit releases choose visibly varied paintings from the six-asset pool"
+	)
+
+	adaptations.reset_adaptations()
+	prototype.combat.reset_combat()
+	var terminal_position := fruit_origin + Vector2(48.0, 0.0)
+	var terminal_enemy_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		terminal_position
+	)
+	var terminal_health_before := prototype.combat.get_enemy_health(terminal_enemy_id)
+	var terminal_fruit = adaptations._spawn_fruit(terminal_position, Vector2.RIGHT)
+	var terminal_visual_index: int = (
+		terminal_fruit.visual_index if terminal_fruit != null else -1
+	)
+	if terminal_fruit != null:
+		terminal_fruit.speed = 0.0
+		terminal_fruit.velocity = Vector2.ZERO
+		adaptations._advance_fruit(terminal_fruit, 0.0)
+	var planted_fruit = null
+	for fruitseed in adaptations._fruitseeds:
+		if fruitseed.active and not fruitseed.dropped_seed:
+			planted_fruit = fruitseed
+			break
+	var terminal_keeps_fruit_art: bool = (
+		planted_fruit != null
+		and planted_fruit.visual_index == terminal_visual_index
+		and is_equal_approx(planted_fruit.remaining, adaptations.fruitseed_germination_seconds)
+	)
+	prototype.territory_field._commands.clear()
+	adaptations._update_fruitseeds(adaptations.fruitseed_germination_seconds + 0.01)
+	var terminal_queued_green := false
+	for command in prototype.territory_field._commands:
+		terminal_queued_green = (
+			terminal_queued_green
+			or command.kind == TerritoryField.TerritoryCommand.Kind.SEED
+		)
+	_check(
+		terminal_keeps_fruit_art
+		and is_equal_approx(
+			terminal_health_before - prototype.combat.get_enemy_health(terminal_enemy_id),
+			adaptations.fruit_terminal_explosion_damage
+		)
+		and terminal_queued_green,
+		"a stopped Fruit remains planted, then bursts for 10 damage and becomes territory"
+	)
+
+	adaptations.reset_adaptations()
+	prototype.combat.reset_combat()
+	adaptations._begin_normal_fruit_release()
+	var cadence_fruit = null
+	for candidate in adaptations._fruits:
+		if candidate.active and not candidate.dropped_seed:
+			cadence_fruit = candidate
+			break
+	if cadence_fruit != null:
+		cadence_fruit.speed = 0.0
+		cadence_fruit.velocity = Vector2.ZERO
+		adaptations._advance_fruit(cadence_fruit, 0.0)
+	var first_release_count := adaptations._fruit_release_count
+	adaptations._update_fruit_release_cadence(5.0)
+	var fuse_holds_release := (
+		adaptations._fruit_release_waiting_for_clear
+		and adaptations._fruit_release_count == first_release_count
+	)
+	adaptations._update_fruitseeds(adaptations.fruitseed_germination_seconds + 0.01)
+	adaptations._update_fruit_release_cadence(0.0)
+	var cooldown_began_after_burst := (
+		not adaptations._fruit_release_waiting_for_clear
+		and is_equal_approx(
+			adaptations._fruit_release_remaining,
+			adaptations.fruit_release_interval
+		)
+	)
+	adaptations._update_fruit_release_cadence(adaptations.fruit_release_interval - 0.01)
+	var no_early_release := adaptations._fruit_release_count == first_release_count
+	adaptations._update_fruit_release_cadence(0.02)
+	_check(
+		fuse_holds_release
+		and cooldown_began_after_burst
+		and no_early_release
+		and adaptations._fruit_release_count == first_release_count + 1,
+		"Fruit's one-second cooldown begins after the previous planted batch explodes"
+	)
+	adaptations.reset_adaptations()
+	prototype.combat.reset_combat()
+
 	# Every Evolution carries exactly one optional upgrade line, offered only to the
-	# run that claimed that Evolution. All ten pairings now have one: the four Pruning
-	# pairings used to fall through to no line at all, which left those runs with
-	# nothing to draft and their Evolution stuck at its base effect for the whole run.
+	# run that claimed that Evolution. Every pairing across the eight Paths has one;
+	# the Pruning pairings used to fall through to no line at all, which left those
+	# runs with nothing to draft and their Evolution stuck at its base effect.
 	# The count is asserted against the enum rather than written down, so a pairing
 	# added later cannot quietly ship without a line.
 	var evolution_lines_are_paired := true
@@ -1608,6 +1942,9 @@ func _run() -> void:
 	)
 	prototype.progression.debug_complete_evolution_requirements()
 	prototype.progression.grant_evolution_if_ready()
+	var claimed_evolution_line_level := prototype.progression.get_owned_upgrade_level(
+		PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_PAYLOAD
+	)
 	var own_line_draftable := prototype.progression._is_upgrade_draftable(
 		PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_PAYLOAD
 	)
@@ -1627,6 +1964,7 @@ func _run() -> void:
 		evolution_lines_are_paired
 		and evolution_line_ids.size() == PhaseBProgression.EvolutionId.size() - 1
 		and not line_draftable_unevolved
+		and claimed_evolution_line_level == 1
 		and own_line_draftable
 		and not other_line_draftable
 		and rank_level == 2
@@ -1958,7 +2296,10 @@ func _run() -> void:
 	)
 	_check(
 		face_gap[1] <= 3.0,
-		"paint running down a face stays against it rather than glancing away"
+		(
+			"paint running down a face stays against it rather than glancing away "
+			+ "(gap %.2f -> %.2f cells; travel %.2f -> %.2fpx)"
+		) % [face_gap[0], face_gap[1], face_travel[0], face_travel[1]]
 	)
 
 	# The scene file is the surface this interface is designed on, so what a node
@@ -2709,7 +3050,7 @@ func _run() -> void:
 
 	# Cuttings gather to the player, then launch and strike.
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 9999.0
+	prototype.combat._cane_remaining = 9999.0
 	var cutting_target := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.BOSS,
@@ -2733,7 +3074,7 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	_grow_test_ecosystem(prototype)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 9999.0
+	prototype.combat._cane_remaining = 9999.0
 	pruning.reset_director()
 	var ring_home := _stand_on_owned_ground(prototype)
 	# The ring fills over a few seconds of grazing. Standing still burns the ground
@@ -3269,7 +3610,7 @@ func _run() -> void:
 		"Grazers graze in bursts followed by a recovery window"
 	)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var grazing_enemy := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.GRAZER,
@@ -3335,7 +3676,7 @@ func _run() -> void:
 	prototype.territory_field.debug_establish_bramble()
 	var frontier_position := _find_player_frontier(prototype.territory_field)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var bramble_enemy := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.BOSS,
@@ -3402,7 +3743,7 @@ func _run() -> void:
 	)
 	prototype._apply_progression_modifiers()
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var repelled_enemy := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.ELITE,
@@ -3456,7 +3797,7 @@ func _run() -> void:
 		PhaseBCombatDirector.EnemyRole.WARDEN,
 	]:
 		prototype.combat.reset_combat()
-		prototype.combat._thornshot_remaining = 999.0
+		prototype.combat._cane_remaining = 999.0
 		var weakening_enemy := _spawn_bramble_contact_enemy(
 			prototype,
 			weakening_role,
@@ -3484,7 +3825,7 @@ func _run() -> void:
 	] = 1
 	prototype._apply_progression_modifiers()
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var rooted_enemy := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.ELITE,
@@ -3841,7 +4182,7 @@ func _run() -> void:
 	prototype.territory_field.debug_establish_bramble()
 	prototype.combat.set_bramble_modifiers(true, 0.0)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var single_tick_frontier := _find_player_frontier(prototype.territory_field)
 	var single_tick_enemy := _spawn_bramble_contact_enemy(
 		prototype,
@@ -3863,7 +4204,7 @@ func _run() -> void:
 	)
 
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var crossing_enemy := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.BOSS,
@@ -3882,7 +4223,7 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	prototype.territory_field.set_bramble_modifiers(true, 2.0)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var fresh_crossing_enemy := _spawn_bramble_contact_enemy(
 		prototype,
 		PhaseBCombatDirector.EnemyRole.BOSS,
@@ -3903,7 +4244,7 @@ func _run() -> void:
 	prototype.territory_field.debug_establish_bramble()
 	prototype.combat.set_bramble_modifiers(true, 0.0)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var thorn_frontier := _find_player_frontier(prototype.territory_field)
 	prototype.combat.set_enemy_scaling(1.0, 1.0)
 	var small_enemy := _spawn_bramble_contact_enemy(
@@ -3993,14 +4334,18 @@ func _run() -> void:
 		"Entanglement ramps thorn damage from a modest first touch to an authored maximum"
 	)
 
+	# Exercise the real Root path gate without disturbing the primary-only run this
+	# longer scenario is about. Temporarily filling the unused support slot makes
+	# RootDirector see a genuinely held Root path, then the exact state is restored.
 	var unrooted_tick := prototype.combat.get_bramble_tick_damage(small_enemy, 1.0)
 	small_enemy.bramble_ground_maturity = 1.0
 	var fresh_ground_tick := prototype.combat.get_bramble_tick_damage(small_enemy, 1.0)
-	prototype.combat.set_bramble_modifiers(true, 0.0, 1.0, 0.0, 4.0, 0.0, false, 0.50)
+	var previous_tertiary_path := prototype.progression.tertiary_path
+	prototype.progression.tertiary_path = PhaseBProgression.PathId.ROOT
 	var mature_ground_tick := prototype.combat.get_bramble_tick_damage(small_enemy, 1.0)
 	small_enemy.bramble_ground_maturity = 0.0
 	var root_network_fresh_tick := prototype.combat.get_bramble_tick_damage(small_enemy, 1.0)
-	prototype.combat.set_bramble_modifiers(true, 0.0)
+	prototype.progression.tertiary_path = previous_tertiary_path
 	_check(
 		is_equal_approx(fresh_ground_tick, unrooted_tick)
 		and mature_ground_tick > fresh_ground_tick
@@ -4025,7 +4370,7 @@ func _run() -> void:
 	)
 
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var shared_enemies: Array[PhaseBCombatDirector.EnemyState] = []
 	var shared_health_before := PackedFloat32Array()
 	for _shared_index in range(4):
@@ -4107,7 +4452,7 @@ func _run() -> void:
 		and prototype.combat.get_active_briar_pod_count() == 1,
 		"Spore plus Bramble evolves into Briar Pods that raise temporary thorn perimeters"
 	)
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var briar_ring_position := (
 		briar_center + Vector2(prototype.evolutions.briar_pod_radius_pixels, 0.0)
 	)
@@ -4127,7 +4472,7 @@ func _run() -> void:
 		"a Briar Pod's visible perimeter applies amplified Bramble damage and slow"
 	)
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	var briar_wall_center := Vector2(
 		prototype.territory_field.tuning.arena_size.x * 0.475,
 		prototype.territory_field.tuning.arena_size.y * 0.20
@@ -4197,7 +4542,7 @@ func _run() -> void:
 
 	# A trap waits for prey, blows once, and lights its neighbours.
 	prototype.combat.reset_combat()
-	prototype.combat._thornshot_remaining = 999.0
+	prototype.combat._cane_remaining = 999.0
 	prototype.combat.spawn_briar_trap(trap_position, 60.0, 12.0, 30.0, 0.30)
 	prototype.combat.spawn_briar_trap(
 		trap_position + Vector2(70.0, 0.0),
@@ -4257,11 +4602,11 @@ func _run() -> void:
 		prototype.progression.current_level == offered_level + 1
 		and prototype.progression.get_upgrade_level(selected_upgrade) == 1
 		and not prototype.choice_panel.visible,
-		"choosing an upgrade commits one of the six growth lines and resumes play"
+		"choosing an upgrade commits a growth line and resumes play"
 	)
 
 	prototype.progression.reset_progression()
-	var final_level_upgrade := PhaseBProgression.UpgradeId.THORNSHOT_POWER
+	var final_level_upgrade := PhaseBProgression.UpgradeId.THISTLE_CLUSTERING
 	prototype.progression._upgrade_levels[final_level_upgrade] = (
 		prototype.progression.maximum_upgrade_level - 1
 	)
@@ -4416,6 +4761,30 @@ func _run() -> void:
 			CloverSlot.Symbol.CLOVER,
 		])) == CloverSlot.Outcome.TRIPLE_CLOVER,
 		"a Clover completes a Path pair, never a Bust, and never chooses between two Paths"
+	)
+	var all_slot_paths_present := CloverSlot.PATH_SYMBOLS.size() == PhaseBProgression.PathId.size()
+	var mapped_slot_paths := {}
+	for path_symbol in CloverSlot.PATH_SYMBOLS:
+		var mapped_path := prototype._path_id_for_symbol(path_symbol)
+		all_slot_paths_present = (
+			all_slot_paths_present
+			and CloverSlot.is_path_symbol(path_symbol)
+			and mapped_path >= 0
+			and prototype._symbol_texture(path_symbol) != null
+		)
+		mapped_slot_paths[mapped_path] = true
+	_check(
+		all_slot_paths_present
+		and mapped_slot_paths.size() == PhaseBProgression.PathId.size()
+		and CloverSlot.PATH_SYMBOLS.has(CloverSlot.Symbol.THISTLE)
+		and CloverSlot.PATH_SYMBOLS.has(CloverSlot.Symbol.VINE)
+		and CloverSlot.PATH_SYMBOLS.has(CloverSlot.Symbol.FRUIT)
+		and CloverSlot.resolve_outcome(PackedInt32Array([
+			CloverSlot.Symbol.FRUIT,
+			CloverSlot.Symbol.CLOVER,
+			CloverSlot.Symbol.FRUIT,
+		])) == CloverSlot.Outcome.PATH_JACKPOT,
+		"all eight Paths have unique reel mappings and icons, including the three Adaptations"
 	)
 
 	# The reels are built to represent a result that was already decided, so a face the
@@ -4738,6 +5107,76 @@ func _run() -> void:
 		) == owned_before,
 		"a jackpot runs the Path at its ceiling for a stacking duration, grants no ownership, and gives it all back"
 	)
+
+	# The three new faces must pay real, immediately readable Path events, not merely
+	# light a timer whose mechanic remains dormant until some later cadence.
+	prototype.progression.reset_progression()
+	jackpots.reset_jackpots()
+	prototype.territory_field.reset_field()
+	prototype.player.reset_player()
+	prototype.combat.reset_combat()
+	adaptations.reset_adaptations()
+	prototype._apply_progression_modifiers()
+	var adaptation_jackpot_origin := prototype.player.get_arena_position()
+	prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		adaptation_jackpot_origin + Vector2(96.0, 0.0)
+	)
+	prototype._on_path_jackpot(CloverSlot.Symbol.THISTLE, 1.0)
+	var jackpot_thorns := 0
+	for thorn in adaptations._thorns:
+		if thorn.active:
+			jackpot_thorns += 1
+	var thistle_jackpot_fired := (
+		jackpots.is_active(PhaseBProgression.PathId.THISTLE)
+		and adaptations.get_active_thistle_count() == 5
+		and jackpot_thorns > 0
+	)
+
+	jackpots.reset_jackpots()
+	prototype.progression.reset_progression()
+	prototype.combat.reset_combat()
+	adaptations.reset_adaptations()
+	prototype._apply_progression_modifiers()
+	var vine_jackpot_enemy := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		adaptation_jackpot_origin + Vector2(96.0, 0.0)
+	)
+	var vine_jackpot_health := prototype.combat.get_enemy_health(vine_jackpot_enemy)
+	prototype._on_path_jackpot(CloverSlot.Symbol.VINE, 1.0)
+	var vine_jackpot_fired := (
+		jackpots.is_active(PhaseBProgression.PathId.VINE)
+		and prototype.combat.get_enemy_health(vine_jackpot_enemy) < vine_jackpot_health
+		and prototype.combat._cane_auto_targets
+	)
+
+	jackpots.reset_jackpots()
+	prototype.progression.reset_progression()
+	prototype.combat.reset_combat()
+	adaptations.reset_adaptations()
+	prototype._apply_progression_modifiers()
+	prototype._on_path_jackpot(CloverSlot.Symbol.FRUIT, 1.0)
+	var jackpot_fruit_at_start_speed := true
+	for fruit in adaptations._fruits:
+		if fruit.active and not fruit.dropped_seed:
+			jackpot_fruit_at_start_speed = (
+				jackpot_fruit_at_start_speed
+				and is_equal_approx(fruit.speed, adaptations.fruit_speed_pixels_per_second)
+			)
+	var fruit_jackpot_fired := (
+		jackpots.is_active(PhaseBProgression.PathId.FRUIT)
+		and adaptations.get_active_fruit_count() == 6
+		and jackpot_fruit_at_start_speed
+	)
+	_check(
+		thistle_jackpot_fired and vine_jackpot_fired and fruit_jackpot_fired,
+		"Thistle, Vine, and Fruit reel faces fire their real max-rank battlefield events"
+	)
+	jackpots.reset_jackpots()
+	prototype.progression.reset_progression()
+	adaptations.reset_adaptations()
+	prototype.combat.reset_combat()
+	prototype._apply_progression_modifiers()
 
 	# A timed jackpot has to reach the ground. Bramble, Root and Pruning all gate their
 	# mechanics on owning the path, and Bramble and Root push their numbers into the field
@@ -5258,6 +5697,7 @@ func _run() -> void:
 	# material into the ground the way a bought one used to.
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()
+	prototype._apply_progression_modifiers()
 	prototype.territory_field.reset_field()
 	prototype.territory_field.step_simulation()
 	prototype.territory_field.recalculate_metrics_now()
@@ -5632,14 +6072,26 @@ func _run() -> void:
 	# pass with an array of seven nulls: the controls were authored detached from the
 	# pause panel and hidden, so the settings existed and nothing on screen drove them.
 	var every_option_reachable := (
-		prototype.setting_buttons.size() == PhaseBDisplaySettings.OptionId.size()
+		prototype.setting_buttons.size() == 5
+	)
+	prototype._open_pause_menu()
+	every_option_reachable = (
+		every_option_reachable
+		and prototype.pause_settings_button != null
+		and prototype.pause_settings_button.is_visible_in_tree()
+	)
+	prototype.pause_settings_button.pressed.emit()
+	every_option_reachable = (
+		every_option_reachable
+		and prototype.pause_settings_panel.visible
+		and not prototype.pause_panel.visible
 	)
 	for option_id in range(prototype.setting_buttons.size()):
 		var setting_button := prototype.setting_buttons[option_id]
-		if setting_button == null or not setting_button.visible:
+		if setting_button == null or not setting_button.is_visible_in_tree():
 			every_option_reachable = false
 			continue
-		if setting_button.get_parent() != prototype.pause_resume_button.get_parent():
+		if setting_button.get_parent() != prototype.pause_settings_panel:
 			every_option_reachable = false
 		# The row says its own name and its own value, and pressing it moves the value.
 		var before_text := setting_button.text
@@ -5674,6 +6126,13 @@ func _run() -> void:
 		PhaseBDisplaySettings.OptionId.UI_SCALE,
 		PhaseBDisplaySettings.get_choice_count(PhaseBDisplaySettings.OptionId.UI_SCALE) / 2
 	)
+	prototype.pause_settings_back_button.pressed.emit()
+	every_option_reachable = (
+		every_option_reachable
+		and prototype.pause_panel.visible
+		and not prototype.pause_settings_panel.visible
+	)
+	prototype._close_pause_menu()
 	_check(
 		stays_centred,
 		"the pause menu stays centred at every interface scale"
@@ -5700,44 +6159,42 @@ func _run() -> void:
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()
 
-	# The growth-line slots: what the run holds plus the one it is working toward.
-	# The row grows with the run rather than opening as a wall of padlocks, and each
-	# slot carries its own resolved hover text.
+	# The growth-line tree keeps each Path's four authored lines together, with a
+	# separate Evolution node and a locked support row beneath it.
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
 		PhaseBProgression.PathId.BRAMBLE,
 		PhaseBProgression.PathId.ROOT
 	)
 	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.THORNSHOT_POWER
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 	] = 3
 	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
+		PhaseBProgression.UpgradeId.ROOT_MATURE_STRENGTH
 	] = 2
 	prototype._apply_progression_modifiers()
 	prototype._update_hud()
 	var slot_row := prototype.upgrade_slots
 	var filled_tooltip := slot_row.get_slot_tooltip(0)
 	var empty_tooltip := slot_row.get_slot_tooltip(2)
-	var locked_tooltip := slot_row.get_slot_tooltip(
-		prototype.progression.upgrade_slot_count
-	)
-	var expected_damage := (
-		prototype.combat.thornshot_damage
-		* prototype.progression.get_thornshot_damage_multiplier()
-	)
+	var locked_tooltip := prototype._evolution_upgrade_slot.get_slot_tooltip(0)
+	var expected_slow := roundi(prototype.bramble_director.get_slow_fraction() * 100.0)
 	_check(
-		slot_row.get_slot_count()
-		== prototype.progression.get_upgrade_slot_count() + 1
-		and slot_row.get_slot_count()
-		< prototype.progression.upgrade_slot_count
-			+ prototype.progression.evolution_bonus_upgrade_slots
-		and filled_tooltip.contains("Thornshot Power")
+		slot_row.get_slot_count() == 4
+		and prototype._secondary_upgrade_slots.get_slot_count() == 4
+		and prototype._evolution_upgrade_slot.get_slot_count() == 1
+		and prototype._support_upgrade_slots.get_slot_count() == 4
+		and prototype._path_one_label.text == "BRAMBLE"
+		and prototype._path_two_label.text == "ROOT"
+		and prototype._support_path_label.text == "SUPPORT PATH"
+		and prototype._support_path_emblem_lock.visible
+		and not prototype._support_path_emblem.visible
+		and filled_tooltip.contains("Entanglement")
 		and filled_tooltip.contains("3/5")
-		and filled_tooltip.contains("%.1f damage per Thornshot" % expected_damage)
-		and empty_tooltip.contains("Empty growth slot")
-		and locked_tooltip.contains("Locked growth slot"),
-		"the growth tray shows what the run holds, one slot ahead, and no further"
+		and filled_tooltip.contains("up to %d%% slow" % expected_slow)
+		and empty_tooltip.contains("Available on an upgrade draft")
+		and locked_tooltip.contains("Evolution is locked"),
+		"the upgrade tree groups four lines per Path and locks Evolution and support"
 	)
 
 	# A slot has to survive the HUD refreshing under it. The rows re-assert their
@@ -5776,18 +6233,16 @@ func _run() -> void:
 	# marker.
 	_check(
 		slot_row.locked_icon != null
-		and slot_row.is_slot_locked_icon_visible(
-			prototype.progression.upgrade_slot_count
-		)
-		and slot_row.get_slot_level_text(
-			prototype.progression.upgrade_slot_count
-		).is_empty()
+		and prototype._evolution_upgrade_slot.is_slot_locked_icon_visible(0)
+		and prototype._support_upgrade_slots.is_slot_locked_icon_visible(0)
+		and prototype._evolution_upgrade_slot.get_slot_level_text(0).is_empty()
 		and slot_row.get_slot_level_text(2).is_empty()
 		and slot_row.get_slot_level_text(0) == "3",
-		"a filled slot shows its rank alone, locked slots the icon alone, empty slots nothing"
+		"filled lines show ranks while locked Evolution and support slots show icons"
 	)
 
-	# Slots keep their order, and the last two unlock on evolving.
+	# Upgrade order remains stable, and evolving opens the support row while filling
+	# the central Evolution node.
 	var slotted_before := prototype.progression.get_slotted_upgrades()
 	prototype.progression._upgrade_levels[
 		PhaseBProgression.UpgradeId.ROOT_POTENCY
@@ -5797,25 +6252,25 @@ func _run() -> void:
 	prototype.progression.grant_evolution_if_ready()
 	prototype._apply_progression_modifiers()
 	prototype._update_hud()
-	var unlocked_tooltip := slot_row.get_slot_tooltip(
-		prototype.progression.upgrade_slot_count
-	)
+	var unlocked_tooltip := prototype._support_upgrade_slots.get_slot_tooltip(0)
 	_check(
 		slotted_after.size() == slotted_before.size() + 1
 		and slotted_after[0] == slotted_before[0]
 		and slotted_after[1] == slotted_before[1]
-		and not unlocked_tooltip.contains("Locked growth slot"),
-		"a line keeps its slot for the run, and evolving unlocks the last two"
+		and prototype._evolution_upgrade_slot.get_slot_level_text(0) == "1"
+		and not prototype._support_path_emblem_lock.visible
+		and prototype._support_path_emblem.visible
+		and unlocked_tooltip.contains("Claim a support Path"),
+		"a line keeps its slot while Evolution opens the support row"
 	)
 
-	# The row grew with the run: it never showed the evolution's slots in advance.
+	# The tree's silhouette is stable: locked nodes unlock in place rather than
+	# making the HUD jump when Evolution is claimed.
 	_check(
-		slot_row.get_slot_count()
-		> prototype.progression.upgrade_slot_count
-		and slot_row.get_slot_count()
-		<= prototype.progression.upgrade_slot_count
-			+ prototype.progression.evolution_bonus_upgrade_slots,
-		"claiming the Evolution expands the growth tray toward its authored ceiling"
+		slot_row.get_slot_count() == 4
+		and prototype._secondary_upgrade_slots.get_slot_count() == 4
+		and prototype._support_upgrade_slots.get_slot_count() == 4,
+		"the upgrade tree keeps its path-grouped silhouette as states unlock"
 	)
 
 	# What the editor authored is what the game prints. Each line is re-authored
@@ -5981,38 +6436,37 @@ func _run() -> void:
 	var relics := prototype.relic_director
 	relics.reset_director()
 
-	# Predator's Eye: a strictly distinct extra target every tenth volley, and
-	# nothing at all when there is no second enemy to take it.
+	# Predator's Eye: every tenth Cane sweep reaches 35% farther, without creating
+	# a projectile or changing the fixed sector.
 	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PREDATORS_EYE] = 1
 	relics.apply_relics()
 	var lone_spot := _find_owned_cell_position(prototype)
 	prototype.player.global_position = prototype.territory_field.to_global(lone_spot)
-	prototype.combat.spawn_enemy(
+	prototype.player._facing = Vector2.RIGHT
+	var reach_target_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.HUNTER,
-		lone_spot + Vector2(40.0, 0.0)
+		lone_spot + Vector2(prototype.combat.cane_reach_pixels + 23.0, 0.0)
 	)
-	var lone_volley_shots := 0
-	for _lone_volley in range(relics.predators_eye_interval):
-		prototype.combat._thornshot_remaining = 0.0
-		var before := prototype.combat.get_active_projectile_count()
-		prototype.combat.simulate_step(1.0 / 60.0)
-		lone_volley_shots = prototype.combat.get_active_projectile_count() - before
-	var lone_extra_blocked := lone_volley_shots <= 1
-
-	prototype.combat.reset_combat()
-	for crowd_index in range(4):
-		prototype.combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
-			lone_spot + Vector2.from_angle(float(crowd_index) * 1.4) * 60.0
-		)
+	prototype.combat._cane_remaining = 0.0
+	prototype.combat.simulate_step(0.0)
+	var ordinary_reach_missed := is_equal_approx(
+		prototype.combat.get_enemy_health(reach_target_id),
+		prototype.combat.hunter_profile.maximum_health
+	)
 	prototype.combat._predators_eye_progress = relics.predators_eye_interval - 1
-	prototype.combat._thornshot_remaining = 0.0
-	var crowd_before := prototype.combat.get_active_projectile_count()
-	prototype.combat.simulate_step(1.0 / 60.0)
-	var crowd_shots := prototype.combat.get_active_projectile_count() - crowd_before
+	prototype.combat._cane_remaining = 0.0
+	prototype.combat.simulate_step(0.0)
 	_check(
-		lone_extra_blocked and crowd_shots == 2,
-		"PREDATOR'S EYE adds a distinct extra target, and nothing when alone"
+		ordinary_reach_missed
+		and prototype.combat.get_enemy_health(reach_target_id)
+		< prototype.combat.hunter_profile.maximum_health
+		and is_equal_approx(
+			prototype.combat._cane_visual_reach,
+			prototype.combat.get_cane_reach()
+				* (1.0 + prototype.combat.predators_eye_reach_bonus)
+		)
+		and prototype.combat.get_active_projectile_count() == 0,
+		"PREDATOR'S EYE extends every tenth Cane sweep by its authored 35%"
 	)
 	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PREDATORS_EYE] = 0
 
@@ -6027,7 +6481,7 @@ func _run() -> void:
 			lone_spot,
 			1,
 			PhaseBCombatDirector.EnemyRole.HUNTER,
-			PhaseBCombatDirector.DeathSource.THORNSHOT,
+			PhaseBCombatDirector.DeathSource.CANE,
 			0
 		)
 	var primed := relics._overpopulation_primed
@@ -6044,7 +6498,7 @@ func _run() -> void:
 		lone_spot,
 		1,
 		PhaseBCombatDirector.EnemyRole.HUNTER,
-		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		PhaseBCombatDirector.DeathSource.CANE,
 		0
 	)
 	_check(
@@ -6093,7 +6547,7 @@ func _run() -> void:
 			mature_spot,
 			1,
 			PhaseBCombatDirector.EnemyRole.HUNTER,
-			PhaseBCombatDirector.DeathSource.THORNSHOT,
+			PhaseBCombatDirector.DeathSource.CANE,
 			0
 		)
 	_check(
@@ -6179,32 +6633,43 @@ func _run() -> void:
 		"REGROWTH remembers owned ground, and turning it off clears the layer"
 	)
 
-	# Blood in the Water changes what the Core Weapon wants, not what it hits for.
+	# Blood in the Water adds damage inside Cane's existing sector; it does not
+	# reintroduce target-priority logic from the removed projectile weapon.
 	prototype.combat.reset_combat()
+	prototype.combat.set_cane_auto_targeting(false)
 	prototype.player.global_position = prototype.territory_field.to_global(lone_spot)
+	prototype.player._facing = Vector2.RIGHT
 	var healthy_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.HUNTER,
-		lone_spot + Vector2(40.0, 0.0)
+		PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
+		lone_spot + Vector2(56.0, -14.0)
 	)
 	var wounded_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.HUNTER,
-		lone_spot + Vector2(150.0, 0.0)
+		PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
+		lone_spot + Vector2(56.0, 14.0)
 	)
+	# Leave more than the amplified 30 damage below the 20% gate so overkill
+	# clamping cannot hide the full 1.25x packet the assertion is measuring.
+	for blood_target_id in [healthy_id, wounded_id]:
+		var blood_target := prototype.combat._find_enemy(blood_target_id)
+		if blood_target != null:
+			blood_target.maximum_health = 240.0
+			blood_target.health = blood_target.maximum_health
 	prototype.combat.damage_enemy_by_id(
 		wounded_id,
-		prototype.combat.get_enemy_health(wounded_id) * 0.9,
+		prototype.combat.get_enemy_health(wounded_id) * 0.81,
 		PhaseBCombatDirector.DeathSource.DEBUG
 	)
-	prototype.combat.set_relic_rules(0, 0.0, 0.55, 0.0, 0, 0.0, 1.0)
-	prototype.combat._collect_thornshot_targets(1)
-	var nearest_first := prototype.combat._thornshot_targets[0].id == healthy_id
 	prototype.combat.set_relic_rules(0, 0.0, 0.55, 0.20, 0, 0.0, 1.0)
-	prototype.combat._collect_thornshot_targets(1)
-	var wounded_first := prototype.combat._thornshot_targets[0].id == wounded_id
+	var healthy_before := prototype.combat.get_enemy_health(healthy_id)
+	var wounded_before := prototype.combat.get_enemy_health(wounded_id)
+	prototype.combat.perform_bonus_cane_sweep(Vector2.RIGHT, true)
+	var healthy_damage := healthy_before - prototype.combat.get_enemy_health(healthy_id)
+	var wounded_damage := wounded_before - prototype.combat.get_enemy_health(wounded_id)
 	prototype.combat.set_relic_rules(0, 0.0, 0.55, 0.0, 0, 0.0, 1.0)
 	_check(
-		nearest_first and wounded_first,
-		"BLOOD IN THE WATER repoints the Core Weapon at badly wounded enemies"
+		healthy_damage > 0.0
+		and is_equal_approx(wounded_damage, healthy_damage * 1.25),
+		"BLOOD IN THE WATER adds 25% Cane damage below its 20% health gate"
 	)
 
 	# Snare Vine spreads a capped share of a root to the nearest few enemies.
@@ -6326,8 +6791,9 @@ func _run() -> void:
 	_check(
 		prototype.progression.evolution_status == PhaseBProgression.EvolutionStatus.EVOLVED
 		and prototype.progression.active_evolution
-		== PhaseBProgression.EvolutionId.SUPER_BLOOM,
-		"choosing the pairing in the draft grants Super Bloom immediately"
+		== PhaseBProgression.EvolutionId.SUPER_BLOOM
+		and prototype.progression.get_evolution_upgrade_level() == 1,
+		"choosing the pairing grants Super Bloom and its rank-1 line immediately"
 	)
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
 	_check(
@@ -6550,7 +7016,7 @@ func _run() -> void:
 	prototype.combat._damage_enemy(
 		siege,
 		1.0,
-		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		PhaseBCombatDirector.DeathSource.CANE,
 		0
 	)
 	_check(
@@ -6629,7 +7095,7 @@ func _run() -> void:
 	prototype.combat._damage_enemy(
 		regen,
 		1.0,
-		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		PhaseBCombatDirector.DeathSource.CANE,
 		0
 	)
 	var regen_after_shot := regen.health
@@ -6679,7 +7145,7 @@ func _run() -> void:
 	prototype.combat._damage_enemy(
 		volatile,
 		volatile.health + 1.0,
-		PhaseBCombatDirector.DeathSource.THORNSHOT,
+		PhaseBCombatDirector.DeathSource.CANE,
 		0
 	)
 	_check(

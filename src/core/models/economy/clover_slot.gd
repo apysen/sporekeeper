@@ -7,7 +7,7 @@ extends RefCounted
 ## that decides whether a line paid cannot be a different piece of code from the thing
 ## that drew it.
 
-## Five Paths, the Clover wild, and the Bust. The five Path faces are the Plant Paths
+## Eight Paths, the Clover wild, and the Bust. The Path faces are the Plant Paths
 ## themselves rather than an abstract prize table, because the payout is the Path event
 ## landing on the battlefield.
 enum Symbol {
@@ -16,6 +16,9 @@ enum Symbol {
 	BLOOM,
 	BRAMBLE,
 	PRUNING,
+	THISTLE,
+	VINE,
+	FRUIT,
 	CLOVER,
 	BUST,
 }
@@ -45,6 +48,9 @@ const PATH_SYMBOLS := [
 	Symbol.BLOOM,
 	Symbol.BRAMBLE,
 	Symbol.PRUNING,
+	Symbol.THISTLE,
+	Symbol.VINE,
+	Symbol.FRUIT,
 ]
 
 const STAKE_FRACTIONS := [0.10, 0.25, 0.50, 1.00]
@@ -55,7 +61,7 @@ static func get_stake_fraction(stake: int) -> float:
 
 
 static func is_path_symbol(symbol: int) -> bool:
-	return symbol >= Symbol.ROOT and symbol <= Symbol.PRUNING
+	return symbol >= Symbol.ROOT and symbol <= Symbol.FRUIT
 
 
 static func resolve_path(symbols: PackedInt32Array) -> int:
@@ -112,6 +118,12 @@ static func get_symbol_name(symbol: int) -> String:
 			return "Bramble"
 		Symbol.PRUNING:
 			return "Pruning"
+		Symbol.THISTLE:
+			return "Thistle"
+		Symbol.VINE:
+			return "Vine"
+		Symbol.FRUIT:
+			return "Fruit"
 		Symbol.CLOVER:
 			return "Clover"
 		_:

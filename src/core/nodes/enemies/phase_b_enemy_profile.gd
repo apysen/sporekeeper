@@ -64,7 +64,8 @@ enum TerritoryBehavior {
 @export_range(2.0, 64.0, 0.5) var body_radius_pixels := 9.0
 
 @export_group("Targeting and Navigation")
-## Thornshot target-score multiplier; values below 1 make this enemy more attractive.
+## Generic threat-target score multiplier used by systems that seek an enemy;
+## values below 1 make this role more attractive. Cane itself never targets.
 @export_range(0.05, 2.0, 0.05) var target_priority_multiplier := 1.0
 ## Uses CombatDirector's wider boss navigation clearance instead of the small clearance.
 @export var use_boss_navigation := false

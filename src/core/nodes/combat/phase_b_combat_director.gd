@@ -11,6 +11,9 @@ const STEERING_ANGLES: Array[float] = [0.0, 0.48, -0.48, 0.92, -0.92, 1.45, -1.4
 const XP_COLLECT_AUDIO_VOICE_COUNT := 12
 const PLANT_EXPLOSION_MAX_POLYPHONY := 8
 const OLD_GROWTH_MAX_POLYPHONY := 4
+const DEBUG_PROJECTILE_SPEED := 720.0
+const DEBUG_PROJECTILE_RANGE := 285.0
+const DEBUG_PROJECTILE_LIFETIME := 1.4
 
 signal enemy_killed(
 	local_position: Vector2,
@@ -24,6 +27,9 @@ signal elite_defeated
 signal boss_defeated
 signal boss_erupted(local_position: Vector2)
 signal briar_trap_detonated(local_position: Vector2)
+## An Overgrown enemy shedding a Fruiting Body's Seeds is Spore's business, not
+## combat's: this reports the rupture and the Spore path decides what Seeds it makes.
+signal fruiting_body_ruptured(local_position: Vector2)
 ## Grasping Roots pinned an enemy. Published so a relic can answer a root without
 ## reaching into the combat loop for it.
 signal enemy_rooted(local_position: Vector2)
@@ -33,6 +39,33 @@ signal active_enemy_count_changed(count: int)
 signal elite_modifier_assigned(enemy_id: int, modifier: int)
 ## A Volatile elite detonated where it died.
 signal elite_detonated(local_position: Vector2, radius: float)
+## The universal Cane publishes one bounded event per sweep so Vine and its pair
+## Evolutions can answer the attack without replacing its cadence or targeting rules.
+signal cane_sweep_started(
+	origin: Vector2,
+	facing: Vector2,
+	left_to_right: bool,
+	reach: float,
+	damage: float,
+	is_bonus: bool
+)
+signal cane_enemy_hit(
+	enemy_id: int,
+	local_position: Vector2,
+	distance_fraction: float,
+	apical: bool,
+	damage: float,
+	killed: bool,
+	is_bonus: bool
+)
+signal cane_sweep_finished(
+	origin: Vector2,
+	facing: Vector2,
+	left_to_right: bool,
+	reach: float,
+	hit_count: int,
+	is_bonus: bool
+)
 
 enum EnemyRole {
 	HUNTER,
@@ -80,7 +113,7 @@ enum EnemyStateKind {
 }
 
 enum DeathSource {
-	THORNSHOT,
+	CANE,
 	BLOOM,
 	SUPER_BLOOM,
 	DEBUG,
@@ -92,6 +125,12 @@ enum DeathSource {
 	## Damage dealt by a relic. Relic kills never feed a relic's own trigger, so
 	## the source is what stops a primed explosion from chaining into itself.
 	RELIC,
+	## An Overgrown enemy rotting from the inside. Named apart from the rest because
+	## Spore has already been paid for this enemy: an Overgrown kill must not also
+	## feed the kill-to-Seed counter.
+	SPORE,
+	THISTLE,
+	FRUIT,
 }
 
 class EnemyState:
@@ -149,6 +188,19 @@ class EnemyState:
 	var knockback_remaining := 0.0
 	## Opening speed of the shove; it eases to zero across the duration.
 	var knockback_speed := 0.0
+	## Suppressed: seconds left of the window in which this enemy is worse at eating
+	## Green, and the share of its territory damage the window takes away. It touches
+	## the territory layer and nothing else - not what it does to the player, not how
+	## fast it moves, not what it can take.
+	var suppression_remaining := 0.0
+	var suppression_share := 0.0
+	## 0-to-1 Spore accumulated by standing on owned Green. Unlike Entanglement it
+	## never decays: an infection the enemy walks away from is still an infection.
+	var spore := 0.0
+	## Set the moment Spore reaches 1.0, and never cleared while the enemy lives.
+	var overgrown := false
+	## Seconds until the next tick of Overgrown max-health damage.
+	var spore_damage_remaining := 0.0
 	## 0-to-1 Entanglement accumulated by standing on Bramble-covered Green.
 	var entanglement := 0.0
 	## Frontier hedge strength sampled where the enemy stands, as a damage bonus.
@@ -234,6 +286,19 @@ class BriarTrapState:
 	var chain_depth := 0
 	var seed := 0
 
+class FruitingBodyState:
+	## One fungal colony raised by a germination inside owned Green. Every Fruiting
+	## Body behaves identically whatever rank raised it: the upgrade line buys how
+	## often one appears, never what it does once it is standing.
+	var active := false
+	var position := Vector2.ZERO
+	## Seconds until the next Spore cloud.
+	var cloud_remaining := 0.0
+	## Clouds left before this colony ruptures.
+	var clouds_remaining := 0
+	var seed := 0
+
+
 class PendingEruptionState:
 	var active := false
 	var position := Vector2.ZERO
@@ -241,7 +306,7 @@ class PendingEruptionState:
 	var chain_depth := 0
 
 @export_group("Collaborators")
-## Player component used as the enemy target, Thornshot origin, and contact-damage receiver.
+## Player component used as the enemy target, Cane origin, and contact-damage receiver.
 @export var player: PhaseBPlayer
 ## Authoritative field used for wall visibility, navigation, ownership, and erosion commands.
 @export var territory_field: TerritoryField
@@ -252,6 +317,66 @@ class PendingEruptionState:
 ## Presentation options. Optional: without it every number is drawn, which is the
 ## behaviour this had before the setting existed.
 @export var display_settings: PhaseBDisplaySettings
+## Root component supplying the Root Network amplification at a given position,
+## which is how the relics that deepen the Network locally reach the Bramble rules.
+## Optional: without it the path falls back to the run-wide bonus Bramble pushes in.
+@export var root_director: PhaseBRootDirector
+
+@export_group("Sporulation")
+## Spore an enemy standing on owned Green gains per second before the Sporulation
+## line adds to it. Every Spore radius below is authored in pixels: the design doc
+## states them in metres at 1 m = 20 px, which is the scale the Briar Pod perimeter
+## and the Seed burst already work at.
+@export_range(0.0, 1.0, 0.005) var sporulation_per_second := 0.05
+## Share of its own maximum health an Overgrown enemy loses per second, which kills
+## it in five. Applied to every role alike - there is no boss cap and no elite
+## resistance, because the gate on this path is reaching 100% Spore and not the
+## damage that follows it. Set to compete with how fast Bloom and Pruning clear a
+## mob: a completed infection has to be worth the time it took to land.
+@export_range(0.0, 1.0, 0.005) var overgrown_max_health_damage_per_second := 0.25
+## Seconds between ticks of that damage. Chip damage on a clock rather than a
+## per-frame drain, so a damage number is readable when it appears.
+@export_range(0.05, 3.0, 0.05) var overgrown_damage_interval_seconds := 0.5
+## Spore an Overgrown enemy pushes into everything around it every second while it
+## is dying. Over its four-second lethal phase this is 40% to anything that stays in
+## range, which the death burst then finishes. Deliberately NOT amplified by Root
+## Potency: the aura and the burst are the self-propagating half of the outbreak, and
+## multiplying the loop's own feedback term makes it impossible to tune.
+@export_range(0.0, 1.0, 0.01) var overgrown_contagion_spore_per_second := 0.10
+## Reach of that aura.
+@export_range(8.0, 320.0, 2.0) var overgrown_contagion_radius_pixels := 60.0
+## Spore the death of an Overgrown enemy applies to everything near the corpse. Flat
+## for the same reason the aura is.
+@export_range(0.0, 1.0, 0.01) var overgrown_burst_spore := 0.60
+## Reach of that burst. 3 m in the design doc.
+@export_range(8.0, 320.0, 2.0) var overgrown_burst_radius_pixels := 80.0
+
+## Share of its own maximum health an elite loses to a Fungal Collapse instead of
+## dying outright, and the same for a boss. Collapse cashes an infection in at once
+## against ordinary mobs; against the things a run is supposed to fight for a while
+## it pays out as a large hit and an Overgrown status rather than a delete.
+@export_range(0.0, 1.0, 0.01) var fungal_collapse_elite_health_share := 0.50
+@export_range(0.0, 1.0, 0.01) var fungal_collapse_boss_health_share := 0.15
+## How far apart two enemies can stand and still count as the same cluster when a
+## Germination Season looks for somewhere worth opening.
+@export_range(8.0, 400.0, 2.0) var infection_cluster_radius_pixels := 70.0
+
+@export_group("Fruiting Bodies")
+## Fruiting Bodies alive at once. The design doc's cap of 20 is the pool itself, so
+## no counter can drift away from the number of colonies that actually exist.
+@export_range(1, 120, 1) var fruiting_body_pool_size := 20
+## Seconds between one colony's Spore clouds.
+@export_range(0.5, 30.0, 0.5) var fruiting_body_cloud_interval_seconds := 3.0
+## Clouds a colony releases before it ruptures.
+@export_range(1, 12, 1) var fruiting_body_clouds := 3
+## Spore one cloud applies to everything inside it.
+@export_range(0.0, 1.0, 0.01) var fruiting_body_cloud_spore := 0.30
+## Reach of a cloud. 2.5 m in the design doc.
+@export_range(8.0, 320.0, 2.0) var fruiting_body_cloud_radius_pixels := 60.0
+## Spore the rupture applies.
+@export_range(0.0, 1.0, 0.01) var fruiting_body_rupture_spore := 0.75
+## Reach of the rupture. 3.5 m in the design doc.
+@export_range(8.0, 320.0, 2.0) var fruiting_body_rupture_radius_pixels := 80.0
 
 @export_group("Damage Numbers")
 ## Damage at or above which a hit counts as important, and survives the Important
@@ -326,25 +451,35 @@ class PendingEruptionState:
 ## is refused outright rather than allowed to strand the run.
 @export_range(0.0, 240.0, 4.0) var colony_core_relocation_pixels := 96.0
 
-@export_group("Thornshot")
-## Base damage dealt by each Thornshot hit before upgrades and relic multipliers.
-@export_range(1.0, 200.0, 1.0) var thornshot_damage := 16.0
-## Base seconds between automatic shots before Thornshot Tempo upgrades apply.
-@export_range(0.05, 3.0, 0.01) var thornshot_cooldown_seconds := 0.42
-## Projectile travel speed in arena pixels per second.
-@export_range(100.0, 1400.0, 10.0) var thornshot_speed_pixels_per_second := 720.0
-## Maximum projectile lifetime in seconds, independent of its range limit.
-@export_range(0.1, 5.0, 0.1) var thornshot_lifetime_seconds := 1.40
-## Maximum targeting and projectile travel distance in arena pixels.
-@export_range(40.0, 960.0, 5.0) var thornshot_range_pixels := 285.0
-## Maximum number of enemies one projectile can damage before disappearing.
-@export_range(1, 8, 1) var thornshot_pierce := 1
+@export_group("Cane")
+## Universal starting-weapon damage. Cane has no upgrade line of its own; Vine
+## evolves these same sweeps through reach, damage, cadence, and the apical tip.
+@export_range(1.0, 200.0, 1.0) var cane_damage := 24.0
+## Seconds between automatic sweeps before Vine, relic, or temporary rate rules.
+@export_range(0.05, 3.0, 0.01) var cane_cooldown_seconds := 0.72
+## Radius of the base melee sweep measured from the player.
+@export_range(20.0, 480.0, 2.0) var cane_reach_pixels := 92.0
+## Fixed sector width. Base Cane centers on facing; Vine centers on the densest
+## targetable sector at sweep start.
+@export_range(10.0, 180.0, 1.0) var cane_arc_degrees := 90.0
+## Presentation time for the visible left-to-right or right-to-left stroke.
+@export_range(0.05, 0.8, 0.01) var cane_sweep_seconds := 0.20
+## Outermost share of reach that counts as the Vine apical zone.
+@export_range(0.05, 0.75, 0.01) var cane_apical_fraction := 0.25
+## Predator's Eye rework: reach added to every configured cadence sweep.
+@export_range(0.0, 2.0, 0.05) var predators_eye_reach_bonus := 0.35
+## Follow Through rework: damage banked by a Cane kill for the next connecting sweep.
+@export_range(0.0, 2.0, 0.05) var follow_through_damage_bonus := 0.35
+## Blood in the Water rework: execute damage against enemies under its health gate.
+@export_range(0.0, 2.0, 0.05) var wounded_cane_damage_bonus := 0.25
+## Underdog rework: Cane cooldown multiplier while the authored local swarm exists.
+@export_range(0.05, 1.0, 0.01) var underdog_cane_cooldown_multiplier := 0.70
 
 @export_group("Combat Audio")
-## Audio stream played whenever Thornshot successfully fires.
-@export var thornshot_shoot_sfx: AudioStream
-## Per-player Thornshot gain in decibels before the SFX bus output cap.
-@export_range(-40.0, 6.0, 0.5) var thornshot_sfx_volume_db := -6.0
+## Audio stream played once at the start of every Cane sweep.
+@export var cane_swing_sfx: AudioStream
+## Per-player Cane gain in decibels before the SFX bus output cap.
+@export_range(-40.0, 6.0, 0.5) var cane_sfx_volume_db := -6.0
 ## Audio stream played for each collected XP circle.
 @export var xp_collect_sfx: AudioStream
 ## Per-voice XP collection gain in decibels before the SFX bus output cap.
@@ -473,12 +608,18 @@ class PendingEruptionState:
 @export_group("Object Pools")
 ## Enemy-state objects preallocated when this node enters the scene tree.
 @export_range(20, 400, 1) var enemy_pool_size := 160
-## Thornshot projectile-state objects preallocated when this node enters the scene tree.
+## Generic projectile-state objects retained for stress probes and secondary effects;
+## the Cane never allocates or fires one.
 @export_range(10, 240, 1) var projectile_pool_size := 96
 ## XP pickup-state objects preallocated when this node enters the scene tree.
 @export_range(20, 400, 1) var pickup_pool_size := 180
 ## Spawn limit for simultaneously active enemies; keep at or below the enemy pool size.
 @export_range(10, 300, 1) var maximum_active_enemies := 130
+
+@export_group("Rendering Performance")
+## Above this population, cosmetic battlefield detail is reduced while role colours,
+## hit feedback, status effects, and major-enemy telegraphs remain.
+@export_range(20, 300, 1) var crowd_visual_lod_enemy_threshold := 80
 
 @export_group("Enemy Navigation")
 ## Seconds between navigation-field rebuild checks and direct-path visibility refreshes.
@@ -502,11 +643,28 @@ var _bramble_zones: Array[BrambleZoneState] = []
 var _active_enemy_count := 0
 var _next_enemy_id := 1
 var _spawn_sequence := 0
-var _thornshot_remaining := 0.0
-var _thornshot_damage_multiplier := 1.0
-var _thornshot_target_count := 1
-var _thornshot_targets: Array[EnemyState] = []
-var _thornshot_cooldown_multiplier := 1.0
+var _cane_remaining := 0.0
+var _cane_damage_multiplier := 1.0
+var _cane_cooldown_multiplier := 1.0
+var _cane_reach_multiplier := 1.0
+var _cane_apical_damage_bonus := 0.0
+var _cane_auto_targets := false
+var _cane_next_left_to_right := true
+var _cane_visual_remaining := 0.0
+var _cane_visual_origin := Vector2.ZERO
+var _cane_visual_facing := Vector2.RIGHT
+var _cane_visual_left_to_right := true
+var _cane_visual_reach := 0.0
+var _cane_visual_path := PackedVector2Array()
+var _cane_route_cache: Dictionary = {}
+var _cane_sweep_count := 0
+var _heartwood_rank := 0
+var _heartwood_progress := 0
+var _heartwood_echo_remaining := 0.0
+var _heartwood_echo_facing := Vector2.RIGHT
+var _heartwood_echo_left_to_right := true
+var _next_cane_cooldown_multiplier := 1.0
+var _cane_apical_fraction_bonus := 0.0
 var _predators_eye_interval := 0
 var _predators_eye_progress := 0
 var _follow_through_seconds := 0.0
@@ -523,6 +681,10 @@ var _rampart_center := Vector2(-1.0, -1.0)
 var _rampart_radius := 0.0
 var _rampart_ensnare_bonus := 0.0
 var _rampart_repulsion_multiplier := 1.0
+var _sporulation_enabled := false
+var _sporulation_rate_multiplier := 1.0
+var _fruiting_bodies: Array[FruitingBodyState] = []
+var _fruiting_body_sequence := 0
 var _bramble_enabled := false
 var _bramble_slow_fraction := 0.0
 var _bramble_repulsion_pixels := 0.0
@@ -553,6 +715,9 @@ var _ancient_fury_awakening_remaining := 0.0
 var _pending_eruptions: Array[PendingEruptionState] = []
 var _briar_heart_recharges: Array = []
 var _ensnare_zones: Array = []
+## Short-lived local multipliers created by contaminated Fruit trails. Like Ensnare
+## zones, overlapping patches refresh/choose the strongest value instead of stacking.
+var _spore_rate_zones: Array = []
 var _mass_entanglement_elite_share := 0.5
 var _mass_entanglement_boss_share := 0.2
 var _enemy_health_scale := 1.0
@@ -579,13 +744,13 @@ var _navigation_small_distances := PackedInt32Array()
 var _navigation_boss_distances := PackedInt32Array()
 var _navigation_catalyst_distances := PackedInt32Array()
 var _navigation_queue := PackedInt32Array()
-var _thornshot_audio: AudioStreamPlayer
+var _cane_audio: AudioStreamPlayer
 var _plant_explosion_audio: AudioStreamPlayer
 var _old_growth_audio: AudioStreamPlayer
 var _old_growth_sfx_play_count := 0
 var _old_growth_sfx_retrigger_remaining := 0.0
 var _xp_collect_audio_voices: Array[AudioStreamPlayer] = []
-var _thornshot_sfx_play_count := 0
+var _cane_sfx_play_count := 0
 var _plant_explosion_sfx_play_count := 0
 var _xp_collect_sfx_play_count := 0
 var _xp_collect_voice_cursor := 0
@@ -667,15 +832,17 @@ func _process(delta: float) -> void:
 
 func simulate_step(delta: float) -> void:
 	_update_bramble_horde_pressure(delta)
-	_update_thornshot(delta)
+	_update_cane(delta)
 	_old_growth_sfx_retrigger_remaining = maxf(
 		0.0,
 		_old_growth_sfx_retrigger_remaining - delta
 	)
 	_update_briar_pods(delta)
 	_update_briar_traps(delta)
+	_update_fruiting_bodies(delta)
 	_update_forest_awakening(delta)
 	_update_ensnare_zones(delta)
+	_update_spore_rate_zones(delta)
 	_update_pending_eruptions(delta)
 	_update_root_eruptions(delta)
 	_update_enemies(delta)
@@ -687,6 +854,8 @@ func simulate_step(delta: float) -> void:
 
 
 func _draw() -> void:
+	var use_crowd_lod := _active_enemy_count >= crowd_visual_lod_enemy_threshold
+	_draw_cane_sweep()
 	for zone in _bramble_zones:
 		if zone.active:
 			_draw_briar_pod(zone)
@@ -694,6 +863,10 @@ func _draw() -> void:
 	for trap in _briar_traps:
 		if trap.active:
 			_draw_briar_trap(trap)
+
+	for body in _fruiting_bodies:
+		if body.active:
+			_draw_fruiting_body(body)
 
 	for eruption in _root_eruptions:
 		if eruption.active:
@@ -703,15 +876,17 @@ func _draw() -> void:
 		if not pickup.active:
 			continue
 		var pulse := 1.0 + sin(pickup.age * 7.0) * 0.12
-		draw_circle(pickup.position, 5.0 * pulse, Color(0.42, 0.86, 1.0, 0.22))
+		if not use_crowd_lod:
+			draw_circle(pickup.position, 5.0 * pulse, Color(0.42, 0.86, 1.0, 0.22))
 		draw_circle(pickup.position, 2.8 * pulse, Color("7be8ff"))
-		draw_line(
-			pickup.position + Vector2(-4.0, 0.0),
-			pickup.position + Vector2(4.0, 0.0),
-			Color("d5faff"),
-			1.0,
-			true
-		)
+		if not use_crowd_lod:
+			draw_line(
+				pickup.position + Vector2(-4.0, 0.0),
+				pickup.position + Vector2(4.0, 0.0),
+				Color("d5faff"),
+				1.0,
+				true
+			)
 
 	for projectile in _projectiles:
 		if not projectile.active:
@@ -724,14 +899,21 @@ func _draw() -> void:
 			2.4,
 			true
 		)
-		draw_circle(projectile.position + direction * 3.0, 2.2, Color("efffc9"))
+		if not use_crowd_lod:
+			draw_circle(projectile.position + direction * 3.0, 2.2, Color("efffc9"))
 
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
 		if enemy.bramble_root_remaining > 0.0:
-			_draw_enemy_root_hold(enemy)
-		_draw_enemy(enemy)
+			if use_crowd_lod:
+				_draw_enemy_root_hold_lod(enemy)
+			else:
+				_draw_enemy_root_hold(enemy)
+		if use_crowd_lod and not _enemy_requires_full_detail(enemy):
+			_draw_enemy_crowd_lod(enemy)
+		else:
+			_draw_enemy(enemy)
 
 	for damage_number in _damage_numbers:
 		if damage_number.active:
@@ -908,20 +1090,37 @@ func reset_combat() -> void:
 		eruption.active = false
 	for trap in _briar_traps:
 		trap.active = false
+	for body in _fruiting_bodies:
+		body.active = false
 	for pending in _pending_eruptions:
 		pending.active = false
 	_briar_heart_recharges.clear()
 	_ensnare_zones.clear()
+	_spore_rate_zones.clear()
 	_ancient_fury_awakening_remaining = 0.0
 	_root_eruption_sequence = 0
 	_briar_trap_sequence = 0
+	_fruiting_body_sequence = 0
 	_active_enemy_count = 0
 	_next_enemy_id = 1
 	_spawn_sequence = 0
-	_thornshot_remaining = 0.16
+	_cane_remaining = 0.16
+	_cane_next_left_to_right = true
+	_cane_visual_remaining = 0.0
+	_cane_visual_origin = Vector2.ZERO
+	_cane_visual_facing = Vector2.RIGHT
+	_cane_visual_left_to_right = true
+	_cane_visual_reach = cane_reach_pixels
+	_cane_sweep_count = 0
+	_heartwood_progress = 0
+	_heartwood_echo_remaining = 0.0
+	_heartwood_echo_facing = Vector2.RIGHT
+	_heartwood_echo_left_to_right = true
+	_next_cane_cooldown_multiplier = 1.0
+	_cane_apical_fraction_bonus = 0.0
 	_bramble_horde_refresh_remaining = 0.0
 	_bramble_attackers.clear()
-	_thornshot_sfx_play_count = 0
+	_cane_sfx_play_count = 0
 	_plant_explosion_sfx_play_count = 0
 	_old_growth_sfx_play_count = 0
 	_old_growth_sfx_retrigger_remaining = 0.0
@@ -931,8 +1130,8 @@ func reset_combat() -> void:
 	_xp_collect_pitch_reset_remaining = 0.0
 	_last_xp_collect_pitch_scale = 1.0
 	_damage_number_sequence = 0
-	if _thornshot_audio != null:
-		_thornshot_audio.stop()
+	if _cane_audio != null:
+		_cane_audio.stop()
 	if _plant_explosion_audio != null:
 		_plant_explosion_audio.stop()
 	if _old_growth_audio != null:
@@ -989,6 +1188,11 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	enemy.knockback_remaining = 0.0
 	enemy.knockback_speed = 0.0
 	enemy.entanglement = 0.0
+	enemy.suppression_remaining = 0.0
+	enemy.suppression_share = 0.0
+	enemy.spore = 0.0
+	enemy.overgrown = false
+	enemy.spore_damage_remaining = 0.0
 	enemy.bramble_frontier_strength = 0.0
 	enemy.bramble_ground_maturity = 0.0
 	enemy.bramble_horde_count = 0
@@ -1156,8 +1360,16 @@ func get_enemy_hit_flash_remaining(enemy_id: int) -> float:
 	return 0.0
 
 
-func get_thornshot_sfx_play_count() -> int:
-	return _thornshot_sfx_play_count
+func get_cane_sfx_play_count() -> int:
+	return _cane_sfx_play_count
+
+
+func get_cane_sweep_count() -> int:
+	return _cane_sweep_count
+
+
+func get_cane_reach() -> float:
+	return cane_reach_pixels * _cane_reach_multiplier
 
 
 func get_plant_explosion_sfx_play_count() -> int:
@@ -1203,14 +1415,143 @@ func has_active_boss() -> bool:
 	return false
 
 
-func set_combat_modifiers(
+func set_cane_modifiers(
 	damage_multiplier: float,
 	cooldown_multiplier: float,
-	target_count: int = 1
+	reach_multiplier: float = 1.0,
+	apical_damage_bonus: float = 0.0
 ) -> void:
-	_thornshot_damage_multiplier = maxf(0.05, damage_multiplier)
-	_thornshot_cooldown_multiplier = maxf(0.05, cooldown_multiplier)
-	_thornshot_target_count = maxi(1, target_count)
+	_cane_damage_multiplier = maxf(0.05, damage_multiplier)
+	_cane_cooldown_multiplier = maxf(0.05, cooldown_multiplier)
+	_cane_reach_multiplier = maxf(0.05, reach_multiplier)
+	_cane_apical_damage_bonus = maxf(0.0, apical_damage_bonus)
+
+
+func set_cane_auto_targeting(enabled: bool) -> void:
+	## Base Cane follows the player's facing. Vine replaces that input with the
+	## densest targetable sector while preserving every other Cane rule.
+	_cane_auto_targets = enabled
+
+
+func get_densest_target_direction(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2 = Vector2.RIGHT
+) -> Vector2:
+	## Finds the direction whose fixed-width sector contains the most live,
+	## unobstructed enemies. Testing each target on both sector edges guarantees a
+	## maximal angular window without depending on pool order for the result.
+	var fallback := fallback_direction.normalized()
+	if fallback.length_squared() <= 0.0001:
+		fallback = Vector2.RIGHT
+	var target_directions := PackedVector2Array()
+	var target_distances := PackedFloat32Array()
+	if _cane_auto_targets:
+		_cane_route_cache.clear()
+	for enemy in _enemies:
+		if not enemy.active:
+			continue
+		var to_enemy := enemy.position - origin
+		var distance := to_enemy.length()
+		if distance > maxf(0.0, maximum_range) + enemy.radius:
+			continue
+		if _cane_auto_targets:
+			var route := territory_field.get_growth_path(origin, enemy.position)
+			if route.is_empty():
+				continue
+			distance = territory_field.get_growth_path_length(route)
+			if distance > maxf(0.0, maximum_range) + enemy.radius:
+				continue
+			_cane_route_cache[enemy.id] = route
+		elif not territory_field.is_growth_path_clear(origin, enemy.position):
+			continue
+		target_directions.append(to_enemy / distance if distance > 0.001 else fallback)
+		target_distances.append(distance)
+	if target_directions.is_empty():
+		return fallback
+	var half_angle := deg_to_rad(clampf(sector_degrees, 1.0, 359.0) * 0.5)
+	var candidate_directions := PackedVector2Array()
+	for direction in target_directions:
+		candidate_directions.append(direction)
+		candidate_directions.append(direction.rotated(-half_angle))
+		candidate_directions.append(direction.rotated(half_angle))
+	var best_direction := fallback
+	var best_count := -1
+	var best_distance_sum := INF
+	var best_alignment_error := INF
+	var best_facing_difference := INF
+	for candidate in candidate_directions:
+		var contained := 0
+		var distance_sum := 0.0
+		var alignment_error := 0.0
+		for index in range(target_directions.size()):
+			var angular_error := absf(candidate.angle_to(target_directions[index]))
+			if angular_error > half_angle + 0.0001:
+				continue
+			contained += 1
+			distance_sum += target_distances[index]
+			alignment_error += angular_error
+		var facing_difference := absf(fallback.angle_to(candidate))
+		if (
+			contained > best_count
+			or (
+				contained == best_count
+				and distance_sum < best_distance_sum - 0.001
+			)
+			or (
+				contained == best_count
+				and absf(distance_sum - best_distance_sum) <= 0.001
+				and alignment_error < best_alignment_error - 0.0001
+			)
+			or (
+				contained == best_count
+				and absf(distance_sum - best_distance_sum) <= 0.001
+				and absf(alignment_error - best_alignment_error) <= 0.0001
+				and facing_difference < best_facing_difference - 0.0001
+			)
+		):
+			best_direction = candidate
+			best_count = contained
+			best_distance_sum = distance_sum
+			best_alignment_error = alignment_error
+			best_facing_difference = facing_difference
+	return best_direction.normalized()
+
+
+func set_heartwood_rank(rank: int) -> void:
+	_heartwood_rank = clampi(rank, 0, 5)
+	if _heartwood_rank <= 0:
+		_heartwood_progress = 0
+		_heartwood_echo_remaining = 0.0
+
+
+func multiply_next_cane_cooldown(multiplier: float) -> void:
+	## Recurve and similar one-shot timing rules use the lowest multiplier offered;
+	## repeated hits in one sweep cannot stack the same cooldown cut.
+	_next_cane_cooldown_multiplier = minf(
+		_next_cane_cooldown_multiplier,
+		clampf(multiplier, 0.05, 1.0)
+	)
+
+
+func set_cane_apical_fraction_bonus(extra_fraction: float) -> void:
+	_cane_apical_fraction_bonus = clampf(extra_fraction, 0.0, 0.70)
+
+
+func set_sporulation_modifiers(enabled: bool, rate_multiplier: float = 1.0) -> void:
+	# Spore is a path rule like Bramble's: pushed in when the run's lines change
+	# rather than read out of Progression every frame by every enemy.
+	_sporulation_enabled = enabled
+	_sporulation_rate_multiplier = maxf(0.0, rate_multiplier)
+	if enabled:
+		return
+	for enemy in _enemies:
+		enemy.spore = 0.0
+		enemy.overgrown = false
+		enemy.spore_damage_remaining = 0.0
+	for body in _fruiting_bodies:
+		body.active = false
 
 
 func set_bramble_modifiers(
@@ -1514,10 +1855,10 @@ func debug_fill_stress(enemy_count: int, projectile_count: int, pickup_count: in
 			80.0 + float((index * 47) % 800),
 			60.0 + float((index * 83) % 420)
 		)
-		projectile.velocity = Vector2.from_angle(float(index) * 0.73) * thornshot_speed_pixels_per_second
-		projectile.damage = thornshot_damage
-		projectile.remaining = thornshot_lifetime_seconds
-		projectile.remaining_distance = thornshot_range_pixels
+		projectile.velocity = Vector2.from_angle(float(index) * 0.73) * DEBUG_PROJECTILE_SPEED
+		projectile.damage = cane_damage
+		projectile.remaining = DEBUG_PROJECTILE_LIFETIME
+		projectile.remaining_distance = DEBUG_PROJECTILE_RANGE
 		projectile.pierce_remaining = 1
 		projectile.last_hit_enemy_id = -1
 	for index in range(mini(pickup_count, _pickups.size())):
@@ -1552,19 +1893,22 @@ func _configure_pools() -> void:
 	_briar_traps.clear()
 	for _trap_index in range(briar_trap_pool_size):
 		_briar_traps.append(BriarTrapState.new())
+	_fruiting_bodies.clear()
+	for _body_index in range(fruiting_body_pool_size):
+		_fruiting_bodies.append(FruitingBodyState.new())
 	_pending_eruptions.clear()
 	for _pending_index in range(old_growth_eruption_pool_size):
 		_pending_eruptions.append(PendingEruptionState.new())
 
 
 func _configure_audio() -> void:
-	_thornshot_audio = AudioStreamPlayer.new()
-	_thornshot_audio.name = "ThornshotSfx"
-	_thornshot_audio.stream = thornshot_shoot_sfx
-	_thornshot_audio.volume_db = thornshot_sfx_volume_db
-	_thornshot_audio.max_polyphony = 4
-	_thornshot_audio.bus = audio_settings.sfx_bus_name
-	add_child(_thornshot_audio)
+	_cane_audio = AudioStreamPlayer.new()
+	_cane_audio.name = "CaneSfx"
+	_cane_audio.stream = cane_swing_sfx
+	_cane_audio.volume_db = cane_sfx_volume_db
+	_cane_audio.max_polyphony = 4
+	_cane_audio.bus = audio_settings.sfx_bus_name
+	add_child(_cane_audio)
 	_plant_explosion_audio = AudioStreamPlayer.new()
 	_plant_explosion_audio.name = "PlantExplosionSfx"
 	_plant_explosion_audio.stream = plant_explosion_sfx
@@ -1624,73 +1968,89 @@ func _configure_navigation() -> void:
 			))
 
 
-func _update_thornshot(delta: float) -> void:
+func _update_cane(delta: float) -> void:
 	_follow_through_remaining = maxf(0.0, _follow_through_remaining - delta)
 	if _temporary_attack_remaining > 0.0:
 		_temporary_attack_remaining -= delta
 		if _temporary_attack_remaining <= 0.0:
 			_temporary_attack_multiplier = 1.0
-	_thornshot_remaining -= delta
-	if _thornshot_remaining > 0.0:
+	_cane_visual_remaining = maxf(0.0, _cane_visual_remaining - delta)
+	if _heartwood_echo_remaining > 0.0:
+		_heartwood_echo_remaining -= delta
+		if _heartwood_echo_remaining <= 0.0:
+			_perform_cane_sweep(
+				_heartwood_echo_facing,
+				_heartwood_echo_left_to_right,
+				0.60,
+				1.15,
+				true,
+				0.40 if _heartwood_rank >= 2 else -1.0
+			)
+	_cane_remaining -= delta
+	if _cane_remaining > 0.0:
 		return
-	# Extra targets spread fire across the horde rather than stacking onto one
-	# enemy: each shot in a volley takes a different target, and the volley only
-	# doubles up when there are fewer enemies in range than shots.
-	var wanted := _thornshot_target_count
-	# Underdog only helps while the swarm is actually on top of the player, and
-	# it goes away again the moment the local density falls.
-	var swarmed := false
-	if _underdog_enemy_count > 0 and _count_enemies_near_player() >= _underdog_enemy_count:
-		swarmed = true
-		wanted += 1
-	# Predator's Eye adds a strictly distinct extra target, so a lone enemy gets
-	# nothing rather than being shot twice.
-	var strict_extra := 0
+	var reach_multiplier := 1.0
+	# Predator's Eye now broadens a periodic melee stroke. It cannot invent a target
+	# or make the Cane hit one body twice, which preserves the weapon's sector rule.
 	if _predators_eye_interval > 0:
 		_predators_eye_progress += 1
 		if _predators_eye_progress >= _predators_eye_interval:
 			_predators_eye_progress = 0
-			wanted += 1
-			strict_extra = 1
-	_collect_thornshot_targets(wanted, strict_extra)
-	if _thornshot_targets.is_empty():
-		_thornshot_remaining = 0.08
-		return
-	var origin := player.get_arena_position()
-	var damage_multiplier := _thornshot_damage_multiplier
-	var fired := 0
-	for target in _thornshot_targets:
-		var projectile := _get_inactive_projectile()
-		if projectile == null:
-			break
-		var direction := origin.direction_to(target.position)
-		if direction.length_squared() <= 0.001:
-			direction = Vector2.RIGHT
-		projectile.active = true
-		projectile.position = origin
-		projectile.velocity = direction * thornshot_speed_pixels_per_second
-		projectile.damage = thornshot_damage * damage_multiplier
-		projectile.remaining = thornshot_lifetime_seconds
-		projectile.remaining_distance = thornshot_range_pixels
-		projectile.pierce_remaining = thornshot_pierce
-		# Follow Through: one banked kill buys the next volley a pierce. It does
-		# not stack with itself, so a killing streak is not a pierce stack.
-		if _follow_through_remaining > 0.0:
-			projectile.pierce_remaining += 1
-		projectile.last_hit_enemy_id = -1
-		fired += 1
-	if fired == 0:
-		_thornshot_remaining = 0.08
-		return
-	_follow_through_remaining = 0.0
-	# One cue per volley, not one per projectile.
-	_play_thornshot_sfx()
-	var cooldown := thornshot_cooldown_seconds * _thornshot_cooldown_multiplier
+			reach_multiplier += predators_eye_reach_bonus
+	var heartwood_sweep := false
+	if _heartwood_rank > 0:
+		var progress_step := 1
+		if (
+			_heartwood_rank >= 3
+			and territory_field.is_mature_player_territory_at_local(
+				player.get_arena_position()
+			)
+		):
+			progress_step = 2
+		_heartwood_progress += progress_step
+		if _heartwood_progress >= 5:
+			_heartwood_progress -= 5
+			heartwood_sweep = true
+			reach_multiplier *= 1.15
+	var facing := player.get_facing_direction()
+	if _cane_auto_targets:
+		facing = get_densest_target_direction(
+			player.get_arena_position(),
+			cane_reach_pixels * _cane_reach_multiplier * reach_multiplier,
+			cane_arc_degrees,
+			facing
+		)
+	_perform_cane_sweep(
+		facing,
+		_cane_next_left_to_right,
+		1.50 if heartwood_sweep else 1.0,
+		reach_multiplier,
+		false,
+		0.40 if heartwood_sweep and _heartwood_rank >= 2 else -1.0
+	)
+	if heartwood_sweep and _heartwood_rank >= 5:
+		_heartwood_echo_remaining = 0.30
+		_heartwood_echo_facing = facing
+		_heartwood_echo_left_to_right = _cane_next_left_to_right
+	_cane_next_left_to_right = not _cane_next_left_to_right
+	_cane_sweep_count += 1
+	var cooldown := cane_cooldown_seconds * _cane_cooldown_multiplier
 	cooldown *= _temporary_attack_multiplier
 	if _adrenal_charges > 0:
 		_adrenal_charges -= 1
 		cooldown *= _adrenal_multiplier
-	_thornshot_remaining = cooldown
+	if heartwood_sweep and _heartwood_rank >= 4:
+		cooldown *= 0.60
+	# Underdog now accelerates the Cane while the swarm is actually on top of the
+	# player; there is no target-count concept left for it to modify.
+	var swarmed := false
+	if _underdog_enemy_count > 0 and _count_enemies_near_player() >= _underdog_enemy_count:
+		swarmed = true
+	if swarmed:
+		cooldown *= underdog_cane_cooldown_multiplier
+	cooldown *= _next_cane_cooldown_multiplier
+	_next_cane_cooldown_multiplier = 1.0
+	_cane_remaining = maxf(0.03, cooldown)
 
 
 func _count_enemies_near_player() -> int:
@@ -1707,74 +2067,219 @@ func _count_enemies_near_player() -> int:
 	return count
 
 
-func _collect_thornshot_targets(wanted: int, strict_extra: int = 0) -> void:
-	# Nearest-first distinct targets, then wrap around only if the volley is wider
-	# than the number of enemies in range, so multi-target improves coverage
-	# instead of multiplying single-target damage.
-	_thornshot_targets.clear()
+func perform_bonus_cane_sweep(
+	facing: Vector2,
+	left_to_right: bool,
+	damage_multiplier: float = 1.0,
+	reach_multiplier: float = 1.0,
+	apical_fraction_override: float = -1.0
+) -> int:
+	## Evolution-triggered stroke. It uses the same sector and hit-once resolver but
+	## does not consume the automatic alternation, relic cadence, or attack timer.
+	return _perform_cane_sweep(
+		facing,
+		left_to_right,
+		maxf(0.0, damage_multiplier),
+		maxf(0.05, reach_multiplier),
+		true,
+		apical_fraction_override
+	)
+
+
+func _perform_cane_sweep(
+	facing: Vector2,
+	left_to_right: bool,
+	bonus_damage_multiplier: float,
+	bonus_reach_multiplier: float,
+	is_bonus: bool,
+	apical_fraction_override: float = -1.0
+) -> int:
+	if facing.length_squared() <= 0.0001:
+		facing = Vector2.RIGHT
+	facing = facing.normalized()
 	var origin := player.get_arena_position()
-	var in_range: Array[EnemyState] = []
-	var range_squared := thornshot_range_pixels * thornshot_range_pixels
+	var reach := cane_reach_pixels * _cane_reach_multiplier * bonus_reach_multiplier
+	var base_damage := cane_damage * _cane_damage_multiplier * bonus_damage_multiplier
+	var uses_follow_through := _follow_through_remaining > 0.0
+	if uses_follow_through:
+		base_damage *= 1.0 + follow_through_damage_bonus
+	_cane_visual_remaining = cane_sweep_seconds
+	_cane_visual_origin = origin
+	_cane_visual_facing = facing
+	_cane_visual_left_to_right = left_to_right
+	_cane_visual_reach = reach
+	_cane_visual_path = PackedVector2Array()
+	cane_sweep_started.emit(
+		origin,
+		facing,
+		left_to_right,
+		reach,
+		base_damage,
+		is_bonus
+	)
+	_play_cane_sfx()
+	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
+	var apical_fraction := clampf(
+		(
+			apical_fraction_override
+			if apical_fraction_override >= 0.0
+			else cane_apical_fraction + _cane_apical_fraction_bonus
+		),
+		0.05,
+		0.95
+	)
+	var hit_count := 0
+	var killed_any := false
+	var strongest_visual_detour := 0.01
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
-		if enemy.position.distance_squared_to(origin) > range_squared:
+		var to_enemy := enemy.position - origin
+		var direct_distance := to_enemy.length()
+		if direct_distance > reach + enemy.radius:
 			continue
-		if not territory_field.is_growth_path_clear(origin, enemy.position):
+		if direct_distance > 0.001:
+			var edge_allowance := asin(clampf(enemy.radius / direct_distance, 0.0, 1.0))
+			if absf(facing.angle_to(to_enemy / direct_distance)) > half_angle + edge_allowance:
+				continue
+		var distance := direct_distance
+		var vine_route := PackedVector2Array()
+		if _cane_auto_targets:
+			vine_route = _cane_route_cache.get(enemy.id, PackedVector2Array())
+			if vine_route.is_empty():
+				vine_route = territory_field.get_growth_path(origin, enemy.position)
+			if vine_route.is_empty():
+				continue
+			distance = territory_field.get_growth_path_length(vine_route)
+			if distance > reach + enemy.radius:
+				continue
+			var detour := distance - direct_distance
+			if detour > strongest_visual_detour:
+				strongest_visual_detour = detour
+				_cane_visual_path = _trim_path_to_length(vine_route, reach)
+		elif not territory_field.is_growth_path_clear(origin, enemy.position):
 			continue
-		in_range.append(enemy)
-	if in_range.is_empty():
-		return
-	if _blood_in_the_water_threshold > 0.0:
-		# Blood in the Water changes what the weapon wants, not what it hits for:
-		# badly wounded enemies come first, and the rest stay nearest-first.
-		var wounded_threshold := _blood_in_the_water_threshold
-		in_range.sort_custom(
-			func(first: EnemyState, second: EnemyState) -> bool:
-				var first_wounded := (
-					first.maximum_health > 0.0
-					and first.health / first.maximum_health <= wounded_threshold
-				)
-				var second_wounded := (
-					second.maximum_health > 0.0
-					and second.health / second.maximum_health <= wounded_threshold
-				)
-				if first_wounded != second_wounded:
-					return first_wounded
-				return (
-					first.position.distance_squared_to(origin)
-					< second.position.distance_squared_to(origin)
-				)
+		var distance_fraction := clampf(distance / maxf(reach, 0.001), 0.0, 1.0)
+		var apical := distance_fraction >= 1.0 - apical_fraction
+		var damage := base_damage
+		if apical:
+			damage *= 1.0 + _cane_apical_damage_bonus
+		if (
+			_blood_in_the_water_threshold > 0.0
+			and enemy.maximum_health > 0.0
+			and enemy.health / enemy.maximum_health <= _blood_in_the_water_threshold
+		):
+			damage *= 1.0 + wounded_cane_damage_bonus
+		var enemy_id := enemy.id
+		var hit_position := enemy.position
+		_damage_enemy(enemy, damage, DeathSource.CANE, 0)
+		var killed := not enemy.active
+		killed_any = killed_any or killed
+		hit_count += 1
+		cane_enemy_hit.emit(
+			enemy_id,
+			hit_position,
+			distance_fraction,
+			apical,
+			damage,
+			killed,
+			is_bonus
 		)
-	else:
-		in_range.sort_custom(
-			func(first: EnemyState, second: EnemyState) -> bool:
-				return (
-					first.position.distance_squared_to(origin)
-					< second.position.distance_squared_to(origin)
-				)
-		)
-	# The last `strict_extra` shots only fire if a distinct enemy is left for
-	# them; everything before that may wrap around a short target list.
-	var base_shots := maxi(1, wanted - maxi(0, strict_extra))
-	for index in range(base_shots):
-		_thornshot_targets.append(in_range[index % in_range.size()])
-	for extra in range(maxi(0, strict_extra)):
-		var extra_index := base_shots + extra
-		if extra_index >= in_range.size():
-			break
-		_thornshot_targets.append(in_range[extra_index])
+	if uses_follow_through and hit_count > 0:
+		_follow_through_remaining = 0.0
+	if killed_any and _follow_through_seconds > 0.0:
+		_follow_through_remaining = _follow_through_seconds
+	cane_sweep_finished.emit(origin, facing, left_to_right, reach, hit_count, is_bonus)
+	_cane_route_cache.clear()
+	return hit_count
 
 
-func get_thornshot_target_count() -> int:
-	return _thornshot_target_count
+func _trim_path_to_length(path: PackedVector2Array, maximum_length: float) -> PackedVector2Array:
+	var trimmed := PackedVector2Array()
+	if path.is_empty() or maximum_length <= 0.0:
+		return trimmed
+	trimmed.append(path[0])
+	var remaining := maximum_length
+	for index in range(1, path.size()):
+		var segment_length := path[index - 1].distance_to(path[index])
+		if segment_length <= remaining:
+			trimmed.append(path[index])
+			remaining -= segment_length
+			continue
+		if segment_length > 0.001:
+			trimmed.append(path[index - 1].move_toward(path[index], remaining))
+		break
+	return trimmed
 
 
-func _play_thornshot_sfx() -> void:
-	if _thornshot_audio.stream == null:
+func _play_cane_sfx() -> void:
+	if _cane_audio == null or _cane_audio.stream == null:
 		return
-	_thornshot_audio.play()
-	_thornshot_sfx_play_count += 1
+	_cane_audio.play()
+	_cane_sfx_play_count += 1
+
+
+func _draw_cane_sweep() -> void:
+	if _cane_visual_remaining <= 0.0 or cane_sweep_seconds <= 0.0:
+		return
+	var progress := clampf(
+		1.0 - _cane_visual_remaining / cane_sweep_seconds,
+		0.0,
+		1.0
+	)
+	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
+	var start_angle := -half_angle if _cane_visual_left_to_right else half_angle
+	var end_angle := half_angle if _cane_visual_left_to_right else -half_angle
+	var current_offset := lerpf(start_angle, end_angle, progress)
+	var direction := _cane_visual_facing.rotated(current_offset)
+	var fade := clampf(_cane_visual_remaining / maxf(cane_sweep_seconds * 0.35, 0.001), 0.0, 1.0)
+	var arc_start := _cane_visual_facing.angle() - half_angle
+	var arc_end := _cane_visual_facing.angle() + half_angle
+	var arc_color := (
+		Color(0.33, 0.92, 0.38, 0.22 * fade)
+		if _cane_auto_targets
+		else Color(0.78, 0.95, 0.45, 0.18 * fade)
+	)
+	var shaft_shadow := (
+		Color(0.055, 0.20, 0.075, 0.96 * fade)
+		if _cane_auto_targets
+		else Color(0.20, 0.10, 0.045, 0.96 * fade)
+	)
+	var shaft_color := (
+		Color(0.24, 0.72, 0.25, 0.96 * fade)
+		if _cane_auto_targets
+		else Color(0.72, 0.46, 0.20, 0.96 * fade)
+	)
+	var tip_color := (
+		Color(0.63, 1.0, 0.45, 0.95 * fade)
+		if _cane_auto_targets
+		else Color(0.90, 0.72, 0.34, 0.95 * fade)
+	)
+	draw_arc(
+		_cane_visual_origin,
+		_cane_visual_reach,
+		arc_start,
+		arc_end,
+		24,
+		arc_color,
+		2.0,
+		true
+	)
+	var shaft_start := _cane_visual_origin + direction * (player.body_radius_pixels + 3.0)
+	var shaft_end := _cane_visual_origin + direction * _cane_visual_reach
+	var shaft_path := PackedVector2Array([shaft_start, shaft_end])
+	if _cane_auto_targets and _cane_visual_path.size() >= 2:
+		shaft_path = _cane_visual_path.duplicate()
+		shaft_path[0] = shaft_path[0].move_toward(
+			shaft_path[1],
+			player.body_radius_pixels + 3.0
+		)
+		shaft_end = shaft_path[shaft_path.size() - 1]
+	draw_polyline(shaft_path, shaft_shadow, 7.0, true)
+	draw_polyline(shaft_path, shaft_color, 3.5, true)
+	for bend_index in range(1, shaft_path.size() - 1):
+		draw_circle(shaft_path[bend_index], 1.75, shaft_color)
+	draw_circle(shaft_end, 4.0, tip_color)
 
 
 func _update_enemies(delta: float) -> void:
@@ -1787,7 +2292,16 @@ func _update_enemies(delta: float) -> void:
 		_advance_elite_modifier(enemy, delta)
 		enemy.territory_action_remaining -= delta
 		enemy.hit_flash_remaining = maxf(0.0, enemy.hit_flash_remaining - delta)
+		enemy.suppression_remaining = maxf(0.0, enemy.suppression_remaining - delta)
+		if enemy.suppression_remaining <= 0.0:
+			enemy.suppression_share = 0.0
 		_update_enemy_bramble_contact(enemy, delta)
+		if not enemy.active:
+			continue
+		# Kept apart from the Bramble tick on purpose: that one returns early for a
+		# run without Bramble, and Sporulation has to work for a Root and Spore build
+		# that never took a thorn.
+		_update_enemy_spore(enemy, delta)
 		if not enemy.active:
 			continue
 
@@ -1799,8 +2313,7 @@ func _update_enemies(delta: float) -> void:
 			continue
 
 		var contact_distance := enemy.radius + player.body_radius_pixels
-		var distance_to_player := enemy.position.distance_to(player_position)
-		if distance_to_player <= contact_distance:
+		if enemy.position.distance_squared_to(player_position) <= contact_distance * contact_distance:
 			enemy.state = EnemyStateKind.CONTACT
 			if enemy.contact_remaining <= 0.0:
 				player.apply_damage(enemy.contact_damage)
@@ -1983,13 +2496,345 @@ func _get_entanglement_rate(enemy: EnemyState, contact_strength: float) -> float
 		* contact_strength
 		* frontier_bonus
 		* (1.0 + _get_ensnare_zone_bonus(enemy.position))
-		* _get_root_network_multiplier(enemy.bramble_ground_maturity)
+		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
 	)
 
 
-func _get_root_network_multiplier(ground_maturity: float) -> float:
+func _update_enemy_spore(enemy: EnemyState, delta: float) -> void:
+	# Owned Green is infectious ground. Bramble decides whether that ground also has
+	# thorns in it; Spore only asks whether the player holds it, so an enemy standing
+	# on plain Green is being infected the whole time it is there.
+	if not _sporulation_enabled:
+		return
+	if enemy.spore < 1.0 and territory_field.is_owned_at_local(enemy.position):
+		# Root Potency is the one system that amplifies a path on Mature ground, so
+		# Sporulation carries no Mature bonus of its own and reads the Network here
+		# instead. Relic regions that deepen the Network locally come with it.
+		var rate := (
+			sporulation_per_second
+			* _sporulation_rate_multiplier
+			* (1.0 + _get_spore_rate_zone_bonus(enemy.position))
+			* _get_root_network_multiplier(
+				enemy.position,
+				territory_field.get_maturity_at_local(enemy.position)
+			)
+		)
+		_add_enemy_spore(enemy, rate * delta)
+	if not enemy.overgrown:
+		return
+	enemy.spore_damage_remaining -= delta
+	if enemy.spore_damage_remaining > 0.0:
+		return
+	enemy.spore_damage_remaining = overgrown_damage_interval_seconds
+	# Contagion first, so an enemy killed by this very tick still pushes out one last
+	# pulse before its death burst lands on the same neighbours. Riding the damage
+	# clock rather than the frame keeps this to two scans a second per Overgrown
+	# enemy, which is what makes a pack full of them affordable. The source itself is
+	# already at full Spore, so it is skipped without needing to be excluded.
+	apply_spore_in_radius(
+		enemy.position,
+		overgrown_contagion_radius_pixels,
+		overgrown_contagion_spore_per_second * overgrown_damage_interval_seconds
+	)
+	# A share of the enemy's own maximum health, so the rot is as lethal to a boss as
+	# it is to a Hunter. Sourced as SPORE so the kill cannot also be condensed into a
+	# Seed by the kill counter, which this enemy has already been paying into.
+	_damage_enemy(
+		enemy,
+		enemy.maximum_health
+		* overgrown_max_health_damage_per_second
+		* overgrown_damage_interval_seconds,
+		DeathSource.SPORE,
+		0
+	)
+
+
+func _add_enemy_spore(enemy: EnemyState, amount: float) -> void:
+	# One door into Overgrown. Promotion has to live here rather than in the tick
+	# because a cloud or a death burst can push an enemy over the line while it is
+	# standing somewhere the ground will never infect it.
+	if amount <= 0.0 or enemy.spore >= 1.0:
+		return
+	enemy.spore = minf(1.0, enemy.spore + amount)
+	if enemy.spore < 1.0 or enemy.overgrown:
+		return
+	enemy.overgrown = true
+	enemy.spore_damage_remaining = overgrown_damage_interval_seconds
+
+
+func apply_suppression_in_radius(
+	center: Vector2,
+	radius: float,
+	share: float,
+	seconds: float
+) -> int:
+	# Refreshes rather than stacks: a second Bloom over the same pack restores the
+	# window instead of deepening it, so the reduction can never exceed the rank.
+	if share <= 0.0 or seconds <= 0.0:
+		return 0
+	var caught := 0
+	for enemy in _enemies:
+		if not enemy.active:
+			continue
+		if enemy.position.distance_to(center) > radius + enemy.radius:
+			continue
+		enemy.suppression_share = maxf(enemy.suppression_share, clampf(share, 0.0, 1.0))
+		enemy.suppression_remaining = maxf(enemy.suppression_remaining, seconds)
+		caught += 1
+	return caught
+
+
+func get_enemy_suppression(enemy_id: int) -> float:
+	for enemy in _enemies:
+		if enemy.active and enemy.id == enemy_id:
+			return enemy.suppression_share if enemy.suppression_remaining > 0.0 else 0.0
+	return 0.0
+
+
+func apply_spore_in_radius(center: Vector2, radius: float, spore_gain: float) -> int:
+	# Every airborne application of Spore - a cloud, a rupture, a death burst, the
+	# Mass Entanglement pulse - lands through here, so promotion to Overgrown has a
+	# single definition whatever put the Spore on the enemy.
+	if spore_gain <= 0.0:
+		return 0
+	var caught := 0
+	for enemy in _enemies:
+		if not enemy.active or enemy.spore >= 1.0:
+			continue
+		if enemy.position.distance_to(center) > radius + enemy.radius:
+			continue
+		_add_enemy_spore(enemy, spore_gain)
+		caught += 1
+	return caught
+
+
+func get_standard_enemy_health() -> float:
+	# What "a standard enemy" is worth right now. The Hunter is the yardstick and the
+	# wave scaling comes with it, so a Rootburst written as a share of a normal mob
+	# keeps its meaning as the waves harden instead of decaying into a scratch.
+	if hunter_profile == null:
+		return 1.0
+	return maxf(1.0, hunter_profile.maximum_health * _enemy_health_scale)
+
+
+func find_infection_targets(wanted: int) -> PackedVector2Array:
+	# Where a Germination Season is worth opening: on top of enemies that are already
+	# standing in the run's own Green, densest cluster first. Seeds spent on empty
+	# ground are the whole reason the old Season read as territory rather than as an
+	# answer to a mob.
+	var targets := PackedVector2Array()
+	if wanted <= 0:
+		return targets
+	var standing: Array[EnemyState] = []
+	for enemy in _enemies:
+		if not enemy.active or enemy.spore >= 1.0:
+			continue
+		if not territory_field.is_owned_at_local(enemy.position):
+			continue
+		standing.append(enemy)
+	if standing.is_empty():
+		return targets
+	# Score every candidate by how many others share its patch, then take them in
+	# order, skipping anyone already covered by a burst this Season will place.
+	var cluster_squared := infection_cluster_radius_pixels * infection_cluster_radius_pixels
+	var scored: Array = []
+	for enemy in standing:
+		var neighbours := 0
+		for other in standing:
+			if other.position.distance_squared_to(enemy.position) <= cluster_squared:
+				neighbours += 1
+		scored.append([neighbours, enemy.position])
+	scored.sort_custom(func(a, b): return int(a[0]) > int(b[0]))
+	for entry in scored:
+		if targets.size() >= wanted:
+			break
+		var candidate: Vector2 = entry[1]
+		var covered := false
+		for placed in targets:
+			if placed.distance_squared_to(candidate) <= cluster_squared * 0.25:
+				covered = true
+				break
+		if not covered:
+			targets.append(candidate)
+	# A Season with more Seeds than clusters still spends them: the leftovers double
+	# up on the densest ground rather than being thrown away.
+	var index := 0
+	while targets.size() < wanted and not scored.is_empty():
+		targets.append(scored[index % scored.size()][1])
+		index += 1
+	return targets
+
+
+func apply_rootburst(
+	center: Vector2,
+	radius: float,
+	damage: float,
+	spore_gain: float
+) -> int:
+	# A Germination Season Seed opening underneath a mob. Damage first, so anything
+	# the burst can kill outright dies as a Seed kill; the survivors then take the
+	# Spore, and whatever that pushes to full infection collapses on the spot.
+	var caught := 0
+	for enemy in _enemies:
+		if not enemy.active:
+			continue
+		if enemy.position.distance_to(center) > radius + enemy.radius:
+			continue
+		caught += 1
+		if damage > 0.0:
+			_damage_enemy(enemy, damage, DeathSource.SPORE, 0)
+			if not enemy.active:
+				continue
+		if spore_gain <= 0.0 or enemy.spore >= 1.0:
+			continue
+		_add_enemy_spore(enemy, spore_gain)
+		if enemy.overgrown:
+			_fungal_collapse(enemy)
+	return caught
+
+
+func _fungal_collapse(enemy: EnemyState) -> void:
+	# Infection cashed in at once. An ordinary mob simply dies, and because it is
+	# Overgrown when it does, the death burst it owes still fires and carries the
+	# outbreak into whatever was standing beside it. Elites and bosses are the fights
+	# the run is meant to have, so they take a large hit and keep rotting instead.
+	match enemy.role:
+		EnemyRole.ELITE:
+			_damage_enemy(
+				enemy,
+				enemy.maximum_health * fungal_collapse_elite_health_share,
+				DeathSource.SPORE,
+				0
+			)
+		EnemyRole.BOSS:
+			_damage_enemy(
+				enemy,
+				enemy.maximum_health * fungal_collapse_boss_health_share,
+				DeathSource.SPORE,
+				0
+			)
+		_:
+			_damage_enemy(enemy, enemy.health, DeathSource.SPORE, 0)
+
+
+func spawn_fruiting_body(local_position: Vector2, immediate_cloud: bool = false) -> bool:
+	# The pool is the cap. A colony that cannot find a free slot is simply not
+	# raised, which is the same way a Briar Trap behaves under chain pressure.
+	for body in _fruiting_bodies:
+		if body.active:
+			continue
+		body.active = true
+		body.position = local_position
+		body.cloud_remaining = fruiting_body_cloud_interval_seconds
+		body.clouds_remaining = fruiting_body_clouds
+		if immediate_cloud:
+			# Fungal Reserve's colonies arrive already breathing. The cloud it owes is
+			# spent now and its lifecycle carries on one cloud shorter, so a guaranteed
+			# body is a faster colony rather than a longer-lived one.
+			body.clouds_remaining -= 1
+			apply_spore_in_radius(
+				local_position,
+				fruiting_body_cloud_radius_pixels,
+				_get_fruiting_body_spore(body, fruiting_body_cloud_spore)
+			)
+		_fruiting_body_sequence += 1
+		body.seed = _fruiting_body_sequence
+		queue_redraw()
+		return true
+	return false
+
+
+func get_active_fruiting_body_count() -> int:
+	var count := 0
+	for body in _fruiting_bodies:
+		if body.active:
+			count += 1
+	return count
+
+
+func _update_fruiting_bodies(delta: float) -> void:
+	for body in _fruiting_bodies:
+		if not body.active:
+			continue
+		body.cloud_remaining -= delta
+		if body.cloud_remaining > 0.0:
+			continue
+		body.cloud_remaining = fruiting_body_cloud_interval_seconds
+		if body.clouds_remaining > 0:
+			body.clouds_remaining -= 1
+			apply_spore_in_radius(
+				body.position,
+				fruiting_body_cloud_radius_pixels,
+				_get_fruiting_body_spore(body, fruiting_body_cloud_spore)
+			)
+			continue
+		# Every cloud the colony had is spent, so this tick is the rupture. It comes
+		# one full interval after the last cloud rather than landing on top of it,
+		# which keeps the two applications legible as separate events.
+		# Root Potency amplifies what a colony puts into the air and nothing else
+		# about it: not the radius, not how long it lives, not the Seeds it scatters.
+		apply_spore_in_radius(
+			body.position,
+			fruiting_body_rupture_radius_pixels,
+			_get_fruiting_body_spore(body, fruiting_body_rupture_spore)
+		)
+		body.active = false
+		fruiting_body_ruptured.emit(body.position)
+
+
+func _get_fruiting_body_spore(body: FruitingBodyState, base_spore: float) -> float:
+	return base_spore * _get_root_network_multiplier(
+		body.position,
+		territory_field.get_maturity_at_local(body.position)
+	)
+
+
+func _draw_fruiting_body(body: FruitingBodyState) -> void:
+	# A swelling cap that fills as its next cloud comes due, so the player can read
+	# how close a colony is to bursting without a bar over it.
+	var swell := 1.0 - clampf(
+		body.cloud_remaining / maxf(0.01, fruiting_body_cloud_interval_seconds),
+		0.0,
+		1.0
+	)
+	var pulse := 0.55 + 0.45 * sin(float(body.seed) * 0.7 + body.cloud_remaining * 3.0)
+	# Pale and fungal rather than green, so a colony reads as something growing out
+	# of the Green instead of as another piece of it. The last cloud before rupture
+	# runs hot, which is the only warning the player gets.
+	var cap_color := Color(0.82, 0.76, 0.55, 0.55 + 0.30 * swell)
+	var halo_color := Color(0.68, 0.82, 0.44, 0.30 + 0.35 * pulse)
+	if body.clouds_remaining <= 1:
+		cap_color = Color(0.94, 0.72, 0.38, 0.85)
+		halo_color = Color(1.0, 0.82, 0.42, 0.45 + 0.40 * pulse)
+	var radius := 7.0 * (0.7 + 0.3 * swell)
+	draw_circle(body.position, radius, cap_color)
+	draw_line(
+		body.position,
+		body.position + Vector2(0.0, radius * 1.1),
+		cap_color,
+		2.0
+	)
+	# The halo is the reach the next cloud will actually cover.
+	draw_arc(
+		body.position,
+		fruiting_body_cloud_radius_pixels * (0.35 + 0.65 * swell),
+		0.0,
+		TAU,
+		24,
+		halo_color,
+		1.2,
+		true
+	)
+
+
+func _get_root_network_multiplier(local_position: Vector2, ground_maturity: float) -> float:
 	# Root Potency: mechanics operating from Mature ground run through the Root
 	# Network, so old Green sharpens thorns and ensnares faster than fresh Green.
+	# Asked of the Root path where the effect is happening, so a thorn inside an
+	# Annual Rings region or a Seedbed patch reads the deeper Network there. The
+	# pushed bonus stays as the fallback for a run wired without the path.
+	if root_director != null:
+		return root_director.get_network_multiplier_at(local_position, ground_maturity)
 	return 1.0 + _root_network_bonus * clampf(ground_maturity, 0.0, 1.0)
 
 
@@ -2002,7 +2847,20 @@ func add_ensnare_zone(
 	# Aggressive Growth: freshly claimed ground ensnares faster for a few seconds.
 	if rate_bonus <= 0.0 or duration <= 0.0:
 		return
+	# Fruit stamps can arrive every few pixels. Merge nearby equal zones so a long
+	# trail remains one bounded gameplay region rather than hundreds of arrays.
+	for zone in _ensnare_zones:
+		if (
+			Vector2(zone[0]).distance_to(center) <= maxf(8.0, radius * 0.55)
+			and is_equal_approx(float(zone[2]), rate_bonus)
+		):
+			zone[0] = center
+			zone[1] = maxf(float(zone[1]), radius)
+			zone[3] = maxf(float(zone[3]), duration)
+			return
 	_ensnare_zones.append([center, radius, rate_bonus, duration])
+	if _ensnare_zones.size() > 64:
+		_ensnare_zones.pop_front()
 
 
 func get_active_ensnare_zone_count() -> int:
@@ -2026,6 +2884,51 @@ func _get_ensnare_zone_bonus(local_position: Vector2) -> float:
 		# Living Rampart is a standing zone rather than a timed one, so it is read
 		# here beside the timed zones instead of being re-added every frame.
 		bonus = maxf(bonus, _rampart_ensnare_bonus)
+	return bonus
+
+
+func add_spore_rate_zone(
+	center: Vector2,
+	radius: float,
+	rate_bonus: float,
+	duration: float
+) -> void:
+	## Contaminated Ground: only owned-Green accumulation is accelerated. Direct
+	## Spore applications remain unchanged because this multiplier is read solely by
+	## `_update_enemy_spore`.
+	if rate_bonus <= 0.0 or duration <= 0.0:
+		return
+	for zone in _spore_rate_zones:
+		if (
+			Vector2(zone[0]).distance_to(center) <= maxf(8.0, radius * 0.55)
+			and is_equal_approx(float(zone[2]), rate_bonus)
+		):
+			zone[0] = center
+			zone[1] = maxf(float(zone[1]), radius)
+			zone[3] = maxf(float(zone[3]), duration)
+			return
+	_spore_rate_zones.append([center, radius, rate_bonus, duration])
+	if _spore_rate_zones.size() > 64:
+		_spore_rate_zones.pop_front()
+
+
+func get_active_spore_rate_zone_count() -> int:
+	return _spore_rate_zones.size()
+
+
+func _update_spore_rate_zones(delta: float) -> void:
+	for index in range(_spore_rate_zones.size() - 1, -1, -1):
+		var zone: Array = _spore_rate_zones[index]
+		zone[3] = float(zone[3]) - delta
+		if zone[3] <= 0.0:
+			_spore_rate_zones.remove_at(index)
+
+
+func _get_spore_rate_zone_bonus(local_position: Vector2) -> float:
+	var bonus := 0.0
+	for zone in _spore_rate_zones:
+		if local_position.distance_to(Vector2(zone[0])) <= float(zone[1]):
+			bonus = maxf(bonus, float(zone[2]))
 	return bonus
 
 
@@ -2190,6 +3093,69 @@ func get_enemy_entanglement(enemy_id: int) -> float:
 	return 0.0
 
 
+func get_enemy_radius(enemy_id: int) -> float:
+	var enemy := _find_enemy(enemy_id)
+	return enemy.radius if enemy != null else 0.0
+
+
+func get_enemy_spore(enemy_id: int) -> float:
+	var enemy := _find_enemy(enemy_id)
+	return enemy.spore if enemy != null else 0.0
+
+
+func is_enemy_overgrown(enemy_id: int) -> bool:
+	var enemy := _find_enemy(enemy_id)
+	return enemy != null and enemy.overgrown
+
+
+func add_spore_to_enemy(enemy_id: int, amount: float) -> float:
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null or amount <= 0.0:
+		return 0.0
+	_add_enemy_spore(enemy, amount)
+	return enemy.spore
+
+
+func add_entanglement_to_enemy(enemy_id: int, amount: float) -> float:
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null or amount <= 0.0:
+		return 0.0
+	enemy.entanglement = clampf(enemy.entanglement + amount, 0.0, 1.0)
+	return enemy.entanglement
+
+
+func knockback_enemy_from(enemy_id: int, origin: Vector2, distance: float) -> bool:
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null or distance <= 0.0:
+		return false
+	var direction := origin.direction_to(enemy.position)
+	if direction.length_squared() <= 0.0001:
+		direction = Vector2.RIGHT
+	_begin_knockback(enemy, direction, distance)
+	return true
+
+
+func collapse_overgrown_enemy(
+	enemy_id: int,
+	elite_max_health_share: float,
+	boss_max_health_share: float,
+	death_source: int
+) -> bool:
+	## A bounded public collapse for Mycelial Vine and Inoculator. Normal enemies
+	## die; elites and bosses cash the completed infection out as authored max-health
+	## damage while remaining Overgrown.
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null or not enemy.overgrown:
+		return false
+	var damage := enemy.health + 1.0
+	if enemy.role == EnemyRole.ELITE:
+		damage = enemy.maximum_health * clampf(elite_max_health_share, 0.0, 1.0)
+	elif enemy.role == EnemyRole.BOSS:
+		damage = enemy.maximum_health * clampf(boss_max_health_share, 0.0, 1.0)
+	_damage_enemy(enemy, damage, death_source, 0)
+	return true
+
+
 func get_bramble_tick_damage(enemy: EnemyState, contact_strength: float) -> float:
 	# Every enemy resolves its own full calculation from its own Entanglement.
 	# Thorn damage is never divided between the enemies sharing a stretch of Green.
@@ -2217,7 +3183,7 @@ func get_bramble_tick_damage(enemy: EnemyState, contact_strength: float) -> floa
 		* entanglement_multiplier
 		* frontier_multiplier
 		* horde_multiplier
-		* _get_root_network_multiplier(enemy.bramble_ground_maturity)
+		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
 	)
 
 
@@ -2240,6 +3206,7 @@ func repel_territory_attacker(enemy: EnemyState) -> void:
 	if is_in_rampart(enemy.position):
 		enemy.bramble_repulsion_remaining *= _rampart_repulsion_multiplier
 	var distance := _bramble_repulsion_pixels * _get_root_network_multiplier(
+		enemy.position,
 		enemy.bramble_ground_maturity
 	)
 	_begin_knockback(enemy, _get_territory_escape_direction(enemy.position), distance)
@@ -2613,10 +3580,14 @@ func _update_briar_pods(delta: float) -> void:
 
 
 func _perform_enemy_territory_action(enemy: EnemyState) -> void:
+	# Suppression is taken here, at the single point every territory behaviour reads
+	# its strength from, so grazing, hostile conversion, spread and a Saboteur's
+	# cutting are all weakened by one rule rather than four.
 	var scaled_strength := (
 		enemy.territory_action_strength
 		* enemy.territory_erosion_scale
 		* enemy.territory_escalation
+		* (1.0 - clampf(enemy.suppression_share, 0.0, 1.0))
 	)
 	# Uninterrupted work compounds. The Siege Corruptor carries this on its profile and
 	# Ravenous grants it to any elite, so "if ignored" is one mechanic with two owners
@@ -2785,7 +3756,7 @@ func _update_projectiles(delta: float) -> void:
 			if not territory_field.is_growth_path_clear(previous_position, enemy.position):
 				continue
 			projectile.last_hit_enemy_id = enemy.id
-			_damage_enemy(enemy, projectile.damage, DeathSource.THORNSHOT, 0)
+			_damage_enemy(enemy, projectile.damage, DeathSource.DEBUG, 0)
 			projectile.pierce_remaining -= 1
 			if projectile.pierce_remaining <= 0:
 				projectile.active = false
@@ -2802,16 +3773,20 @@ func _update_projectiles(delta: float) -> void:
 
 func _update_pickups(delta: float) -> void:
 	var player_position := player.get_arena_position()
+	var attraction_radius_squared := 165.0 * 165.0
+	var collect_radius := player.body_radius_pixels + 7.0
+	var collect_radius_squared := collect_radius * collect_radius
 	for pickup in _pickups:
 		if not pickup.active:
 			continue
 		pickup.age += delta
-		var distance := pickup.position.distance_to(player_position)
-		if distance < 165.0 or pickup.age > 7.0:
+		var distance_squared := pickup.position.distance_squared_to(player_position)
+		if distance_squared < attraction_radius_squared or pickup.age > 7.0:
+			var distance := sqrt(distance_squared)
 			var speed := 120.0 + maxf(0.0, 170.0 - distance) * 1.7
 			pickup.position = pickup.position.move_toward(player_position, speed * delta)
-			distance = pickup.position.distance_to(player_position)
-		if distance <= player.body_radius_pixels + 7.0:
+			distance_squared = pickup.position.distance_squared_to(player_position)
+		if distance_squared <= collect_radius_squared:
 			pickup.active = false
 			_play_xp_collect_sfx()
 			xp_collected.emit(pickup.xp_value)
@@ -3199,10 +4174,20 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 	var role := enemy.role
 	var death_position := enemy.position
 	var xp_value := enemy.xp_value
+	var was_overgrown := enemy.overgrown
 	enemy.active = false
 	enemy.state = EnemyStateKind.INACTIVE
 	_active_enemy_count = maxi(0, _active_enemy_count - 1)
 	_spawn_xp_pickup(death_position, xp_value)
+	if was_overgrown:
+		# The outbreak spreads from the corpse however the corpse was made: an
+		# Overgrown enemy shot dead still bursts. The burst deals no damage, so it
+		# cannot kill anything and cannot recurse - it only infects.
+		apply_spore_in_radius(
+			death_position,
+			overgrown_burst_radius_pixels,
+			overgrown_burst_spore
+		)
 	if death_source == DeathSource.ROOT_ERUPTION and _ancient_fury_chains_enabled:
 		_queue_chained_eruption(death_position, chain_depth + 1)
 	if enemy.elite_modifier == EliteModifier.VOLATILE:
@@ -3264,7 +4249,7 @@ func _spawn_damage_number(
 
 func _get_damage_feedback_color(death_source: int) -> Color:
 	match death_source:
-		DeathSource.THORNSHOT:
+		DeathSource.CANE:
 			return Color("e5ff9b")
 		DeathSource.BLOOM:
 			return Color("ffd978")
@@ -3278,6 +4263,10 @@ func _get_damage_feedback_color(death_source: int) -> Color:
 			return Color("d9a86a")
 		DeathSource.CUTTING:
 			return Color("c9e59a")
+		DeathSource.THISTLE:
+			return Color("d8ff62")
+		DeathSource.FRUIT:
+			return Color("ff9f67")
 	return Color.WHITE
 
 
@@ -3338,7 +4327,7 @@ func _is_player_damage_source(death_source: int) -> bool:
 	# What the protagonist did, as opposed to what the ecosystem did on their behalf.
 	# Regenerative is the only thing that asks, and it asks precisely this.
 	return (
-		death_source == DeathSource.THORNSHOT
+		death_source == DeathSource.CANE
 		or death_source == DeathSource.CUTTING
 		or death_source == DeathSource.DEBUG
 	)
@@ -3534,23 +4523,6 @@ func _get_inactive_projectile() -> ProjectileState:
 	return null
 
 
-func _get_nearest_enemy() -> EnemyState:
-	var origin := player.get_arena_position()
-	var nearest: EnemyState
-	var nearest_distance := thornshot_range_pixels * thornshot_range_pixels
-	for enemy in _enemies:
-		if not enemy.active:
-			continue
-		var distance := enemy.position.distance_squared_to(origin)
-		if distance > nearest_distance:
-			continue
-		if not territory_field.is_growth_path_clear(origin, enemy.position):
-			continue
-		nearest_distance = distance
-		nearest = enemy
-	return nearest
-
-
 func _distance_squared_to_segment(
 	point: Vector2,
 	segment_start: Vector2,
@@ -3635,6 +4607,106 @@ func _draw_enemy_root_hold(enemy: EnemyState) -> void:
 			24,
 			thorn_color,
 			2.0,
+			true
+		)
+
+
+func _draw_enemy_root_hold_lod(enemy: EnemyState) -> void:
+	var remaining_fraction := clampf(
+		enemy.bramble_root_remaining / maxf(0.01, enemy.bramble_root_duration),
+		0.0,
+		1.0
+	)
+	draw_arc(
+		enemy.position,
+		enemy.radius + 7.0,
+		-PI * 0.5,
+		-PI * 0.5 + TAU * remaining_fraction,
+		16,
+		Color(0.58, 0.88, 0.36, 0.55 + 0.40 * remaining_fraction),
+		2.0,
+		true
+	)
+
+
+func _enemy_requires_full_detail(enemy: EnemyState) -> bool:
+	# These bodies carry radial or escalation telegraphs that affect decisions. Crowd
+	# LOD only removes ornamental detail from ordinary enemies.
+	match enemy.role:
+		EnemyRole.ELITE, EnemyRole.BOSS, EnemyRole.WARDEN, EnemyRole.COLONY_CORE, EnemyRole.SIEGE_CORRUPTOR:
+			return true
+	return false
+
+
+func _draw_enemy_crowd_lod(enemy: EnemyState) -> void:
+	var body_color := Color("ff625b")
+	match enemy.role:
+		EnemyRole.GRAZER:
+			body_color = Color("ff9d45")
+		EnemyRole.HEAVY_GRAZER:
+			body_color = Color("e07a2a")
+		EnemyRole.SABOTEUR:
+			body_color = Color("ff477e")
+		EnemyRole.CORRUPTOR:
+			body_color = Color("a338c7")
+		EnemyRole.COLONIZER:
+			body_color = Color("59d7c6")
+
+	if enemy.role == EnemyRole.RUSHER:
+		var heading := enemy.position.direction_to(player.get_arena_position())
+		if heading.length_squared() <= 0.01:
+			heading = Vector2.RIGHT
+		var flank := heading.orthogonal()
+		var nose := enemy.position + heading * (enemy.radius + 4.0)
+		var tail := enemy.position - heading * (enemy.radius * 0.65)
+		var points := PackedVector2Array([
+			nose,
+			tail + flank * enemy.radius,
+			tail - flank * enemy.radius,
+		])
+		draw_colored_polygon(points, Color(0.09, 0.02, 0.03, 0.92))
+		draw_colored_polygon(
+			PackedVector2Array([
+				nose - heading * 2.0,
+				tail + flank * (enemy.radius - 2.0),
+				tail - flank * (enemy.radius - 2.0),
+			]),
+			Color("ff7a4a")
+		)
+	else:
+		draw_circle(enemy.position, enemy.radius + 2.0, Color(0.07, 0.025, 0.04, 0.90))
+		draw_circle(enemy.position, enemy.radius, body_color)
+
+	if enemy.overgrown:
+		draw_arc(
+			enemy.position,
+			enemy.radius + 3.5,
+			0.0,
+			TAU,
+			14,
+			Color(0.72, 1.0, 0.55, 0.42),
+			1.5,
+			true
+		)
+	if enemy.hit_flash_remaining > 0.0:
+		var flash_strength := clampf(
+			enemy.hit_flash_remaining / maxf(enemy_hit_flash_seconds, 0.001),
+			0.0,
+			1.0
+		)
+		var flash_color := enemy.hit_flash_color
+		flash_color.a = 0.68 * flash_strength
+		draw_circle(enemy.position, enemy.radius + 1.5, flash_color)
+	if enemy.health < enemy.maximum_health:
+		var bar_width := enemy.radius * 2.2
+		var bar_position := enemy.position + Vector2(-bar_width * 0.5, -enemy.radius - 10.0)
+		draw_rect(Rect2(bar_position, Vector2(bar_width, 4.0)), Color(0.03, 0.03, 0.04, 0.9), true)
+		draw_rect(
+			Rect2(
+				bar_position,
+				Vector2(bar_width * clampf(enemy.health / enemy.maximum_health, 0.0, 1.0), 4.0)
+			),
+			Color("ff6a82"),
 			true
 		)
 
@@ -3899,6 +4971,34 @@ func _draw_enemy(enemy: EnemyState) -> void:
 			draw_circle(enemy.position, enemy.radius, Color("8f173d"))
 			draw_circle(enemy.position, 10.0, Color("ff8096"))
 			draw_arc(enemy.position, enemy.radius + 5.0, 0.0, TAU, 36, Color("ffc1cc"), 3.0, true)
+
+	if enemy.overgrown:
+		# Overgrown reads as the enemy itself breathing out. The pulse is driven by the
+		# contagion clock rather than by wall time, so what the player sees flashing is
+		# the aura actually going off: brightest the instant it fires, faded by the time
+		# the next one is due. Kept under the hit flash and low in alpha - this runs for
+		# four seconds on every infected body in a pack, and a bright one would drown
+		# out the hits that are also landing on it.
+		var spore_pulse := clampf(
+			enemy.spore_damage_remaining / maxf(overgrown_damage_interval_seconds, 0.001),
+			0.0,
+			1.0
+		)
+		draw_circle(
+			enemy.position,
+			enemy.radius + 1.0,
+			Color(0.55, 0.95, 0.42, 0.10 + 0.22 * spore_pulse)
+		)
+		draw_arc(
+			enemy.position,
+			enemy.radius + 3.5,
+			0.0,
+			TAU,
+			20,
+			Color(0.72, 1.0, 0.55, 0.18 + 0.30 * spore_pulse),
+			1.5,
+			true
+		)
 
 	if enemy.hit_flash_remaining > 0.0:
 		var flash_strength := clampf(

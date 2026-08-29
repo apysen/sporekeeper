@@ -34,6 +34,22 @@ signal status_requested(message: String)
 ## Additive Seed territory-mass multiplier granted by each Growth Mass rank.
 @export_range(0.0, 2.0, 0.01) var seed_mass_per_level := 0.24
 
+@export_group("Sporulation")
+## Additive Spore-accumulation multiplier granted by each Sporulation rank. The base
+## rate and everything Overgrown does live on the combat director, which is where the
+## enemies are; this line only decides how fast the ground infects them.
+@export_range(0.0, 2.0, 0.01) var sporulation_rate_per_level := 0.25
+
+@export_group("Fruiting Bodies")
+## Chance added per Fruiting Bodies rank that a Seed germinating on ground the run
+## already owns raises a colony instead of only growing.
+@export_range(0.0, 1.0, 0.01) var fruiting_body_chance_per_level := 0.10
+## Seeds a ruptured colony scatters. They are ordinary Seeds: the rupture reports
+## itself and this path decides what comes of it.
+@export_range(0, 12, 1) var fruiting_body_rupture_seeds := 2
+## How far those Seeds are thrown from the rupture.
+@export_range(4.0, 200.0, 1.0) var fruiting_body_scatter_pixels := 34.0
+
 @export_group("Spore Burst")
 ## Damage a germinating Seed deals at a Growth Mass of one, for runs holding the Spore
 ## Burst relic. Scaled by the same mass the germination pushes into the field, so a Seed
@@ -55,6 +71,18 @@ var _germination_seasons := 0
 var _mast_wave_remaining := 0.0
 var _mast_wave_seeds := 0
 var _briar_pod_germinations := 0
+## Seeds released by a Germination Season, by id. Fungal Reserve counts only the
+## banked ones, so the Seeds a Season opens have to be told apart from every other
+## Seed the run makes.
+var _banked_seed_ids := {}
+## Qualifying banked germinations so far. Kept as a running count rather than reset
+## on payout, so leftover progress carries into the next colony.
+var _fungal_reserve_progress := 0
+## Seconds until the next Germination Season. The Season runs on a clock now, not on
+## a storage threshold, so the burst is something the player can time a fight around.
+var _season_remaining := 0.0
+## Whether the free Season that comes with claiming the Evolution has been spent.
+var _seed_bank_claimed := false
 
 func _ready() -> void:
 	assert(territory_field != null, "PhaseBSporeDirector requires TerritoryField")
@@ -65,6 +93,7 @@ func _ready() -> void:
 	combat.enemy_killed.connect(_on_enemy_killed)
 	overlay.seed_germinated_with_context.connect(on_seed_germinated)
 	overlay.catalyst_destroyed.connect(_on_catalyst_destroyed)
+	combat.fruiting_body_ruptured.connect(_on_fruiting_body_ruptured)
 
 func reset_director() -> void:
 	_kills_toward_seed = 0
@@ -74,18 +103,37 @@ func reset_director() -> void:
 	_mast_wave_remaining = 0.0
 	_mast_wave_seeds = 0
 	_briar_pod_germinations = 0
+	_banked_seed_ids.clear()
+	_fungal_reserve_progress = 0
+	_season_remaining = 0.0
+	_seed_bank_claimed = false
 
 func advance(delta: float) -> void:
 	_advance_seed_bank(delta)
 
 func _advance_seed_bank(delta: float) -> void:
-	# Seed Bank: Mature ground banks dormant Seeds over time, and periodically the
-	# whole ecosystem germinates at once. The payoff is a territorial jump, not a
-	# steady drip of single Seeds.
+	# Seed Bank: Mature ground banks dormant Seeds, and on a fixed clock the whole
+	# reserve opens at once on top of whatever the mob is standing on. The payoff is
+	# a burst, not a territorial drip - that is the entire point of the rework.
 	if not progression.has_active_evolution(PhaseBProgression.EvolutionId.SEED_BANK):
 		_seed_bank_storage = 0.0
 		_mast_wave_remaining = 0.0
+		_season_remaining = 0.0
+		_seed_bank_claimed = false
 		return
+	if not _seed_bank_claimed:
+		# Claiming the Evolution is itself a Season, so the power spike lands the
+		# moment the player takes it rather than up to eight seconds later.
+		_seed_bank_claimed = true
+		_season_remaining = evolutions.germination_season_interval
+		var claim_planted := _release_germination_season(
+			evolutions.germination_season_claim_seeds
+		)
+		if claim_planted > 0:
+			status_requested.emit(
+				"SEED BANK — the reserve breaks open across %d enemies at once."
+				% claim_planted
+			)
 	if _mast_wave_remaining > 0.0:
 		_mast_wave_remaining -= delta
 		if _mast_wave_remaining <= 0.0 and _mast_wave_seeds > 0:
@@ -93,7 +141,7 @@ func _advance_seed_bank(delta: float) -> void:
 			_mast_wave_seeds = 0
 			if mast_planted > 0:
 				status_requested.emit(
-					"MAST YEAR — a second germination wave breaks across the ecosystem."
+					"MAST YEAR — a second full wave breaks over the same ground."
 				)
 	var rank := progression.get_evolution_upgrade_level()
 	var storage_rate := evolutions.seed_bank_storage_per_mature_percent
@@ -102,49 +150,79 @@ func _advance_seed_bank(delta: float) -> void:
 	var capacity := evolutions.seed_bank_capacity
 	if rank >= 1:
 		capacity *= 1.0 + evolutions.seed_reserve_capacity_per_rank
-	if rank >= 4:
-		capacity *= 1.0 + evolutions.seed_reserve_capacity_per_rank
 	_seed_bank_storage = minf(
 		capacity,
 		_seed_bank_storage + territory_field.get_mature_player_percent() * storage_rate * delta
 	)
-	if _seed_bank_storage < evolutions.germination_season_threshold:
+	# The Season is a clock now rather than a threshold: it fires on time with
+	# whatever the Bank has managed to store, so the player can count on it.
+	_season_remaining -= delta
+	if _season_remaining > 0.0:
 		return
-	var seeds := mini(int(floor(_seed_bank_storage)), evolutions.germination_season_maximum_seeds)
-	_seed_bank_storage = 0.0
+	_season_remaining = evolutions.germination_season_interval
+	var seeds := mini(
+		int(floor(_seed_bank_storage)),
+		evolutions.germination_season_maximum_seeds
+	)
+	if seeds <= 0:
+		return
+	_seed_bank_storage -= float(seeds)
 	var planted := _release_germination_season(seeds)
 	if planted <= 0:
 		return
 	_germination_seasons += 1
 	status_requested.emit(
-		"GERMINATION SEASON — %d banked Seeds break open across Mature ground." % planted
+		"GERMINATION SEASON — %d Seeds open on the mob." % planted
 	)
-	if (
-		rank >= 5
-		and evolutions.seed_reserve_mast_cadence > 0
-		and _germination_seasons % evolutions.seed_reserve_mast_cadence == 0
-	):
-		_mast_wave_seeds = maxi(
-			1,
-			int(round(float(planted) * evolutions.seed_reserve_mast_share))
-		)
+	if rank >= 5:
+		# Mast Year: the second wave is the same wave again, at full strength.
+		_mast_wave_seeds = planted
 		_mast_wave_remaining = evolutions.germination_season_mast_delay
 
+
 func _release_germination_season(seeds: int) -> int:
-	# Seeds are spread across Mature ground rather than stacked on one border, so a
-	# Season reads as the whole ecosystem opening at once.
+	# Seeds are placed on the enemies themselves rather than spread across the
+	# frontier. A Season that opens on empty Green is the failure this rework exists
+	# to fix, so the combat director picks the ground that is actually occupied and
+	# only falls back to Mature frontier when nothing is standing in the Green.
+	var wanted := maxi(0, seeds)
+	if wanted <= 0:
+		return 0
+	var targets := combat.find_infection_targets(wanted)
 	var planted := 0
 	var anchor := combat.get_target_position()
-	for index in range(maxi(0, seeds)):
-		var spread := evolutions.germination_season_spread_pixels * sqrt(float(index + 1))
-		var origin := territory_field.find_mature_player_frontier_near(
-			anchor + Vector2.from_angle(float(index) * 2.39996) * spread
-		)
+	for index in range(wanted):
+		var origin := Vector2(-1.0, -1.0)
+		if index < targets.size():
+			origin = targets[index]
+		else:
+			var spread := evolutions.germination_season_spread_pixels * sqrt(float(index + 1))
+			origin = territory_field.find_mature_player_frontier_near(
+				anchor + Vector2.from_angle(float(index) * 2.39996) * spread
+			)
 		if origin.x < 0.0:
 			continue
-		overlay.spawn_seed(origin, -1.0, 0, seed_durability)
+		var banked_id := overlay.spawn_seed(
+			origin,
+			get_germination_seconds_at(origin),
+			0,
+			seed_durability
+		)
+		_banked_seed_ids[banked_id] = true
 		planted += 1
+		# Fungal Reserve counts Seeds released, not Seeds that survive to germinate,
+		# so a Season's infrastructure is known the moment it is sown. The remainder
+		# carries forward rather than being discarded between Seasons.
+		if (
+			progression.get_evolution_upgrade_level() >= 4
+			and evolutions.fungal_reserve_seeds > 0
+		):
+			_fungal_reserve_progress += 1
+			if _fungal_reserve_progress >= evolutions.fungal_reserve_seeds:
+				_fungal_reserve_progress -= evolutions.fungal_reserve_seeds
+				combat.spawn_fruiting_body(origin, true)
 	return planted
+
 
 func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 	combat.play_plant_explosion_sfx()
@@ -152,7 +230,10 @@ func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 	var ground_maturity := territory_field.get_maturity_at_local(local_position)
 	# Root Network: a Seed germinating out of Mature ground draws on it and carries
 	# more mass than one starting from ground the run only just claimed.
-	var inherited_mass := 1.0 + root_director.get_network_bonus() * ground_maturity
+	var inherited_mass := root_director.get_network_multiplier_at(
+		local_position,
+		ground_maturity
+	)
 	if progression.has_active_evolution(PhaseBProgression.EvolutionId.SEED_BANK):
 		inherited_mass += evolutions.seed_bank_maturity_mass_bonus * ground_maturity
 	if (
@@ -206,6 +287,89 @@ func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 		status_requested.emit("BRIAR PODS — germination raised a temporary thorn perimeter.")
 	else:
 		status_requested.emit("Seed germinated into dense Green growth.")
+	# A Season Seed detonates as it opens. Ordered before the colony roll so a body
+	# raised here is not standing in its own Rootburst.
+	if _banked_seed_ids.erase(overlay.get_last_germinated_seed_id()):
+		_fire_rootburst(local_position)
+	# Last, so a colony raised this frame is never caught in its own germination's
+	# Spore Burst and never displaces the growth the Seed was already going to make.
+	_try_raise_fruiting_body(local_position)
+
+func _fire_rootburst(local_position: Vector2) -> void:
+	# Rootburst: what a banked Seed does that an ordinary Seed does not. Written as a
+	# share of what a standard enemy is worth rather than as a flat number, so it
+	# keeps killing normal mobs as the waves harden, and it lands as a fraction of a
+	# boss rather than as a boss-killer. Root Potency amplifies both halves - this is
+	# the one Spore effect the doc wants Mature ground to make lethal outright.
+	var rank := progression.get_evolution_upgrade_level()
+	var damage_share := evolutions.rootburst_damage_share
+	var radius := evolutions.rootburst_radius_pixels
+	if rank >= 3:
+		damage_share *= 1.0 + evolutions.rootburst_damage_bonus
+		radius *= 1.0 + evolutions.rootburst_radius_bonus
+	var amplification := root_director.get_network_multiplier_here(local_position)
+	var caught := combat.apply_rootburst(
+		local_position,
+		radius,
+		combat.get_standard_enemy_health() * damage_share * amplification,
+		evolutions.rootburst_spore * amplification
+	)
+	overlay.spawn_hostile_pulse(local_position, radius)
+	if caught > 0:
+		status_requested.emit("ROOTBURST — the Seed opened under %d enemies." % caught)
+
+
+func _try_raise_fruiting_body(local_position: Vector2) -> void:
+	# A germination inside ground the run already holds is not claiming anything: the
+	# Seed's growth still runs, and the colony is raised beside it rather than instead
+	# of it. That is also the whole test for "not expanding territory" - no separate
+	# rule is needed, because a Seed on unowned ground never gets here.
+	if not territory_field.is_owned_at_local(local_position):
+		return
+	# Fungal Reserve is paid at release, not here, so this is only ever the ordinary
+	# chance roll. A Season Seed rolls it like any other Seed does.
+	var chance := get_fruiting_body_chance()
+	if chance <= 0.0 or randf() >= chance:
+		return
+	if combat.spawn_fruiting_body(local_position):
+		status_requested.emit("A Fruiting Body has swollen out of your own Green.")
+
+
+func _on_fruiting_body_ruptured(local_position: Vector2) -> void:
+	# The colony bursts and throws Seeds. They are ordinary Seeds from here on, which
+	# is what lets them germinate, grow, and roll for a colony of their own.
+	for _seed_index in range(fruiting_body_rupture_seeds):
+		var offset := (
+			Vector2.from_angle(randf() * TAU)
+			* fruiting_body_scatter_pixels
+			* sqrt(randf())
+		)
+		var site := local_position + offset
+		if not territory_field.contains_local_point(site):
+			site = local_position
+		overlay.spawn_seed(site, get_germination_seconds_at(site), 0, seed_durability)
+	status_requested.emit("A Fruiting Body ruptured and scattered its Seeds.")
+
+
+func get_fruiting_body_chance() -> float:
+	return clampf(
+		fruiting_body_chance_per_level * float(
+			progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUITING_BODIES)
+		),
+		0.0,
+		1.0
+	)
+
+
+func get_sporulation_rate_multiplier() -> float:
+	return 1.0 + sporulation_rate_per_level * float(
+		progression.get_upgrade_level(PhaseBProgression.UpgradeId.SPORULATION)
+	)
+
+
+func get_fungal_reserve_progress() -> int:
+	return _fungal_reserve_progress
+
 
 func _apply_tangleburst(local_position: Vector2, radius: float) -> void:
 	# Tangleburst turns germination itself into crowd control, rank by rank.
@@ -243,9 +407,14 @@ func _apply_tangleburst(local_position: Vector2, radius: float) -> void:
 		and evolutions.tangleburst_pulse_cadence > 0
 		and _briar_pod_germinations % evolutions.tangleburst_pulse_cadence == 0
 	):
-		var caught := combat.apply_mass_entanglement(
+		var pulse_radius := radius * evolutions.tangleburst_pulse_radius_scale
+		var caught := combat.apply_mass_entanglement(local_position, pulse_radius)
+		# The pin is only half of it: a mob held in place is a mob the infection can
+		# finish, so the pulse seeds the whole cluster at the same moment.
+		combat.apply_spore_in_radius(
 			local_position,
-			radius * evolutions.tangleburst_pulse_radius_scale
+			pulse_radius,
+			evolutions.tangleburst_pulse_spore
 		)
 		if caught > 0:
 			status_requested.emit(
@@ -267,18 +436,36 @@ func _on_enemy_killed(
 			_super_bloom_kills_toward_seed = 0
 			overlay.spawn_seed(
 				local_position,
-				territory_field.tuning.seed_charge_seconds,
+				get_germination_seconds_at(local_position),
 				chain_depth,
 				seed_durability
 			)
 			status_requested.emit("Super Bloom propagated a secondary Seed.")
 		return
+	# An Overgrown enemy has already paid for its infection and death burst. It does
+	# not also advance the ordinary kill-to-Seed counter.
+	if death_source == PhaseBCombatDirector.DeathSource.SPORE:
+		return
 
-	_kills_toward_seed += 1
+	credit_seed_kills(local_position, 1)
+
+
+func credit_seed_kills(local_position: Vector2, count: int = 1) -> void:
+	## Public, bounded credit used by Mycelial Vine's Vector Harvest. The actual Seed
+	## threshold and spawn behavior stay owned here rather than being duplicated by
+	## the Evolution runtime.
+	if count <= 0:
+		return
+	_kills_toward_seed += count
 	var threshold := get_seed_kill_threshold()
-	if _kills_toward_seed >= threshold:
-		_kills_toward_seed = 0
-		overlay.spawn_seed(local_position, -1.0, 0, seed_durability)
+	while _kills_toward_seed >= threshold:
+		_kills_toward_seed -= threshold
+		overlay.spawn_seed(
+			local_position,
+			get_germination_seconds_at(local_position),
+			0,
+			seed_durability
+		)
 		status_requested.emit("%d kills condensed into a Seed at the death site." % threshold)
 
 func _on_catalyst_destroyed(catalyst_kind: int, _local_position: Vector2) -> void:
@@ -293,8 +480,9 @@ func get_seed_bank_storage() -> float:
 	return _seed_bank_storage
 
 func get_seed_bank_charge_remaining() -> float:
-	# What is left before the next Germination Season, in banked Seeds.
-	return maxf(0.0, evolutions.germination_season_threshold - _seed_bank_storage)
+	# Seconds left before the next Germination Season. The Season stopped being a
+	# storage threshold in the burst rework, so what is worth reporting is the clock.
+	return maxf(0.0, _season_remaining)
 
 func get_kills_toward_seed() -> int:
 	return _kills_toward_seed
@@ -304,6 +492,17 @@ func get_seed_kill_threshold() -> int:
 		minimum_seed_kill_threshold,
 		baseline_seed_kill_threshold - progression.get_upgrade_level(PhaseBProgression.UpgradeId.SEED_PRODUCTION)
 	)
+
+func get_germination_seconds_at(local_position: Vector2) -> float:
+	# Root Network: a Seed buried in old ground breaks open sooner than one left in
+	# Green the run only just claimed. Root already decides what a Seed landing here
+	# is worth; this is the same amplification spent on the wait instead of on the
+	# mass, so Root shortens the gap between a kill and the growth it becomes.
+	return territory_field.tuning.seed_charge_seconds / maxf(
+		0.01,
+		root_director.get_network_multiplier_here(local_position)
+	)
+
 
 func get_seed_mass_multiplier() -> float:
 	return 1.0 + seed_mass_per_level * float(progression.get_upgrade_level(PhaseBProgression.UpgradeId.GROWTH_MASS))

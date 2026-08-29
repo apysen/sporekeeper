@@ -61,6 +61,7 @@ class TerritoryCommand:
 		SEED,
 		SPLAT,
 		EROSION,
+		AFTERGROWTH,
 		HOSTILE_GROWTH,
 		MATURITY_SUPPRESSION,
 	}
@@ -74,6 +75,11 @@ class TerritoryCommand:
 	var erosion := 0.0
 	var hostile_mass := 0.0
 	var maturity_suppression := 0.0
+	## Aftergrowth's disposable control and how long it lasts. Its own fields rather
+	## than a borrowed erosion value, so nothing reading a command can mistake a
+	## shield being laid for Green being eaten.
+	var aftergrowth_shield := 0.0
+	var aftergrowth_seconds := 0.0
 	## Which way the material was travelling when it landed, in cell space, and how
 	## far the impact drags it out along that line. A splat that arrives with speed
 	## is not a disc: it lands long, keeps going the way it was thrown, and pushes
@@ -254,7 +260,24 @@ var _overlap_previous := PackedInt32Array()
 var _overlap_cells := PackedInt32Array()
 var _topology_queue := PackedInt32Array()
 var _pixel_bytes := PackedByteArray()
+## Aftergrowth: a disposable control buffer Bloom leaves on Green, held apart from
+## _control on purpose. Losing it must not read as losing Green - no ownership
+## change, no maturity loss, and every system that asks what the run actually holds
+## keeps seeing the true value underneath.
+var _aftergrowth := PackedFloat32Array()
+## Seconds left on each cell's shield.
+var _aftergrowth_remaining := PackedFloat32Array()
+## How many cells currently carry one, so the decay sweep is skipped outright for
+## the runs and the stretches of a run that have no shields anywhere.
+var _aftergrowth_active := 0
+## The shielded cells themselves, so a reader can draw the shield without walking
+## seven thousand cells to find the few dozen that have one.
+var _aftergrowth_cells := PackedInt32Array()
 var _commands: Array[TerritoryCommand] = []
+## Static route graph for attacks that grow around basalt. Obstacles are authored in
+## the claimable mask and never change during a run, so this is rebuilt only when the
+## field itself resets rather than once per path query.
+var _growth_path_grid := AStarGrid2D.new()
 
 var _field_image: Image
 var _field_texture: ImageTexture
@@ -343,6 +366,10 @@ func reset_field() -> void:
 	_player_frontier_mask.fill(0)
 	_bramble_development.fill(0.0)
 	_bramble_alert.fill(0.0)
+	_aftergrowth.fill(0.0)
+	_aftergrowth_remaining.fill(0.0)
+	_aftergrowth_active = 0
+	_aftergrowth_cells.clear()
 	_territory_age.fill(0.0)
 	_pruned_ground.fill(0.0)
 	_lost_memory.fill(0.0)
@@ -415,6 +442,7 @@ func reset_field() -> void:
 			if absf(control) > tuning.ownership_threshold:
 				_maturity[index] = clampf((absf(control) - 0.30) * 0.95, 0.04, 0.78)
 
+	_rebuild_growth_path_grid()
 	_rebuild_player_frontier_mask()
 	_simulation_accumulator = 0.0
 	_render_accumulator = 0.0
@@ -430,6 +458,7 @@ func reset_field() -> void:
 func step_simulation() -> void:
 	var started_at := Time.get_ticks_usec()
 	_apply_pending_commands()
+	_decay_aftergrowth(_fixed_delta)
 
 	# Bramble development runs inside the hot per-cell loop, so its tuning is read
 	# once per step and the whole layer is skipped while the path is unselected.
@@ -462,8 +491,9 @@ func step_simulation() -> void:
 	var step_maturation_per_second := tuning.maturation_per_second
 	var step_diffusion_rate := tuning.diffusion_rate
 	for y in range(_height):
+		var row_start := y * _width
 		for x in range(_width):
-			var index := y * _width + x
+			var index := row_start + x
 			if _claimable_mask[index] == 0:
 				_player_frontier_mask[index] = 0
 				_bramble_development[index] = 0.0
@@ -483,24 +513,26 @@ func step_simulation() -> void:
 
 			var pressure_x := _pressure_x[index]
 			var pressure_y := _pressure_y[index]
-			var pressure_length := minf(
-				sqrt(pressure_x * pressure_x + pressure_y * pressure_y),
-				step_max_pressure_cells
-			)
-			var source_x := clampi(int(round(float(x) - pressure_x)), 0, _width - 1)
-			var source_y := clampi(int(round(float(y) - pressure_y)), 0, _height - 1)
-			var source_index := source_y * _width + source_x
-			var source_control := control
-			if _claimable_mask[source_index] != 0:
-				source_control = _control[source_index]
-			var advection_weight := 0.0
-			if step_max_pressure_cells > 0.0:
-				advection_weight = (
+			var transported := control
+			var pressure_length_squared := pressure_x * pressure_x + pressure_y * pressure_y
+			if pressure_length_squared > 0.0 and step_max_pressure_cells > 0.0:
+				var pressure_length := minf(sqrt(pressure_length_squared), step_max_pressure_cells)
+				var source_x := clampi(int(round(float(x) - pressure_x)), 0, _width - 1)
+				var source_y := clampi(int(round(float(y) - pressure_y)), 0, _height - 1)
+				var source_index := source_y * _width + source_x
+				var source_control := control
+				if _claimable_mask[source_index] != 0:
+					source_control = _control[source_index]
+				var advection_weight := (
 					pressure_length / step_max_pressure_cells
 					* step_pressure_advection
 					/ resistance
 				)
-			var transported := lerpf(control, source_control, clampf(advection_weight, 0.0, 0.92))
+				transported = lerpf(
+					control,
+					source_control,
+					clampf(advection_weight, 0.0, 0.92)
+				)
 
 			var left_index := index - 1 if x > 0 else index
 			var right_index := index + 1 if x < _width - 1 else index
@@ -980,6 +1012,94 @@ func queue_erosion(
 	_commands.append(command)
 
 
+func queue_aftergrowth(
+	local_position: Vector2,
+	radius_cells: float,
+	shield: float,
+	seconds: float
+) -> void:
+	# Queued rather than written straight in, so the shield is laid after the Bloom's
+	# own conversion has been applied in the same step. Ground the Bloom is about to
+	# take is Green by the time this runs, which is what lets the shield cover
+	# reclaimed and newly created Green and not only what was already held.
+	if not contains_local_point(local_position) or shield <= 0.0 or seconds <= 0.0:
+		return
+	var command := TerritoryCommand.new()
+	command.kind = TerritoryCommand.Kind.AFTERGROWTH
+	command.cell_position = local_to_cell(local_position)
+	command.radius_cells = maxf(0.5, radius_cells)
+	command.aftergrowth_shield = shield
+	command.aftergrowth_seconds = seconds
+	_commands.append(command)
+
+
+func _stamp_aftergrowth(command: TerritoryCommand) -> void:
+	var minimum_x := maxi(0, int(floor(command.cell_position.x - command.radius_cells)))
+	var maximum_x := mini(_width - 1, int(ceil(command.cell_position.x + command.radius_cells)))
+	var minimum_y := maxi(0, int(floor(command.cell_position.y - command.radius_cells)))
+	var maximum_y := mini(_height - 1, int(ceil(command.cell_position.y + command.radius_cells)))
+	var radius_squared := command.radius_cells * command.radius_cells
+	for y in range(minimum_y, maximum_y + 1):
+		for x in range(minimum_x, maximum_x + 1):
+			var offset := Vector2(float(x), float(y)) - command.cell_position
+			if offset.length_squared() > radius_squared:
+				continue
+			var index := y * _width + x
+			# Only ground the run actually holds can carry a shield. Hostile and
+			# neutral cells are not the player's to protect.
+			if _claimable_mask[index] == 0 or _control[index] <= tuning.ownership_threshold:
+				continue
+			if _aftergrowth_remaining[index] <= 0.0:
+				_aftergrowth_active += 1
+			# Refreshing restores the shield to the rank's full value and never
+			# beyond it, so repeated Blooms keep a cell topped up rather than
+			# stacking a wall of temporary control on it.
+			_aftergrowth[index] = maxf(_aftergrowth[index], command.aftergrowth_shield)
+			_aftergrowth_remaining[index] = command.aftergrowth_seconds
+
+
+func _decay_aftergrowth(delta: float) -> void:
+	# Unused shield simply expires. It is not converted into anything: the whole
+	# point is a window that closes.
+	if _aftergrowth_active <= 0:
+		return
+	_aftergrowth_cells.clear()
+	for index in range(_cell_count):
+		if _aftergrowth_remaining[index] <= 0.0:
+			continue
+		_aftergrowth_remaining[index] -= delta
+		if _aftergrowth_remaining[index] <= 0.0:
+			_aftergrowth_remaining[index] = 0.0
+			_aftergrowth[index] = 0.0
+			continue
+		# A shield eaten down to nothing is over even with time left on it.
+		if _aftergrowth[index] <= 0.0:
+			_aftergrowth_remaining[index] = 0.0
+			continue
+		_aftergrowth_cells.append(index)
+	_aftergrowth_active = _aftergrowth_cells.size()
+
+
+func get_aftergrowth_at_local(local_position: Vector2) -> float:
+	if not contains_local_point(local_position):
+		return 0.0
+	return _aftergrowth[_index_at_local(local_position)]
+
+
+func get_cell_aftergrowth(index: int) -> float:
+	if index < 0 or index >= _cell_count:
+		return 0.0
+	return _aftergrowth[index]
+
+
+func get_aftergrowth_cell_count() -> int:
+	return _aftergrowth_active
+
+
+func get_aftergrowth_cells() -> PackedInt32Array:
+	return _aftergrowth_cells
+
+
 func queue_hostile_growth(
 	local_position: Vector2,
 	strength: float,
@@ -1268,6 +1388,13 @@ func get_ownership_snapshot() -> PackedFloat32Array:
 
 func get_snapshot_owned_count() -> int:
 	return _snapshot_owned_count
+
+
+func get_field_texture() -> Texture2D:
+	## The encoded field state. Published so a layer drawn over the ground can derive
+	## the Green's own coverage from the same data the territory shader does, rather
+	## than approximating where the border is and disagreeing with it.
+	return _field_texture
 
 
 func get_grid_width() -> int:
@@ -2094,6 +2221,69 @@ func is_growth_path_clear(local_start: Vector2, local_end: Vector2) -> bool:
 	)
 
 
+func get_growth_path(local_start: Vector2, local_end: Vector2) -> PackedVector2Array:
+	## Shortest obstacle-aware route through the same mask used by movement, growth,
+	## and projectile collision. Direct routes keep their exact endpoints. Obstructed
+	## routes retain only the bends needed to clear basalt, so a rendered Vine lies
+	## against the obstacle contour instead of zig-zagging through every grid cell.
+	var empty := PackedVector2Array()
+	if not contains_local_point(local_start) or not contains_local_point(local_end):
+		return empty
+	if not is_claimable_at_local(local_start) or not is_claimable_at_local(local_end):
+		return empty
+	if is_growth_path_clear(local_start, local_end):
+		return PackedVector2Array([local_start, local_end])
+	var start_cell := _local_to_growth_path_cell(local_start)
+	var end_cell := _local_to_growth_path_cell(local_end)
+	var cell_path := _growth_path_grid.get_id_path(start_cell, end_cell)
+	if cell_path.is_empty():
+		return empty
+	var raw_path := PackedVector2Array([local_start])
+	for path_cell in cell_path:
+		var point := cell_to_local(Vector2(path_cell.x, path_cell.y))
+		if point.distance_squared_to(raw_path[raw_path.size() - 1]) > 0.01:
+			raw_path.append(point)
+	if local_end.distance_squared_to(raw_path[raw_path.size() - 1]) > 0.01:
+		raw_path.append(local_end)
+	var path := PackedVector2Array([raw_path[0]])
+	var anchor_index := 0
+	while anchor_index < raw_path.size() - 1:
+		var next_index := raw_path.size() - 1
+		while (
+			next_index > anchor_index + 1
+			and not is_growth_path_clear(raw_path[anchor_index], raw_path[next_index])
+		):
+			next_index -= 1
+		path.append(raw_path[next_index])
+		anchor_index = next_index
+	return path
+
+
+func get_growth_path_length(path: PackedVector2Array) -> float:
+	var length := 0.0
+	for index in range(1, path.size()):
+		length += path[index - 1].distance_to(path[index])
+	return length
+
+
+func _local_to_growth_path_cell(local_position: Vector2) -> Vector2i:
+	var cell := local_to_cell(local_position)
+	return Vector2i(
+		clampi(int(round(cell.x)), 0, _width - 1),
+		clampi(int(round(cell.y)), 0, _height - 1)
+	)
+
+
+func _rebuild_growth_path_grid() -> void:
+	_growth_path_grid.region = Rect2i(0, 0, _width, _height)
+	_growth_path_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	_growth_path_grid.update()
+	for y in range(_height):
+		for x in range(_width):
+			if _claimable_mask[y * _width + x] == 0:
+				_growth_path_grid.set_point_solid(Vector2i(x, y))
+
+
 func set_bramble_modifiers(enabled: bool, resistance_multiplier: float) -> void:
 	if enabled != _bramble_enabled:
 		# Committing to Bramble grows thorns from a bare frontier instead of
@@ -2208,6 +2398,19 @@ func get_age_fraction_at_local(local_position: Vector2) -> float:
 		get_age_at_local(local_position) / maxf(0.001, tuning.age_reference_seconds),
 		0.0,
 		1.0
+	)
+
+
+func is_owned_at_local(local_position: Vector2) -> bool:
+	# Whether the run holds this ground at all, without asking anything about its
+	# age. The same test the Bramble hazard uses, published for the callers that
+	# need ownership on its own rather than coverage or maturity.
+	if not contains_local_point(local_position):
+		return false
+	var index := _index_at_local(local_position)
+	return (
+		_claimable_mask[index] != 0
+		and _control[index] > tuning.ownership_threshold
 	)
 
 
@@ -2434,6 +2637,8 @@ func _configure_buffers() -> void:
 	_claimable_mask.resize(_cell_count)
 	_player_frontier_mask.resize(_cell_count)
 	_bramble_development.resize(_cell_count)
+	_aftergrowth.resize(_cell_count)
+	_aftergrowth_remaining.resize(_cell_count)
 	_bramble_alert.resize(_cell_count)
 	_territory_age.resize(_cell_count)
 	_pruned_ground.resize(_cell_count)
@@ -2529,6 +2734,8 @@ func _apply_pending_commands() -> void:
 				_stamp_growth(command)
 			TerritoryCommand.Kind.EROSION:
 				_stamp_erosion(command)
+			TerritoryCommand.Kind.AFTERGROWTH:
+				_stamp_aftergrowth(command)
 			TerritoryCommand.Kind.HOSTILE_GROWTH:
 				_stamp_hostile_growth(command)
 			TerritoryCommand.Kind.MATURITY_SUPPRESSION:
@@ -2771,7 +2978,20 @@ func _stamp_erosion(command: TerritoryCommand) -> void:
 					+ _bramble_development[index]
 					* tuning.bramble_development_erosion_resistance
 				)
-			var erosion := command.erosion * falloff / resistance
+			var incoming := command.erosion * falloff
+			if _aftergrowth[index] > 0.0:
+				# The shield takes the hit at face value, before resistance. It is
+				# disposable control, not fortified control: Mature Strength belongs
+				# to the Green underneath and only applies to what gets through.
+				var absorbed := minf(_aftergrowth[index], incoming)
+				_aftergrowth[index] -= absorbed
+				incoming -= absorbed
+				if incoming <= 0.0:
+					# Nothing reached the Green, so nothing here counts as damage to
+					# it: no control lost, no maturity lost, and the thorns are not
+					# disturbed by a hit the shield ate.
+					continue
+			var erosion := incoming / resistance
 			_control[index] = maxf(0.0, _control[index] - erosion)
 			_disturb_bramble_development(index, erosion)
 			if _control[index] <= tuning.ownership_threshold:

@@ -49,16 +49,17 @@ signal evolution_changed(status: int)
 @export_range(0.0, 1.0, 0.01) var tangleburst_elite_share := 0.50
 ## Share of a mass Briar pulse's Entanglement applied to bosses.
 @export_range(0.0, 1.0, 0.01) var tangleburst_boss_share := 0.20
-## Extra Seed-Bank storage per Expanded Reserve rank, at levels one and four.
-@export_range(0.0, 1.0, 0.01) var seed_reserve_capacity_per_rank := 0.20
+## Spore the Mass Entanglement pulse applies to everything it pins. The pin is what
+## makes the pack stand still; this is what makes standing still fatal.
+@export_range(0.0, 1.0, 0.01) var tangleburst_pulse_spore := 0.35
+## Extra Seed-Bank storage granted by Expanded Reserve at Seed Reserve level one.
+@export_range(0.0, 2.0, 0.01) var seed_reserve_capacity_per_rank := 0.50
 ## Faster dormant-Seed accumulation at Seed Reserve level two.
-@export_range(0.0, 1.0, 0.01) var seed_reserve_rate_bonus := 0.15
-## Maturity a banked Seed inherits at Seed Reserve level three.
-@export_range(0.0, 1.0, 0.01) var seed_reserve_maturity_inheritance := 0.20
-## Germination Seasons between each Mast Year second wave at Seed Reserve level five.
-@export_range(1, 12, 1) var seed_reserve_mast_cadence := 3
-## Share of the first wave's Seeds released by a Mast Year second wave.
-@export_range(0.0, 1.0, 0.01) var seed_reserve_mast_share := 0.50
+@export_range(0.0, 2.0, 0.01) var seed_reserve_rate_bonus := 0.50
+## Seeds a Season has to release before Fungal Reserve raises one guaranteed
+## Fruiting Body. Counted at release rather than at germination, so a Season's
+## infrastructure is decided the moment it is sown; the remainder carries forward.
+@export_range(1, 20, 1) var fungal_reserve_seeds := 3
 ## Extra Briar Traps harvested per Packed Thorns rank at Briar Payload level one.
 @export_range(0.0, 1.0, 0.01) var briar_payload_trap_yield := 0.20
 ## Trigger-radius increase at Briar Payload level two.
@@ -131,19 +132,38 @@ signal evolution_changed(status: int)
 ## Radius multiple of the mass Briar pulse at Tangleburst level five.
 @export_range(1.0, 6.0, 0.05) var tangleburst_pulse_radius_scale := 2.20
 
+@export_group("Rootburst")
+## Damage one Germination Season Seed deals as it opens, as a share of what a
+## standard enemy is worth at the current wave. A share rather than a flat number so
+## it keeps meaning "a third of a normal mob" however far the run has scaled.
+@export_range(0.0, 4.0, 0.01) var rootburst_damage_share := 0.35
+## Spore that same burst applies.
+@export_range(0.0, 2.0, 0.01) var rootburst_spore := 0.50
+## Reach of the burst.
+@export_range(8.0, 400.0, 2.0) var rootburst_radius_pixels := 70.0
+## What Rank 3 adds to each.
+@export_range(0.0, 2.0, 0.05) var rootburst_damage_bonus := 0.40
+@export_range(0.0, 2.0, 0.05) var rootburst_radius_bonus := 0.20
+
 @export_group("Seed Bank")
 ## Dormant Seeds banked per second for each percentage point of Mature Green.
 @export_range(0.0, 1.0, 0.001) var seed_bank_storage_per_mature_percent := 0.006
 ## Dormant Seeds the ecosystem can hold before banking stops.
 @export_range(1.0, 60.0, 0.5) var seed_bank_capacity := 9.0
 ## Dormant Seeds required before a Germination Season fires.
+## Seconds between Germination Seasons. A clock, not a storage threshold: the burst
+## has to be something a player can hold ground for and time a fight around.
+@export_range(1.0, 60.0, 0.5) var germination_season_interval := 8.0
+## Seeds the free Season that comes with claiming the Evolution releases, regardless
+## of what the Bank has actually stored.
+@export_range(0, 40, 1) var germination_season_claim_seeds := 6
 @export_range(1.0, 40.0, 0.5) var germination_season_threshold := 5.0
 ## Highest number of Seeds one Germination Season may release at once.
 @export_range(1, 40, 1) var germination_season_maximum_seeds := 12
 ## Arena pixels between the anchors a Germination Season spreads its Seeds across.
 @export_range(20.0, 400.0, 5.0) var germination_season_spread_pixels := 150.0
 ## Seconds between a Mast Year's first and second germination wave.
-@export_range(0.1, 6.0, 0.05) var germination_season_mast_delay := 1.5
+@export_range(0.1, 6.0, 0.05) var germination_season_mast_delay := 1.50
 ## Extra Seed growth mass supplied by fully mature ground under a Seed Bank Seed.
 @export_range(0.0, 3.0, 0.05) var seed_bank_maturity_mass_bonus := 0.60
 
@@ -332,12 +352,59 @@ static func get_evolution_upgrade_id(evolution_id: int) -> int:
 			return PhaseBProgression.UpgradeId.EVOLUTION_SPLINTERSTORM
 		PhaseBProgression.EvolutionId.COPPICING:
 			return PhaseBProgression.UpgradeId.EVOLUTION_STOOL_REGROWTH
+		PhaseBProgression.EvolutionId.INOCULATOR:
+			return PhaseBProgression.UpgradeId.EVOLUTION_INOCULATOR
+		PhaseBProgression.EvolutionId.BURSTBLOOM:
+			return PhaseBProgression.UpgradeId.EVOLUTION_BURSTBLOOM
+		PhaseBProgression.EvolutionId.HEDGE_BATTERY:
+			return PhaseBProgression.UpgradeId.EVOLUTION_HEDGE_BATTERY
+		PhaseBProgression.EvolutionId.ROOTSTOCK:
+			return PhaseBProgression.UpgradeId.EVOLUTION_ROOTSTOCK
+		PhaseBProgression.EvolutionId.DEADHEADING:
+			return PhaseBProgression.UpgradeId.EVOLUTION_DEADHEADING
+		PhaseBProgression.EvolutionId.THORNWHIP:
+			return PhaseBProgression.UpgradeId.EVOLUTION_THORNWHIP
+		PhaseBProgression.EvolutionId.BURDOCK:
+			return PhaseBProgression.UpgradeId.EVOLUTION_BURDOCK
+		PhaseBProgression.EvolutionId.MYCELIAL_VINE:
+			return PhaseBProgression.UpgradeId.EVOLUTION_MYCELIAL_VINE
+		PhaseBProgression.EvolutionId.WISTERIA:
+			return PhaseBProgression.UpgradeId.EVOLUTION_WISTERIA
+		PhaseBProgression.EvolutionId.BRIAR_CANE:
+			return PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_CANE
+		PhaseBProgression.EvolutionId.HEARTWOOD:
+			return PhaseBProgression.UpgradeId.EVOLUTION_HEARTWOOD
+		PhaseBProgression.EvolutionId.ESPALIER:
+			return PhaseBProgression.UpgradeId.EVOLUTION_ESPALIER
+		PhaseBProgression.EvolutionId.GOURDVINE:
+			return PhaseBProgression.UpgradeId.EVOLUTION_GOURDVINE
+		PhaseBProgression.EvolutionId.ROT:
+			return PhaseBProgression.UpgradeId.EVOLUTION_ROT
+		PhaseBProgression.EvolutionId.OVERRIPE:
+			return PhaseBProgression.UpgradeId.EVOLUTION_OVERRIPE
+		PhaseBProgression.EvolutionId.DURIAN:
+			return PhaseBProgression.UpgradeId.EVOLUTION_DURIAN
+		PhaseBProgression.EvolutionId.ORCHARD:
+			return PhaseBProgression.UpgradeId.EVOLUTION_ORCHARD
+		PhaseBProgression.EvolutionId.GRAFT:
+			return PhaseBProgression.UpgradeId.EVOLUTION_GRAFT
 	return -1
 
 
 func get_evolution_upgrade_level() -> int:
 	# Level of the line belonging to the Evolution this run actually holds. Zero
 	# for a run that has not evolved, so every consumer can read it unguarded.
+	if evolution_status != PhaseBProgression.EvolutionStatus.EVOLVED:
+		return 0
+	var upgrade_id := get_evolution_upgrade_id(active_evolution)
+	if upgrade_id < 0:
+		return 0
+	return progression.get_upgrade_level(upgrade_id)
+
+
+func get_active_evolution_rank() -> int:
+	## Claiming an Evolution grants its line at rank 1; later drafts deepen that
+	## same stored line to rank 5.
 	if evolution_status != PhaseBProgression.EvolutionStatus.EVOLVED:
 		return 0
 	var upgrade_id := get_evolution_upgrade_id(active_evolution)
@@ -373,6 +440,42 @@ func get_pair_evolution_id() -> int:
 		return PhaseBProgression.EvolutionId.DEADFALL
 	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
 		return PhaseBProgression.EvolutionId.COPPICING
+	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
+		return PhaseBProgression.EvolutionId.INOCULATOR
+	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
+		return PhaseBProgression.EvolutionId.BURSTBLOOM
+	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
+		return PhaseBProgression.EvolutionId.HEDGE_BATTERY
+	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
+		return PhaseBProgression.EvolutionId.ROOTSTOCK
+	if is_evolution_path(PhaseBProgression.PathId.PRUNING) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
+		return PhaseBProgression.EvolutionId.DEADHEADING
+	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.VINE):
+		return PhaseBProgression.EvolutionId.MYCELIAL_VINE
+	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.VINE):
+		return PhaseBProgression.EvolutionId.WISTERIA
+	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.VINE):
+		return PhaseBProgression.EvolutionId.BRIAR_CANE
+	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.VINE):
+		return PhaseBProgression.EvolutionId.HEARTWOOD
+	if is_evolution_path(PhaseBProgression.PathId.PRUNING) and is_evolution_path(PhaseBProgression.PathId.VINE):
+		return PhaseBProgression.EvolutionId.ESPALIER
+	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.ROT
+	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.OVERRIPE
+	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.DURIAN
+	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.ORCHARD
+	if is_evolution_path(PhaseBProgression.PathId.PRUNING) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.GRAFT
+	if is_evolution_path(PhaseBProgression.PathId.THISTLE) and is_evolution_path(PhaseBProgression.PathId.VINE):
+		return PhaseBProgression.EvolutionId.THORNWHIP
+	if is_evolution_path(PhaseBProgression.PathId.THISTLE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.BURDOCK
+	if is_evolution_path(PhaseBProgression.PathId.VINE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
+		return PhaseBProgression.EvolutionId.GOURDVINE
 	return PhaseBProgression.EvolutionId.NONE
 
 
@@ -418,13 +521,14 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 				4:
 					return "Aggressive Growth: fresh Seed ground ensnares far faster"
 				5:
-					return "Mass Entanglement: every %d Seeds pin a whole mob" % (
-						tangleburst_pulse_cadence
-					)
+					return "Mass Entanglement: every %d Seeds pin a whole mob and seed it with %d%% Spore" % [
+						tangleburst_pulse_cadence,
+						roundi(tangleburst_pulse_spore * 100.0),
+					]
 		PhaseBProgression.UpgradeId.EVOLUTION_SEED_RESERVE:
 			match rank:
 				1:
-					return "Expanded Reserve: +%d%% dormant Seed storage" % roundi(
+					return "Expanded Reserve: +%d%% Seed Bank capacity" % roundi(
 						seed_reserve_capacity_per_rank * 100.0
 					)
 				2:
@@ -432,16 +536,17 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 						seed_reserve_rate_bonus * 100.0
 					)
 				3:
-					return "Established Stock: banked Seeds inherit %d%% maturity" % (
-						roundi(seed_reserve_maturity_inheritance * 100.0)
-					)
+					return "Rootburst: Season bursts deal +%d%% damage at +%d%% radius" % [
+						roundi(rootburst_damage_bonus * 100.0),
+						roundi(rootburst_radius_bonus * 100.0),
+					]
 				4:
-					return "Expanded Reserve II: another +%d%% storage" % roundi(
-						seed_reserve_capacity_per_rank * 100.0
+					return "Fungal Reserve: every %d Seeds released raise a Fruiting Body that clouds at once" % (
+						fungal_reserve_seeds
 					)
 				5:
-					return "Mast Year: every %d Seasons germinate twice" % (
-						seed_reserve_mast_cadence
+					return "Mast Year: every Season fires a second full wave %.1fs later" % (
+						germination_season_mast_delay
 					)
 		PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_PAYLOAD:
 			match rank:
@@ -589,6 +694,222 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 					return "Second Harvest: regrowth releases a %d%% second volley" % roundi(
 						stool_regrowth_second_share * 100.0
 					)
+		PhaseBProgression.UpgradeId.EVOLUTION_INOCULATOR:
+			match rank:
+				1:
+					return "Thistle hits apply 4% Spore"
+				2:
+					return "Ricochet hits apply 6% Spore instead"
+				3:
+					return "Critical hits add another 8% Spore"
+				4:
+					return "Base Thistle-hit Spore rises to 6%"
+				5:
+					return "First hit at 100% Spore emits a 60% Spore pulse, once per enemy"
+		PhaseBProgression.UpgradeId.EVOLUTION_BURSTBLOOM:
+			match rank:
+				1:
+					return "Bloom-supported Thistles charge for 4s and add one 35% Bloomshot"
+				2:
+					return "Bloomshot charge lasts 6s"
+				3:
+					return "A critical direct Bloomshot hit gains 40% explosion radius"
+				4:
+					return "Bloomshot explosion rises to 50% Bloom Force"
+				5:
+					return "Normal Blooms trigger an immediate bonus volley from charged Thistles"
+		PhaseBProgression.UpgradeId.EVOLUTION_HEDGE_BATTERY:
+			match rank:
+				1:
+					return "Thistle hits apply 5% Entanglement, or 10% on your Green"
+				2:
+					return "Fully Entangled enemies take 20% more Thistle damage"
+				3:
+					return "Critical hits apply another 8% Entanglement"
+				4:
+					return "Hit Entanglement rises to 8%, or 16% on your Green"
+				5:
+					return "First hit on a fully Entangled enemy each second triggers another Thistle"
+		PhaseBProgression.UpgradeId.EVOLUTION_ROOTSTOCK:
+			match rank:
+				1:
+					return "A Thistle keeps firing for 3s after losing Green support"
+				2:
+					return "Every fifth firing cycle loads a 1.5x Heavy Thorn with knockback"
+				3:
+					return "Heavy Thorns pierce two enemies before Burr ricochets"
+				4:
+					return "Fully Mature support loads a Heavy Thorn every four cycles"
+				5:
+					return "Every third Heavy Thorn calls an 8s-cooldown network Heavy salvo"
+		PhaseBProgression.UpgradeId.EVOLUTION_DEADHEADING:
+			match rank:
+				1:
+					return "Releasing at least 4 Cuttings triggers a bonus volley from every Thistle"
+				2:
+					return "The volley inherits 35% of the current Pruning Charge damage bonus"
+				3:
+					return "Deadheading volleys gain +1 Pierce"
+				4:
+					return "A full Charge repeats the volley after 0.4s at 60% damage"
+				5:
+					return "A full Charge raises two temporary Thistles for 5s outside the cap"
+		PhaseBProgression.UpgradeId.EVOLUTION_THORNWHIP:
+			match rank:
+				1:
+					return "Two mounted Thistle heads fire once through each Cane sweep"
+				2:
+					return "Mount a third Thistle head"
+				3:
+					return "The outer head inherits Apical Dominance"
+				4:
+					return "Mount a fourth Thistle head"
+				5:
+					return "Every mounted head fires twice per sweep"
+		PhaseBProgression.UpgradeId.EVOLUTION_BURDOCK:
+			match rank:
+				1:
+					return "Each rolling Fruit carries one firing Thistle"
+				2:
+					return "Carried Thistles inherit all Thistle upgrades"
+				3:
+					return "Fruit collisions reset the carried Thistle, at most every 0.5s"
+				4:
+					return "Terminal Fruit raises a 5s temporary Thistle, maximum two"
+				5:
+					return "The terminal volley gains +2 ricochets and +50pp critical chance"
+		PhaseBProgression.UpgradeId.EVOLUTION_MYCELIAL_VINE:
+			match rank:
+				1:
+					return "Every Cane hit applies 15% Spore"
+				2:
+					return "Apical hits apply another 15% Spore"
+				3:
+					return "Cane kills count twice toward Seed Production"
+				4:
+					return "Cane deals 20% more damage to enemies at 50% Spore"
+				5:
+					return "Apical hits collapse Overgrown enemies (elite 25% max HP, boss 8%)"
+		PhaseBProgression.UpgradeId.EVOLUTION_WISTERIA:
+			match rank:
+				1:
+					return "A normal Bloom arms 3 blossoms along the next Cane sweep at 35% Force"
+				2:
+					return "The armed sweep grows a fourth blossom"
+				3:
+					return "The tip blossom reaches 70% Force at 1.35x radius"
+				4:
+					return "Sweep blossoms inherit 50% of Aftergrowth and Suppression"
+				5:
+					return "The blossom sequence repeats after 0.75s at 50% strength"
+		PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_CANE:
+			match rank:
+				1:
+					return "Cane hits apply 15% Entanglement, or 25% on your Green"
+				2:
+					return "Fully Entangled enemies take 20% more Cane damage"
+				3:
+					return "Fully Entangled enemies are repelled 50%, or 100% on your Green"
+				4:
+					return "Apical hit Entanglement rises to 30%, or 50% on your Green"
+				5:
+					return "Hitting any fully Entangled enemy repels the whole sweep, +25% on Green"
+		PhaseBProgression.UpgradeId.EVOLUTION_HEARTWOOD:
+			match rank:
+				1:
+					return "Every fifth Cane sweep deals 1.5x damage at 1.15x reach"
+				2:
+					return "The Heartwood sweep's outer 40% is Apical"
+				3:
+					return "Starting a sweep on fully Mature Green advances the counter twice"
+				4:
+					return "The opposite sweep after Heartwood arrives 40% sooner"
+				5:
+					return "A root echo repeats the sector after 0.3s at 60% Cane damage"
+		PhaseBProgression.UpgradeId.EVOLUTION_ESPALIER:
+			match rank:
+				1:
+					return "Released Cuttings launch in the current 90-degree forward fan"
+				2:
+					return "Cuttings gain launch distance equal to 50% of Elongation"
+				3:
+					return "A full Charge adds a Cane sweep in the release direction"
+				4:
+					return "The bonus Cane inherits 50% of the Charge payout bonus"
+				5:
+					return "A second Cutting fan follows after 0.5s at 60% damage"
+		PhaseBProgression.UpgradeId.EVOLUTION_GOURDVINE:
+			match rank:
+				1:
+					return "Fruit attach to the outer next Cane sweep and detach at full extension"
+				2:
+					return "Attached Fruit deal 50% collision damage on Apical enemies"
+				3:
+					return "Detached Fruit gain 50% of Elongation as roll distance"
+				4:
+					return "Armed Fruit add 25% of Ripening to Cane Apical damage"
+				5:
+					return "Detached Fruit start 50% faster and first-hit damage rises 50%"
+		PhaseBProgression.UpgradeId.EVOLUTION_ROT:
+			match rank:
+				1:
+					return "Fruit collisions apply 20% Spore"
+				2:
+					return "Fruit Green accumulates Spore 50% faster for 4s"
+				3:
+					return "Fruit lose 50% less momentum against enemies at 50% Spore"
+				4:
+					return "Terminal Fruit emits a 40% Spore pulse in 80px"
+				5:
+					return "Every third terminal raises a guaranteed immediate Fruiting Body"
+		PhaseBProgression.UpgradeId.EVOLUTION_OVERRIPE:
+			match rank:
+				1:
+					return "Terminal Fruit adds a 65%-Force Bloom before bursting into territory"
+				2:
+					return "The first collision creates a 25% Bloom burst without stopping"
+				3:
+					return "Terminal Bloom launches 3 droplets"
+				4:
+					return "Terminal Bloom rises to 80% Force"
+				5:
+					return "Terminal Fruit launches two 40%-distance germinating fragments"
+		PhaseBProgression.UpgradeId.EVOLUTION_DURIAN:
+			match rank:
+				1:
+					return "Fruit collisions apply 30% Entanglement"
+				2:
+					return "Fruit lose 40% less momentum against Entangled enemies"
+				3:
+					return "Fully Entangled enemies take 25% more Fruit collision damage"
+				4:
+					return "Fresh Fruit Green ensnares 50% faster for 4s"
+				5:
+					return "Terminal Fruit apply 60% Entanglement and full outward Repulsion"
+		PhaseBProgression.UpgradeId.EVOLUTION_ORCHARD:
+			match rank:
+				1:
+					return "Every fourth terminal raises a Fruit sapling, maximum three"
+				2:
+					return "Saplings mature nearby Green 30% faster and regrow a little control"
+				3:
+					return "Normal releases distribute their unchanged Fruit count among saplings"
+				4:
+					return "Unsupported saplings stay dormant 5s and reactivate if Green returns"
+				5:
+					return "Every second release adds one Fruit per active sapling, maximum three"
+		PhaseBProgression.UpgradeId.EVOLUTION_GRAFT:
+			match rank:
+				1:
+					return "A 4+ Cutting release grafts the next Fruit for +3% damage each (max 12)"
+				2:
+					return "Grafted Fruit gain +2% Green area per Cutting (max 24%)"
+				3:
+					return "A graft of 8+ Cuttings loses 40% less momentum"
+				4:
+					return "A graft of 12+ Cuttings affects every Fruit in the next release"
+				5:
+					return "A full 16-Cutting release guarantees a +50% Prize Fruit"
 	return ""
 
 
@@ -632,6 +953,42 @@ static func get_evolution_name(evolution_id: int) -> String:
 			return "DEADFALL"
 		PhaseBProgression.EvolutionId.COPPICING:
 			return "COPPICING"
+		PhaseBProgression.EvolutionId.INOCULATOR:
+			return "INOCULATOR"
+		PhaseBProgression.EvolutionId.BURSTBLOOM:
+			return "BURSTBLOOM"
+		PhaseBProgression.EvolutionId.HEDGE_BATTERY:
+			return "HEDGE BATTERY"
+		PhaseBProgression.EvolutionId.ROOTSTOCK:
+			return "ROOTSTOCK"
+		PhaseBProgression.EvolutionId.DEADHEADING:
+			return "DEADHEADING"
+		PhaseBProgression.EvolutionId.THORNWHIP:
+			return "THORNWHIP"
+		PhaseBProgression.EvolutionId.BURDOCK:
+			return "BURDOCK"
+		PhaseBProgression.EvolutionId.MYCELIAL_VINE:
+			return "MYCELIAL VINE"
+		PhaseBProgression.EvolutionId.WISTERIA:
+			return "WISTERIA"
+		PhaseBProgression.EvolutionId.BRIAR_CANE:
+			return "BRIAR CANE"
+		PhaseBProgression.EvolutionId.HEARTWOOD:
+			return "HEARTWOOD"
+		PhaseBProgression.EvolutionId.ESPALIER:
+			return "ESPALIER"
+		PhaseBProgression.EvolutionId.GOURDVINE:
+			return "GOURDVINE"
+		PhaseBProgression.EvolutionId.ROT:
+			return "ROT"
+		PhaseBProgression.EvolutionId.OVERRIPE:
+			return "OVERRIPE"
+		PhaseBProgression.EvolutionId.DURIAN:
+			return "DURIAN"
+		PhaseBProgression.EvolutionId.ORCHARD:
+			return "ORCHARD"
+		PhaseBProgression.EvolutionId.GRAFT:
+			return "GRAFT"
 	return "NO EVOLUTION"
 
 
@@ -644,7 +1001,7 @@ static func get_evolution_description(evolution_id: int) -> String:
 		PhaseBProgression.EvolutionId.THORNBURST:
 			return "Blooms harvest the Bramble they claim into cascading Briar Traps."
 		PhaseBProgression.EvolutionId.SEED_BANK:
-			return "Mature borders periodically produce Seeds that inherit their maturity."
+			return "Mature ground banks Seeds and drops them onto the mob as bursts."
 		PhaseBProgression.EvolutionId.FLOWERING_SEASON:
 			return "Mature ground builds toward mass flowerings that spend maturity for Blooms."
 		PhaseBProgression.EvolutionId.OLD_GROWTH:
@@ -657,6 +1014,42 @@ static func get_evolution_description(evolution_id: int) -> String:
 			return "Pruning thorned Green turns its Bramble into a storm of spikes."
 		PhaseBProgression.EvolutionId.COPPICING:
 			return "Mature ground yields far more Cuttings and grows back fast."
+		PhaseBProgression.EvolutionId.INOCULATOR:
+			return "Thistle volleys inoculate enemies with Spore and rupture completed infections."
+		PhaseBProgression.EvolutionId.BURSTBLOOM:
+			return "Blooms charge supported Thistles with one explosive Bloomshot per firing event."
+		PhaseBProgression.EvolutionId.HEDGE_BATTERY:
+			return "Thistle volleys build Entanglement and relay fire through pinned enemies."
+		PhaseBProgression.EvolutionId.ROOTSTOCK:
+			return "Mature support hardens periodic thorns into piercing network salvos."
+		PhaseBProgression.EvolutionId.DEADHEADING:
+			return "Intentional Pruning releases command every Thistle to fire together."
+		PhaseBProgression.EvolutionId.THORNWHIP:
+			return "Thistle heads mount along the Cane and fire through every sweep sector."
+		PhaseBProgression.EvolutionId.BURDOCK:
+			return "Each Fruit carries a firing Thistle and plants temporary artillery at its end."
+		PhaseBProgression.EvolutionId.MYCELIAL_VINE:
+			return "Cane sweeps spread Spore and collapse infections struck by the apical tip."
+		PhaseBProgression.EvolutionId.WISTERIA:
+			return "Normal Blooms arm a blossom sequence along the next Cane sweep."
+		PhaseBProgression.EvolutionId.BRIAR_CANE:
+			return "Cane sweeps Entangle and repel enemies whether or not the sweep stands on Green."
+		PhaseBProgression.EvolutionId.HEARTWOOD:
+			return "Every fifth Cane sweep grows into a heavy, long-reaching root echo."
+		PhaseBProgression.EvolutionId.ESPALIER:
+			return "Pruning releases train Cuttings into the Cane's forward sweep sector."
+		PhaseBProgression.EvolutionId.GOURDVINE:
+			return "Fruit ride the outer Cane arc before launching with stored sweep momentum."
+		PhaseBProgression.EvolutionId.ROT:
+			return "Fruit spread Spore through collisions, trails, and terminal rupture."
+		PhaseBProgression.EvolutionId.OVERRIPE:
+			return "Fruit burst into Bloom pressure, droplets, and short-lived germinating fragments."
+		PhaseBProgression.EvolutionId.DURIAN:
+			return "Fruit accumulate Entanglement and finish rolls with a repelling thorn burst."
+		PhaseBProgression.EvolutionId.ORCHARD:
+			return "Completed rolls raise saplings that mature Green and join later releases."
+		PhaseBProgression.EvolutionId.GRAFT:
+			return "Pruning releases graft stored Cuttings into the next Fruit crop."
 	return "Master one line from each selected path to unlock a pairing."
 
 
@@ -682,4 +1075,40 @@ static func get_upgrade_evolution(upgrade_id: int) -> int:
 			return PhaseBProgression.EvolutionId.COPPICING
 		PhaseBProgression.UpgradeId.EVOLUTION_ANCIENT_FURY:
 			return PhaseBProgression.EvolutionId.OLD_GROWTH
+		PhaseBProgression.UpgradeId.EVOLUTION_INOCULATOR:
+			return PhaseBProgression.EvolutionId.INOCULATOR
+		PhaseBProgression.UpgradeId.EVOLUTION_BURSTBLOOM:
+			return PhaseBProgression.EvolutionId.BURSTBLOOM
+		PhaseBProgression.UpgradeId.EVOLUTION_HEDGE_BATTERY:
+			return PhaseBProgression.EvolutionId.HEDGE_BATTERY
+		PhaseBProgression.UpgradeId.EVOLUTION_ROOTSTOCK:
+			return PhaseBProgression.EvolutionId.ROOTSTOCK
+		PhaseBProgression.UpgradeId.EVOLUTION_DEADHEADING:
+			return PhaseBProgression.EvolutionId.DEADHEADING
+		PhaseBProgression.UpgradeId.EVOLUTION_THORNWHIP:
+			return PhaseBProgression.EvolutionId.THORNWHIP
+		PhaseBProgression.UpgradeId.EVOLUTION_BURDOCK:
+			return PhaseBProgression.EvolutionId.BURDOCK
+		PhaseBProgression.UpgradeId.EVOLUTION_MYCELIAL_VINE:
+			return PhaseBProgression.EvolutionId.MYCELIAL_VINE
+		PhaseBProgression.UpgradeId.EVOLUTION_WISTERIA:
+			return PhaseBProgression.EvolutionId.WISTERIA
+		PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_CANE:
+			return PhaseBProgression.EvolutionId.BRIAR_CANE
+		PhaseBProgression.UpgradeId.EVOLUTION_HEARTWOOD:
+			return PhaseBProgression.EvolutionId.HEARTWOOD
+		PhaseBProgression.UpgradeId.EVOLUTION_ESPALIER:
+			return PhaseBProgression.EvolutionId.ESPALIER
+		PhaseBProgression.UpgradeId.EVOLUTION_GOURDVINE:
+			return PhaseBProgression.EvolutionId.GOURDVINE
+		PhaseBProgression.UpgradeId.EVOLUTION_ROT:
+			return PhaseBProgression.EvolutionId.ROT
+		PhaseBProgression.UpgradeId.EVOLUTION_OVERRIPE:
+			return PhaseBProgression.EvolutionId.OVERRIPE
+		PhaseBProgression.UpgradeId.EVOLUTION_DURIAN:
+			return PhaseBProgression.EvolutionId.DURIAN
+		PhaseBProgression.UpgradeId.EVOLUTION_ORCHARD:
+			return PhaseBProgression.EvolutionId.ORCHARD
+		PhaseBProgression.UpgradeId.EVOLUTION_GRAFT:
+			return PhaseBProgression.EvolutionId.GRAFT
 	return PhaseBProgression.EvolutionId.NONE

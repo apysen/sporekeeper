@@ -125,6 +125,26 @@ func _configure_material() -> void:
 	_mask_material.set_shader_parameter("edge_softness", edge_softness)
 	_mask_material.set_shader_parameter("boundary_boost", boundary_boost)
 	_mask_material.set_shader_parameter("boundary_width", boundary_width)
+	_mirror_field_edge()
+
+
+func _mirror_field_edge() -> void:
+	# The tear is the ground's, not this layer's. Copying the numbers off the field's
+	# own material rather than authoring them a second time is what keeps the wager's
+	# contour ragged in the same way, at the same scale, as the border it sits on;
+	# two copies would drift apart the moment either is tuned.
+	_mask_material.set_shader_parameter("field_size_px", tuning.arena_size)
+	var field_material := territory_field.material as ShaderMaterial
+	if field_material == null:
+		return
+	for parameter in ["edge_noise_tex", "edge_noise_tile_px", "edge_distortion_px"]:
+		var value: Variant = field_material.get_shader_parameter(parameter)
+		if value != null:
+			_mask_material.set_shader_parameter(parameter, value)
+	# Without the noise texture the tear would displace every pixel by the same
+	# constant, which shifts the whole region instead of roughening its edge.
+	if field_material.get_shader_parameter("edge_noise_tex") == null:
+		_mask_material.set_shader_parameter("edge_distortion_px", 0.0)
 
 
 func _configure_buffers() -> void:

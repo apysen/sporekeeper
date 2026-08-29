@@ -92,8 +92,11 @@ The reel vocabulary is:
 3. Bloom
 4. Bramble
 5. Pruning
-6. Clover
-7. Bust
+6. Thistle
+7. Vine
+8. Fruit
+9. Clover
+10. Bust
 
 Represent these internally with an enum.
 
@@ -104,6 +107,9 @@ enum SlotSymbol {
     BLOOM,
     BRAMBLE,
     PRUNING,
+    THISTLE,
+    VINE,
+    FRUIT,
     CLOVER,
     BUST
 }
@@ -131,7 +137,7 @@ Clover | Clover | Bloom
 
 All seven examples above resolve to a **Bloom Jackpot**.
 
-The same rule applies to Root, Spore, Bramble, and Pruning.
+The same rule applies to Root, Spore, Bramble, Pruning, Thistle, Vine, and Fruit.
 
 ---
 
@@ -177,7 +183,7 @@ Clover | Clover | Clover
 
 triggers the **Clover Mega Jackpot**.
 
-All five Path jackpot events activate simultaneously.
+All eight Path jackpot events activate simultaneously.
 
 ---
 
@@ -972,7 +978,43 @@ During the effect:
 - Angular momentum, orbiting behavior, release speed, ring behavior, and other real Pruning physics should remain intact.
 - Jackpot stacking adds another 10 seconds.
 
-## 31.6 Triple Clover
+## 31.6 Thistle Jackpot
+
+**Type:** Timed global event
+
+**Initial duration:** **10.0 seconds**
+
+- Thistle behaves as though all four standard lines are Level 5.
+- The network immediately establishes its five-turret ceiling where Green support
+  exists and fires one readable bonus volley at current targets.
+- The loan does not grant Thistle ownership or relic eligibility.
+- Repeat jackpots add another 10 seconds.
+
+## 31.7 Vine Jackpot
+
+**Type:** Timed global event
+
+**Initial duration:** **10.0 seconds**
+
+- Vine behaves as though all four standard lines are Level 5.
+- It immediately performs one green bonus sweep aimed at the targetable 90-degree
+  sector containing the most enemies.
+- The automatic Vine cadence continues for the rest of the loan.
+- Repeat jackpots add another 10 seconds.
+
+## 31.8 Fruit Jackpot
+
+**Type:** Timed global event
+
+**Initial duration:** **10.0 seconds**
+
+- Fruit behaves as though all four standard lines are Level 5.
+- It immediately releases the full six-Fruit batch; every Fruit uses its own trail,
+  dense-sector fan trajectory, and randomized painting.
+- Further batches use Fruit's normal wait-for-explosion plus one-second cooldown.
+- Repeat jackpots add another 10 seconds.
+
+## 31.9 Triple Clover
 
 At resolution:
 
@@ -982,7 +1024,10 @@ At resolution:
 4. Add 15 seconds of Root Jackpot.
 5. Add 10 seconds of Bramble Jackpot.
 6. Add 10 seconds of Pruning Jackpot.
-7. Allow all five systems to coexist.
+7. Add 10 seconds of Thistle Jackpot.
+8. Add 10 seconds of Vine Jackpot.
+9. Add 10 seconds of Fruit Jackpot.
+10. Allow all eight systems to coexist.
 
 Do not serialize the Path effects one after another.
 
@@ -2087,6 +2132,9 @@ Key questions:
 | Root Jackpot | 15 sec |
 | Bramble Jackpot | 10 sec |
 | Pruning Jackpot | 10 sec |
+| Thistle Jackpot | 10 sec |
+| Vine Jackpot | 10 sec |
+| Fruit Jackpot | 10 sec |
 | All In grace | 3 sec |
 | Grace recovery threshold | 5% claimable board |
 | Minimum buy-in | 10% Established+ board |
@@ -2434,7 +2482,7 @@ Verify timed and discrete jackpot effects continue through grace.
 - [ ] Bramble starts at 10 sec.
 - [ ] Pruning starts at 10 sec.
 - [ ] Pruning gets casino-generated clippings.
-- [ ] Triple Clover fires all five Path jackpots.
+- [ ] Triple Clover fires all eight Path jackpots.
 - [ ] Player may spin during active jackpots.
 - [ ] Timed jackpots stack by duration.
 - [ ] No lever cooldown exists beyond reel animation.

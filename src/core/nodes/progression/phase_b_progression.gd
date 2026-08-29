@@ -1,6 +1,8 @@
 class_name PhaseBProgression
 extends Node
 
+const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
+
 signal xp_changed(level: int, current_xp: int, required_xp: int)
 signal upgrade_choice_requested(options: PackedInt32Array)
 signal rerolls_changed(remaining: int)
@@ -19,6 +21,9 @@ enum PathId {
 	BRAMBLE,
 	ROOT,
 	PRUNING,
+	THISTLE,
+	VINE,
+	FRUIT,
 }
 
 const UNSELECTED_PATH := -1
@@ -26,19 +31,19 @@ const UNSELECTED_PATH := -1
 enum PathSlot {
 	PRIMARY,
 	SECONDARY,
-	TERTIARY,
 }
 ## Draft option identifying the pair evolution rather than an upgrade line.
 const EVOLUTION_DRAFT_OPTION := -2
 
 enum UpgradeId {
-	THORNSHOT_POWER,
-	THORNSHOT_TEMPO,
-	THORNSHOT_VOLLEY,
 	SEED_PRODUCTION,
 	GROWTH_MASS,
+	SPORULATION,
+	FRUITING_BODIES,
 	BLOOM_FORCE,
 	BLOOM_FREQUENCY,
+	AFTERGROWTH,
+	SUPPRESSION,
 	BRAMBLE_ENTANGLEMENT,
 	BRAMBLE_ENSNARE_RATE,
 	BRAMBLE_GRASPING_ROOTS,
@@ -51,6 +56,18 @@ enum UpgradeId {
 	PRUNING_CUTTING_YIELD,
 	PRUNING_CUTTING_DAMAGE,
 	PRUNING_CHARGE,
+	THISTLE_CLUSTERING,
+	THISTLE_DEHISCENCE,
+	THISTLE_BURR,
+	THISTLE_NEEDLEPOINT,
+	VINE_ELONGATION,
+	VINE_LIGNIFICATION,
+	VINE_TURGOR,
+	VINE_APICAL_DOMINANCE,
+	FRUIT_SET,
+	FRUIT_RIPENING,
+	FRUIT_MOMENTUM,
+	FRUIT_GERMINATION,
 	EVOLUTION_FLORAL_CASCADE,
 	EVOLUTION_TANGLEBURST,
 	EVOLUTION_SEED_RESERVE,
@@ -61,6 +78,24 @@ enum UpgradeId {
 	EVOLUTION_COMPRESSION,
 	EVOLUTION_SPLINTERSTORM,
 	EVOLUTION_STOOL_REGROWTH,
+	EVOLUTION_INOCULATOR,
+	EVOLUTION_BURSTBLOOM,
+	EVOLUTION_HEDGE_BATTERY,
+	EVOLUTION_ROOTSTOCK,
+	EVOLUTION_DEADHEADING,
+	EVOLUTION_THORNWHIP,
+	EVOLUTION_BURDOCK,
+	EVOLUTION_MYCELIAL_VINE,
+	EVOLUTION_WISTERIA,
+	EVOLUTION_BRIAR_CANE,
+	EVOLUTION_HEARTWOOD,
+	EVOLUTION_ESPALIER,
+	EVOLUTION_GOURDVINE,
+	EVOLUTION_ROT,
+	EVOLUTION_OVERRIPE,
+	EVOLUTION_DURIAN,
+	EVOLUTION_ORCHARD,
+	EVOLUTION_GRAFT,
 }
 
 enum EvolutionStatus {
@@ -81,6 +116,24 @@ enum EvolutionId {
 	REBOUND,
 	DEADFALL,
 	COPPICING,
+	INOCULATOR,
+	BURSTBLOOM,
+	HEDGE_BATTERY,
+	ROOTSTOCK,
+	DEADHEADING,
+	THORNWHIP,
+	BURDOCK,
+	MYCELIAL_VINE,
+	WISTERIA,
+	BRIAR_CANE,
+	HEARTWOOD,
+	ESPALIER,
+	GOURDVINE,
+	ROT,
+	OVERRIPE,
+	DURIAN,
+	ORCHARD,
+	GRAFT,
 }
 
 @export_group("XP and Drafting")
@@ -95,10 +148,11 @@ enum EvolutionId {
 ## rather than being a second number that can drift away from it.
 @export_range(1, 10, 1) var casino_upgrade_level := 5
 ## Maximum number of different upgrade lines that may be started before evolving.
-@export_range(1, 12, 1) var upgrade_slot_count := 6
+@export_range(1, 16, 1) var upgrade_slot_count := 8
 ## Extra upgrade-line slots granted by completing the pair Evolution, so the third
-## path can actually be developed without deleting the build already assembled.
-@export_range(0, 8, 1) var evolution_bonus_upgrade_slots := 2
+## path and the Evolution line can be developed without deleting the build already
+## assembled. Eight paired-path lines plus these five positions fill the 13-slot HUD.
+@export_range(0, 8, 1) var evolution_bonus_upgrade_slots := 5
 ## Fraction of a spent level's XP converted to Biomass when no draft option remains.
 @export_range(0.0, 2.0, 0.05) var exhausted_draft_biomass_ratio := 0.75
 ## Upgrade-draft rerolls granted for an entire run.
@@ -108,14 +162,6 @@ enum EvolutionId {
 ## report reproduced.
 @export var authored_run_seed := 0
 
-@export_group("Upgrade Effects")
-## Additive Thornshot damage multiplier granted by each Thornshot Power rank.
-@export_range(0.0, 2.0, 0.01) var thornshot_damage_per_level := 0.28
-## Compounding cooldown multiplier applied by each Thornshot Tempo rank; lower is faster.
-@export_range(0.1, 1.0, 0.01) var thornshot_cooldown_multiplier_per_level := 0.88
-## Additional enemies targeted at once per Thornshot Volley rank. Extra shots take
-## different targets, so the line buys horde coverage rather than boss damage.
-@export_range(0, 3, 1) var thornshot_targets_per_level := 1
 @export_group("Path Components")
 ## Evolutions component. Progression still owns the paths a pairing is read from
 ## and the upgrade levels its optional line is counted in; what an Evolution is,
@@ -136,6 +182,10 @@ enum EvolutionId {
 @export var bloom_director: PhaseBBloomDirector
 ## Pruning component that owns that path's tuning and derived values.
 @export var pruning_director: PhaseBPruningDirector
+## Thistle, Vine, Fruit, and the universal Cane. Kept as Node here because the
+## adaptation component also reads Progression and would otherwise form a typed
+## parse-time cycle.
+@export var adaptation_director: Node
 ## Ecosystem Metabolism component. Progression still owns the Biomass currency;
 ## what allocating that currency does to the simulation belongs to Metabolism, so
 ## the physical multipliers are read back from it rather than kept here.
@@ -173,9 +223,7 @@ enum EvolutionId {
 @export_group("Development Path Offers")
 ## Development switch for narrowing a playtest to the paths under test. Turning a
 ## path off keeps it out of both path milestones and keeps its four upgrade lines
-## out of every level-up draft. A path a run already holds keeps working, and the
-## universal Thornshot lines are always drafted, so a run with every path off still
-## levels up normally.
+## out of every level-up draft. A path a run already holds keeps working.
 @export var offer_spore_path := true
 ## Development switch; see Offer Spore Path.
 @export var offer_bloom_path := true
@@ -185,6 +233,12 @@ enum EvolutionId {
 @export var offer_root_path := true
 ## Development switch; see Offer Spore Path.
 @export var offer_pruning_path := true
+## Development switch; see Offer Spore Path.
+@export var offer_thistle_path := true
+## Development switch; see Offer Spore Path.
+@export var offer_vine_path := true
+## Development switch; see Offer Spore Path.
+@export var offer_fruit_path := true
 
 var primary_path := UNSELECTED_PATH
 var secondary_path := UNSELECTED_PATH
@@ -215,6 +269,7 @@ var _upgrade_levels := PackedInt32Array()
 var _casino_paths := {}
 var _owned_relics := PackedByteArray()
 var _pending_upgrade_options := PackedInt32Array()
+var _pending_upgrade_is_support_choice := false
 var _pending_relic_options := PackedInt32Array()
 var _pending_path_options := PackedInt32Array()
 var _pending_path_is_primary := true
@@ -276,6 +331,7 @@ func reset_progression() -> void:
 	# upgrades a level offers.
 	set_run_seed(authored_run_seed if authored_run_seed != 0 else _roll_run_seed())
 	_pending_upgrade_options.clear()
+	_pending_upgrade_is_support_choice = false
 	_pending_relic_options.clear()
 	_pending_path_options.clear()
 	_pending_path_is_primary = true
@@ -335,30 +391,43 @@ func is_path_offered(path_id: int) -> bool:
 			return offer_root_path
 		PathId.PRUNING:
 			return offer_pruning_path
+		PathId.THISTLE:
+			return offer_thistle_path
+		PathId.VINE:
+			return offer_vine_path
+		PathId.FRUIT:
+			return offer_fruit_path
 	return true
 
-func request_tertiary_path_choice() -> bool:
-	# The Evolution consolidates the first two paths into one slot, which frees a
-	# third. It is offered only once the pairing is actually claimed, so a run that
-	# evolves late is offered its support path immediately rather than losing it.
+func request_tertiary_upgrade_choice() -> bool:
+	# Support is chosen through a real upgrade, just like an opening Path commitment:
+	# the selected rank-1 line determines which unused Path fills the tertiary slot.
 	if (
 		evolution_status != EvolutionStatus.EVOLVED
 		or tertiary_path != UNSELECTED_PATH
 		or _has_any_pending_choice()
 	):
 		return false
-	_pending_path_is_primary = false
-	_pending_path_slot = PathSlot.TERTIARY
-	_pending_path_options.clear()
-	for path_id in range(PathId.size()):
-		# The paths the Evolution consumed cannot be taken again.
-		if has_path(path_id) or not is_path_offered(path_id):
+	var candidates := PackedInt32Array()
+	for offset in range(UpgradeId.size()):
+		var upgrade_id := (_upgrade_offer_cursor + offset) % UpgradeId.size()
+		if evolutions.get_upgrade_evolution(upgrade_id) != EvolutionId.NONE:
 			continue
-		_pending_path_options.append(path_id)
-	if _pending_path_options.is_empty():
+		var path_id := _get_upgrade_path(upgrade_id)
+		if path_id == UNSELECTED_PATH or has_path(path_id) or not is_path_offered(path_id):
+			continue
+		candidates.append(upgrade_id)
+	var drawn := _draw_upgrade_candidates(candidates, mini(3, candidates.size()))
+	if drawn.is_empty():
 		return false
-	path_choice_requested.emit(_pending_path_options.duplicate(), false)
+	_pending_upgrade_options = drawn
+	_pending_upgrade_is_support_choice = true
+	_upgrade_offer_cursor = (_upgrade_offer_cursor + 1) % UpgradeId.size()
+	upgrade_choice_requested.emit(_pending_upgrade_options.duplicate())
 	return true
+
+func is_pending_support_upgrade_choice() -> bool:
+	return _pending_upgrade_is_support_choice and not _pending_upgrade_options.is_empty()
 
 func has_tertiary_path() -> bool:
 	return tertiary_path != UNSELECTED_PATH
@@ -367,8 +436,8 @@ func is_tertiary_path_available() -> bool:
 	return evolution_status == EvolutionStatus.EVOLVED and not has_tertiary_path()
 
 func get_upgrade_slot_count() -> int:
-	# Evolving does not delete the six lines already slotted; it adds room beside
-	# them so the support path can be developed.
+	# Evolving does not delete the eight paired-path lines already slotted; it adds
+	# one Evolution-line position and four support-path positions beside them.
 	if evolution_status == EvolutionStatus.EVOLVED:
 		return upgrade_slot_count + evolution_bonus_upgrade_slots
 	return upgrade_slot_count
@@ -376,17 +445,13 @@ func get_upgrade_slot_count() -> int:
 func choose_path(path_id: int) -> bool:
 	if _pending_path_options.find(path_id) == -1:
 		return false
-	var fills_pairing := _pending_path_slot != PathSlot.TERTIARY
-	if _pending_path_slot == PathSlot.TERTIARY:
-		tertiary_path = path_id
-	elif _pending_path_is_primary:
+	if _pending_path_is_primary:
 		primary_path = path_id
 	else:
 		secondary_path = path_id
 	_pending_path_options.clear()
-	if fills_pairing and evolutions != null:
-		# Changing the pairing invalidates whatever it would have evolved into. The
-		# support path is chosen after the fact and must never clear a claimed one.
+	if evolutions != null:
+		# Changing either pairing Path invalidates whatever it would have evolved into.
 		evolutions.clear_active_evolution()
 	_update_evolution_readiness()
 	paths_changed.emit()
@@ -452,7 +517,13 @@ func is_pair_evolution_draftable() -> bool:
 	return evolutions != null and evolutions.is_pair_evolution_draftable()
 
 func grant_evolution_if_ready() -> bool:
-	return evolutions != null and evolutions.grant_evolution_if_ready()
+	if evolutions == null or not evolutions.grant_evolution_if_ready():
+		return false
+	var upgrade_id: int = evolutions.get_evolution_upgrade_id(active_evolution)
+	if upgrade_id >= 0 and get_owned_upgrade_level(upgrade_id) == 0:
+		_upgrade_levels[upgrade_id] = 1
+	upgrades_changed.emit()
+	return true
 
 func is_evolution_path(path_id: int) -> bool:
 	# Only the first two paths make the pairing. The support path never joins it,
@@ -493,13 +564,21 @@ func add_xp(amount: int) -> void:
 	_try_request_level_up()
 	xp_changed.emit(current_level, current_xp, get_required_xp())
 
+
+func configure_mode(mode: int) -> void:
+	# Campaign has more time and more authored adaptation positions to fill, so its
+	# level curve uses the measured 30-minute pacing while Quick keeps its balance.
+	if mode == RUN_MODE.Id.CAMPAIGN:
+		xp_requirement_growth = 1.20
+
 func choose_upgrade(upgrade_id: int) -> bool:
 	if _pending_upgrade_options.find(upgrade_id) == -1:
 		return false
-	if get_owned_upgrade_level(upgrade_id) >= maximum_upgrade_level:
+	if get_owned_upgrade_level(upgrade_id) >= get_upgrade_maximum_level(upgrade_id):
 		return false
 	_upgrade_levels[upgrade_id] += 1
 	_pending_upgrade_options.clear()
+	_pending_upgrade_is_support_choice = false
 	# Taking a line from an uncommitted path is the commitment itself, filling the
 	# next open path slot. The run never asks again for a choice the player has
 	# already made, and the path is set before the next draft rolls so later
@@ -563,6 +642,10 @@ func get_upgrade_level(upgrade_id: int) -> int:
 	if path == UNSELECTED_PATH or not _casino_paths.has(path):
 		return owned
 	return owned + casino_upgrade_level
+
+
+func get_upgrade_maximum_level(_upgrade_id: int) -> int:
+	return maximum_upgrade_level
 
 
 func has_path_active(path_id: int) -> bool:
@@ -819,18 +902,6 @@ func debug_complete_evolution_requirements() -> void:
 	_update_evolution_readiness()
 	upgrades_changed.emit()
 
-func get_thornshot_damage_multiplier() -> float:
-	return 1.0 + thornshot_damage_per_level * float(get_upgrade_level(UpgradeId.THORNSHOT_POWER))
-
-func get_thornshot_cooldown_multiplier() -> float:
-	return pow(
-		thornshot_cooldown_multiplier_per_level,
-		float(get_upgrade_level(UpgradeId.THORNSHOT_TEMPO))
-	)
-
-func get_thornshot_target_count() -> int:
-	return 1 + thornshot_targets_per_level * get_upgrade_level(UpgradeId.THORNSHOT_VOLLEY)
-
 func get_expansion_multiplier() -> float:
 	# Meristem is Pressure, and passive frontier spread is the cheapest thing
 	# Pressure buys, so an unwired Metabolism simply leaves the baseline alone.
@@ -902,7 +973,7 @@ func get_upgrade_summary() -> String:
 			lines.append("%s  %d/%d" % [
 				get_upgrade_name(upgrade_id),
 				level,
-				maximum_upgrade_level,
+				get_upgrade_maximum_level(upgrade_id),
 			])
 	if lines.is_empty():
 		return "No upgrade lines slotted"
@@ -910,20 +981,22 @@ func get_upgrade_summary() -> String:
 
 static func get_upgrade_name(upgrade_id: int) -> String:
 	match upgrade_id:
-		UpgradeId.THORNSHOT_POWER:
-			return "Thornshot Power"
-		UpgradeId.THORNSHOT_TEMPO:
-			return "Thornshot Tempo"
-		UpgradeId.THORNSHOT_VOLLEY:
-			return "Thornshot Volley"
 		UpgradeId.SEED_PRODUCTION:
 			return "Seed Production"
 		UpgradeId.GROWTH_MASS:
 			return "Growth Mass"
+		UpgradeId.SPORULATION:
+			return "Sporulation"
+		UpgradeId.FRUITING_BODIES:
+			return "Fruiting Bodies"
 		UpgradeId.BLOOM_FORCE:
 			return "Bloom Force"
 		UpgradeId.BLOOM_FREQUENCY:
 			return "Bloom Frequency"
+		UpgradeId.AFTERGROWTH:
+			return "Aftergrowth"
+		UpgradeId.SUPPRESSION:
+			return "Suppression"
 		UpgradeId.BRAMBLE_ENTANGLEMENT:
 			return "Entanglement"
 		UpgradeId.BRAMBLE_ENSNARE_RATE:
@@ -948,6 +1021,30 @@ static func get_upgrade_name(upgrade_id: int) -> String:
 			return "Cutting Edge"
 		UpgradeId.PRUNING_CHARGE:
 			return "Charge"
+		UpgradeId.THISTLE_CLUSTERING:
+			return "Clustering"
+		UpgradeId.THISTLE_DEHISCENCE:
+			return "Dehiscence"
+		UpgradeId.THISTLE_BURR:
+			return "Burr"
+		UpgradeId.THISTLE_NEEDLEPOINT:
+			return "Needlepoint"
+		UpgradeId.VINE_ELONGATION:
+			return "Elongation"
+		UpgradeId.VINE_LIGNIFICATION:
+			return "Lignification"
+		UpgradeId.VINE_TURGOR:
+			return "Turgor"
+		UpgradeId.VINE_APICAL_DOMINANCE:
+			return "Apical Dominance"
+		UpgradeId.FRUIT_SET:
+			return "Fruit Set"
+		UpgradeId.FRUIT_RIPENING:
+			return "Ripening"
+		UpgradeId.FRUIT_MOMENTUM:
+			return "Momentum"
+		UpgradeId.FRUIT_GERMINATION:
+			return "Germination"
 		UpgradeId.EVOLUTION_FLORAL_CASCADE:
 			return "Floral Cascade"
 		UpgradeId.EVOLUTION_TANGLEBURST:
@@ -968,32 +1065,81 @@ static func get_upgrade_name(upgrade_id: int) -> String:
 			return "Splinterstorm"
 		UpgradeId.EVOLUTION_STOOL_REGROWTH:
 			return "Stool Regrowth"
+		UpgradeId.EVOLUTION_INOCULATOR:
+			return "Inoculator"
+		UpgradeId.EVOLUTION_BURSTBLOOM:
+			return "Burstbloom"
+		UpgradeId.EVOLUTION_HEDGE_BATTERY:
+			return "Hedge Battery"
+		UpgradeId.EVOLUTION_ROOTSTOCK:
+			return "Rootstock"
+		UpgradeId.EVOLUTION_DEADHEADING:
+			return "Deadheading"
+		UpgradeId.EVOLUTION_THORNWHIP:
+			return "Thornwhip"
+		UpgradeId.EVOLUTION_BURDOCK:
+			return "Burdock"
+		UpgradeId.EVOLUTION_MYCELIAL_VINE:
+			return "Mycelial Vine"
+		UpgradeId.EVOLUTION_WISTERIA:
+			return "Wisteria"
+		UpgradeId.EVOLUTION_BRIAR_CANE:
+			return "Briar Cane"
+		UpgradeId.EVOLUTION_HEARTWOOD:
+			return "Heartwood"
+		UpgradeId.EVOLUTION_ESPALIER:
+			return "Espalier"
+		UpgradeId.EVOLUTION_GOURDVINE:
+			return "Gourdvine"
+		UpgradeId.EVOLUTION_ROT:
+			return "Rot"
+		UpgradeId.EVOLUTION_OVERRIPE:
+			return "Overripe"
+		UpgradeId.EVOLUTION_DURIAN:
+			return "Durian"
+		UpgradeId.EVOLUTION_ORCHARD:
+			return "Orchard"
+		UpgradeId.EVOLUTION_GRAFT:
+			return "Graft"
 	return "Unknown Upgrade"
 
 func get_upgrade_description(upgrade_id: int) -> String:
 	if evolutions.get_upgrade_evolution(upgrade_id) != EvolutionId.NONE:
+		var next_rank := get_owned_upgrade_level(upgrade_id) + 1
 		return evolutions.get_evolution_upgrade_rank_description(
 			upgrade_id,
-			get_owned_upgrade_level(upgrade_id) + 1
+			next_rank
 		)
 	match upgrade_id:
-		UpgradeId.THORNSHOT_POWER:
-			return "+%d%% Thornshot damage" % roundi(thornshot_damage_per_level * 100.0)
-		UpgradeId.THORNSHOT_TEMPO:
-			return "%d%% faster Thornshot attacks" % roundi(
-				(1.0 - thornshot_cooldown_multiplier_per_level) * 100.0
-			)
-		UpgradeId.THORNSHOT_VOLLEY:
-			return "Thornshot targets +%d more enemy at once" % thornshot_targets_per_level
 		UpgradeId.SEED_PRODUCTION:
 			return "One fewer kill required per Seed"
 		UpgradeId.GROWTH_MASS:
 			return "+%d%% Seed growth mass" % roundi(spore_director.seed_mass_per_level * 100.0 if spore_director != null else 0.0)
+		UpgradeId.SPORULATION:
+			return "+%d%% Spore accumulation on enemies standing in your Green" % roundi(
+				spore_director.sporulation_rate_per_level * 100.0
+				if spore_director != null
+				else 0.0
+			)
+		UpgradeId.FRUITING_BODIES:
+			return "+%d%% chance a Seed germinating inside your Green raises a colony" % roundi(
+				spore_director.fruiting_body_chance_per_level * 100.0
+				if spore_director != null
+				else 0.0
+			)
 		UpgradeId.BLOOM_FORCE:
 			return "+%d%% Bloom pressure and damage" % roundi(bloom_director.bloom_force_per_level * 100.0 if bloom_director != null else 0.0)
 		UpgradeId.BLOOM_FREQUENCY:
 			return "%d%% shorter Bloom interval" % roundi(
 				(1.0 - (bloom_director.bloom_interval_multiplier_per_level if bloom_director != null else 0.0)) * 100.0
+			)
+		UpgradeId.AFTERGROWTH:
+			return "+%d temporary control shielding Green a Bloom touches" % roundi(
+				bloom_director.aftergrowth_per_level if bloom_director != null else 0.0
+			)
+		UpgradeId.SUPPRESSION:
+			return "Bloom-struck enemies do %d%% less Territory damage" % roundi(
+				bloom_director.suppression_per_level * 100.0 if bloom_director != null else 0.0
 			)
 		UpgradeId.BRAMBLE_ENTANGLEMENT:
 			return "+%d%% slow on fully Entangled enemies" % roundi(
@@ -1048,6 +1194,30 @@ func get_upgrade_description(upgrade_id: int) -> String:
 			return "+%d%% Charge rate and launch payout" % roundi(
 				pruning_director.pruning_charge_per_level * 100.0 if pruning_director != null else 0.0
 			)
+		UpgradeId.THISTLE_CLUSTERING:
+			return "+1 thorn per turret firing event"
+		UpgradeId.THISTLE_DEHISCENCE:
+			return "+15% Thistle attack speed"
+		UpgradeId.THISTLE_BURR:
+			return "+1 full-damage ricochet target per thorn"
+		UpgradeId.THISTLE_NEEDLEPOINT:
+			return "+10 percentage points Thistle critical chance (2x damage)"
+		UpgradeId.VINE_ELONGATION:
+			return "+20% Cane sweep reach"
+		UpgradeId.VINE_LIGNIFICATION:
+			return "+25% Cane sweep damage"
+		UpgradeId.VINE_TURGOR:
+			return "+15% Cane attack speed"
+		UpgradeId.VINE_APICAL_DOMINANCE:
+			return "+25% damage in the outermost 25% of the Cane sweep"
+		UpgradeId.FRUIT_SET:
+			return "+1 Fruit per release"
+		UpgradeId.FRUIT_RIPENING:
+			return "+25% Fruit collision and terminal damage"
+		UpgradeId.FRUIT_MOMENTUM:
+			return "+20% maximum Fruit roll distance"
+		UpgradeId.FRUIT_GERMINATION:
+			return "+20% Green area created by Fruit"
 	return ""
 
 static func get_path_name(path_id: int) -> String:
@@ -1062,6 +1232,12 @@ static func get_path_name(path_id: int) -> String:
 			return "Root"
 		PathId.PRUNING:
 			return "Pruning"
+		PathId.THISTLE:
+			return "Thistle"
+		PathId.VINE:
+			return "Vine"
+		PathId.FRUIT:
+			return "Fruit"
 	return "Unchosen"
 
 static func get_path_description(path_id: int) -> String:
@@ -1076,6 +1252,12 @@ static func get_path_description(path_id: int) -> String:
 			return "Age Green into a Root Network that amplifies everything else your build does."
 		PathId.PRUNING:
 			return "Burn the Green under your feet into an orbiting ring of blades."
+		PathId.THISTLE:
+			return "Plant two stationary Thistles on your Green; they fire thorns and replant when their support is lost."
+		PathId.VINE:
+			return "Grow Cane into a green lash that auto-targets the densest valid sector."
+		PathId.FRUIT:
+			return "Roll painted Fruit toward enemy crowds, trail Green, then burst into a terminal foothold."
 	return ""
 
 static func get_relic_name(relic_id: int) -> String:
@@ -1120,6 +1302,7 @@ func reroll_upgrade_choice() -> bool:
 	if _pending_upgrade_options.is_empty() or rerolls_remaining <= 0:
 		return false
 	var previous_offer := _pending_upgrade_options.duplicate()
+	var rerolling_support := _pending_upgrade_is_support_choice
 	# A redraw can legitimately come back with the same three lines, and a reroll that
 	# appears to do nothing is a reroll the player believes is broken. Keep drawing -
 	# from a new cursor each time, so even a pool too small to shuffle eventually
@@ -1128,7 +1311,13 @@ func reroll_upgrade_choice() -> bool:
 	for _attempt in range(UpgradeId.size()):
 		_upgrade_offer_cursor = (_upgrade_offer_cursor + 1) % UpgradeId.size()
 		_pending_upgrade_options.clear()
-		if not _roll_upgrade_options():
+		_pending_upgrade_is_support_choice = false
+		var rolled := (
+			request_tertiary_upgrade_choice()
+			if rerolling_support
+			else _roll_upgrade_options()
+		)
+		if not rolled:
 			continue
 		if not _is_same_offer(_pending_upgrade_options, previous_offer):
 			rerolls_remaining -= 1
@@ -1138,6 +1327,7 @@ func reroll_upgrade_choice() -> bool:
 	# Nothing else was available: restore the draft the player was looking at
 	# rather than leaving them with an empty panel, and charge them nothing.
 	_pending_upgrade_options = previous_offer
+	_pending_upgrade_is_support_choice = rerolling_support
 	upgrade_choice_requested.emit(_pending_upgrade_options.duplicate())
 	return false
 
@@ -1155,12 +1345,13 @@ func choose_pair_evolution() -> bool:
 	if not grant_evolution_if_ready():
 		return false
 	_pending_upgrade_options.clear()
-	upgrades_changed.emit()
+	_pending_upgrade_is_support_choice = false
 	_try_request_level_up()
 	xp_changed.emit(current_level, current_xp, get_required_xp())
 	return true
 
 func _roll_upgrade_options() -> bool:
+	_pending_upgrade_is_support_choice = false
 	# A completed pairing is offered in the level-up draft itself and holds one of
 	# the three slots until it is taken, so it can never be missed.
 	var evolution_slots := 1 if is_pair_evolution_draftable() else 0
@@ -1174,7 +1365,7 @@ func _roll_upgrade_options() -> bool:
 		if not _is_upgrade_draftable(upgrade_id):
 			continue
 		var level := get_owned_upgrade_level(upgrade_id)
-		if level >= maximum_upgrade_level:
+		if level >= get_upgrade_maximum_level(upgrade_id):
 			continue
 		if occupied_slots >= get_upgrade_slot_count() and level == 0:
 			continue
@@ -1189,14 +1380,22 @@ func _roll_upgrade_options() -> bool:
 	# drawn at random, preferring paths the offer does not already carry: a wide
 	# pre-commitment draft has to represent the board rather than three lines of one
 	# path, and that was the only thing the old even spread was really buying.
+	var drawn := _draw_upgrade_candidates(candidates, offer_count)
+	for upgrade_id in drawn:
+		_pending_upgrade_options.append(upgrade_id)
+	_upgrade_offer_cursor = (_upgrade_offer_cursor + 1) % UpgradeId.size()
+	return true
+
+func _draw_upgrade_candidates(candidates: PackedInt32Array, offer_count: int) -> PackedInt32Array:
 	var drawn := PackedInt32Array()
-	if offer_count > 0:
-		drawn.append(candidates[0])
+	if offer_count <= 0 or candidates.is_empty():
+		return drawn
+	drawn.append(candidates[0])
 	var remaining: Array[int] = []
 	for index in range(1, candidates.size()):
 		remaining.append(candidates[index])
 	_shuffle_upgrades(remaining)
-	while drawn.size() < offer_count:
+	while drawn.size() < offer_count and not remaining.is_empty():
 		var taken := -1
 		for index in range(remaining.size()):
 			if not _offer_carries_path(drawn, _get_upgrade_path(remaining[index])):
@@ -1206,10 +1405,7 @@ func _roll_upgrade_options() -> bool:
 			taken = 0
 		drawn.append(remaining[taken])
 		remaining.remove_at(taken)
-	for upgrade_id in drawn:
-		_pending_upgrade_options.append(upgrade_id)
-	_upgrade_offer_cursor = (_upgrade_offer_cursor + 1) % UpgradeId.size()
-	return true
+	return drawn
 
 func _shuffle_upgrades(upgrades: Array[int]) -> void:
 	# Fisher-Yates off the run's own generator rather than Array.shuffle, which draws
@@ -1267,9 +1463,11 @@ func _is_upgrade_draftable(upgrade_id: int) -> bool:
 
 func _get_upgrade_path(upgrade_id: int) -> int:
 	match upgrade_id:
-		UpgradeId.SEED_PRODUCTION, UpgradeId.GROWTH_MASS:
+		UpgradeId.SEED_PRODUCTION, UpgradeId.GROWTH_MASS, \
+		UpgradeId.SPORULATION, UpgradeId.FRUITING_BODIES:
 			return PathId.SPORE
-		UpgradeId.BLOOM_FORCE, UpgradeId.BLOOM_FREQUENCY:
+		UpgradeId.BLOOM_FORCE, UpgradeId.BLOOM_FREQUENCY, \
+		UpgradeId.AFTERGROWTH, UpgradeId.SUPPRESSION:
 			return PathId.BLOOM
 		UpgradeId.BRAMBLE_ENTANGLEMENT, UpgradeId.BRAMBLE_ENSNARE_RATE, \
 		UpgradeId.BRAMBLE_GRASPING_ROOTS, UpgradeId.BRAMBLE_REPULSION:
@@ -1280,6 +1478,15 @@ func _get_upgrade_path(upgrade_id: int) -> int:
 		UpgradeId.PRUNING_HARVEST_RATE, UpgradeId.PRUNING_CUTTING_YIELD, \
 		UpgradeId.PRUNING_CUTTING_DAMAGE, UpgradeId.PRUNING_CHARGE:
 			return PathId.PRUNING
+		UpgradeId.THISTLE_CLUSTERING, UpgradeId.THISTLE_DEHISCENCE, \
+		UpgradeId.THISTLE_BURR, UpgradeId.THISTLE_NEEDLEPOINT:
+			return PathId.THISTLE
+		UpgradeId.VINE_ELONGATION, UpgradeId.VINE_LIGNIFICATION, \
+		UpgradeId.VINE_TURGOR, UpgradeId.VINE_APICAL_DOMINANCE:
+			return PathId.VINE
+		UpgradeId.FRUIT_SET, UpgradeId.FRUIT_RIPENING, \
+		UpgradeId.FRUIT_MOMENTUM, UpgradeId.FRUIT_GERMINATION:
+			return PathId.FRUIT
 	return UNSELECTED_PATH
 
 func _has_maxed_path_line(path_id: int) -> bool:
@@ -1303,7 +1510,13 @@ func _get_representative_upgrade(path_id: int) -> int:
 			return UpgradeId.ROOT_MATURATION
 		PathId.PRUNING:
 			return UpgradeId.PRUNING_CUTTING_DAMAGE
-	return UpgradeId.THORNSHOT_POWER
+		PathId.THISTLE:
+			return UpgradeId.THISTLE_CLUSTERING
+		PathId.VINE:
+			return UpgradeId.VINE_LIGNIFICATION
+		PathId.FRUIT:
+			return UpgradeId.FRUIT_RIPENING
+	return UpgradeId.GROWTH_MASS
 
 func _emit_all_state() -> void:
 	paths_changed.emit()

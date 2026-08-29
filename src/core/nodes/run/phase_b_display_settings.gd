@@ -113,8 +113,18 @@ enum HudDetail {
 var _choices := PackedInt32Array()
 
 
+## Where the player's choices live between sessions. Presentation options and the two
+## volumes are chosen once and expected to stay chosen: without this, opening settings
+## from the home screen would change nothing about the run that follows it, because the
+## run builds its own settings node and would start from the authored defaults again.
+const SETTINGS_PATH := "user://settings.cfg"
+const SETTINGS_SECTION := "display"
+const AUDIO_SECTION := "audio"
+
+
 func _ready() -> void:
 	reset_settings()
+	load_settings()
 
 
 func reset_settings() -> void:
@@ -124,6 +134,54 @@ func reset_settings() -> void:
 	while _choices.size() < OptionId.size():
 		_choices.append(0)
 	settings_changed.emit()
+
+
+func load_settings() -> void:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_PATH) != OK:
+		return
+	for option_id in range(OptionId.size()):
+		var key := get_option_key(option_id)
+		if not config.has_section_key(SETTINGS_SECTION, key):
+			continue
+		# Clamped on the way in: a config written by an older build can name a choice
+		# this one no longer has, and an out-of-range index is worse than a default.
+		_choices[option_id] = clampi(
+			int(config.get_value(SETTINGS_SECTION, key, _choices[option_id])),
+			0,
+			maxi(0, get_choice_count(option_id) - 1)
+		)
+	settings_changed.emit()
+
+
+func save_settings() -> void:
+	var config := ConfigFile.new()
+	# Loaded first so writing a display choice cannot discard the audio section, which
+	# is written by whoever owns the volume sliders rather than from here.
+	config.load(SETTINGS_PATH)
+	for option_id in range(OptionId.size()):
+		config.set_value(SETTINGS_SECTION, get_option_key(option_id), _choices[option_id])
+	config.save(SETTINGS_PATH)
+
+
+static func get_option_key(option_id: int) -> String:
+	# The enum's own name, so a reordered enum cannot silently reassign saved choices
+	# to different options the way a numeric key would.
+	return OptionId.keys()[option_id] if option_id < OptionId.size() else "unknown"
+
+
+static func load_volume(key: String, fallback: float) -> float:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_PATH) != OK:
+		return fallback
+	return clampf(float(config.get_value(AUDIO_SECTION, key, fallback)), 0.0, 1.0)
+
+
+static func save_volume(key: String, value: float) -> void:
+	var config := ConfigFile.new()
+	config.load(SETTINGS_PATH)
+	config.set_value(AUDIO_SECTION, key, clampf(value, 0.0, 1.0))
+	config.save(SETTINGS_PATH)
 
 
 func get_choice(option_id: int) -> int:
@@ -143,6 +201,7 @@ func set_choice(option_id: int, choice: int) -> void:
 		return
 	_choices[option_id] = clamped
 	settings_changed.emit()
+	save_settings()
 
 
 func cycle_choice(option_id: int, step: int = 1) -> void:
@@ -153,6 +212,7 @@ func cycle_choice(option_id: int, step: int = 1) -> void:
 		return
 	_choices[option_id] = posmod(get_choice(option_id) + step, count)
 	settings_changed.emit()
+	save_settings()
 
 
 static func get_choice_count(option_id: int) -> int:
@@ -279,11 +339,14 @@ func get_player_highlight_alpha() -> float:
 
 
 func get_ui_scale() -> float:
-	return _scale_from(ui_scale_presets, get_choice(OptionId.UI_SCALE), 1.0)
+	# UI scale is intentionally fixed: the HUD is authored around the available
+	# screen space and cannot be safely shrunk without harming readability.
+	return 1.0
 
 
 func is_hud_detailed() -> bool:
-	return get_choice(OptionId.HUD_DETAIL) == HudDetail.DETAILED
+	# Compact is now the single supported HUD presentation.
+	return false
 
 
 func should_show_damage_number(is_important: bool) -> bool:
