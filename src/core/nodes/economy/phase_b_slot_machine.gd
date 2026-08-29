@@ -272,18 +272,11 @@ func _rebuild_preview(player_local_position: Vector2) -> void:
 func try_spin(player_local_position: Vector2) -> bool:
 	if not can_spin():
 		return false
-	# The House Always Loses pays a free spin when its last Bust face comes off. It costs
-	# no territory at all, so the wager is skipped rather than refunded.
-	var free_spin := odds.take_free_spin()
 	# The wager is recomputed once here rather than reusing whatever the preview last
 	# drew. The preview follows the player; the committed region is world-fixed from
 	# this instant, and the two must not be allowed to disagree by a tick.
-	_committed = (
-		PackedInt32Array()
-		if free_spin
-		else wager_selector.select(_stake, player_local_position)
-	)
-	if _committed.is_empty() and not free_spin:
+	_committed = wager_selector.select(_stake, player_local_position)
+	if _committed.is_empty():
 		return false
 	_committed_owned_count = territory_field.get_player_cell_count()
 	_outcome = odds.roll_outcome(_stake)
@@ -443,13 +436,9 @@ func get_jackpot_scale() -> float:
 
 
 func _resolve() -> void:
-	# Read before the outcome is noted, in both cases. The Side Pot is emptied by the
-	# result it pays into, and High Roller's counter advances on the same call, so asking
-	# afterwards would cash a pot that had already been spent and double the wrong spin.
-	var scale := get_jackpot_scale() + odds.get_side_pot_scale_bonus()
-	var doubled := odds.is_high_roller_spin()
-	if doubled:
-		scale *= 2.0
+	# Read before the outcome is noted: noting it advances the table's own counters,
+	# so asking afterwards would scale this payout by the state of the next spin.
+	var scale := get_jackpot_scale()
 	odds.note_outcome(_stake, _outcome)
 	match _outcome:
 		CloverSlot.Outcome.PATH_JACKPOT:
@@ -466,13 +455,9 @@ func _resolve() -> void:
 				territory_field.make_field_hostile(bust_hostile_control)
 				all_in_ruined.emit()
 			else:
-				# High Roller doubles what it costs as well as what it pays. The region is
-				# already fixed, so the doubling lands on how hostile the ground becomes
-				# rather than on how much of it there is: the wager the player agreed to
-				# is still the wager they lose.
 				territory_field.make_cells_hostile(
 					_committed,
-					minf(1.0, bust_hostile_control * (2.0 if doubled else 1.0))
+					minf(1.0, bust_hostile_control)
 				)
 		_:
 			if _stake == CloverSlot.Stake.ALL_IN:

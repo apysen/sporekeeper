@@ -66,98 +66,19 @@ class SweepState:
 ## Root component that reads back the Root Potency two relics deepen.
 @export var root_director: PhaseBRootDirector
 
-@export_group("Universal")
-## Cane sweeps between Predator's Eye reach extensions.
-@export_range(2, 40, 1) var predators_eye_interval := 10
-## Seconds a Follow Through damage bonus stays armed after a Cane kill.
-@export_range(0.1, 10.0, 0.1) var follow_through_seconds := 2.0
-## Core Weapon attacks sped up by one Adrenal Response trigger.
-@export_range(1, 10, 1) var adrenal_response_charges := 3
-## Cooldown multiplier applied to those attacks; lower fires faster.
-@export_range(0.1, 1.0, 0.01) var adrenal_response_multiplier := 0.55
-## Internal cooldown before Adrenal Response can trigger again.
-@export_range(0.0, 30.0, 0.5) var adrenal_response_cooldown := 6.0
-## Player health restored by Clean Finish.
-@export_range(0.0, 100.0, 1.0) var clean_finish_health := 8.0
-## Kills that must land inside the window to prime Overpopulation.
-@export_range(2, 20, 1) var overpopulation_kills := 6
-## Window in seconds those kills must fall inside.
-@export_range(0.2, 10.0, 0.1) var overpopulation_window_seconds := 2.0
-## Radius in pixels of the primed explosion.
-@export_range(10.0, 300.0, 5.0) var overpopulation_radius_pixels := 82.0
-## Damage dealt at the centre of the primed explosion.
-@export_range(1.0, 500.0, 1.0) var overpopulation_damage := 70.0
-## Owned territory cells that must be lost inside the window for Last Bastion and
-## Resurrection Fern to fire. An absolute cell count, never an arena percentage.
-@export_range(1, 2000, 1) var territory_emergency_cells := 130
-## Seconds the territory-loss window covers.
-@export_range(0.2, 10.0, 0.1) var territory_emergency_window_seconds := 2.0
-## Seconds Last Bastion's emergency buff lasts.
-@export_range(0.5, 30.0, 0.5) var last_bastion_seconds := 6.0
-## Movement-speed multiplier granted by Last Bastion.
-@export_range(1.0, 3.0, 0.05) var last_bastion_speed_multiplier := 1.35
-## Core Weapon cooldown multiplier granted by Last Bastion; lower fires faster.
-@export_range(0.1, 1.0, 0.01) var last_bastion_attack_multiplier := 0.65
-## Health fraction below which Blood in the Water amplifies Cane damage.
-@export_range(0.05, 0.9, 0.01) var blood_in_the_water_threshold := 0.20
-## Biomass an elite kill drops under Salvage Rights.
-@export_range(1.0, 400.0, 1.0) var salvage_rights_biomass := 26.0
-## Enemies that must be near the player for Underdog's faster Cane cadence.
-@export_range(2, 40, 1) var underdog_enemy_count := 8
-## Radius in pixels Underdog counts enemies inside.
-@export_range(40.0, 600.0, 5.0) var underdog_radius_pixels := 190.0
-## Non-Legendary relic triggers between Encore repeats.
-@export_range(2, 12, 1) var encore_interval := 3
-## Delay in seconds before an Encore repeat plays out.
-@export_range(0.05, 5.0, 0.05) var encore_delay_seconds := 0.55
-## Strength multiplier applied to an Encore repeat.
-@export_range(0.05, 1.0, 0.01) var encore_strength := 0.50
-
-@export_group("Plant Element")
-## Radius in pixels at which walking past a Seed advances it under Green Thumb.
+@export_group("Plant")
+## Green Thumb: how close a pass has to be, and how far it advances the Seed.
 @export_range(10.0, 200.0, 2.0) var green_thumb_radius_pixels := 46.0
-## Germination progress one Green Thumb touch grants.
 @export_range(0.05, 1.0, 0.01) var green_thumb_progress := 0.35
-## Seconds recently lost Green stays remembered under Regrowth.
-@export_range(0.5, 60.0, 0.5) var regrowth_memory_seconds := 7.0
-## Control per second remembered ground reclaims while uncontested.
-@export_range(0.0, 2.0, 0.01) var regrowth_per_second := 0.34
-## Kills on Mature Green between Compost payouts.
-@export_range(1, 60, 1) var compost_kills := 12
-## Biomass one Compost payout is worth.
-@export_range(1.0, 200.0, 1.0) var compost_biomass := 14.0
-## Fraction of an incoming hit Canopy absorbs on Mature Green.
-@export_range(0.05, 0.95, 0.01) var canopy_absorption := 0.45
-## Seconds before Canopy can absorb again.
-@export_range(0.5, 30.0, 0.5) var canopy_cooldown_seconds := 8.0
-## Recovery pulses Resurrection Fern releases from Mature ground.
-@export_range(1, 12, 1) var resurrection_fern_pulses := 4
-## Mass multiplier of one Resurrection Fern recovery pulse.
-@export_range(0.1, 4.0, 0.05) var resurrection_fern_mass := 1.10
-## Kills before the World Seed appears.
-@export_range(10, 600, 5) var world_seed_kills := 120
-## Seconds the World Seed spends germinating, during which it can be disrupted.
-@export_range(1.0, 30.0, 0.5) var world_seed_charge_seconds := 7.0
-## Damage the World Seed can absorb before a Saboteur destroys it.
-@export_range(1.0, 200.0, 1.0) var world_seed_durability := 24.0
-## Mass multiplier of the growth event a surviving World Seed creates.
-@export_range(1.0, 20.0, 0.5) var world_seed_mass := 7.0
-## Radius multiplier of that growth event.
-@export_range(1.0, 12.0, 0.5) var world_seed_radius := 4.0
 
 @export_group("Spore")
-## Interruptions each Seed shrugs off under Hard Husk.
+## Hard Husk: interruptions each Seed shrugs off.
 @export_range(1, 5, 1) var hard_husk_charges := 1
-## Germination progress Cross-Pollination grants nearby Seeds.
+## Cross-Pollination: progress granted, its radius, and the per-Seed receiving
+## cooldown that is the pool's primary anti-chain-rate limiter.
 @export_range(0.05, 1.0, 0.01) var cross_pollination_progress := 0.25
-## Radius in pixels Cross-Pollination reaches.
 @export_range(20.0, 600.0, 5.0) var cross_pollination_radius_pixels := 165.0
-## Seconds a Seed cannot receive relic germination progress again.
 @export_range(0.0, 10.0, 0.05) var germination_grant_cooldown_seconds := 0.85
-## Extra interruptions Patient Zero shrugs off.
-@export_range(1, 5, 1) var patient_zero_charges := 1
-## Germination progress Patient Zero grants every other Seed when it opens.
-@export_range(0.05, 1.0, 0.01) var patient_zero_progress := 0.35
 
 @export_group("Bloom")
 ## Wind-up multiplier applied to every Bloom under Late Bloomer.
@@ -236,46 +157,8 @@ class SweepState:
 ## Seconds before a destroyed World Tree may reform.
 @export_range(1.0, 120.0, 1.0) var world_tree_reform_seconds := 20.0
 
-@export_group("Synergies")
-## Seeds one Bloom advances under Pollinator.
-@export_range(1, 8, 1) var pollinator_seeds := 3
-## Germination progress Pollinator grants each of them.
-@export_range(0.05, 1.0, 0.01) var pollinator_progress := 0.25
-## Seconds a Seedbed Root Node extends Root Potency into new Green.
-@export_range(1.0, 60.0, 0.5) var seedbed_seconds := 9.0
-## Root Potency a Seedbed node supplies inside its patch.
-@export_range(0.01, 2.0, 0.01) var seedbed_potency := 0.30
-## Radius in pixels of a Seedbed node.
-@export_range(20.0, 400.0, 5.0) var seedbed_radius_pixels := 96.0
-## Seconds newly pushed Green ensnares faster under Tangled Wake.
-@export_range(0.5, 20.0, 0.5) var tangled_wake_seconds := 3.0
-## Ensnare-rate bonus inside a Tangled Wake.
-@export_range(0.1, 6.0, 0.05) var tangled_wake_bonus := 2.20
-## Entanglement-decay multiplier on Mature Green under Deep Snare.
-@export_range(0.0, 1.0, 0.01) var deep_snare_decay_multiplier := 0.18
-
 var _wave_number := 0
-var _kill_times := PackedFloat64Array()
-var _overpopulation_primed := false
-var _adrenal_cooldown := 0.0
-var _clean_finish_used_this_wave := false
-var _last_bastion_used_this_wave := false
-var _resurrection_fern_used_this_wave := false
-var _last_bastion_remaining := 0.0
-var _territory_history := PackedInt32Array()
-var _territory_sample_remaining := 0.0
-var _encore_counter := 0
-var _encore_queue: Array = []
-var _encore_repeating := false
-
-var _compost_kills := 0
-var _total_kills := 0
-var _world_seed := WorldObject.new()
-var _world_seed_id := -1
 var _green_thumb_used := {}
-
-var _patient_zero_id := -1
-var _patient_zero_armed := false
 
 var _recent_blooms: Array = []
 var _superbloom_cooldown := 0.0
@@ -291,7 +174,6 @@ var _sweep := SweepState.new()
 var _taproot := WorldObject.new()
 var _ring_regions: Array[RingRegion] = []
 var _world_tree := WorldObject.new()
-var _seedbed_nodes: Array = []
 
 var _relic_random := RandomNumberGenerator.new()
 
@@ -304,37 +186,15 @@ func _ready() -> void:
 	assert(player != null, "PhaseBRelicDirector requires PhaseBPlayer")
 	assert(wave_director != null, "PhaseBRelicDirector requires PhaseBWaveDirector")
 	combat.enemy_killed.connect(_on_enemy_killed)
-	combat.elite_defeated.connect(_on_elite_defeated)
 	combat.enemy_rooted.connect(_on_enemy_rooted)
 	overlay.seed_germinated_with_context.connect(_on_seed_germinated)
-	overlay.seed_spawned.connect(_on_seed_spawned)
-	overlay.catalyst_destroyed.connect(_on_catalyst_destroyed)
 	overlay.bloom_detonated.connect(_on_bloom_detonated)
-	player.damage_taken.connect(_on_player_damage_taken)
 	reset_director()
 
 
 func reset_director() -> void:
 	_wave_number = 0
-	_kill_times = PackedFloat64Array()
-	_overpopulation_primed = false
-	_adrenal_cooldown = 0.0
-	_clean_finish_used_this_wave = false
-	_last_bastion_used_this_wave = false
-	_resurrection_fern_used_this_wave = false
-	_last_bastion_remaining = 0.0
-	_territory_history = PackedInt32Array()
-	_territory_sample_remaining = 0.0
-	_encore_counter = 0
-	_encore_queue.clear()
-	_encore_repeating = false
-	_compost_kills = 0
-	_total_kills = 0
-	_world_seed = WorldObject.new()
-	_world_seed_id = -1
 	_green_thumb_used.clear()
-	_patient_zero_id = -1
-	_patient_zero_armed = false
 	_recent_blooms.clear()
 	_superbloom_cooldown = 0.0
 	_perennial = WorldObject.new()
@@ -347,7 +207,6 @@ func reset_director() -> void:
 	_taproot = WorldObject.new()
 	_ring_regions.clear()
 	_world_tree = WorldObject.new()
-	_seedbed_nodes.clear()
 	_relic_random.seed = 0x0FF1CE5
 	player.set_speed_multiplier(1.0)
 	apply_relics()
@@ -358,23 +217,6 @@ func apply_relics() -> void:
 	# Relics that are pure rule parameters are pushed once, when the relic set
 	# changes, into whichever system owns that rule. Nothing about them needs a
 	# per-frame tick, so nothing about them lives in this component's update.
-	combat.set_relic_rules(
-		predators_eye_interval if has(PhaseBRelicCatalog.Id.PREDATORS_EYE) else 0,
-		follow_through_seconds if has(PhaseBRelicCatalog.Id.FOLLOW_THROUGH) else 0.0,
-		adrenal_response_multiplier,
-		blood_in_the_water_threshold if has(PhaseBRelicCatalog.Id.BLOOD_IN_THE_WATER) else 0.0,
-		underdog_enemy_count if has(PhaseBRelicCatalog.Id.UNDERDOG) else 0,
-		underdog_radius_pixels,
-		deep_snare_decay_multiplier if has(PhaseBRelicCatalog.Id.DEEP_SNARE) else 1.0
-	)
-	player.set_damage_absorption(
-		canopy_absorption if has(PhaseBRelicCatalog.Id.CANOPY) else 0.0,
-		canopy_cooldown_seconds
-	)
-	territory_field.set_regrowth_memory(
-		regrowth_memory_seconds if has(PhaseBRelicCatalog.Id.REGROWTH) else 0.0,
-		regrowth_per_second
-	)
 	overlay.set_default_seed_shield_charges(
 		hard_husk_charges if has(PhaseBRelicCatalog.Id.HARD_HUSK) else 0
 	)
@@ -394,9 +236,7 @@ func advance(delta: float) -> void:
 		return
 	_advance_wave_boundary()
 	_advance_timers(delta)
-	_advance_territory_watch(delta)
 	_advance_green_thumb()
-	_advance_world_seed(delta)
 	_advance_rampart(delta)
 	_try_trigger_hedge()
 	_advance_sweep(delta)
@@ -404,8 +244,6 @@ func advance(delta: float) -> void:
 	_advance_annual_rings(delta)
 	_advance_world_tree(delta)
 	_advance_perennial(delta)
-	_advance_seedbed(delta)
-	_advance_encore(delta)
 	queue_redraw()
 
 
@@ -416,97 +254,18 @@ func _advance_wave_boundary() -> void:
 	if current == _wave_number:
 		return
 	_wave_number = current
-	_clean_finish_used_this_wave = false
-	_last_bastion_used_this_wave = false
-	_resurrection_fern_used_this_wave = false
-	_patient_zero_id = -1
-	_patient_zero_armed = has(PhaseBRelicCatalog.Id.PATIENT_ZERO)
 	_perennial_armed = has(PhaseBRelicCatalog.Id.PERENNIAL)
 	_perennial.active = false
 
 
 func _advance_timers(delta: float) -> void:
-	_adrenal_cooldown = maxf(0.0, _adrenal_cooldown - delta)
 	_superbloom_cooldown = maxf(0.0, _superbloom_cooldown - delta)
 	_hedge_cooldown = maxf(0.0, _hedge_cooldown - delta)
-	if _last_bastion_remaining > 0.0:
-		_last_bastion_remaining -= delta
-		if _last_bastion_remaining <= 0.0:
-			player.set_speed_multiplier(1.0)
 	for index in range(_recent_blooms.size() - 1, -1, -1):
 		var entry: Array = _recent_blooms[index]
 		entry[1] = float(entry[1]) - delta
 		if float(entry[1]) <= 0.0:
 			_recent_blooms.remove_at(index)
-
-
-func _advance_territory_watch(delta: float) -> void:
-	# Both emergency relics key off an absolute number of owned cells lost inside
-	# a short window. A percentage of the arena is exactly what this must not be.
-	if not (
-		has(PhaseBRelicCatalog.Id.LAST_BASTION)
-		or has(PhaseBRelicCatalog.Id.RESURRECTION_FERN)
-	):
-		return
-	_territory_sample_remaining -= delta
-	if _territory_sample_remaining > 0.0:
-		return
-	var sample_interval := 0.20
-	_territory_sample_remaining = sample_interval
-	var samples := maxi(2, int(ceil(territory_emergency_window_seconds / sample_interval)))
-	_territory_history.append(territory_field.get_player_cell_count())
-	while _territory_history.size() > samples:
-		_territory_history.remove_at(0)
-	if _territory_history.size() < samples:
-		return
-	var lost := _territory_history[0] - _territory_history[_territory_history.size() - 1]
-	if lost < territory_emergency_cells:
-		return
-	if has(PhaseBRelicCatalog.Id.LAST_BASTION) and not _last_bastion_used_this_wave:
-		_last_bastion_used_this_wave = true
-		_trigger_last_bastion(1.0)
-	if has(PhaseBRelicCatalog.Id.RESURRECTION_FERN) and not _resurrection_fern_used_this_wave:
-		_resurrection_fern_used_this_wave = true
-		_trigger_resurrection_fern(1.0)
-
-
-func _trigger_last_bastion(strength: float) -> void:
-	_last_bastion_remaining = last_bastion_seconds * strength
-	player.set_speed_multiplier(
-		lerpf(1.0, last_bastion_speed_multiplier, clampf(strength, 0.0, 1.0))
-	)
-	combat.set_temporary_attack_rate_multiplier(
-		lerpf(1.0, last_bastion_attack_multiplier, clampf(strength, 0.0, 1.0)),
-		last_bastion_seconds * strength
-	)
-	status_requested.emit("LAST BASTION — the frontier buckles and you speed up.")
-	_notify_triggered(PhaseBRelicCatalog.Id.LAST_BASTION)
-
-
-func _trigger_resurrection_fern(strength: float) -> void:
-	var pulses := maxi(1, int(round(float(resurrection_fern_pulses) * strength)))
-	var released := 0
-	var anchor := player.get_arena_position()
-	for index in range(pulses):
-		var site := territory_field.find_mature_player_frontier_near(
-			anchor + Vector2.from_angle(float(index) * 2.39996) * 140.0
-		)
-		if site.x < 0.0:
-			continue
-		territory_field.queue_seed_growth(
-			site,
-			resurrection_fern_mass * strength,
-			0.35,
-			progression.get_conversion_multiplier(),
-			1.20
-		)
-		overlay.spawn_bloom(site)
-		released += 1
-	if released > 0:
-		status_requested.emit(
-			"RESURRECTION FERN — %d recovery pulses out of old ground." % released
-		)
-		_notify_triggered(PhaseBRelicCatalog.Id.RESURRECTION_FERN)
 
 
 func _advance_green_thumb() -> void:
@@ -523,63 +282,6 @@ func _advance_green_thumb() -> void:
 		_green_thumb_used[seed_id] = true
 		overlay.advance_seed(seed_id, green_thumb_progress, 0.0)
 		_notify_triggered(PhaseBRelicCatalog.Id.GREEN_THUMB)
-
-
-func _advance_world_seed(delta: float) -> void:
-	if not has(PhaseBRelicCatalog.Id.WORLD_SEED):
-		return
-	if _world_seed.active:
-		_world_seed.timer += delta
-		return
-	if _total_kills < world_seed_kills:
-		return
-	# Only one at a time, and the counter has to be re-earned after each one.
-	_total_kills = 0
-	var site := territory_field.find_player_frontier_near(player.get_arena_position())
-	if site.x < 0.0:
-		site = player.get_arena_position()
-	if not territory_field.is_claimable_at_local(site):
-		return
-	_world_seed_id = overlay.spawn_seed(
-		site,
-		world_seed_charge_seconds,
-		0,
-		world_seed_durability
-	)
-	overlay.mark_seed(_world_seed_id, TerritoryPrototypeOverlay.SeedMarker.WORLD_SEED)
-	_world_seed.active = true
-	_world_seed.position = site
-	_world_seed.timer = 0.0
-	status_requested.emit("WORLD SEED — something enormous is opening. Defend it.")
-
-
-func _germinate_world_seed(local_position: Vector2) -> void:
-	# A World Seed that survives is a major growth event, not a bigger ordinary
-	# Seed: one large splat with several supporting ones around it.
-	_world_seed.active = false
-	_world_seed_id = -1
-	territory_field.queue_seed_growth(
-		local_position,
-		world_seed_mass,
-		1.20,
-		progression.get_conversion_multiplier(),
-		world_seed_radius
-	)
-	for index in range(6):
-		var offset := Vector2.from_angle(float(index) * 1.047) * 74.0
-		var site := local_position + offset
-		if not territory_field.is_growth_path_clear(local_position, site):
-			continue
-		territory_field.queue_seed_growth(
-			site,
-			world_seed_mass * 0.35,
-			0.6,
-			progression.get_conversion_multiplier(),
-			world_seed_radius * 0.45
-		)
-	overlay.spawn_bloom(local_position)
-	combat.play_old_growth_sfx()
-	status_requested.emit("WORLD SEED — the arena greens over in one breath.")
 
 
 func _advance_rampart(delta: float) -> void:
@@ -733,16 +435,12 @@ func _advance_annual_rings(delta: float) -> void:
 
 func get_root_potency_bonus_at(local_position: Vector2) -> float:
 	# Published for the Root path to fold into its own amplification, so a
-	# mechanic acting inside a ringed region or a Seedbed node is stronger there
-	# without every consumer having to know these relics exist.
+	# mechanic acting inside a ringed region is stronger there without every
+	# consumer having to know the relic exists.
 	var bonus := 0.0
 	for region in _ring_regions:
 		if region.position.distance_to(local_position) <= annual_rings_radius_pixels:
 			bonus += annual_rings_potency * float(region.rings)
-	for node in _seedbed_nodes:
-		var node_position: Vector2 = node[0]
-		if node_position.distance_to(local_position) <= seedbed_radius_pixels:
-			bonus += seedbed_potency
 	return bonus
 
 
@@ -831,184 +529,18 @@ func _advance_perennial(delta: float) -> void:
 	_notify_triggered(PhaseBRelicCatalog.Id.PERENNIAL)
 
 
-func _advance_seedbed(delta: float) -> void:
-	for index in range(_seedbed_nodes.size() - 1, -1, -1):
-		var node: Array = _seedbed_nodes[index]
-		node[1] = float(node[1]) - delta
-		if float(node[1]) <= 0.0:
-			_seedbed_nodes.remove_at(index)
-
-
-func _advance_encore(delta: float) -> void:
-	for index in range(_encore_queue.size() - 1, -1, -1):
-		var entry: Array = _encore_queue[index]
-		entry[1] = float(entry[1]) - delta
-		if float(entry[1]) > 0.0:
-			continue
-		var relic_id := int(entry[0])
-		var position: Vector2 = entry[2]
-		_encore_queue.remove_at(index)
-		_encore_repeating = true
-		_repeat_relic(relic_id, position)
-		_encore_repeating = false
-
-
 func _notify_triggered(relic_id: int) -> void:
 	relic_triggered.emit(relic_id)
-	# Encore counts non-Legendary triggers only, and its own repeats never
-	# advance it, which is what stops the engine from feeding itself.
-	if _encore_repeating or not has(PhaseBRelicCatalog.Id.ENCORE):
-		return
-	if PhaseBRelicCatalog.is_legendary(relic_id):
-		return
-	_encore_counter += 1
-	if _encore_counter < encore_interval:
-		return
-	_encore_counter = 0
-	_encore_queue.append([relic_id, encore_delay_seconds, player.get_arena_position()])
-
-
-func _repeat_relic(relic_id: int, position: Vector2) -> void:
-	# A reduced second helping of whatever just fired. Relics that create a
-	# permanent object are deliberately not repeated: an Encore must not be able
-	# to double the run's standing world objects.
-	match relic_id:
-		PhaseBRelicCatalog.Id.OVERPOPULATION:
-			_detonate_overpopulation(position, encore_strength)
-		PhaseBRelicCatalog.Id.SALVAGE_RIGHTS:
-			progression.add_biomass(salvage_rights_biomass * encore_strength)
-		PhaseBRelicCatalog.Id.COMPOST:
-			progression.add_biomass(compost_biomass * encore_strength)
-		PhaseBRelicCatalog.Id.CLEAN_FINISH:
-			player.heal(clean_finish_health * encore_strength)
-		PhaseBRelicCatalog.Id.LAST_BASTION:
-			_trigger_last_bastion(encore_strength)
-		PhaseBRelicCatalog.Id.RESURRECTION_FERN:
-			_trigger_resurrection_fern(encore_strength)
-		PhaseBRelicCatalog.Id.SNARE_VINE:
-			combat.apply_entanglement_in_radius(
-				position,
-				snare_vine_radius_pixels,
-				snare_vine_entanglement * encore_strength
-			)
-		PhaseBRelicCatalog.Id.TAPROOT:
-			if _taproot.active:
-				territory_field.queue_seed_growth(
-					_taproot.position,
-					taproot_mass * encore_strength,
-					0.1,
-					progression.get_conversion_multiplier(),
-					taproot_radius
-				)
-		PhaseBRelicCatalog.Id.CROSS_POLLINATION, PhaseBRelicCatalog.Id.POLLINATOR:
-			overlay.advance_seeds_in_radius(
-				position,
-				cross_pollination_radius_pixels,
-				cross_pollination_progress * encore_strength,
-				pollinator_seeds,
-				germination_grant_cooldown_seconds
-			)
-		PhaseBRelicCatalog.Id.TANGLED_WAKE:
-			combat.add_ensnare_zone(
-				position,
-				140.0,
-				tangled_wake_bonus * encore_strength,
-				tangled_wake_seconds * encore_strength
-			)
-		_:
-			return
-	status_requested.emit(
-		"ENCORE — %s fires again, weaker." % PhaseBRelicCatalog.get_relic_name(relic_id)
-	)
 
 
 func _on_enemy_killed(
-	local_position: Vector2,
+	_local_position: Vector2,
 	_xp_value: int,
 	_role: int,
-	death_source: int,
+	_death_source: int,
 	_chain_depth: int
 ) -> void:
-	var from_relic := death_source == PhaseBCombatDirector.DeathSource.RELIC
-	if not from_relic:
-		_total_kills += 1
-	_try_overpopulation(local_position, death_source)
-	_try_compost(local_position)
-	_try_clean_finish()
 	_try_trigger_hedge()
-
-
-func _try_overpopulation(local_position: Vector2, death_source: int) -> void:
-	if not has(PhaseBRelicCatalog.Id.OVERPOPULATION):
-		return
-	# An Overpopulation explosion can neither consume the primed charge nor count
-	# toward the next one, so a crowd cannot chain-detonate itself.
-	if death_source == PhaseBCombatDirector.DeathSource.RELIC:
-		return
-	if _overpopulation_primed:
-		_overpopulation_primed = false
-		_detonate_overpopulation(local_position, 1.0)
-		return
-	var now := Time.get_ticks_msec() / 1000.0
-	_kill_times.append(now)
-	while (
-		_kill_times.size() > 0
-		and now - _kill_times[0] > overpopulation_window_seconds
-	):
-		_kill_times.remove_at(0)
-	if _kill_times.size() < overpopulation_kills:
-		return
-	_kill_times = PackedFloat64Array()
-	_overpopulation_primed = true
-	status_requested.emit("OVERPOPULATION — the next kill is primed to burst.")
-
-
-func _detonate_overpopulation(local_position: Vector2, strength: float) -> void:
-	combat.damage_enemies_in_radius(
-		local_position,
-		overpopulation_radius_pixels * strength,
-		overpopulation_damage * strength,
-		PhaseBCombatDirector.DeathSource.RELIC,
-		0
-	)
-	overlay.spawn_bloom(local_position)
-	combat.play_plant_explosion_sfx()
-	_notify_triggered(PhaseBRelicCatalog.Id.OVERPOPULATION)
-
-
-func _try_compost(local_position: Vector2) -> void:
-	if not has(PhaseBRelicCatalog.Id.COMPOST):
-		return
-	if not territory_field.is_mature_player_territory_at_local(local_position):
-		return
-	_compost_kills += 1
-	if _compost_kills < compost_kills:
-		return
-	_compost_kills = 0
-	progression.add_biomass(compost_biomass)
-	status_requested.emit("COMPOST — old ground turns the dead into Biomass.")
-	_notify_triggered(PhaseBRelicCatalog.Id.COMPOST)
-
-
-func _try_clean_finish() -> void:
-	# Clearing the field is the readable version of "the last enemy of a wave".
-	# A wave that ends with hostiles still standing pays nothing.
-	if not has(PhaseBRelicCatalog.Id.CLEAN_FINISH) or _clean_finish_used_this_wave:
-		return
-	if combat.get_active_enemy_count() > 0:
-		return
-	_clean_finish_used_this_wave = true
-	player.heal(clean_finish_health)
-	status_requested.emit("CLEAN FINISH — the field is clear; you catch your breath.")
-	_notify_triggered(PhaseBRelicCatalog.Id.CLEAN_FINISH)
-
-
-func _on_elite_defeated() -> void:
-	if not has(PhaseBRelicCatalog.Id.SALVAGE_RIGHTS):
-		return
-	progression.add_biomass(salvage_rights_biomass)
-	status_requested.emit("SALVAGE RIGHTS — the elite leaves a Biomass cache.")
-	_notify_triggered(PhaseBRelicCatalog.Id.SALVAGE_RIGHTS)
 
 
 func _on_enemy_rooted(local_position: Vector2) -> void:
@@ -1024,31 +556,7 @@ func _on_enemy_rooted(local_position: Vector2) -> void:
 		_notify_triggered(PhaseBRelicCatalog.Id.SNARE_VINE)
 
 
-func _on_player_damage_taken(_amount: float) -> void:
-	if not has(PhaseBRelicCatalog.Id.ADRENAL_RESPONSE) or _adrenal_cooldown > 0.0:
-		return
-	_adrenal_cooldown = adrenal_response_cooldown
-	combat.prime_adrenal_response(adrenal_response_charges)
-	status_requested.emit("ADRENAL RESPONSE — the next volleys come faster.")
-	_notify_triggered(PhaseBRelicCatalog.Id.ADRENAL_RESPONSE)
-
-
-func _on_seed_spawned(seed_id: int, _local_position: Vector2) -> void:
-	# Patient Zero claims the first Seed the wave produces naturally, and the
-	# World Seed is never eligible to be it.
-	if not _patient_zero_armed or seed_id == _world_seed_id:
-		return
-	_patient_zero_armed = false
-	_patient_zero_id = seed_id
-	overlay.add_seed_shield_charges(seed_id, patient_zero_charges)
-	overlay.mark_seed(seed_id, TerritoryPrototypeOverlay.SeedMarker.PATIENT_ZERO)
-	status_requested.emit("PATIENT ZERO — this wave's first Seed is marked.")
-
-
 func _on_seed_germinated(local_position: Vector2, _chain_depth: int) -> void:
-	var seed_id := overlay.get_last_germinated_seed_id()
-	if _world_seed.active and seed_id == _world_seed_id:
-		_germinate_world_seed(local_position)
 	if has(PhaseBRelicCatalog.Id.CROSS_POLLINATION):
 		var advanced := overlay.advance_seeds_in_radius(
 			local_position,
@@ -1059,56 +567,15 @@ func _on_seed_germinated(local_position: Vector2, _chain_depth: int) -> void:
 		)
 		if advanced > 0:
 			_notify_triggered(PhaseBRelicCatalog.Id.CROSS_POLLINATION)
-	if _patient_zero_id >= 0 and seed_id == _patient_zero_id:
-		_patient_zero_id = -1
-		var woken := overlay.advance_seeds_in_radius(
-			local_position,
-			territory_field.tuning.arena_size.length(),
-			patient_zero_progress,
-			0,
-			0.0
-		)
-		if woken > 0:
-			status_requested.emit(
-				"PATIENT ZERO — %d Seeds wake up at once." % woken
-			)
-	if (
-		has(PhaseBRelicCatalog.Id.SEEDBED)
-		and territory_field.is_mature_player_territory_at_local(local_position)
-	):
-		_seedbed_nodes.append([local_position, seedbed_seconds])
-		_notify_triggered(PhaseBRelicCatalog.Id.SEEDBED)
 	_try_world_tree_echo(local_position, false)
 
 
-func _on_catalyst_destroyed(catalyst_kind: int, _local_position: Vector2) -> void:
-	if catalyst_kind != TerritoryPrototypeOverlay.CatalystKind.SEED:
-		return
-	if _world_seed.active and not overlay.has_seed(_world_seed_id):
-		_world_seed.active = false
-		_world_seed_id = -1
-		status_requested.emit("WORLD SEED — it was cracked open before it could grow.")
-
-
-func _on_bloom_detonated(local_position: Vector2, _chain_depth: int) -> void:
-	if has(PhaseBRelicCatalog.Id.POLLINATOR):
-		var advanced := overlay.advance_seeds_in_radius(
-			local_position,
-			cross_pollination_radius_pixels,
-			pollinator_progress,
-			pollinator_seeds,
-			germination_grant_cooldown_seconds
-		)
-		if advanced > 0:
-			_notify_triggered(PhaseBRelicCatalog.Id.POLLINATOR)
-	if has(PhaseBRelicCatalog.Id.TANGLED_WAKE):
-		combat.add_ensnare_zone(
-			local_position,
-			cross_pollination_radius_pixels,
-			tangled_wake_bonus,
-			tangled_wake_seconds
-		)
-		_notify_triggered(PhaseBRelicCatalog.Id.TANGLED_WAKE)
+func _on_bloom_detonated(
+	local_position: Vector2,
+	_chain_depth: int,
+	_source_tag: int = 0,
+	_strength: float = 1.0
+) -> void:
 	_try_superbloom(local_position)
 	_try_arm_perennial(local_position)
 	_try_world_tree_echo(local_position, true)
@@ -1152,37 +619,10 @@ func _try_arm_perennial(local_position: Vector2) -> void:
 
 
 
-func notify_objective_failed() -> bool:
-	# Insurance Policy's hook. The prototype has no optional-objective layer yet,
-	# so nothing calls this and the relic is never offered; when objectives land,
-	# this is the single place they have to reach.
-	return has(PhaseBRelicCatalog.Id.INSURANCE_POLICY)
-
-
-func get_predators_eye_progress() -> String:
-	if not has(PhaseBRelicCatalog.Id.PREDATORS_EYE):
-		return ""
-	return "%d / %d" % [combat.get_predators_eye_progress(), predators_eye_interval]
-
-
 func get_relic_counter_text(relic_id: int) -> String:
 	# A triggered relic needs to show its counter somewhere, so the slot row can
 	# read out how close the next activation is.
 	match relic_id:
-		PhaseBRelicCatalog.Id.PREDATORS_EYE:
-			return get_predators_eye_progress()
-		PhaseBRelicCatalog.Id.COMPOST:
-			return "%d / %d" % [_compost_kills, compost_kills]
-		PhaseBRelicCatalog.Id.WORLD_SEED:
-			if _world_seed.active:
-				return "GROWING"
-			return "%d / %d" % [_total_kills, world_seed_kills]
-		PhaseBRelicCatalog.Id.OVERPOPULATION:
-			if _overpopulation_primed:
-				return "PRIMED"
-			return "%d / %d" % [_kill_times.size(), overpopulation_kills]
-		PhaseBRelicCatalog.Id.ENCORE:
-			return "%d / %d" % [_encore_counter, encore_interval]
 		PhaseBRelicCatalog.Id.ANNUAL_RINGS:
 			var rings := 0
 			for region in _ring_regions:
@@ -1205,10 +645,6 @@ func get_relic_counter_text(relic_id: int) -> String:
 	return ""
 
 
-func is_world_seed_active() -> bool:
-	return _world_seed.active
-
-
 func is_taproot_active() -> bool:
 	return _taproot.active
 
@@ -1219,10 +655,6 @@ func is_world_tree_active() -> bool:
 
 func get_ring_region_count() -> int:
 	return _ring_regions.size()
-
-
-func get_seedbed_node_count() -> int:
-	return _seedbed_nodes.size()
 
 
 func is_sweep_active() -> bool:
@@ -1264,18 +696,6 @@ func _draw() -> void:
 				1.5,
 				true
 			)
-	for node in _seedbed_nodes:
-		var node_position: Vector2 = node[0]
-		draw_arc(
-			node_position,
-			seedbed_radius_pixels,
-			0.0,
-			TAU,
-			32,
-			Color(0.55, 0.95, 0.60, 0.22),
-			1.5,
-			true
-		)
 	if _rampart_remaining > 0.0 and _rampart_position.x >= 0.0:
 		draw_arc(
 			_rampart_position,

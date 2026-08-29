@@ -44,6 +44,22 @@ class ThistleState:
 	var burdock_temporary := false
 
 
+## What fired a thorn. Only NATURAL advances a network counter; every relic-made
+## thorn is tagged so it can hit, kill and ricochet normally without ever feeding
+## the counters that produced it.
+enum ThornSource {
+	NATURAL,
+	ROSETTE,
+	RELAY,
+	PINCUSHION,
+	SEEDHEAD,
+	ANSWERING,
+	PHYLLOTAXIS,
+	FORKING,
+	CROWN,
+}
+
+
 class ThornState:
 	var active := false
 	var position := Vector2.ZERO
@@ -62,6 +78,7 @@ class ThornState:
 	var ricochet_depth := 0
 	var inherit_needlepoint := true
 	var source_thistle_sequence := -1
+	var source_tag := 0
 	var hit_ids := PackedInt32Array()
 
 
@@ -232,6 +249,34 @@ class PendingEvent:
 @export_range(1, 40, 1) var crown_cycle_interval := 12
 @export_range(0.0, 1.0, 0.01) var crown_damage_share := 0.55
 @export_range(0.1, 30.0, 0.1) var crown_cooldown_seconds := 7.0
+## Rosette: how long after a permanent Thistle finishes growing it fires its
+## opening volley, and what that volley is worth.
+@export_range(0.0, 3.0, 0.01) var rosette_delay_seconds := 0.25
+@export_range(0.0, 2.0, 0.01) var rosette_damage_share := 0.60
+## Thorn Relay: natural impacts between bonus thorns, what one is worth, and the
+## ceiling on how often the network may answer.
+@export_range(1, 40, 1) var thorn_relay_impacts := 8
+@export_range(0.0, 2.0, 0.01) var thorn_relay_damage_share := 0.65
+@export_range(0.1, 20.0, 0.1) var thorn_relay_per_second := 2.0
+## Pincushion: thorns an enemy has to absorb, how long the stack survives without
+## a new one, and what bursts out of the corpse.
+@export_range(1, 20, 1) var pincushion_threshold := 5
+@export_range(0.1, 20.0, 0.1) var pincushion_stack_seconds := 3.0
+@export_range(1, 12, 1) var pincushion_thorns := 3
+@export_range(0.0, 2.0, 0.01) var pincushion_damage_share := 0.45
+@export_range(20.0, 600.0, 5.0) var pincushion_range_pixels := 190.0
+## Answering Thorn: what a killing natural volley makes another turret do.
+@export_range(0.0, 2.0, 0.01) var answering_thorn_damage_share := 0.50
+@export_range(0.1, 20.0, 0.1) var answering_thorn_cooldown_seconds := 2.25
+## Forking Pattern: natural impacts between splits, how many branches, and the
+## caps that stop a dense fight turning into a wall of thorns.
+@export_range(1, 60, 1) var forking_pattern_impacts := 12
+@export_range(1, 12, 1) var forking_pattern_branches := 3
+@export_range(1, 12, 1) var forking_pattern_critical_branches := 4
+@export_range(0.0, 2.0, 0.01) var forking_pattern_damage_share := 0.55
+@export_range(20.0, 600.0, 5.0) var forking_pattern_range_pixels := 210.0
+@export_range(0.05, 10.0, 0.05) var forking_pattern_cooldown_seconds := 0.75
+@export_range(1, 40, 1) var forking_pattern_active_maximum := 8
 @export_range(1, 20, 1) var twining_sweep_interval := 4
 @export_range(0.0, 1.0, 0.01) var twining_damage_share := 0.55
 @export_range(0.05, 2.0, 0.05) var twining_delay_seconds := 0.30
@@ -254,6 +299,17 @@ var _fruit_sequence := 0
 var _network_cycle_count := 0
 var _rootstock_heavy_count := 0
 var _crown_cooldown := 0.0
+## Network-wide natural thorn impacts, counted separately per relic because the two
+## thresholds are different and neither may consume the other's progress.
+var _relay_impacts := 0
+var _forking_impacts := 0
+var _relay_cooldown := 0.0
+var _forking_cooldown := 0.0
+var _answering_cooldown := 0.0
+## Opening volleys owed to newly grown turrets: [thistle_sequence, remaining].
+var _rosette_queue: Array = []
+## Embedded thorns per enemy: {enemy_id: [stacks, remaining]}.
+var _pincushion_stacks := {}
 var _hedge_battery_cooldown := 0.0
 var _rootstock_network_cooldown := 0.0
 var _inoculator_pulsed := {}
@@ -307,6 +363,7 @@ func advance(delta: float) -> void:
 	_hedge_battery_cooldown = maxf(0.0, _hedge_battery_cooldown - delta)
 	_rootstock_network_cooldown = maxf(0.0, _rootstock_network_cooldown - delta)
 	_update_pending_events(delta)
+	_advance_thistle_relics(delta)
 	_update_thistles(delta)
 	_update_thorns(delta)
 	_update_fruits(delta)
@@ -344,6 +401,13 @@ func reset_adaptations() -> void:
 	_network_cycle_count = 0
 	_rootstock_heavy_count = 0
 	_crown_cooldown = 0.0
+	_relay_impacts = 0
+	_forking_impacts = 0
+	_relay_cooldown = 0.0
+	_forking_cooldown = 0.0
+	_answering_cooldown = 0.0
+	_rosette_queue.clear()
+	_pincushion_stacks.clear()
 	_hedge_battery_cooldown = 0.0
 	_rootstock_network_cooldown = 0.0
 	_inoculator_pulsed.clear()
@@ -600,6 +664,10 @@ func _plant_thistle(
 	thistle.bloom_charge_remaining = 0.0
 	thistle.sequence = _thistle_sequence
 	thistle.burdock_temporary = burdock_temporary
+	if permanent and _has_relic(PhaseBRelicCatalog.Id.ROSETTE):
+		# Temporary Evolution turrets are explicitly excluded; a permanent
+		# replacement grown after a collapse is not.
+		_rosette_queue.append([thistle.sequence, rosette_delay_seconds])
 	return true
 
 
@@ -742,7 +810,8 @@ func _fire_thistle(
 				0,
 				thistle.sequence,
 				false,
-				launch_angle_offset
+				launch_angle_offset,
+				ThornSource.PHYLLOTAXIS
 			)
 	if thistle.permanent:
 		_network_cycle_count += 1
@@ -765,6 +834,221 @@ func _fire_thistle(
 			_rootstock_network_cooldown = 8.0
 			_fire_rootstock_network_salvo()
 	return fired
+
+
+func _advance_thistle_relics(delta: float) -> void:
+	_relay_cooldown = maxf(0.0, _relay_cooldown - delta)
+	_forking_cooldown = maxf(0.0, _forking_cooldown - delta)
+	_answering_cooldown = maxf(0.0, _answering_cooldown - delta)
+	for index in range(_rosette_queue.size() - 1, -1, -1):
+		var owed: Array = _rosette_queue[index]
+		owed[1] = float(owed[1]) - delta
+		if float(owed[1]) > 0.0:
+			continue
+		_rosette_queue.remove_at(index)
+		var thistle := _find_thistle_by_sequence(int(owed[0]))
+		if thistle == null or not thistle.active:
+			continue
+		# If the new turret still has nobody in range the event is consumed rather
+		# than stored, so an opening volley cannot be banked for a later fight.
+		_fire_thistle(thistle, rosette_damage_share, 0, false)
+	for enemy_id in _pincushion_stacks.keys():
+		var stack: Array = _pincushion_stacks[enemy_id]
+		stack[1] = float(stack[1]) - delta
+		if float(stack[1]) <= 0.0 or not combat.is_enemy_active(enemy_id):
+			_pincushion_stacks.erase(enemy_id)
+
+
+func _find_thistle_by_sequence(sequence: int) -> ThistleState:
+	for thistle in _thistles:
+		if thistle.sequence == sequence:
+			return thistle
+	return null
+
+
+func _count_active_forked_thorns() -> int:
+	var count := 0
+	for thorn in _thorns:
+		if thorn.active and thorn.source_tag == ThornSource.FORKING:
+			count += 1
+	return count
+
+
+func _find_other_thistle(exclude_sequence: int, near: Vector2) -> ThistleState:
+	# The nearest turret that is not the one responsible for the event. The relics
+	# in this pool are about the network answering, so answering yourself is not it.
+	var best: ThistleState = null
+	var best_distance := INF
+	for thistle in _thistles:
+		if not thistle.active or thistle.sequence == exclude_sequence:
+			continue
+		var distance := thistle.position.distance_squared_to(near)
+		if distance < best_distance:
+			best_distance = distance
+			best = thistle
+	return best
+
+
+func _note_natural_thorn_impact(
+	thorn: ThornState,
+	enemy_id: int,
+	hit_position: Vector2,
+	critical: bool
+) -> void:
+	## Every network counter advances from here, and only from here, so a bonus
+	## thorn can never advance the counter that produced it.
+	if thorn.source_tag != ThornSource.NATURAL:
+		return
+	if _has_relic(PhaseBRelicCatalog.Id.THORN_RELAY):
+		_relay_impacts += 1
+		if _relay_impacts >= thorn_relay_impacts:
+			_relay_impacts = 0
+			_fire_thorn_relay(thorn, hit_position)
+	if _has_relic(PhaseBRelicCatalog.Id.FORKING_PATTERN):
+		_forking_impacts += 1
+		if _forking_impacts >= forking_pattern_impacts:
+			_forking_impacts = 0
+			_fork_thorn(thorn, enemy_id, hit_position, critical)
+
+
+func _fire_thorn_relay(thorn: ThornState, hit_position: Vector2) -> void:
+	if _relay_cooldown > 0.0 or thorn_relay_per_second <= 0.0:
+		return
+	var responder := _find_other_thistle(thorn.source_thistle_sequence, hit_position)
+	if responder == null:
+		return
+	_relay_cooldown = 1.0 / thorn_relay_per_second
+	# One bonus thorn, not a volley: Clustering is explicitly not inherited.
+	var targets := _collect_enemy_targets(responder.position, thistle_range_pixels)
+	if targets.is_empty():
+		return
+	_spawn_thorn(
+		responder.position,
+		targets[0],
+		thorn_relay_damage_share,
+		0,
+		false,
+		false,
+		0.0,
+		0.0,
+		1,
+		true,
+		0,
+		responder.sequence,
+		false,
+		0.0,
+		ThornSource.RELAY
+	)
+
+
+func _fork_thorn(
+	thorn: ThornState,
+	enemy_id: int,
+	hit_position: Vector2,
+	critical: bool
+) -> void:
+	if _forking_cooldown > 0.0:
+		return
+	var room := forking_pattern_active_maximum - _count_active_forked_thorns()
+	if room <= 0:
+		return
+	_forking_cooldown = forking_pattern_cooldown_seconds
+	var wanted := (
+		forking_pattern_critical_branches if critical else forking_pattern_branches
+	)
+	var excluded := PackedInt32Array([enemy_id])
+	# Only as many branches as there is room for. Missing ones are not queued: a
+	# split that could not happen simply did not happen.
+	for _branch in range(mini(wanted, room)):
+		var target := _find_ricochet_target(hit_position, excluded)
+		if target < 0:
+			return
+		excluded.append(target)
+		_spawn_thorn(
+			hit_position,
+			target,
+			forking_pattern_damage_share,
+			0,
+			false,
+			false,
+			0.0,
+			0.0,
+			1,
+			true,
+			0,
+			thorn.source_thistle_sequence,
+			false,
+			0.0,
+			ThornSource.FORKING
+		)
+
+
+func _add_pincushion_stack(enemy_id: int, thorn: ThornState) -> void:
+	if not _has_relic(PhaseBRelicCatalog.Id.PINCUSHION):
+		return
+	# Only the thorns the relic names may embed. A Pincushion burst embedding more
+	# stacks would let one corpse pay out forever.
+	match thorn.source_tag:
+		ThornSource.NATURAL, ThornSource.ROSETTE, ThornSource.SEEDHEAD, \
+		ThornSource.ANSWERING, ThornSource.CROWN:
+			pass
+		_:
+			return
+	var stack: Array = _pincushion_stacks.get(
+		enemy_id, [0, pincushion_stack_seconds]
+	)
+	stack[0] = mini(int(stack[0]) + 1, pincushion_threshold)
+	stack[1] = pincushion_stack_seconds
+	_pincushion_stacks[enemy_id] = stack
+
+
+func _burst_pincushion(enemy_id: int, hit_position: Vector2) -> void:
+	if not _pincushion_stacks.has(enemy_id):
+		return
+	var stack: Array = _pincushion_stacks[enemy_id]
+	_pincushion_stacks.erase(enemy_id)
+	if int(stack[0]) < pincushion_threshold:
+		return
+	var excluded := PackedInt32Array([enemy_id])
+	for _thorn_index in range(pincushion_thorns):
+		var target := _find_ricochet_target(hit_position, excluded)
+		if target < 0:
+			return
+		excluded.append(target)
+		_spawn_thorn(
+			hit_position,
+			target,
+			pincushion_damage_share,
+			0,
+			false,
+			false,
+			0.0,
+			0.0,
+			0,
+			true,
+			0,
+			-1,
+			false,
+			0.0,
+			ThornSource.PINCUSHION
+		)
+
+
+func _answer_thorn(thorn: ThornState, hit_position: Vector2) -> void:
+	## A natural volley that kills makes a different turret answer. Only natural
+	## volleys start it, and it can never answer itself.
+	if not _has_relic(PhaseBRelicCatalog.Id.ANSWERING_THORN):
+		return
+	if thorn.source_tag != ThornSource.NATURAL or _answering_cooldown > 0.0:
+		return
+	var responder := _find_other_thistle(thorn.source_thistle_sequence, hit_position)
+	if responder == null:
+		# No valid responder: the trigger is consumed on a shorter cooldown rather
+		# than being held open until a second turret happens to exist.
+		_answering_cooldown = answering_thorn_cooldown_seconds * 0.44
+		return
+	_answering_cooldown = answering_thorn_cooldown_seconds
+	_fire_thistle(responder, answering_thorn_damage_share, 0, false)
 
 
 func _fire_all_thistles(
@@ -843,7 +1127,8 @@ func _spawn_thorn(
 	extra_ricochets: int = 0,
 	source_thistle_sequence: int = -1,
 	pierces_normal_only: bool = false,
-	launch_angle_offset: float = 0.0
+	launch_angle_offset: float = 0.0,
+	source_tag: int = ThornSource.NATURAL
 ) -> bool:
 	var thorn: ThornState
 	for candidate in _thorns:
@@ -892,6 +1177,7 @@ func _spawn_thorn(
 	thorn.ricochet_depth = 0
 	thorn.inherit_needlepoint = inherit_needlepoint
 	thorn.source_thistle_sequence = source_thistle_sequence
+	thorn.source_tag = source_tag
 	thorn.hit_ids.clear()
 	return true
 
@@ -966,8 +1252,14 @@ func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
 		damage *= 1.20
 	_apply_inoculator_hit(thorn, enemy_id, critical, hit_position)
 	_apply_hedge_battery_hit(enemy_id, critical, was_fully_entangled, hit_position)
+	_add_pincushion_stack(enemy_id, thorn)
 	combat.damage_enemy_by_id(enemy_id, damage, PhaseBCombatDirector.DeathSource.THISTLE)
 	thorn.hit_ids.append(enemy_id)
+	_note_natural_thorn_impact(thorn, enemy_id, hit_position, critical)
+	if not combat.is_enemy_active(enemy_id):
+		# Read on the kill, while the corpse still has its embedded thorns.
+		_burst_pincushion(enemy_id, hit_position)
+		_answer_thorn(thorn, hit_position)
 	if thorn.heavy:
 		combat.knockback_enemy_from(enemy_id, thorn.position - thorn.velocity.normalized() * 8.0, 34.0)
 	if thorn.bloomshot:
@@ -1404,7 +1696,12 @@ func _fire_mounted_head(
 		)
 
 
-func _on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
+func _on_bloom_detonated(
+	local_position: Vector2,
+	chain_depth: int,
+	_source_tag: int = 0,
+	_strength: float = 1.0
+) -> void:
 	# Only a normal Bloom arms these pairings. Chained and secondary Blooms keep
 	# their own behavior and cannot recursively charge the same trigger.
 	if chain_depth != 0:

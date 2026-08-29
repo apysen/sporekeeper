@@ -340,8 +340,6 @@ enum ChoiceKind {
 )
 @export var wager_stake_template := "{stake}   {percent}% TERRITORY"
 @export var odds_live_template := "JACKPOT {jackpot}%    BUST {bust}%"
-@export var odds_high_roller_suffix := "    HIGH ROLLER"
-@export var odds_high_roller_countdown_template := "    HIGH ROLLER IN {spins}"
 @export_multiline var metabolism_complete_template := (
 	"LIFETIME BIOMASS {lifetime}
 FULLY DEVELOPED"
@@ -932,6 +930,7 @@ func advance_run(delta: float) -> void:
 	spore_director.advance(delta)
 	bloom_director.advance(delta)
 	bramble_director.advance(delta)
+	bramble_director.advance_relics(delta)
 	man_eater.advance(delta)
 	pruning_director.advance(delta)
 	_update_territory_failure(delta)
@@ -999,6 +998,7 @@ func reset_run() -> void:
 	wave_director.reset_director()
 	spore_director.reset_director()
 	bloom_director.reset_director()
+	bramble_director.reset_director()
 	man_eater.reset_man_eater()
 	pruning_director.reset_director()
 	adaptation_director.reset_adaptations()
@@ -1781,16 +1781,6 @@ func _update_slot_controls() -> void:
 				"jackpot": roundi(float(odds["positive"]) * 100.0),
 				"bust": roundi(float(odds["triple_bust"]) * 100.0),
 			})
-			# High Roller's counter is always visible, because a doubled spin the player
-			# only finds out about afterwards is a coin flip rather than a decision.
-			var countdown := clover_odds.get_high_roller_countdown()
-			if countdown == 1:
-				odds_label.text += odds_high_roller_suffix
-			elif countdown > 1:
-				odds_label.text += AuthoredText.render(
-					odds_high_roller_countdown_template,
-					{"spins": countdown - 1},
-				)
 	lever_grab.mouse_default_cursor_shape = (
 		Control.CURSOR_POINTING_HAND if slot_machine.can_spin() else Control.CURSOR_ARROW
 	)

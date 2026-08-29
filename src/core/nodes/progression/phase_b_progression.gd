@@ -207,14 +207,6 @@ enum EvolutionId {
 ## Relic rerolls the run may spend. Separate from upgrade rerolls, because a
 ## relic reward now shows three of a large pool rather than everything left.
 @export_range(0, 20, 1) var relic_rerolls_per_run := 2
-## Draft weight of a Common relic.
-@export_range(0.0, 100.0, 0.5) var relic_common_weight := 44.0
-## Draft weight of an Uncommon relic.
-@export_range(0.0, 100.0, 0.5) var relic_uncommon_weight := 31.0
-## Draft weight of a Rare relic.
-@export_range(0.0, 100.0, 0.5) var relic_rare_weight := 18.0
-## Draft weight of a Legendary relic.
-@export_range(0.0, 100.0, 0.5) var relic_legendary_weight := 7.0
 
 @export_group("Relic Effects")
 ## Multiple of the base Biomass cost granted when the relic pool is exhausted.
@@ -735,37 +727,18 @@ func spend_biomass(amount: float) -> float:
 func notify_metabolism_changed() -> void:
 	metabolism_changed.emit()
 
-func get_provided_mechanics() -> PackedInt32Array:
-	# What this run can actually do right now. Seeds and maturity are baseline
-	# Plant behaviour; everything else arrives with a path. Synergy relics are
-	# gated on mechanics rather than on path pairs, so a support path taken after
-	# the Evolution opens exactly the same relics the initial pair would have.
-	var mechanics := PhaseBRelicCatalog.get_baseline_mechanics()
-	for path_id in [primary_path, secondary_path, tertiary_path]:
-		if path_id == UNSELECTED_PATH:
-			continue
-		for mechanic in PhaseBRelicCatalog.get_path_mechanics(path_id):
-			if mechanics.find(mechanic) == -1:
-				mechanics.append(mechanic)
-	return mechanics
-
 func is_relic_eligible(relic_id: int) -> bool:
+	## An offer may contain Plant relics and relics of Adaptations the run
+	## permanently owns, and nothing else.
+	##
+	## Ownership is has_path on purpose rather than has_path_active: a Clover
+	## jackpot lends an Adaptation's behaviour for ten seconds and must not open
+	## that Adaptation's relic pool along with it.
 	if has_relic(relic_id):
 		return false
-	match PhaseBRelicCatalog.get_pool(relic_id):
-		PhaseBRelicCatalog.Pool.UNIVERSAL, PhaseBRelicCatalog.Pool.ELEMENT:
-			pass
-		PhaseBRelicCatalog.Pool.PATH:
-			# A path relic needs its path, from any of the three slots.
-			if not has_path(PhaseBRelicCatalog.get_owning_path(relic_id)):
-				return false
-		PhaseBRelicCatalog.Pool.SYNERGY:
-			pass
-	var provided := get_provided_mechanics()
-	for required in PhaseBRelicCatalog.get_mechanic_requirements(relic_id):
-		if provided.find(required) == -1:
-			return false
-	return true
+	if PhaseBRelicCatalog.get_pool(relic_id) == PhaseBRelicCatalog.Pool.PLANT:
+		return true
+	return has_path(PhaseBRelicCatalog.get_owning_path(relic_id))
 
 func get_eligible_relics() -> PackedInt32Array:
 	var eligible := PackedInt32Array()
@@ -774,42 +747,45 @@ func get_eligible_relics() -> PackedInt32Array:
 			eligible.append(relic_id)
 	return eligible
 
-func get_relic_rarity_weight(rarity: int) -> float:
-	match rarity:
-		PhaseBRelicCatalog.Rarity.COMMON:
-			return relic_common_weight
-		PhaseBRelicCatalog.Rarity.UNCOMMON:
-			return relic_uncommon_weight
-		PhaseBRelicCatalog.Rarity.RARE:
-			return relic_rare_weight
-		PhaseBRelicCatalog.Rarity.LEGENDARY:
-			return relic_legendary_weight
-	return 0.0
+func get_relic_run_state() -> int:
+	## Which rarity table this run rolls against. Deliberately reads the shape of
+	## the build rather than elapsed time, so a run that took its support
+	## Adaptation early gets the deeper table early.
+	if has_tertiary_path():
+		return PhaseBRelicCatalog.RunState.SUPPORT_LATE
+	if evolution_status == EvolutionStatus.EVOLVED:
+		return PhaseBRelicCatalog.RunState.POST_EVOLUTION
+	if has_primary_path() and has_secondary_path():
+		return PhaseBRelicCatalog.RunState.TWO_PRE_EVOLUTION
+	return PhaseBRelicCatalog.RunState.SINGLE_ADAPTATION
 
-func _roll_relic_options(minimum_rarity: int = -1) -> PackedInt32Array:
-	# Weighted sampling without replacement, from an owned random source so a
-	# replayed seed offers the same three relics.
+func get_relic_rarity_odds() -> PackedFloat32Array:
+	return PhaseBRelicCatalog.get_rarity_odds(get_relic_run_state())
+
+func _roll_relic_rarity(odds: PackedFloat32Array) -> int:
+	var roll := _relic_random.randf()
+	for rarity in range(odds.size()):
+		roll -= odds[rarity]
+		if roll <= 0.0:
+			return rarity
+	return PhaseBRelicCatalog.Rarity.COMMON
+
+func _roll_relic_options() -> PackedInt32Array:
+	## One rarity roll per offered slot rather than one roll for the whole screen,
+	## then an unowned eligible relic of that rarity.
+	##
+	## An exhausted rarity falls downward -- Legendary to Rare to Uncommon to
+	## Common -- and never upward, so running out of Rares can never manufacture a
+	## Legendary the odds did not actually produce.
 	var candidates := get_eligible_relics()
 	var offers := PackedInt32Array()
 	if candidates.is_empty():
 		return offers
-	if minimum_rarity >= 0:
-		# Recycling Bin: one option is guaranteed to be at least as rare as the
-		# relic it replaced. It never guarantees a higher rarity.
-		var floor_candidates := PackedInt32Array()
-		for relic_id in candidates:
-			if PhaseBRelicCatalog.get_rarity(relic_id) >= minimum_rarity:
-				floor_candidates.append(relic_id)
-		if not floor_candidates.is_empty():
-			var guaranteed := _draw_weighted_relic(floor_candidates)
-			offers.append(guaranteed)
-			var trimmed := PackedInt32Array()
-			for relic_id in candidates:
-				if relic_id != guaranteed:
-					trimmed.append(relic_id)
-			candidates = trimmed
+	var odds := get_relic_rarity_odds()
 	while offers.size() < relic_offer_count and not candidates.is_empty():
-		var drawn := _draw_weighted_relic(candidates)
+		var drawn := _draw_relic_of_rarity(candidates, _roll_relic_rarity(odds))
+		if drawn == -1:
+			break
 		offers.append(drawn)
 		var remaining := PackedInt32Array()
 		for relic_id in candidates:
@@ -818,18 +794,19 @@ func _roll_relic_options(minimum_rarity: int = -1) -> PackedInt32Array:
 		candidates = remaining
 	return offers
 
-func _draw_weighted_relic(candidates: PackedInt32Array) -> int:
-	var total := 0.0
-	for relic_id in candidates:
-		total += get_relic_rarity_weight(PhaseBRelicCatalog.get_rarity(relic_id))
-	if total <= 0.0:
-		return candidates[0]
-	var roll := _relic_random.randf() * total
-	for relic_id in candidates:
-		roll -= get_relic_rarity_weight(PhaseBRelicCatalog.get_rarity(relic_id))
-		if roll <= 0.0:
-			return relic_id
-	return candidates[candidates.size() - 1]
+func _draw_relic_of_rarity(candidates: PackedInt32Array, rarity: int) -> int:
+	# Falls downward through the rarities until one has a candidate left. Returns
+	# -1 only when the whole eligible pool is spent.
+	var wanted := rarity
+	while wanted >= PhaseBRelicCatalog.Rarity.COMMON:
+		var matching := PackedInt32Array()
+		for relic_id in candidates:
+			if PhaseBRelicCatalog.get_rarity(relic_id) == wanted:
+				matching.append(relic_id)
+		if not matching.is_empty():
+			return matching[_relic_random.randi_range(0, matching.size() - 1)]
+		wanted -= 1
+	return -1
 
 func request_relic_choice() -> bool:
 	if not _pending_relic_options.is_empty():
@@ -856,10 +833,7 @@ func reroll_relic_choice() -> bool:
 			replaced_rarity,
 			PhaseBRelicCatalog.get_rarity(relic_id)
 		)
-	var minimum_rarity := -1
-	if has_relic(PhaseBRelicCatalog.Id.RECYCLING_BIN) and not _relic_reroll_used:
-		minimum_rarity = replaced_rarity
-	var offers := _roll_relic_options(minimum_rarity)
+	var offers := _roll_relic_options()
 	if offers.is_empty():
 		return false
 	_relic_rerolls_remaining -= 1
@@ -1271,18 +1245,9 @@ func get_relic_description(relic_id: int) -> String:
 
 func get_relic_requirement_text(relic_id: int) -> String:
 	# What a relic needs before it can be offered, so a locked entry in the
-	# collection row explains itself rather than only being empty.
-	match PhaseBRelicCatalog.get_pool(relic_id):
-		PhaseBRelicCatalog.Pool.UNIVERSAL:
-			return "Universal"
-		PhaseBRelicCatalog.Pool.ELEMENT:
-			return "Plant"
-		PhaseBRelicCatalog.Pool.PATH:
-			return get_path_name(PhaseBRelicCatalog.get_owning_path(relic_id))
-	var names := PackedStringArray()
-	for mechanic in PhaseBRelicCatalog.get_mechanic_requirements(relic_id):
-		names.append(PhaseBRelicCatalog.get_mechanic_name(mechanic))
-	return " + ".join(names)
+	# collection row explains itself rather than only being empty. Plant is always
+	# available; every other pool names the Adaptation that unlocks it.
+	return PhaseBRelicCatalog.get_pool_name(PhaseBRelicCatalog.get_pool(relic_id))
 
 func _try_request_level_up() -> void:
 	if not _pending_upgrade_options.is_empty() or not _pending_path_options.is_empty():

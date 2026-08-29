@@ -238,6 +238,50 @@ class Glob:
 ## Globs in flight at once across every Bloom.
 @export_range(4, 256, 1) var glob_pool_size := 160
 
+@export_group("Bloom Relics")
+## Deadheading: how long after the bud dies its emergency Bloom opens, and how much
+## of a real Bloom that emergency is worth.
+@export_range(0.0, 1.0, 0.01) var deadheading_delay_seconds := 0.05
+@export_range(0.05, 1.0, 0.01) var deadheading_strength := 0.50
+@export_range(0.1, 1.0, 0.01) var deadheading_radius_share := 0.80
+## Petal Scatter: petals per Bloom, how far they look for a target outside the
+## blast, how fast they travel, and what share of the centre damage they carry.
+@export_range(1, 16, 1) var petal_scatter_maximum := 6
+@export_range(20.0, 600.0, 5.0) var petal_scatter_range_pixels := 240.0
+@export_range(50.0, 2000.0, 10.0) var petal_scatter_speed := 520.0
+@export_range(0.05, 2.0, 0.01) var petal_scatter_damage_share := 0.45
+## Chain Bloom: kills the parent needs, and what the child is worth.
+@export_range(1, 20, 1) var chain_bloom_kills := 4
+@export_range(0.05, 3.0, 0.05) var chain_bloom_windup_seconds := 0.45
+@export_range(0.05, 1.0, 0.01) var chain_bloom_strength := 0.55
+@export_range(0.1, 1.0, 0.01) var chain_bloom_radius_share := 0.75
+## How far beyond the parent blast the child looks for the crowd it missed.
+@export_range(40.0, 800.0, 10.0) var chain_bloom_search_pixels := 280.0
+## Overkill: damage banked before the next natural Bloom echoes, the per-victim
+## caps that stop one big target filling the meter, and what the echo is worth.
+@export_range(10.0, 2000.0, 10.0) var overkill_required := 200.0
+@export_range(0.0, 500.0, 5.0) var overkill_normal_cap := 60.0
+@export_range(0.0, 500.0, 5.0) var overkill_elite_cap := 60.0
+@export_range(0.0, 500.0, 5.0) var overkill_boss_cap := 20.0
+@export_range(0.0, 3.0, 0.05) var overkill_echo_delay_seconds := 0.40
+@export_range(0.05, 1.0, 0.01) var overkill_echo_strength := 0.45
+## Flowering Front: what starts a chain, what keeps it going, and how fast it fades.
+@export_range(1, 20, 1) var flowering_front_starter_kills := 5
+@export_range(1, 20, 1) var flowering_front_continue_kills := 3
+@export_range(1, 8, 1) var flowering_front_generations := 4
+@export_range(0.05, 1.0, 0.01) var flowering_front_falloff := 0.75
+@export_range(0.1, 1.0, 0.01) var flowering_front_radius_share := 0.90
+@export_range(0.05, 3.0, 0.05) var flowering_front_windup_seconds := 0.50
+@export_range(40.0, 900.0, 10.0) var flowering_front_search_pixels := 320.0
+## How far a child centre may sit from its parent's, so the front advances into the
+## wave instead of stacking on top of itself or teleporting across the arena.
+@export var flowering_front_step_pixels := Vector2(110.0, 220.0)
+@export_range(0.0, 60.0, 0.5) var flowering_front_cooldown_seconds := 8.0
+## Safety caps. These are implementation safeguards, not player-facing limits.
+@export_range(1, 32, 1) var relic_bud_maximum := 8
+@export_range(1, 32, 1) var relic_detonations_per_frame := 4
+@export_range(0.01, 0.5, 0.01) var relic_detonation_stagger_seconds := 0.05
+
 @export_group("Splatter")
 ## Bloom Mass multiplier applied on top of the run's Photosynthesis. Mass decides
 ## how much material is thrown: central splat size, glob size, resulting territory
@@ -247,6 +291,29 @@ class Glob:
 ## far the splatter travels, how elongated it is, and how hard it shoves.
 @export_range(0.0, 4.0, 0.05) var bloom_force_multiplier := 1.00
 
+enum SourceTag {
+	## The automatic Bloom, and the Evolution Bloom that behaves as one. Only these
+	## two may start a Flowering Front or spend an Overkill charge.
+	NATURAL,
+	EVOLUTION,
+	DEADHEADING,
+	CHAIN,
+	OVERKILL_ECHO,
+	PERENNIAL,
+	FLOWERING_FRONT,
+}
+
+## Bloom detonations still owed this frame, past the per-frame cap. Held rather than
+## dropped: a Bloom the player earned has to happen, even if it happens 0.05s later.
+var _pending_detonations: Array = []
+var _detonations_this_frame := 0
+## Petals in flight, each [position, remaining, damage].
+var _petals: Array = []
+var _overkill_banked := 0.0
+var _overkill_charged := false
+## The Flowering Front chain currently running, if any.
+var _front_generation := 0
+var _front_cooldown := 0.0
 var _late_bloomer_windup := 1.0
 var _late_bloomer_maximum_bonus := 0.0
 var _bloom_remaining := 0.0
@@ -267,6 +334,7 @@ func _ready() -> void:
 	assert(progression != null, "PhaseBBloomDirector requires PhaseBProgression")
 	combat.briar_trap_detonated.connect(_on_briar_trap_detonated)
 	overlay.bloom_detonated.connect(on_bloom_detonated)
+	overlay.bloom_interrupted.connect(on_bloom_interrupted)
 
 func set_relic_rules(windup_multiplier: float, maximum_bonus: float) -> void:
 	# Late Bloomer is a change to the Bloom's own timing rule, so it lives on the
@@ -298,8 +366,19 @@ func reset_director() -> void:
 	_flowering_charge = 0.0
 	_echo_bloom_remaining = 0.0
 	_echo_bloom_origin = Vector2(-1.0, -1.0)
+	_pending_detonations.clear()
+	_detonations_this_frame = 0
+	_petals.clear()
+	_overkill_banked = 0.0
+	_overkill_charged = false
+	_front_generation = 0
+	_front_cooldown = 0.0
 
 func advance(delta: float) -> void:
+	_detonations_this_frame = 0
+	_advance_pending_detonations(delta)
+	_advance_petals(delta)
+	_front_cooldown = maxf(0.0, _front_cooldown - delta)
 	_advance_globs(delta)
 	_advance_echo_blooms(delta)
 	_advance_flowering_season(delta)
@@ -314,7 +393,13 @@ func advance(delta: float) -> void:
 	# itself. Colonising ground the player does not hold is the Seed's job.
 	var origin := territory_field.find_player_frontier_near(combat.get_target_position())
 	if origin.x >= 0.0 and territory_field.is_claimable_at_local(origin):
-		overlay.plant_bloom(origin, get_windup_seconds(), 0, bloom_durability)
+		overlay.plant_bloom(
+			origin,
+			get_windup_seconds(),
+			0,
+			bloom_durability,
+			SourceTag.NATURAL
+		)
 		status_requested.emit("Bloom charging on the Green frontier facing the threat.")
 	# Root Network: the next Bloom is drawn out of the ground this one rooted in, so
 	# an ecosystem blooming off old Green comes back around sooner. The same rule
@@ -334,7 +419,8 @@ func plant_chained_bloom(local_position: Vector2, chain_depth: int) -> bool:
 		local_position,
 		evolutions.chained_bloom_windup_seconds,
 		chain_depth,
-		bloom_durability
+		bloom_durability,
+		SourceTag.EVOLUTION
 	)
 	return true
 
@@ -485,7 +571,25 @@ func _harvest_bramble_into_traps(local_position: Vector2, bloom_radius_pixels: f
 			% [harvest.cell_count, placed]
 		)
 
-func on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
+func on_bloom_detonated(
+	local_position: Vector2,
+	chain_depth: int,
+	source_tag: int = SourceTag.NATURAL,
+	strength: float = 1.0
+) -> void:
+	# The per-frame cap is a safeguard, not a rule the player should ever feel. A
+	# detonation past it is delayed rather than dropped, so a chain that lands on one
+	# frame still resolves in full a few hundredths of a second later.
+	if _detonations_this_frame >= relic_detonations_per_frame:
+		_pending_detonations.append([
+			local_position,
+			chain_depth,
+			source_tag,
+			strength,
+			relic_detonation_stagger_seconds,
+		])
+		return
+	_detonations_this_frame += 1
 	combat.play_plant_explosion_sfx()
 	var is_super_bloom := chain_depth > 0
 	# Root Network: a Bloom erupting out of Mature ground pushes harder than one
@@ -537,8 +641,11 @@ func on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
 	# thrown; Force is how far and how hard it goes. A Grand Bloom widens area and
 	# Force only: it must not become a better source of new Green than a Seed.
 	var late_bonus := get_late_bloomer_bonus()
-	var mass := get_bloom_mass_multiplier() * super_multiplier
-	var throw := force * super_multiplier * (1.0 + late_bonus)
+	# A relic-planted Bloom is worth a share of a real one. The share multiplies the
+	# authored output rather than replacing it, so everything that already makes a
+	# Bloom better still reaches the child.
+	var mass := get_bloom_mass_multiplier() * super_multiplier * strength
+	var throw := force * super_multiplier * (1.0 + late_bonus) * strength
 	_splatter(
 		local_position,
 		mass,
@@ -550,14 +657,30 @@ func on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
 	var pixels_per_cell := (
 		territory_field.tuning.arena_size.x / float(territory_field.tuning.field_size.x)
 	)
-	combat.damage_enemies_in_radius(
+	var damage_radius := (
+		territory_field.tuning.bloom_radius_cells * pixels_per_cell * sqrt(expansion)
+	)
+	var centre_damage := bloom_damage * force * super_multiplier * strength
+	var banks_overkill := _tag_banks_overkill(source_tag)
+	var report := combat.blast_enemies_in_radius(
 		local_position,
-		territory_field.tuning.bloom_radius_cells * pixels_per_cell * sqrt(expansion),
-		bloom_damage * force * super_multiplier,
+		damage_radius,
+		centre_damage,
 		PhaseBCombatDirector.DeathSource.SUPER_BLOOM
 			if is_super_bloom
 			else PhaseBCombatDirector.DeathSource.BLOOM,
-		chain_depth
+		chain_depth,
+		overkill_normal_cap if banks_overkill else 0.0,
+		overkill_elite_cap if banks_overkill else 0.0,
+		overkill_boss_cap if banks_overkill else 0.0
+	)
+	_resolve_bloom_relics(
+		local_position,
+		source_tag,
+		strength,
+		centre_damage,
+		damage_radius,
+		report
 	)
 	# The tempo window. Queued after the splatter so the shield is stamped once the
 	# Bloom's own conversion has been applied in the same step, which is what lets it
@@ -572,6 +695,310 @@ func on_bloom_detonated(local_position: Vector2, chain_depth: int) -> void:
 		if is_super_bloom
 		else "Bloom splattered: central splat, globs, satellites, and streaks."
 	)
+
+
+func _tag_banks_overkill(source_tag: int) -> bool:
+	# Everything that is a real Bloom feeds the meter. The echo itself does not, and
+	# neither does a Superbloom wave, which is not a detonation of its own at all.
+	return source_tag != SourceTag.OVERKILL_ECHO
+
+
+func _advance_pending_detonations(delta: float) -> void:
+	for index in range(_pending_detonations.size() - 1, -1, -1):
+		var pending: Array = _pending_detonations[index]
+		pending[4] = float(pending[4]) - delta
+		if float(pending[4]) > 0.0:
+			continue
+		if _detonations_this_frame >= relic_detonations_per_frame:
+			# Still over budget. Wait another stagger rather than giving up.
+			pending[4] = relic_detonation_stagger_seconds
+			continue
+		_pending_detonations.remove_at(index)
+		on_bloom_detonated(
+			pending[0],
+			int(pending[1]),
+			int(pending[2]),
+			float(pending[3])
+		)
+
+
+func _advance_petals(delta: float) -> void:
+	# A petal is a short flight rather than an instant hit, so the damage lands where
+	# the eye expects it. It is resolved on arrival against whatever is there then.
+	for index in range(_petals.size() - 1, -1, -1):
+		var petal: Array = _petals[index]
+		petal[1] = float(petal[1]) - delta
+		if float(petal[1]) > 0.0:
+			continue
+		_petals.remove_at(index)
+		var target: Vector2 = petal[0]
+		combat.damage_enemies_in_radius(
+			target,
+			12.0,
+			float(petal[2]),
+			PhaseBCombatDirector.DeathSource.RELIC
+		)
+		overlay.spawn_hostile_pulse(target, 18.0)
+
+
+func get_relic_bud_count() -> int:
+	## Buds standing on the field that a relic planted. The global safety cap is read
+	## from the overlay rather than from a counter here, so a bud destroyed by a
+	## Saboteur frees its slot without this director having to hear about it.
+	var count := 0
+	for tag in overlay.get_bloom_source_tags():
+		if tag != SourceTag.NATURAL and tag != SourceTag.EVOLUTION:
+			count += 1
+	return count
+
+
+func _has_relic_bud_room() -> bool:
+	return get_relic_bud_count() < relic_bud_maximum
+
+
+func _resolve_bloom_relics(
+	local_position: Vector2,
+	source_tag: int,
+	strength: float,
+	centre_damage: float,
+	damage_radius: float,
+	report: PhaseBCombatDirector.BlastReport
+) -> void:
+	if progression.has_relic(PhaseBRelicCatalog.Id.PETAL_SCATTER):
+		_scatter_petals(local_position, damage_radius, centre_damage, report)
+	if _tag_banks_overkill(source_tag):
+		_bank_overkill(report.overkill)
+	# Read after banking, so the blast that fills the meter is never also the one
+	# that spends it: the charge always rides the Bloom after the one that earned it.
+	try_spend_overkill(local_position, source_tag)
+	# Order matters: a Front is the stronger reading of the same kills, so it gets
+	# first refusal. Only a Bloom that could not start or continue one falls through
+	# to Chain Bloom, which stops one blast paying out twice.
+	if _try_flowering_front(local_position, source_tag, strength, report):
+		return
+	_try_chain_bloom(local_position, source_tag, strength, damage_radius, report)
+
+
+func _scatter_petals(
+	local_position: Vector2,
+	damage_radius: float,
+	centre_damage: float,
+	report: PhaseBCombatDirector.BlastReport
+) -> void:
+	# One petal per kill, thrown at somebody the Bloom did not reach. A petal that
+	# finds nobody outside the blast is simply never thrown.
+	var petals := mini(report.kills, petal_scatter_maximum)
+	if petals <= 0:
+		return
+	var thrown := 0
+	var claimed := PackedVector2Array()
+	for enemy_position in combat.get_active_enemy_positions():
+		if thrown >= petals:
+			break
+		if enemy_position.distance_to(local_position) <= damage_radius:
+			continue
+		var source := local_position
+		if thrown < report.kill_positions.size():
+			source = report.kill_positions[thrown]
+		if enemy_position.distance_to(source) > petal_scatter_range_pixels:
+			continue
+		var already_claimed := false
+		for other in claimed:
+			if other.is_equal_approx(enemy_position):
+				already_claimed = true
+				break
+		if already_claimed:
+			continue
+		claimed.append(enemy_position)
+		_petals.append([
+			enemy_position,
+			enemy_position.distance_to(source) / maxf(1.0, petal_scatter_speed),
+			centre_damage * petal_scatter_damage_share,
+		])
+		thrown += 1
+	if thrown > 0:
+		status_requested.emit("PETAL SCATTER — %d petals fly wide of the blast." % thrown)
+
+
+func _bank_overkill(overkill: float) -> void:
+	if not progression.has_relic(PhaseBRelicCatalog.Id.OVERKILL):
+		return
+	if _overkill_charged or overkill <= 0.0:
+		# Overkill earned while a charge is already stored is ignored, which is what
+		# stops a single enormous blast banking several echoes at once.
+		return
+	_overkill_banked += overkill
+	if _overkill_banked < overkill_required:
+		return
+	_overkill_banked = 0.0
+	_overkill_charged = true
+	status_requested.emit("OVERKILL — the next Bloom is carrying an aftershock.")
+
+
+func try_spend_overkill(local_position: Vector2, source_tag: int) -> bool:
+	## Spent by the next natural or Evolution Bloom only. A relic-planted Bloom is
+	## not what the player was promised the charge would ride on.
+	if not _overkill_charged:
+		return false
+	if source_tag != SourceTag.NATURAL and source_tag != SourceTag.EVOLUTION:
+		return false
+	_overkill_charged = false
+	_pending_detonations.append([
+		local_position,
+		0,
+		SourceTag.OVERKILL_ECHO,
+		overkill_echo_strength,
+		overkill_echo_delay_seconds,
+	])
+	status_requested.emit("OVERKILL — the aftershock lands.")
+	return true
+
+
+func _find_crowd_beyond(
+	local_position: Vector2,
+	inner_radius: float,
+	search_pixels: float
+) -> Vector2:
+	# The densest knot of enemies the blast did not cover. Counted rather than
+	# nearest-first, so a child lands in the crowd instead of on the one straggler
+	# closest to the edge.
+	var best := Vector2(-1.0, -1.0)
+	var best_count := 0
+	var positions := combat.get_active_enemy_positions()
+	for candidate in positions:
+		var distance := candidate.distance_to(local_position)
+		if distance <= inner_radius or distance > inner_radius + search_pixels:
+			continue
+		var count := 0
+		for other in positions:
+			if other.distance_to(candidate) <= inner_radius:
+				count += 1
+		if count > best_count:
+			best_count = count
+			best = candidate
+	return best
+
+
+func _plant_relic_bloom(
+	origin: Vector2,
+	windup_seconds: float,
+	source_tag: int,
+	strength: float
+) -> bool:
+	if not _has_relic_bud_room():
+		return false
+	if not territory_field.is_claimable_at_local(origin):
+		return false
+	overlay.plant_bloom(origin, windup_seconds, 0, bloom_durability, source_tag, strength)
+	return true
+
+
+func _try_chain_bloom(
+	local_position: Vector2,
+	source_tag: int,
+	strength: float,
+	damage_radius: float,
+	report: PhaseBCombatDirector.BlastReport
+) -> void:
+	if not progression.has_relic(PhaseBRelicCatalog.Id.CHAIN_BLOOM):
+		return
+	# A Chain Bloom cannot beget another, and neither an Overkill echo nor a
+	# Superbloom wave is a real enough Bloom to parent one.
+	if source_tag == SourceTag.CHAIN or source_tag == SourceTag.OVERKILL_ECHO:
+		return
+	if report.kills < chain_bloom_kills:
+		return
+	var target := _find_crowd_beyond(local_position, damage_radius, chain_bloom_search_pixels)
+	if target.x < 0.0:
+		return
+	if _plant_relic_bloom(
+		target,
+		chain_bloom_windup_seconds,
+		SourceTag.CHAIN,
+		strength * chain_bloom_strength
+	):
+		status_requested.emit("CHAIN BLOOM — a smaller flower plants past the blast.")
+
+
+func _try_flowering_front(
+	local_position: Vector2,
+	source_tag: int,
+	strength: float,
+	report: PhaseBCombatDirector.BlastReport
+) -> bool:
+	if not progression.has_relic(PhaseBRelicCatalog.Id.FLOWERING_FRONT):
+		return false
+	var is_front_child := source_tag == SourceTag.FLOWERING_FRONT
+	if not is_front_child:
+		# Starting a chain: only the real Bloom cadence may do it, only one chain
+		# runs at a time, and a finished chain has to cool down first.
+		if source_tag != SourceTag.NATURAL and source_tag != SourceTag.EVOLUTION:
+			return false
+		if _front_generation > 0 or _front_cooldown > 0.0:
+			return false
+		if report.kills < flowering_front_starter_kills:
+			return false
+	elif report.kills < flowering_front_continue_kills:
+		# The front only advances while it keeps killing. A child that does not is
+		# where the chain stops.
+		_front_generation = 0
+		_front_cooldown = flowering_front_cooldown_seconds
+		return false
+	if _front_generation >= flowering_front_generations:
+		_front_generation = 0
+		_front_cooldown = flowering_front_cooldown_seconds
+		return false
+	var target := _find_crowd_beyond(
+		local_position,
+		flowering_front_step_pixels.x,
+		flowering_front_search_pixels
+	)
+	if target.x < 0.0:
+		# Nowhere hostile left to flower into. The chain ends rather than doubling
+		# back over ground it has already taken.
+		_front_generation = 0
+		_front_cooldown = flowering_front_cooldown_seconds
+		return false
+	# Clamped so the front steps into the wave rather than teleporting across it.
+	var offset := (target - local_position)
+	var step := clampf(
+		offset.length(),
+		flowering_front_step_pixels.x,
+		flowering_front_step_pixels.y
+	)
+	var origin := local_position + offset.normalized() * step
+	if not _plant_relic_bloom(
+		origin,
+		flowering_front_windup_seconds,
+		SourceTag.FLOWERING_FRONT,
+		strength * flowering_front_falloff
+	):
+		_front_generation = 0
+		_front_cooldown = flowering_front_cooldown_seconds
+		return false
+	_front_generation += 1
+	status_requested.emit(
+		"FLOWERING FRONT — generation %d flowers forward." % _front_generation
+	)
+	return true
+
+
+func on_bloom_interrupted(local_position: Vector2, source_tag: int, strength: float) -> void:
+	## Deadheading: a bud killed during its wind-up still opens, at half strength.
+	## Only hostile destruction reaches this, because nothing else emits it -- a wave
+	## ending or a cleanup removes the bud without ever calling it a kill.
+	if not progression.has_relic(PhaseBRelicCatalog.Id.DEADHEADING):
+		return
+	if source_tag == SourceTag.DEADHEADING:
+		return
+	_pending_detonations.append([
+		local_position,
+		0,
+		SourceTag.DEADHEADING,
+		strength * deadheading_strength,
+		deadheading_delay_seconds,
+	])
+	status_requested.emit("DEADHEADING — the broken bud goes off anyway.")
 
 
 func _apply_tempo_window(

@@ -3,8 +3,20 @@ extends Node2D
 
 signal seed_germinated(local_position: Vector2)
 signal seed_germinated_with_context(local_position: Vector2, chain_depth: int)
-signal bloom_detonated(local_position: Vector2, chain_depth: int)
-signal catalyst_destroyed(catalyst_kind: int, local_position: Vector2)
+signal bloom_detonated(
+	local_position: Vector2,
+	chain_depth: int,
+	source_tag: int,
+	strength: float
+)
+## A charging Bloom was destroyed by something hostile before it opened. Separate
+## from catalyst_destroyed because the relic that answers it needs the dead Bloom's
+## source tag, and only a Bloom has one.
+signal bloom_interrupted(local_position: Vector2, source_tag: int, strength: float)
+## A charging Seed or Bloom was destroyed before it opened. Carries the Seed's own
+## id so a relic can tell a Seed it created apart from an ordinary one; Blooms have
+## no stable identity and report -1.
+signal catalyst_destroyed(catalyst_kind: int, local_position: Vector2, catalyst_id: int)
 ## A Seed entered the world. Carries its stable id, so a relic can claim a
 ## particular Seed and follow it until it opens.
 signal seed_spawned(seed_id: int, local_position: Vector2)
@@ -18,10 +30,11 @@ enum CatalystKind {
 
 enum SeedMarker {
 	NONE,
-	## The first Seed of a wave, claimed by Patient Zero.
-	PATIENT_ZERO,
-	## The one enormous Seed a World Seed milestone plants.
-	WORLD_SEED,
+	## A Seed one relic has singled out, which the player has to be able to pick
+	## out of a field of ordinary Seeds in order to defend it.
+	CLAIMED,
+	## A Seed that is materially larger or more valuable than a normal one.
+	MAJOR,
 }
 
 class SeedVisual:
@@ -54,6 +67,13 @@ class BloomVisual:
 	var health := 1.0
 	var maximum_health := 1.0
 	var hit_flash_remaining := 0.0
+	## What made this Bloom. Relic recursion is settled by comparing tags rather than
+	## by guessing from position or timing, so every Bloom has to carry one.
+	var source_tag := 0
+	## Share of a full Bloom this one is worth. A relic that plants a weaker child
+	## stamps it here, so the strength travels with the bud rather than being looked
+	## up from a table the bud has no way to stay in step with.
+	var strength := 1.0
 
 class PulseVisual:
 	var position := Vector2.ZERO
@@ -212,18 +232,19 @@ func _process(delta: float) -> void:
 			seed.hit_flash_remaining = maxf(0.0, seed.hit_flash_remaining - delta)
 			seed.grant_cooldown = maxf(0.0, seed.grant_cooldown - delta)
 			if seed.remaining <= 0.0:
-				_last_germinated_seed_id = seed.id
-				seed_germinated.emit(seed.position)
-				seed_germinated_with_context.emit(seed.position, seed.chain_depth)
-				_spawn_pulse(seed.position, 0.72, 76.0, Color("9cff63"))
-				_seeds.remove_at(index)
+				_open_seed(index)
 
 		for index in range(_blooms.size() - 1, -1, -1):
 			var bloom := _blooms[index]
 			bloom.remaining -= delta
 			bloom.hit_flash_remaining = maxf(0.0, bloom.hit_flash_remaining - delta)
 			if bloom.remaining <= 0.0:
-				bloom_detonated.emit(bloom.position, bloom.chain_depth)
+				bloom_detonated.emit(
+					bloom.position,
+					bloom.chain_depth,
+					bloom.source_tag,
+					bloom.strength
+				)
 				var pixels_per_cell := tuning.arena_size.x / float(tuning.field_size.x)
 				_spawn_pulse(
 					bloom.position,
@@ -400,7 +421,7 @@ func _draw() -> void:
 			# player cannot defend it.
 			var marker_color := (
 				Color("ffd24a")
-				if seed.marker == SeedMarker.WORLD_SEED
+				if seed.marker == SeedMarker.MAJOR
 				else Color("9cd8ff")
 			)
 			draw_arc(seed.position, radius + 9.0, 0.0, TAU, 28, marker_color, 2.0, true)
@@ -552,6 +573,28 @@ func advance_seeds_in_radius(
 	return advanced
 
 
+func force_germinate_seed(seed_id: int) -> bool:
+	## Open one named Seed now, as though its own timer had run out. Domino
+	## Germination's cascade is the caller: a forced germination is a real
+	## germination, so it goes through the same path and emits the same events
+	## rather than being a separate kind of growth nothing else can see.
+	for index in range(_seeds.size()):
+		if _seeds[index].id == seed_id:
+			_open_seed(index)
+			queue_redraw()
+			return true
+	return false
+
+
+func _open_seed(index: int) -> void:
+	var seed := _seeds[index]
+	_last_germinated_seed_id = seed.id
+	seed_germinated.emit(seed.position)
+	seed_germinated_with_context.emit(seed.position, seed.chain_depth)
+	_spawn_pulse(seed.position, 0.72, 76.0, Color("9cff63"))
+	_seeds.remove_at(index)
+
+
 func _find_seed(seed_id: int) -> SeedVisual:
 	for seed in _seeds:
 		if seed.id == seed_id:
@@ -568,7 +611,9 @@ func plant_bloom(
 	local_position: Vector2,
 	windup_seconds: float,
 	chain_depth: int = 0,
-	durability: float = 1.0
+	durability: float = 1.0,
+	source_tag: int = 0,
+	strength: float = 1.0
 ) -> void:
 	var bloom := BloomVisual.new()
 	bloom.position = local_position
@@ -577,6 +622,8 @@ func plant_bloom(
 	bloom.chain_depth = chain_depth
 	bloom.maximum_health = maxf(0.01, durability)
 	bloom.health = bloom.maximum_health
+	bloom.source_tag = source_tag
+	bloom.strength = maxf(0.0, strength)
 	_blooms.append(bloom)
 	queue_redraw()
 
@@ -918,6 +965,16 @@ func get_active_seed_count() -> int:
 	return _seeds.size()
 
 
+func get_bloom_source_tags() -> PackedInt32Array:
+	## What made each Bloom currently charging. The relic bud cap is counted from
+	## this rather than from a tally the Bloom director keeps, so a bud a Saboteur
+	## destroys frees its slot without anything having to be told.
+	var tags := PackedInt32Array()
+	for bloom in _blooms:
+		tags.append(bloom.source_tag)
+	return tags
+
+
 func get_active_bloom_count() -> int:
 	return _blooms.size()
 
@@ -1017,15 +1074,18 @@ func damage_nearest_catalyst(
 		if seed.health <= 0.0:
 			var destroyed_position := seed.position
 			_seeds.remove_at(nearest_index)
-			catalyst_destroyed.emit(CatalystKind.SEED, destroyed_position)
+			catalyst_destroyed.emit(CatalystKind.SEED, destroyed_position, seed.id)
 	else:
 		var bloom := _blooms[nearest_index]
 		bloom.health -= damage
 		bloom.hit_flash_remaining = 0.16
 		if bloom.health <= 0.0:
 			var destroyed_position := bloom.position
+			var destroyed_tag := bloom.source_tag
+			var destroyed_strength := bloom.strength
 			_blooms.remove_at(nearest_index)
-			catalyst_destroyed.emit(CatalystKind.BLOOM, destroyed_position)
+			catalyst_destroyed.emit(CatalystKind.BLOOM, destroyed_position, -1)
+			bloom_interrupted.emit(destroyed_position, destroyed_tag, destroyed_strength)
 	queue_redraw()
 	return true
 

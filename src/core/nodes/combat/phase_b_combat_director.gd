@@ -33,6 +33,14 @@ signal fruiting_body_ruptured(local_position: Vector2)
 ## Grasping Roots pinned an enemy. Published so a relic can answer a root without
 ## reaching into the combat loop for it.
 signal enemy_rooted(local_position: Vector2)
+## Bramble Repulsion shoved an enemy. Carries where it started and where it is being
+## sent, because the relics that answer a shove care about what it collides with.
+signal enemy_repelled(enemy_id: int, from_position: Vector2, direction: Vector2)
+## An enemy carried Entanglement off the Green it picked it up on.
+signal enemy_left_green(enemy_id: int, local_position: Vector2, entanglement: float)
+## An enemy died with Entanglement still on it, which is what the corpse-reading
+## Bramble relics are counting.
+signal enemy_died_entangled(local_position: Vector2, entanglement: float, role: int)
 signal active_enemy_count_changed(count: int)
 ## An elite spawned carrying a rule change. The player has to be able to see which
 ## one before it matters, so this is what the battlefield reads to mark it.
@@ -466,14 +474,6 @@ class PendingEruptionState:
 @export_range(0.05, 0.8, 0.01) var cane_sweep_seconds := 0.20
 ## Outermost share of reach that counts as the Vine apical zone.
 @export_range(0.05, 0.75, 0.01) var cane_apical_fraction := 0.25
-## Predator's Eye rework: reach added to every configured cadence sweep.
-@export_range(0.0, 2.0, 0.05) var predators_eye_reach_bonus := 0.35
-## Follow Through rework: damage banked by a Cane kill for the next connecting sweep.
-@export_range(0.0, 2.0, 0.05) var follow_through_damage_bonus := 0.35
-## Blood in the Water rework: execute damage against enemies under its health gate.
-@export_range(0.0, 2.0, 0.05) var wounded_cane_damage_bonus := 0.25
-## Underdog rework: Cane cooldown multiplier while the authored local swarm exists.
-@export_range(0.05, 1.0, 0.01) var underdog_cane_cooldown_multiplier := 0.70
 
 @export_group("Combat Audio")
 ## Audio stream played once at the start of every Cane sweep.
@@ -665,16 +665,6 @@ var _heartwood_echo_facing := Vector2.RIGHT
 var _heartwood_echo_left_to_right := true
 var _next_cane_cooldown_multiplier := 1.0
 var _cane_apical_fraction_bonus := 0.0
-var _predators_eye_interval := 0
-var _predators_eye_progress := 0
-var _follow_through_seconds := 0.0
-var _follow_through_remaining := 0.0
-var _adrenal_charges := 0
-var _adrenal_multiplier := 0.55
-var _blood_in_the_water_threshold := 0.0
-var _underdog_enemy_count := 0
-var _underdog_radius := 0.0
-var _deep_snare_decay_multiplier := 1.0
 var _temporary_attack_multiplier := 1.0
 var _temporary_attack_remaining := 0.0
 var _rampart_center := Vector2(-1.0, -1.0)
@@ -920,34 +910,6 @@ func _draw() -> void:
 			_draw_damage_number(damage_number)
 
 
-func set_relic_rules(
-	predators_eye_interval: int,
-	follow_through_seconds: float,
-	adrenal_multiplier: float,
-	blood_in_the_water_threshold: float,
-	underdog_enemy_count: int,
-	underdog_radius_pixels: float,
-	deep_snare_decay_multiplier: float
-) -> void:
-	# Relics that are pure Core Weapon or contact rules live here, where those
-	# rules already live, rather than being simulated by the relic component.
-	_predators_eye_interval = maxi(0, predators_eye_interval)
-	if _predators_eye_interval <= 0:
-		_predators_eye_progress = 0
-	_follow_through_seconds = maxf(0.0, follow_through_seconds)
-	if _follow_through_seconds <= 0.0:
-		_follow_through_remaining = 0.0
-	_adrenal_multiplier = clampf(adrenal_multiplier, 0.05, 1.0)
-	_blood_in_the_water_threshold = clampf(blood_in_the_water_threshold, 0.0, 1.0)
-	_underdog_enemy_count = maxi(0, underdog_enemy_count)
-	_underdog_radius = maxf(0.0, underdog_radius_pixels)
-	_deep_snare_decay_multiplier = clampf(deep_snare_decay_multiplier, 0.0, 1.0)
-
-
-func prime_adrenal_response(charges: int) -> void:
-	_adrenal_charges = maxi(_adrenal_charges, maxi(0, charges))
-
-
 func set_temporary_attack_rate_multiplier(multiplier: float, seconds: float) -> void:
 	# An emergency buff, not a permanent stat: it expires on its own timer.
 	_temporary_attack_multiplier = clampf(multiplier, 0.05, 4.0)
@@ -979,10 +941,6 @@ func is_in_rampart(local_position: Vector2) -> bool:
 		and _rampart_center.x >= 0.0
 		and local_position.distance_to(_rampart_center) <= _rampart_radius
 	)
-
-
-func get_predators_eye_progress() -> int:
-	return _predators_eye_progress
 
 
 func spread_entanglement_from(
@@ -1221,6 +1179,19 @@ func spawn_pack(role: int, count: int) -> int:
 	return spawned
 
 
+class BlastReport:
+	## What one radial attack actually did. Relics that key off a blast need more
+	## than a hit count -- how many died, where, and how much damage was spent past
+	## the health that was there -- and computing it inside the blast is the only
+	## place those facts are still available.
+	var hits := 0
+	var kills := 0
+	var kill_positions := PackedVector2Array()
+	## Damage dealt beyond what the victims had left, already capped per victim by
+	## role, which is what stops one boss hit filling an Overkill meter by itself.
+	var overkill := 0.0
+
+
 func damage_enemies_in_radius(
 	center: Vector2,
 	radius: float,
@@ -1228,7 +1199,20 @@ func damage_enemies_in_radius(
 	death_source: int,
 	chain_depth: int = 0
 ) -> int:
-	var hit_count := 0
+	return blast_enemies_in_radius(center, radius, damage, death_source, chain_depth).hits
+
+
+func blast_enemies_in_radius(
+	center: Vector2,
+	radius: float,
+	damage: float,
+	death_source: int,
+	chain_depth: int = 0,
+	normal_overkill_cap: float = 0.0,
+	elite_overkill_cap: float = 0.0,
+	boss_overkill_cap: float = 0.0
+) -> BlastReport:
+	var report := BlastReport.new()
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
@@ -1238,14 +1222,25 @@ func damage_enemies_in_radius(
 		if not territory_field.is_growth_path_clear(center, enemy.position):
 			continue
 		var falloff := clampf(1.0 - distance / maxf(radius, 1.0), 0.0, 1.0)
-		_damage_enemy(
-			enemy,
-			damage * lerpf(0.48, 1.0, falloff),
-			death_source,
-			chain_depth
-		)
-		hit_count += 1
-	return hit_count
+		var applied := damage * lerpf(0.48, 1.0, falloff)
+		var health_before := enemy.health
+		var position_before := enemy.position
+		var role := enemy.role
+		_damage_enemy(enemy, applied, death_source, chain_depth)
+		report.hits += 1
+		if enemy.active:
+			continue
+		report.kills += 1
+		report.kill_positions.append(position_before)
+		var excess := maxf(0.0, applied - health_before)
+		var cap := normal_overkill_cap
+		if role == EnemyRole.BOSS:
+			cap = boss_overkill_cap
+		elif role == EnemyRole.ELITE:
+			cap = elite_overkill_cap
+		if cap > 0.0:
+			report.overkill += minf(excess, cap)
+	return report
 
 
 func get_target_position() -> Vector2:
@@ -1969,7 +1964,6 @@ func _configure_navigation() -> void:
 
 
 func _update_cane(delta: float) -> void:
-	_follow_through_remaining = maxf(0.0, _follow_through_remaining - delta)
 	if _temporary_attack_remaining > 0.0:
 		_temporary_attack_remaining -= delta
 		if _temporary_attack_remaining <= 0.0:
@@ -1990,13 +1984,6 @@ func _update_cane(delta: float) -> void:
 	if _cane_remaining > 0.0:
 		return
 	var reach_multiplier := 1.0
-	# Predator's Eye now broadens a periodic melee stroke. It cannot invent a target
-	# or make the Cane hit one body twice, which preserves the weapon's sector rule.
-	if _predators_eye_interval > 0:
-		_predators_eye_progress += 1
-		if _predators_eye_progress >= _predators_eye_interval:
-			_predators_eye_progress = 0
-			reach_multiplier += predators_eye_reach_bonus
 	var heartwood_sweep := false
 	if _heartwood_rank > 0:
 		var progress_step := 1
@@ -2036,35 +2023,11 @@ func _update_cane(delta: float) -> void:
 	_cane_sweep_count += 1
 	var cooldown := cane_cooldown_seconds * _cane_cooldown_multiplier
 	cooldown *= _temporary_attack_multiplier
-	if _adrenal_charges > 0:
-		_adrenal_charges -= 1
-		cooldown *= _adrenal_multiplier
 	if heartwood_sweep and _heartwood_rank >= 4:
 		cooldown *= 0.60
-	# Underdog now accelerates the Cane while the swarm is actually on top of the
-	# player; there is no target-count concept left for it to modify.
-	var swarmed := false
-	if _underdog_enemy_count > 0 and _count_enemies_near_player() >= _underdog_enemy_count:
-		swarmed = true
-	if swarmed:
-		cooldown *= underdog_cane_cooldown_multiplier
 	cooldown *= _next_cane_cooldown_multiplier
 	_next_cane_cooldown_multiplier = 1.0
 	_cane_remaining = maxf(0.03, cooldown)
-
-
-func _count_enemies_near_player() -> int:
-	if _underdog_radius <= 0.0:
-		return 0
-	var origin := player.get_arena_position()
-	var radius_squared := _underdog_radius * _underdog_radius
-	var count := 0
-	for enemy in _enemies:
-		if not enemy.active:
-			continue
-		if enemy.position.distance_squared_to(origin) <= radius_squared:
-			count += 1
-	return count
 
 
 func perform_bonus_cane_sweep(
@@ -2075,7 +2038,7 @@ func perform_bonus_cane_sweep(
 	apical_fraction_override: float = -1.0
 ) -> int:
 	## Evolution-triggered stroke. It uses the same sector and hit-once resolver but
-	## does not consume the automatic alternation, relic cadence, or attack timer.
+	## does not consume the automatic alternation or the attack timer.
 	return _perform_cane_sweep(
 		facing,
 		left_to_right,
@@ -2100,9 +2063,6 @@ func _perform_cane_sweep(
 	var origin := player.get_arena_position()
 	var reach := cane_reach_pixels * _cane_reach_multiplier * bonus_reach_multiplier
 	var base_damage := cane_damage * _cane_damage_multiplier * bonus_damage_multiplier
-	var uses_follow_through := _follow_through_remaining > 0.0
-	if uses_follow_through:
-		base_damage *= 1.0 + follow_through_damage_bonus
 	_cane_visual_remaining = cane_sweep_seconds
 	_cane_visual_origin = origin
 	_cane_visual_facing = facing
@@ -2129,7 +2089,6 @@ func _perform_cane_sweep(
 		0.95
 	)
 	var hit_count := 0
-	var killed_any := false
 	var strongest_visual_detour := 0.01
 	for enemy in _enemies:
 		if not enemy.active:
@@ -2164,17 +2123,10 @@ func _perform_cane_sweep(
 		var damage := base_damage
 		if apical:
 			damage *= 1.0 + _cane_apical_damage_bonus
-		if (
-			_blood_in_the_water_threshold > 0.0
-			and enemy.maximum_health > 0.0
-			and enemy.health / enemy.maximum_health <= _blood_in_the_water_threshold
-		):
-			damage *= 1.0 + wounded_cane_damage_bonus
 		var enemy_id := enemy.id
 		var hit_position := enemy.position
 		_damage_enemy(enemy, damage, DeathSource.CANE, 0)
 		var killed := not enemy.active
-		killed_any = killed_any or killed
 		hit_count += 1
 		cane_enemy_hit.emit(
 			enemy_id,
@@ -2185,10 +2137,6 @@ func _perform_cane_sweep(
 			killed,
 			is_bonus
 		)
-	if uses_follow_through and hit_count > 0:
-		_follow_through_remaining = 0.0
-	if killed_any and _follow_through_seconds > 0.0:
-		_follow_through_remaining = _follow_through_seconds
 	cane_sweep_finished.emit(origin, facing, left_to_right, reach, hit_count, is_bonus)
 	_cane_route_cache.clear()
 	return hit_count
@@ -2430,6 +2378,10 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 	var zone_strength := _get_briar_pod_strength(enemy.position)
 	var contact_strength := maxf(coverage, zone_strength)
 	if contact_strength <= 0.0:
+		if enemy.was_on_bramble:
+			# The Green-to-open-ground crossing, reported before the decay tick, so
+			# what is announced is the Entanglement the enemy actually walked out with.
+			enemy_left_green.emit(enemy.id, enemy.position, enemy.entanglement)
 		_decay_entanglement(enemy, delta)
 		enemy.was_on_bramble = false
 		enemy.bramble_frontier_strength = 0.0
@@ -3209,9 +3161,12 @@ func repel_territory_attacker(enemy: EnemyState) -> void:
 		enemy.position,
 		enemy.bramble_ground_maturity
 	)
-	_begin_knockback(enemy, _get_territory_escape_direction(enemy.position), distance)
+	var escape := _get_territory_escape_direction(enemy.position)
+	var shove_origin := enemy.position
+	_begin_knockback(enemy, escape, distance)
 	enemy.hit_flash_remaining = enemy_hit_flash_seconds
 	enemy.hit_flash_color = _get_damage_feedback_color(DeathSource.BRAMBLE)
+	enemy_repelled.emit(enemy.id, shove_origin, escape)
 
 
 func _get_territory_escape_direction(local_position: Vector2) -> Vector2:
@@ -3472,12 +3427,6 @@ func _decay_entanglement(enemy: EnemyState, delta: float) -> void:
 	# Entanglement fades rather than resetting, so briefly stepping off Green does
 	# not shake off thorns an enemy has already worked itself into.
 	var decay := bramble_entanglement_decay_per_second
-	if (
-		_deep_snare_decay_multiplier < 1.0
-		and territory_field.is_mature_player_territory_at_local(enemy.position)
-	):
-		# Deep Snare: old ground barely lets go at all.
-		decay *= _deep_snare_decay_multiplier
 	enemy.entanglement = maxf(0.0, enemy.entanglement - decay * delta)
 
 
@@ -4175,6 +4124,7 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 	var death_position := enemy.position
 	var xp_value := enemy.xp_value
 	var was_overgrown := enemy.overgrown
+	var death_entanglement := enemy.entanglement
 	enemy.active = false
 	enemy.state = EnemyStateKind.INACTIVE
 	_active_enemy_count = maxi(0, _active_enemy_count - 1)
@@ -4192,6 +4142,8 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 		_queue_chained_eruption(death_position, chain_depth + 1)
 	if enemy.elite_modifier == EliteModifier.VOLATILE:
 		_detonate_volatile(death_position)
+	if death_entanglement > 0.0:
+		enemy_died_entangled.emit(death_position, death_entanglement, role)
 	enemy_killed.emit(death_position, xp_value, role, death_source, chain_depth)
 	if role == EnemyRole.ELITE:
 		elite_defeated.emit()

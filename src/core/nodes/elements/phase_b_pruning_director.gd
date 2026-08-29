@@ -50,6 +50,15 @@ class Cutting:
 	var maximum_travel := 0.0
 	## Position in the ring, so the spikes stay evenly spaced as the count changes.
 	var orbit_slot := 0
+	## Thrown by a natural release rather than by a relic or an Evolution. Only these
+	## may ricochet off terrain or sprout Watersprouts, so the flag travels with the
+	## spike rather than being inferred later from how it happens to be moving.
+	var natural_release := false
+	## Skimming Cut is one ricochet per spike, ever.
+	var has_ricocheted := false
+	## 0 for a spike nothing sprouted, then 1 and 2 for the two Watersprout
+	## generations. Generation 2 cannot reproduce.
+	var sprout_generation := 0
 
 @export_group("Collaborators")
 ## Evolutions component that owns the tuning for every Evolution this path takes
@@ -217,16 +226,39 @@ class Cutting:
 @export_range(0.05, 1.0, 0.01) var return_stroke_damage := 0.55
 ## Speed multiplier of the contracting ring.
 @export_range(0.1, 2.0, 0.05) var return_stroke_speed := 0.80
-## Sap banked per second spent harvesting Mature Green under Stored Sap.
-@export_range(0.05, 5.0, 0.05) var stored_sap_per_second := 0.65
-## Sap one hold may bank.
-@export_range(0.5, 40.0, 0.5) var stored_sap_maximum := 8.0
-## Maturity a Sap surge feeds back into surviving Mature Green per unit of Sap.
-@export_range(0.0, 0.5, 0.005) var stored_sap_maturity := 0.055
-## Radius in pixels a released Sap surge covers.
-@export_range(40.0, 600.0, 5.0) var stored_sap_radius_pixels := 190.0
 ## How wide Root Memory feeds maturity back, as a multiple of the harvest's own reach.
 @export_range(0.5, 8.0, 0.1) var stool_regrowth_memory_radius_multiplier := 2.4
+## Skimming Cut: how far a glancing spike looks for something new to hit, and what
+## it keeps of its speed and damage after the bounce.
+@export_range(20.0, 600.0, 5.0) var skimming_cut_range_pixels := 180.0
+@export_range(0.1, 1.0, 0.01) var skimming_cut_speed_share := 0.75
+@export_range(0.05, 1.0, 0.01) var skimming_cut_damage_share := 0.65
+## Callus: how long the wound stays answerable, and what returning to it restores.
+@export_range(0.5, 30.0, 0.5) var callus_window_seconds := 8.0
+@export_range(10.0, 400.0, 2.0) var callus_radius_pixels := 70.0
+@export_range(0.0, 1.0, 0.01) var callus_control := 0.14
+@export_range(0.0, 2.0, 0.01) var callus_mass := 0.12
+## Brush Pile: harvesting past half Charge stores bundles, each worth two spikes.
+@export_range(0.0, 1.0, 0.01) var brush_pile_charge_threshold := 0.50
+@export_range(1, 200, 1) var brush_pile_cells_per_bundle := 24
+@export_range(1, 12, 1) var brush_pile_maximum_bundles := 4
+@export_range(1, 8, 1) var brush_pile_cuttings_per_bundle := 2
+@export_range(0.05, 1.0, 0.01) var brush_pile_damage_share := 0.55
+@export_range(0.0, 2.0, 0.01) var brush_pile_delay_seconds := 0.18
+## Stubble: how long a wound stays sharp and what crossing it costs.
+@export_range(0.5, 30.0, 0.5) var stubble_seconds := 5.0
+@export_range(10.0, 400.0, 2.0) var stubble_radius_pixels := 90.0
+@export_range(0.05, 5.0, 0.05) var stubble_tick_seconds := 0.65
+@export_range(0.0, 2.0, 0.01) var stubble_damage_share := 0.35
+@export_range(1, 8, 1) var stubble_maximum_wounds := 2
+## Watersprouts: what a killing spike leaves behind, and the caps that stop it
+## turning one release into an unbounded thicket.
+@export_range(1, 8, 1) var watersprout_children := 2
+@export_range(0.05, 1.0, 0.01) var watersprout_damage_share := 0.55
+@export_range(0.5, 3.0, 0.05) var watersprout_speed_share := 1.15
+@export_range(20.0, 600.0, 5.0) var watersprout_range_pixels := 220.0
+@export_range(1, 64, 1) var watersprout_release_maximum := 16
+@export_range(1, 32, 1) var watersprout_frame_maximum := 8
 
 var _cuttings: Array[Cutting] = []
 var _pioneer_remaining := 0.0
@@ -252,7 +284,6 @@ var _gleaning_kills := 0
 var _gleaning_banked := 0.0
 var _green_manure_kills := 0
 var _green_manure_remaining := 0.0
-var _stored_sap := 0.0
 var _cycles_run := 0
 var _cuttings_launched := 0
 var _cutting_debt := 0.0
@@ -267,6 +298,23 @@ var _upkeep_cells_taken := 0
 var _rings_released := 0
 var _holding := false
 var _hold_seconds := 0.0
+
+## Cells harvested past the Brush Pile threshold, and the bundles they have become.
+var _brush_cells := 0
+var _brush_bundles := 0
+## The bonus volley waiting to go out behind the ring: [remaining, cuttings, damage].
+var _brush_volley: Array = []
+## The most recent wound: where it is, how long Callus will still answer, whether it
+## has been spent, and whether the player has actually left it since the release.
+var _callus_position := Vector2(-1.0, -1.0)
+var _callus_remaining := 0.0
+var _callus_used := false
+var _callus_left_wound := false
+## Sharp Pruned Ground, each [position, remaining, {enemy_id: cooldown}].
+var _stubble_wounds: Array = []
+## Watersprout children sown by the current release, and how many this frame.
+var _watersprouts_this_release := 0
+var _watersprouts_this_frame := 0
 
 func _ready() -> void:
 	assert(territory_field != null, "PhaseBPruningDirector requires TerritoryField")
@@ -297,7 +345,16 @@ func reset_director() -> void:
 	_gleaning_banked = 0.0
 	_green_manure_kills = 0
 	_green_manure_remaining = 0.0
-	_stored_sap = 0.0
+	_brush_cells = 0
+	_brush_bundles = 0
+	_brush_volley.clear()
+	_callus_position = Vector2(-1.0, -1.0)
+	_callus_remaining = 0.0
+	_callus_used = false
+	_callus_left_wound = false
+	_stubble_wounds.clear()
+	_watersprouts_this_release = 0
+	_watersprouts_this_frame = 0
 	_cycles_run = 0
 	_cuttings_launched = 0
 	_cutting_debt = 0.0
@@ -320,6 +377,10 @@ func advance(delta: float) -> void:
 		if _green_manure_remaining <= 0.0:
 			_green_manure_kills = 0
 			_apply_regrowth()
+	_watersprouts_this_frame = 0
+	_advance_brush_volley(delta)
+	_advance_callus(delta)
+	_advance_stubble(delta)
 	_advance_ring(delta)
 	_advance_cuttings(delta)
 	_advance_pioneer(delta)
@@ -602,7 +663,6 @@ func _turn_ring(delta: float) -> void:
 func _run_harvest(delta: float) -> void:
 	# The harvest is the path. There is no interval to wait out: the ground under the
 	# player is stripped continuously and comes straight back up as spikes.
-	_advance_stored_sap(delta)
 	_replacement_remaining = maxf(0.0, _replacement_remaining - delta)
 	_upkeep_debt += get_upkeep_cells_per_second() * delta
 	if _upkeep_debt < 1.0:
@@ -706,14 +766,14 @@ func _harvest(wanted_cells: int) -> int:
 	_cutting_debt -= float(raised)
 	_bury_pioneer_seeds(harvest)
 	_fire_deadfall_volley(harvest)
+	# Green cut past the halfway mark is stored as Brush rather than being spent on
+	# the ring, which is the risk the relic asks the player to take.
+	_note_brush_harvest(harvest.cell_count)
 	cycle_pruned.emit(harvest.cell_count, raised)
 	return raised
 
 func _has_relic(relic_id: int) -> bool:
 	return relic_director != null and relic_director.has(relic_id)
-
-func get_stored_sap() -> float:
-	return _stored_sap
 
 func get_gleaning_banked_charge() -> float:
 	return _gleaning_banked
@@ -755,40 +815,204 @@ func notify_ring_kill(outward: bool) -> void:
 	_charge = clampf(_charge + payout, 0.0, 1.0)
 	status_requested.emit("GLEANING HOOK — the ring banks Charge off its own kills.")
 
-func _advance_stored_sap(delta: float) -> void:
-	if not _has_relic(PhaseBRelicCatalog.Id.STORED_SAP):
-		_stored_sap = 0.0
+func _advance_brush_volley(delta: float) -> void:
+	# The stored clippings go out behind the ring rather than with it, so the volley
+	# reads as a second, messier wave instead of thickening the first.
+	if _brush_volley.is_empty():
 		return
-	if not _holding or get_orbit_count() <= 0:
+	_brush_volley[0] = float(_brush_volley[0]) - delta
+	if float(_brush_volley[0]) > 0.0:
 		return
-	if not territory_field.is_mature_player_territory_at_local(
-		combat.player.get_arena_position()
-	):
-		return
-	_stored_sap = minf(stored_sap_maximum, _stored_sap + stored_sap_per_second * delta)
+	var wanted := int(_brush_volley[1])
+	var damage := float(_brush_volley[2])
+	_brush_volley.clear()
+	var facing := combat.player.get_facing_direction()
+	var fired := 0
+	for index in range(wanted):
+		var cutting := _get_inactive_cutting()
+		if cutting == null:
+			break
+		var spread := lerpf(-PI * 0.35, PI * 0.35, float(index) / float(maxi(1, wanted - 1)))
+		cutting.position = combat.player.get_arena_position()
+		cutting.damage = damage
+		cutting.spin = facing.rotated(spread).angle()
+		cutting.natural_release = false
+		cutting.has_ricocheted = false
+		cutting.sprout_generation = 0
+		_launch_cutting(cutting)
+		# Brush Pile spikes are slower and blunter than the ring's, and they cannot
+		# start a Watersprout: the relic is a bonus volley, not a second release.
+		cutting.velocity = facing.rotated(spread) * cutting_speed_pixels_per_second * 0.90
+		cutting.pierce_remaining = 1
+		cutting.maximum_travel = 0.0
+		fired += 1
+	if fired > 0:
+		status_requested.emit("BRUSH PILE — the stored clippings go out behind the ring.")
 
-func _release_stored_sap() -> void:
-	if _stored_sap <= 0.0:
+
+func _advance_callus(delta: float) -> void:
+	if _callus_remaining <= 0.0:
 		return
-	var sap := _stored_sap
-	_stored_sap = 0.0
-	var centre := combat.player.get_arena_position()
-	var fed := 0
-	for index in range(6):
-		var site := territory_field.find_mature_player_frontier_near(
-			centre + Vector2.from_angle(float(index) * 1.047) * stored_sap_radius_pixels * 0.6
-		)
-		if site.x < 0.0:
+	_callus_remaining = maxf(0.0, _callus_remaining - delta)
+	if _callus_used or _callus_position.x < 0.0:
+		return
+	var distance := combat.player.get_arena_position().distance_to(_callus_position)
+	if distance > callus_radius_pixels:
+		# Standing on the wound when the ring fired is not returning to it. The
+		# player has to actually leave before coming back can mean anything.
+		_callus_left_wound = true
+		return
+	if not _callus_left_wound:
+		return
+	_callus_used = true
+	territory_field.queue_seed_growth(
+		_callus_position,
+		callus_mass,
+		callus_control,
+		progression.get_conversion_multiplier(),
+		1.0
+	)
+	if overlay != null:
+		overlay.spawn_bloom(_callus_position)
+	status_requested.emit("CALLUS — the wound knits closed where you stand.")
+
+
+func _advance_stubble(delta: float) -> void:
+	for index in range(_stubble_wounds.size() - 1, -1, -1):
+		var wound: Array = _stubble_wounds[index]
+		wound[1] = float(wound[1]) - delta
+		if float(wound[1]) <= 0.0:
+			_stubble_wounds.remove_at(index)
 			continue
-		# The surge feeds maturity back into ground that survived the harvest,
-		# which is what makes Root and Pruning worth running together.
-		territory_field.queue_maturity_support(site, sap * stored_sap_maturity, 1.6)
-		overlay.spawn_bloom(site)
-		fed += 1
-	if fed > 0:
-		status_requested.emit(
-			"STORED SAP — %.1f Sap surges back into the old ground." % sap
+		var wound_position: Vector2 = wound[0]
+		var cooldowns: Dictionary = wound[2]
+		for enemy_id in cooldowns.keys():
+			var remaining := float(cooldowns[enemy_id]) - delta
+			if remaining <= 0.0:
+				cooldowns.erase(enemy_id)
+			else:
+				cooldowns[enemy_id] = remaining
+		var damage := (
+			cutting_damage
+			* get_pruning_cutting_damage_multiplier()
+			* stubble_damage_share
 		)
+		for enemy_id in combat.get_active_enemy_ids():
+			if cooldowns.has(enemy_id):
+				continue
+			if combat.get_enemy_position(enemy_id).distance_to(wound_position) > stubble_radius_pixels:
+				continue
+			# Reclaimed ground stops cutting. The wound is the hazard, so Green that
+			# has grown back over it is no longer sharp.
+			if territory_field.get_pruned_ground_at_local(
+				combat.get_enemy_position(enemy_id)
+			) <= 0.0:
+				continue
+			cooldowns[enemy_id] = stubble_tick_seconds
+			combat.damage_enemy_by_id(
+				enemy_id, damage, PhaseBCombatDirector.DeathSource.RELIC
+			)
+
+
+func get_stubble_wound_count() -> int:
+	return _stubble_wounds.size()
+
+
+func get_brush_bundles() -> int:
+	return _brush_bundles
+
+
+func is_callus_armed() -> bool:
+	return _callus_remaining > 0.0 and not _callus_used
+
+
+func _note_brush_harvest(cells: int) -> void:
+	# Only what is cut past the halfway mark counts. Below it the harvest is still
+	# paying for the ring itself.
+	if cells <= 0 or not _has_relic(PhaseBRelicCatalog.Id.BRUSH_PILE):
+		return
+	if _charge < brush_pile_charge_threshold:
+		return
+	if _brush_bundles >= brush_pile_maximum_bundles:
+		return
+	_brush_cells += cells
+	while (
+		_brush_cells >= brush_pile_cells_per_bundle
+		and _brush_bundles < brush_pile_maximum_bundles
+	):
+		_brush_cells -= brush_pile_cells_per_bundle
+		_brush_bundles += 1
+
+
+func _try_skimming_cut(cutting: Cutting) -> bool:
+	## A natural spike glancing off terrain is redirected once instead of being
+	## spent. Returns whether the spike survived the collision.
+	if not _has_relic(PhaseBRelicCatalog.Id.SKIMMING_CUT):
+		return false
+	if not cutting.natural_release or cutting.has_ricocheted:
+		return false
+	var target := combat.get_nearest_enemy_position(
+		cutting.position, skimming_cut_range_pixels
+	)
+	if target.x < 0.0:
+		return false
+	cutting.has_ricocheted = true
+	cutting.damage *= skimming_cut_damage_share
+	cutting.velocity = (
+		cutting.position.direction_to(target)
+		* cutting.velocity.length()
+		* skimming_cut_speed_share
+	)
+	cutting.pierce_remaining = maxi(1, cutting.pierce_remaining)
+	# A ricochet must never carry the spike through the thing it bounced off, so it
+	# is nudged back along its own heading before it resumes.
+	cutting.position -= cutting.velocity.normalized() * 2.0
+	return true
+
+
+func _sprout_watersprouts(source: Cutting, from_position: Vector2) -> void:
+	## A natural spike that kills sends up seeking children, and those children may
+	## branch one final time. Every cap here is absolute: per release, per frame, and
+	## two generations deep.
+	if not _has_relic(PhaseBRelicCatalog.Id.WATERSPROUTS):
+		return
+	if source.sprout_generation >= 2:
+		return
+	if not source.natural_release and source.sprout_generation == 0:
+		return
+	if _watersprouts_this_release >= watersprout_release_maximum:
+		return
+	var generation := source.sprout_generation + 1
+	for _child in range(watersprout_children):
+		if _watersprouts_this_release >= watersprout_release_maximum:
+			return
+		if _watersprouts_this_frame >= watersprout_frame_maximum:
+			return
+		var target := combat.get_nearest_enemy_position(
+			from_position, watersprout_range_pixels
+		)
+		if target.x < 0.0:
+			return
+		var cutting := _get_inactive_cutting()
+		if cutting == null:
+			return
+		cutting.position = from_position
+		cutting.damage = source.damage * watersprout_damage_share
+		cutting.spin = from_position.direction_to(target).angle()
+		cutting.natural_release = false
+		cutting.has_ricocheted = false
+		cutting.sprout_generation = generation
+		_launch_cutting(cutting)
+		cutting.velocity = (
+			from_position.direction_to(target)
+			* cutting_speed_pixels_per_second
+			* watersprout_speed_share
+		)
+		cutting.pierce_remaining = 1
+		cutting.maximum_travel = 0.0
+		_watersprouts_this_release += 1
+		_watersprouts_this_frame += 1
+
 
 func _raise_cuttings(harvest: TerritoryField.PruneHarvest, wanted: int) -> int:
 	var count := clampi(wanted, 0, maximum_cuttings_per_step)
@@ -1008,6 +1232,9 @@ func _release_ring(message: String, intentional: bool = true) -> void:
 		# A banked ring hits far harder than a loose Cutting, which is the whole
 		# reason to hold one.
 		cutting.damage *= payout
+		cutting.natural_release = true
+		cutting.has_ricocheted = false
+		cutting.sprout_generation = 0
 		_launch_cutting(cutting, true)
 		if espalier_rank >= 1:
 			var fan_progress := (
@@ -1028,15 +1255,42 @@ func _release_ring(message: String, intentional: bool = true) -> void:
 				cutting.remaining *= 1.0 + elongation_bonus
 				cutting.maximum_travel *= 1.0 + elongation_bonus
 		released += 1
-	_release_stored_sap()
+	var wound_position := combat.player.get_arena_position()
+	var bundles := _brush_bundles
+	var bonus_damage := (
+		cutting_damage
+		* get_pruning_cutting_damage_multiplier()
+		* payout
+		* brush_pile_damage_share
+	)
 	_charge = 0.0
 	_hold_seconds = 0.0
 	_upkeep_debt = 0.0
 	_gleaning_kills = 0
 	_gleaning_banked = 0.0
 	_green_manure_kills = 0
+	# Brush resets completely on release, whether or not it had a full bundle.
+	_brush_cells = 0
+	_brush_bundles = 0
+	_watersprouts_this_release = 0
 	if released <= 0:
 		return
+	if bundles > 0 and _has_relic(PhaseBRelicCatalog.Id.BRUSH_PILE):
+		_brush_volley = [
+			brush_pile_delay_seconds,
+			bundles * brush_pile_cuttings_per_bundle,
+			bonus_damage,
+		]
+	if _has_relic(PhaseBRelicCatalog.Id.CALLUS):
+		_callus_position = wound_position
+		_callus_remaining = callus_window_seconds
+		_callus_used = false
+		# Standing in the wound at the moment of release does not count as returning.
+		_callus_left_wound = false
+	if _has_relic(PhaseBRelicCatalog.Id.STUBBLE):
+		if _stubble_wounds.size() >= stubble_maximum_wounds:
+			_stubble_wounds.remove_at(0)
+		_stubble_wounds.append([wound_position, stubble_seconds, {}])
 	_rings_released += 1
 	ring_released.emit(released, release_charge, release_facing, intentional)
 	status_requested.emit(message)
@@ -1088,7 +1342,10 @@ func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 	# Cuttings are physical blades. Test the entire frame segment against the shared
 	# obstacle mask so a fast spike cannot tunnel through a thin wall or rock.
 	if not territory_field.is_growth_path_clear(cutting.position, next_position):
-		_finish_cutting(cutting)
+		# Skimming Cut turns the first terrain hit into a redirection. A spike that
+		# has already glanced once is spent by the next one.
+		if not _try_skimming_cut(cutting):
+			_finish_cutting(cutting)
 		return
 	cutting.position = next_position
 	if cutting.maximum_travel > 0.0 and not cutting.returning:
@@ -1116,9 +1373,17 @@ func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 	)
 	if struck < 0:
 		return
+	var struck_position := combat.get_enemy_position(struck)
 	cutting.last_hit_enemy_id = struck
 	if not combat.is_enemy_active(struck):
-		notify_ring_kill(true)
+		# Green Manure counts only the outward natural pass, so a Watersprout child
+		# and a returning stroke are told apart here rather than downstream.
+		if cutting.natural_release and not cutting.returning:
+			notify_ring_kill(true)
+		_sprout_watersprouts(
+			cutting,
+			struck_position if struck_position.x >= 0.0 else cutting.position
+		)
 	if (
 		get_evolution_rank(PhaseBProgression.EvolutionId.DEADFALL) >= 3
 		and combat.get_enemy_entanglement(struck) >= evolutions.splinterstorm_shatter_threshold

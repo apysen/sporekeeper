@@ -5316,7 +5316,7 @@ func _run() -> void:
 	# still names the rarity in words.
 	prototype.progression.reset_progression()
 	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.HARD_HUSK] = 1
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PATIENT_ZERO] = 1
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.DOMINO_GERMINATION] = 1
 	prototype._update_relic_slots()
 	var common_edge := prototype.relic_slots.get_slot_border_color(0)
 	var legendary_edge := prototype.relic_slots.get_slot_border_color(1)
@@ -5341,95 +5341,6 @@ func _run() -> void:
 	)
 	prototype.progression.reset_progression()
 	prototype._update_relic_slots()
-
-	# The four Clover relics are rules about the machine rather than about the ground it
-	# pays out onto. Each is checked through the odds table, because that is where they
-	# have to be visible: the readout may not print one number and roll another.
-	clover_odds.reset_odds()
-	prototype.progression.reset_progression()
-	var plain_bust := float(
-		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
-	)
-	# Bent Coin: Busts bend the coin, and the spin after the third cannot Bust at all.
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BENT_COIN] = 1
-	for _bust in range(clover_odds.bent_coin_pity):
-		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.TRIPLE_BUST)
-	var bent_ready := clover_odds.is_bent_coin_ready()
-	var bent_bust := float(
-		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
-	)
-	clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
-	var bent_spent := not clover_odds.is_bent_coin_ready()
-	_check(
-		plain_bust > 0.0 and bent_ready and bent_bust == 0.0 and bent_spent,
-		"Bent Coin makes the spin after its third Bust unable to Bust, then spends itself"
-	)
-
-	# Side Pot: built out of whiffs, cashed into a jackpot, lost to a Bust.
-	clover_odds.reset_odds()
-	prototype.progression.reset_progression()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.SIDE_POT] = 1
-	for _whiff in range(4):
-		clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.WHIFF)
-	var pot_built := clover_odds.get_side_pot()
-	var pot_bonus := clover_odds.get_side_pot_scale_bonus()
-	clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.PATH_JACKPOT)
-	var pot_cashed := clover_odds.get_side_pot()
-	for _whiff in range(3):
-		clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.WHIFF)
-	clover_odds.note_outcome(CloverSlot.Stake.MEDIUM, CloverSlot.Outcome.TRIPLE_BUST)
-	_check(
-		pot_built == 4
-		and pot_bonus > 0.0
-		and pot_cashed == 0
-		and clover_odds.get_side_pot() == 0,
-		"the Side Pot builds on whiffs, empties into a jackpot, and is lost to a Bust"
-	)
-
-	# High Roller: every seventh spin, and the player can see it coming.
-	clover_odds.reset_odds()
-	prototype.progression.reset_progression()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.HIGH_ROLLER] = 1
-	var doubled_spins := 0
-	var announced_before := false
-	for spin in range(clover_odds.high_roller_cadence * 2):
-		if clover_odds.is_high_roller_spin():
-			doubled_spins += 1
-			announced_before = announced_before or clover_odds.get_high_roller_countdown() == 1
-		clover_odds.note_outcome(CloverSlot.Stake.LOW, CloverSlot.Outcome.WHIFF)
-	_check(
-		doubled_spins == 2 and announced_before,
-		"High Roller doubles one spin in %d and says so before it is taken (%d of them)"
-			% [clover_odds.high_roller_cadence, doubled_spins]
-	)
-
-	# The House Always Loses: each Bust tears a Bust face off for good, and the last one
-	# pays for itself.
-	clover_odds.reset_odds()
-	prototype.progression.reset_progression()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.THE_HOUSE_ALWAYS_LOSES] = 1
-	var house_before := float(
-		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
-	)
-	for _bust in range(clover_odds.house_removal_limit + 2):
-		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.TRIPLE_BUST)
-		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
-		clover_odds.note_outcome(CloverSlot.Stake.HIGH, CloverSlot.Outcome.WHIFF)
-	var house_after := float(
-		clover_odds.get_effective_odds(CloverSlot.Stake.HIGH)["triple_bust"]
-	)
-	var free_spins := clover_odds.get_free_spins()
-	var free_taken := clover_odds.take_free_spin()
-	_check(
-		clover_odds.get_house_removals() == clover_odds.house_removal_limit
-		and house_after < house_before
-		and free_spins == 1
-		and free_taken
-		and not clover_odds.take_free_spin(),
-		"The House Always Loses cuts Bust odds three times and pays one free spin"
-	)
-	clover_odds.reset_odds()
-	prototype.progression.reset_progression()
 
 	# All In whiff: everything goes, the ordinary extinction countdown is held off, and
 	# the run gets exactly three seconds to put something back.
@@ -6216,14 +6127,14 @@ func _run() -> void:
 	)
 
 	# A held relic explains itself on hover, the way an upgrade line does.
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PREDATORS_EYE] = 1
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.GREEN_THUMB] = 1
 	prototype._update_hud()
 	var relic_tooltip := prototype.relic_slots.get_slot_tooltip(0)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PREDATORS_EYE] = 0
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.GREEN_THUMB] = 0
 	_check(
-		relic_tooltip.contains("Predator's Eye")
+		relic_tooltip.contains("Green Thumb")
 		and relic_tooltip.contains(
-			PhaseBRelicCatalog.get_relic_description(PhaseBRelicCatalog.Id.PREDATORS_EYE)
+			PhaseBRelicCatalog.get_relic_description(PhaseBRelicCatalog.Id.GREEN_THUMB)
 		)
 		and relic_tooltip.contains("COMMON"),
 		"a held relic's hover carries its name, rarity, and what the relic actually does"
@@ -6396,32 +6307,77 @@ func _run() -> void:
 	prototype._choice_kind = PhaseBPrototype.ChoiceKind.NONE
 	prototype.choice_panel.visible = false
 
-	# Eligibility follows mechanics, not path names. A synergy relic is locked
-	# until the run actually provides both mechanics it needs, whichever slot
-	# supplied them.
+	# An offer may contain Plant relics and relics of Adaptations the run owns,
+	# and nothing else. Ownership is the gate: a Clover jackpot lends an
+	# Adaptation's behaviour for ten seconds and must not open its relic pool.
 	prototype.progression.reset_progression()
-	var locked_without_both := prototype.progression.is_relic_eligible(
-		PhaseBRelicCatalog.Id.STORED_SAP
+	var plant_always := prototype.progression.is_relic_eligible(
+		PhaseBRelicCatalog.Id.GARDEN_HOSE
 	)
-	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.ROOT,
-		PhaseBProgression.PathId.PRUNING
-	)
-	var unlocked_with_both := prototype.progression.is_relic_eligible(
-		PhaseBRelicCatalog.Id.STORED_SAP
-	)
-	var path_relic_locked := prototype.progression.is_relic_eligible(
+	var unowned_locked := prototype.progression.is_relic_eligible(
 		PhaseBRelicCatalog.Id.THE_HEDGE
 	)
-	var universal_always := prototype.progression.is_relic_eligible(
-		PhaseBRelicCatalog.Id.PREDATORS_EYE
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.BRAMBLE,
+		PhaseBProgression.PathId.PRUNING
 	)
+	var owned_unlocked := prototype.progression.is_relic_eligible(
+		PhaseBRelicCatalog.Id.THE_HEDGE
+	)
+	var still_unowned := prototype.progression.is_relic_eligible(
+		PhaseBRelicCatalog.Id.DOMINO_GERMINATION
+	)
+	prototype.progression.set_casino_path_active(PhaseBProgression.PathId.SPORE, true)
+	var borrowed_stays_locked := prototype.progression.is_relic_eligible(
+		PhaseBRelicCatalog.Id.DOMINO_GERMINATION
+	)
+	prototype.progression.set_casino_path_active(PhaseBProgression.PathId.SPORE, false)
 	_check(
-		not locked_without_both
-		and unlocked_with_both
-		and not path_relic_locked
-		and universal_always,
-		"relic eligibility follows mechanics and paths rather than hard-coded pairs"
+		plant_always
+		and not unowned_locked
+		and owned_unlocked
+		and not still_unowned
+		and not borrowed_stays_locked,
+		"relic eligibility is Plant plus owned Adaptations, and a jackpot loan never counts"
+	)
+
+	# Every pool is the shape the master document specifies, which the downward
+	# rarity fallback in the offer roll relies on.
+	var pool_grid := {}
+	for catalog_relic in range(PhaseBRelicCatalog.get_count()):
+		var pool_key := PhaseBRelicCatalog.get_pool(catalog_relic)
+		var rarity_key := PhaseBRelicCatalog.get_rarity(catalog_relic)
+		if not pool_grid.has(pool_key):
+			pool_grid[pool_key] = [0, 0, 0, 0]
+		pool_grid[pool_key][rarity_key] += 1
+	var pools_well_formed := pool_grid.size() == PhaseBRelicCatalog.Pool.size()
+	for pool_key in pool_grid:
+		pools_well_formed = pools_well_formed and pool_grid[pool_key] == [3, 2, 2, 1]
+	_check(
+		PhaseBRelicCatalog.get_count() == 72 and pools_well_formed,
+		"the catalog holds 72 relics as nine pools of 3 Common, 2 Uncommon, 2 Rare, 1 Legendary"
+	)
+
+	# Rarity is rolled per offered slot and may only ever fall downward, so an
+	# exhausted rarity can never manufacture a rarer relic than the odds produced.
+	var fallback_candidates := PackedInt32Array([
+		PhaseBRelicCatalog.Id.GARDEN_HOSE,
+		PhaseBRelicCatalog.Id.MULCH,
+	])
+	var fell_downward := prototype.progression._draw_relic_of_rarity(
+		fallback_candidates, PhaseBRelicCatalog.Rarity.LEGENDARY
+	)
+	var exhausted := prototype.progression._draw_relic_of_rarity(
+		PackedInt32Array(), PhaseBRelicCatalog.Rarity.COMMON
+	)
+	var odds_sum := 0.0
+	for share in prototype.progression.get_relic_rarity_odds():
+		odds_sum += share
+	_check(
+		fallback_candidates.has(fell_downward)
+		and exhausted == -1
+		and is_equal_approx(odds_sum, 1.0),
+		"a slot's rarity roll falls downward only, and the odds table is a whole probability"
 	)
 
 	# ---------------------------------------------------------------- relic rules
@@ -6436,142 +6392,7 @@ func _run() -> void:
 	var relics := prototype.relic_director
 	relics.reset_director()
 
-	# Predator's Eye: every tenth Cane sweep reaches 35% farther, without creating
-	# a projectile or changing the fixed sector.
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PREDATORS_EYE] = 1
-	relics.apply_relics()
 	var lone_spot := _find_owned_cell_position(prototype)
-	prototype.player.global_position = prototype.territory_field.to_global(lone_spot)
-	prototype.player._facing = Vector2.RIGHT
-	var reach_target_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.HUNTER,
-		lone_spot + Vector2(prototype.combat.cane_reach_pixels + 23.0, 0.0)
-	)
-	prototype.combat._cane_remaining = 0.0
-	prototype.combat.simulate_step(0.0)
-	var ordinary_reach_missed := is_equal_approx(
-		prototype.combat.get_enemy_health(reach_target_id),
-		prototype.combat.hunter_profile.maximum_health
-	)
-	prototype.combat._predators_eye_progress = relics.predators_eye_interval - 1
-	prototype.combat._cane_remaining = 0.0
-	prototype.combat.simulate_step(0.0)
-	_check(
-		ordinary_reach_missed
-		and prototype.combat.get_enemy_health(reach_target_id)
-		< prototype.combat.hunter_profile.maximum_health
-		and is_equal_approx(
-			prototype.combat._cane_visual_reach,
-			prototype.combat.get_cane_reach()
-				* (1.0 + prototype.combat.predators_eye_reach_bonus)
-		)
-		and prototype.combat.get_active_projectile_count() == 0,
-		"PREDATOR'S EYE extends every tenth Cane sweep by its authored 35%"
-	)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PREDATORS_EYE] = 0
-
-	# Overpopulation: six fast kills prime one explosion, and the explosion can
-	# neither consume the next charge nor count toward it.
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.OVERPOPULATION] = 1
-	relics.apply_relics()
-	relics.reset_director()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.OVERPOPULATION] = 1
-	for _prime_kill in range(relics.overpopulation_kills):
-		prototype.combat.enemy_killed.emit(
-			lone_spot,
-			1,
-			PhaseBCombatDirector.EnemyRole.HUNTER,
-			PhaseBCombatDirector.DeathSource.CANE,
-			0
-		)
-	var primed := relics._overpopulation_primed
-	# A relic kill must not be able to spend the charge.
-	prototype.combat.enemy_killed.emit(
-		lone_spot,
-		1,
-		PhaseBCombatDirector.EnemyRole.HUNTER,
-		PhaseBCombatDirector.DeathSource.RELIC,
-		0
-	)
-	var still_primed := relics._overpopulation_primed
-	prototype.combat.enemy_killed.emit(
-		lone_spot,
-		1,
-		PhaseBCombatDirector.EnemyRole.HUNTER,
-		PhaseBCombatDirector.DeathSource.CANE,
-		0
-	)
-	_check(
-		primed and still_primed and not relics._overpopulation_primed,
-		"OVERPOPULATION primes on a kill streak and its own blast cannot chain"
-	)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.OVERPOPULATION] = 0
-
-	# Encore: every third non-Legendary trigger repeats once, Legendary triggers
-	# are excluded, and a repeat can never advance the counter that made it.
-	relics.reset_director()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.ENCORE] = 1
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.COMPOST] = 1
-	relics.apply_relics()
-	for _legendary_trigger in range(5):
-		relics._notify_triggered(PhaseBRelicCatalog.Id.WORLD_SEED)
-	var legendary_ignored := relics._encore_counter == 0
-	for _common_trigger in range(relics.encore_interval):
-		relics._notify_triggered(PhaseBRelicCatalog.Id.COMPOST)
-	var queued := relics._encore_queue.size() == 1
-	var counter_after_queue := relics._encore_counter
-	for _settle in range(int(relics.encore_delay_seconds * 60.0) + 8):
-		relics.advance(1.0 / 60.0)
-	_check(
-		legendary_ignored
-		and queued
-		and counter_after_queue == 0
-		and relics._encore_queue.is_empty()
-		and relics._encore_counter == 0,
-		"ENCORE skips Legendary triggers and its repeats never advance itself"
-	)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.ENCORE] = 0
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.COMPOST] = 0
-
-	# Compost is a fixed counter on Mature ground, not an arena percentage.
-	relics.reset_director()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.COMPOST] = 1
-	relics.apply_relics()
-	var mature_spot := _find_owned_cell_position(prototype)
-	for _ripen in range(4):
-		prototype.territory_field.queue_maturity_support(mature_spot, 1.0, 3.0)
-		prototype.territory_field.step_simulation()
-	var biomass_before_compost := prototype.progression.biomass
-	for _compost_kill in range(relics.compost_kills):
-		prototype.combat.enemy_killed.emit(
-			mature_spot,
-			1,
-			PhaseBCombatDirector.EnemyRole.HUNTER,
-			PhaseBCombatDirector.DeathSource.CANE,
-			0
-		)
-	_check(
-		prototype.progression.biomass > biomass_before_compost,
-		"COMPOST pays out on a fixed count of kills on Mature Green"
-	)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.COMPOST] = 0
-
-	# Canopy absorbs part of a hit taken on Mature Green, then goes on cooldown.
-	relics.reset_director()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CANOPY] = 1
-	relics.apply_relics()
-	prototype.player.reset_player()
-	prototype.player.global_position = prototype.territory_field.to_global(mature_spot)
-	prototype.player.apply_damage(20.0)
-	var absorbed_loss := prototype.player.get_max_health() - prototype.player.get_health()
-	var on_cooldown := prototype.player.get_damage_absorption_remaining() > 0.0
-	_check(
-		absorbed_loss < 20.0 and absorbed_loss > 0.0 and on_cooldown,
-		"CANOPY absorbs part of a hit on Mature Green and then waits"
-	)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CANOPY] = 0
-	relics.apply_relics()
-
 	# Hard Husk: the first interruption is shrugged off entirely rather than
 	# softened, so a Saboteur cannot chip a Seed down through the shield.
 	relics.reset_director()
@@ -6616,61 +6437,708 @@ func _run() -> void:
 	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CROSS_POLLINATION] = 0
 	prototype.overlay.clear_effects()
 
-	# Regrowth is a field rule: lost ground remembers it was ours and comes back.
-	relics.reset_director()
-	prototype.territory_field.reset_field()
-	prototype.territory_field.step_simulation()
-	var memory_spot := _find_owned_cell_position(prototype)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.REGROWTH] = 1
-	relics.apply_relics()
-	prototype.territory_field.step_simulation()
-	var remembered := prototype.territory_field.get_regrowth_memory_at_local(memory_spot)
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.REGROWTH] = 0
-	relics.apply_relics()
-	var forgotten := prototype.territory_field.get_regrowth_memory_at_local(memory_spot)
+	# Puffball: a Seed broken before it opens is not wasted, and the Seedlings it
+	# scatters can never Puffball again. That generation cap is the whole recursion
+	# control, so it is asserted rather than assumed.
+	var spore := prototype.spore_director
+	spore.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PUFFBALL] = 1
+	var puff_spot := _find_owned_cell_position(prototype)
+	prototype.overlay.spawn_seed(puff_spot, 8.0, 0, 1.0)
+	# Destroyed for real rather than by emitting the signal, so the wiring from a
+	# Saboteur's hit through to the scatter is what the case actually covers.
+	prototype.overlay.damage_nearest_catalyst(puff_spot, 30.0, 99.0)
+	var puff_airborne := prototype.overlay.get_active_seed_count()
+	for _puff_tick in range(60):
+		spore.advance(1.0 / 60.0)
+	var seedlings := prototype.overlay.get_seed_ids()
+	# A Seedling breaking must not scatter a second generation.
+	var second_generation := 0
+	if seedlings.size() > 0:
+		var seedling_position := prototype.overlay.get_seed_position(seedlings[0])
+		prototype.overlay.damage_nearest_catalyst(seedling_position, 8.0, 99.0)
+		for _settle in range(60):
+			spore.advance(1.0 / 60.0)
+		second_generation = prototype.overlay.get_seed_ids().size() - (seedlings.size() - 1)
 	_check(
-		remembered > 0.0 and forgotten <= 0.0,
-		"REGROWTH remembers owned ground, and turning it off clears the layer"
+		puff_airborne == 0
+		and seedlings.size() == spore.puffball_seedlings
+		and second_generation <= 0,
+		"PUFFBALL scatters Seedlings from a broken Seed and they cannot Puffball again"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PUFFBALL] = 0
+
+	# Windborne: every fifth germination throws Seeds at ground the run does not
+	# hold. It is deliberately subcritical, so the count is what is asserted.
+	spore.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.WINDBORNE] = 1
+	var wind_spot := _find_owned_cell_position(prototype)
+	for germination in range(spore.windborne_germination_interval):
+		spore._note_germination(wind_spot)
+	var wind_pending := spore._pending_seeds.size()
+	for _wind_tick in range(90):
+		spore.advance(1.0 / 60.0)
+	var wind_landed := prototype.overlay.get_active_seed_count()
+	_check(
+		wind_pending > 0
+		and wind_pending <= spore.windborne_seeds
+		and wind_landed == wind_pending,
+		"WINDBORNE launches on its fifth germination and every Seed it throws lands"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.WINDBORNE] = 0
+
+	# Volunteer: a death on Green a Seed has just made can plant another. The proc
+	# roll is pinned so the test measures the rule and not the dice.
+	spore.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.VOLUNTEER] = 1
+	var authored_volunteer_chance := spore.volunteer_chance
+	spore.volunteer_chance = 1.0
+	var volunteer_spot := _find_owned_cell_position(prototype)
+	# A death with no recent germination behind it must plant nothing.
+	spore._try_volunteer(volunteer_spot)
+	var volunteer_without_green := spore._pending_seeds.size()
+	spore._note_germination(volunteer_spot)
+	spore._try_volunteer(volunteer_spot)
+	var volunteer_after_green := spore._pending_seeds.size()
+	# The global cooldown has to stop a pile of corpses planting a Seed each.
+	spore._try_volunteer(volunteer_spot)
+	var volunteer_on_cooldown := spore._pending_seeds.size()
+	spore.volunteer_chance = authored_volunteer_chance
+	_check(
+		volunteer_without_green == 0
+		and volunteer_after_green == 1
+		and volunteer_on_cooldown == 1,
+		"VOLUNTEER plants only on freshly germinated Green, and its cooldown holds"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.VOLUNTEER] = 0
+
+	# Domino Germination: the tenth natural germination opens a cascade, and the
+	# forced germinations inside it never advance the counter that made them.
+	spore.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.DOMINO_GERMINATION] = 1
+	var domino_spot := _find_owned_cell_position(prototype)
+	for _domino_seed in range(spore.domino_cascade_seeds + 2):
+		prototype.overlay.spawn_seed(domino_spot, 20.0, 0, 1.0)
+	var domino_before := prototype.overlay.get_active_seed_count()
+	for _domino_germination in range(spore.domino_natural_germinations):
+		spore._note_germination(domino_spot)
+	var cascade_armed := spore._domino_cascade.size()
+	for _domino_tick in range(120):
+		spore.advance(1.0 / 60.0)
+	var domino_after := prototype.overlay.get_active_seed_count()
+	_check(
+		cascade_armed == spore.domino_cascade_seeds
+		and domino_before - domino_after == spore.domino_cascade_seeds
+		and spore._domino_progress == 0
+		and spore._domino_cascade.is_empty(),
+		"DOMINO GERMINATION forces one capped cascade and its own links never refeed it"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.DOMINO_GERMINATION] = 0
+	spore.reset_director()
+	prototype.overlay.clear_effects()
+
+	# ------------------------------------------------------------- Bloom relics
+	# Every one of these is a rule about what a detonation is allowed to cause, so
+	# each case asserts the rule and its recursion limiter rather than a number.
+	var bloom_relics := prototype.bloom_director
+	var bloom_spot := _find_owned_cell_position(prototype)
+
+	# Deadheading: a bud killed during its wind-up still opens, at reduced strength,
+	# and the emergency Bloom it leaves cannot Deadhead again.
+	bloom_relics.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.DEADHEADING] = 1
+	prototype.overlay.plant_bloom(
+		bloom_spot, 4.0, 0, 1.0, PhaseBBloomDirector.SourceTag.NATURAL
+	)
+	prototype.overlay.damage_nearest_catalyst(bloom_spot, 30.0, 99.0)
+	var deadheaded := bloom_relics._pending_detonations.size()
+	var deadheaded_strength := 0.0
+	if deadheaded > 0:
+		deadheaded_strength = float(bloom_relics._pending_detonations[0][3])
+	# An emergency Bloom must not be able to leave another one behind it.
+	bloom_relics.on_bloom_interrupted(
+		bloom_spot, PhaseBBloomDirector.SourceTag.DEADHEADING, 1.0
+	)
+	var deadhead_recursed := bloom_relics._pending_detonations.size() - deadheaded
+	_check(
+		deadheaded == 1
+		and is_equal_approx(deadheaded_strength, bloom_relics.deadheading_strength)
+		and deadhead_recursed == 0,
+		"DEADHEADING opens a broken bud at half strength and cannot Deadhead itself"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.DEADHEADING] = 0
+
+	# Overkill: damage spent past an enemy's health banks, and the charge is spent
+	# by the next natural Bloom rather than by the blast that filled the meter.
+	bloom_relics.reset_director()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.OVERKILL] = 1
+	bloom_relics._bank_overkill(bloom_relics.overkill_required * 0.5)
+	var half_charged := bloom_relics._overkill_charged
+	bloom_relics._bank_overkill(bloom_relics.overkill_required * 0.5)
+	var charged := bloom_relics._overkill_charged
+	# A relic-planted Bloom is not what the charge was promised to.
+	var spent_by_child := bloom_relics.try_spend_overkill(
+		bloom_spot, PhaseBBloomDirector.SourceTag.CHAIN
+	)
+	var spent_by_natural := bloom_relics.try_spend_overkill(
+		bloom_spot, PhaseBBloomDirector.SourceTag.NATURAL
+	)
+	var spent_twice := bloom_relics.try_spend_overkill(
+		bloom_spot, PhaseBBloomDirector.SourceTag.NATURAL
+	)
+	_check(
+		not half_charged
+		and charged
+		and not spent_by_child
+		and spent_by_natural
+		and not spent_twice,
+		"OVERKILL banks to a threshold and only a natural Bloom spends the charge"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.OVERKILL] = 0
+
+	# Chain Bloom: enough kills plant one smaller child beyond the blast, and a
+	# child can never plant another.
+	bloom_relics.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CHAIN_BLOOM] = 1
+	# A crowd well outside the blast for the child to aim at.
+	for chain_index in range(6):
+		prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.HUNTER,
+			bloom_spot + Vector2(150.0 + float(chain_index) * 6.0, 0.0)
+		)
+	var chain_report := PhaseBCombatDirector.BlastReport.new()
+	chain_report.kills = bloom_relics.chain_bloom_kills
+	bloom_relics._try_chain_bloom(
+		bloom_spot, PhaseBBloomDirector.SourceTag.NATURAL, 1.0, 60.0, chain_report
+	)
+	var chain_planted := prototype.overlay.get_active_bloom_count()
+	bloom_relics._try_chain_bloom(
+		bloom_spot, PhaseBBloomDirector.SourceTag.CHAIN, 1.0, 60.0, chain_report
+	)
+	var chain_recursed := prototype.overlay.get_active_bloom_count() - chain_planted
+	# Too few kills must plant nothing at all.
+	var thin_report := PhaseBCombatDirector.BlastReport.new()
+	thin_report.kills = bloom_relics.chain_bloom_kills - 1
+	bloom_relics._try_chain_bloom(
+		bloom_spot, PhaseBBloomDirector.SourceTag.NATURAL, 1.0, 60.0, thin_report
+	)
+	var chain_under_threshold := (
+		prototype.overlay.get_active_bloom_count() - chain_planted - chain_recursed
+	)
+	_check(
+		chain_planted == 1 and chain_recursed == 0 and chain_under_threshold == 0,
+		"CHAIN BLOOM plants one child on enough kills and a child cannot chain again"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CHAIN_BLOOM] = 0
+
+	# Flowering Front: a natural Bloom that kills enough starts a chain that walks
+	# forward and stops at its authored generation cap.
+	bloom_relics.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.FLOWERING_FRONT] = 1
+	var front_report := PhaseBCombatDirector.BlastReport.new()
+	front_report.kills = bloom_relics.flowering_front_starter_kills
+	var front_started := bloom_relics._try_flowering_front(
+		bloom_spot, PhaseBBloomDirector.SourceTag.NATURAL, 1.0, front_report
+	)
+	# Walk the chain to its cap. Each child is cleared off the field first so the
+	# bud cap is not what stops it: the generation cap has to be what does.
+	var generations := 1
+	for _front_step in range(bloom_relics.flowering_front_generations + 3):
+		prototype.overlay.clear_effects()
+		if not bloom_relics._try_flowering_front(
+			bloom_spot, PhaseBBloomDirector.SourceTag.FLOWERING_FRONT, 1.0, front_report
+		):
+			break
+		generations += 1
+	var front_cooled := bloom_relics._front_cooldown > 0.0
+	_check(
+		front_started
+		and generations == bloom_relics.flowering_front_generations
+		and front_cooled,
+		"FLOWERING FRONT walks a chain to its generation cap and then cools down"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.FLOWERING_FRONT] = 0
+
+	# Petal Scatter: one petal per kill, thrown only at enemies the blast missed.
+	bloom_relics.reset_director()
+	prototype.overlay.clear_effects()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PETAL_SCATTER] = 1
+	# One enemy inside the blast radius and two outside it.
+	prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, bloom_spot + Vector2(20.0, 0.0)
+	)
+	for petal_index in range(2):
+		prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.HUNTER,
+			bloom_spot + Vector2(120.0, float(petal_index) * 30.0)
+		)
+	var petal_report := PhaseBCombatDirector.BlastReport.new()
+	petal_report.kills = 3
+	petal_report.kill_positions = PackedVector2Array([bloom_spot, bloom_spot, bloom_spot])
+	bloom_relics._scatter_petals(bloom_spot, 60.0, 100.0, petal_report)
+	var petals_thrown := bloom_relics._petals.size()
+	_check(
+		petals_thrown == 2,
+		"PETAL SCATTER throws one petal per kill and only at enemies outside the blast (%d)"
+			% petals_thrown
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PETAL_SCATTER] = 0
+	bloom_relics.reset_director()
+	prototype.combat.reset_combat()
+	prototype.overlay.clear_effects()
+
+	# ----------------------------------------------------------- Bramble relics
+	# The pool's engine is Entanglement feeding itself, so each case asserts both
+	# that the rule fires and that the limiter which stops it looping holds.
+	var bramble := prototype.bramble_director
+	var bramble_spot := _find_owned_cell_position(prototype)
+
+	# Hookthorn: a shoved enemy that collides with another tangles both, once per
+	# shove, and then both sit on a cooldown.
+	bramble.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.HOOKTHORN] = 1
+	var shoved_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, bramble_spot
+	)
+	var struck_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		bramble_spot + Vector2(bramble.hookthorn_collision_pixels * 0.5, 0.0)
+	)
+	prototype.combat.enemy_repelled.emit(shoved_id, bramble_spot, Vector2.RIGHT)
+	bramble.advance_relics(1.0 / 60.0)
+	var hook_shoved := prototype.combat.get_enemy_entanglement(shoved_id)
+	var hook_struck := prototype.combat.get_enemy_entanglement(struck_id)
+	# The window closed on the collision, so a second tick must add nothing.
+	bramble.advance_relics(1.0 / 60.0)
+	var hook_no_repeat := is_equal_approx(
+		prototype.combat.get_enemy_entanglement(struck_id), hook_struck
+	)
+	_check(
+		hook_shoved > 0.0 and hook_struck > hook_shoved and hook_no_repeat,
+		"HOOKTHORN tangles both bodies once per shove and cannot retrigger from it"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.HOOKTHORN] = 0
+
+	# Thornback: a shove makes the Green shoot a thorn at the least tangled enemy
+	# other than the one that was shoved.
+	bramble.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.THORNBACK] = 1
+	var thorn_source := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, bramble_spot
+	)
+	var thorn_target := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, bramble_spot + Vector2(90.0, 0.0)
+	)
+	var thorn_health_before := prototype.combat.get_enemy_health(thorn_target)
+	prototype.combat.enemy_repelled.emit(thorn_source, bramble_spot, Vector2.RIGHT)
+	var thorn_hit := prototype.combat.get_enemy_health(thorn_target) < thorn_health_before
+	var thorn_tangled := prototype.combat.get_enemy_entanglement(thorn_target) > 0.0
+	# The per-source cooldown has to stop a grazing cadence firing a stream of them.
+	var health_after_first := prototype.combat.get_enemy_health(thorn_target)
+	prototype.combat.enemy_repelled.emit(thorn_source, bramble_spot, Vector2.RIGHT)
+	var thorn_on_cooldown := is_equal_approx(
+		prototype.combat.get_enemy_health(thorn_target), health_after_first
+	)
+	_check(
+		thorn_hit and thorn_tangled and thorn_on_cooldown,
+		"THORNBACK shoots one thorn per shove and its source cooldown holds"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.THORNBACK] = 0
+
+	# Cocklebur: only an enemy that leaves Green heavily Entangled carries burrs,
+	# and leaving again does not refresh the timer.
+	bramble.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.COCKLEBUR] = 1
+	var carrier_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, bramble_spot
+	)
+	prototype.combat.enemy_left_green.emit(
+		carrier_id, bramble_spot, bramble.cocklebur_minimum_entanglement - 0.1
+	)
+	var burr_under_threshold := bramble.get_burr_carrier_count()
+	prototype.combat.enemy_left_green.emit(
+		carrier_id, bramble_spot, bramble.cocklebur_minimum_entanglement
+	)
+	var burr_carried := bramble.get_burr_carrier_count()
+	# A carrier spreads Entanglement by touch, and only to bodies it has not
+	# already burred.
+	var burr_target := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		bramble_spot + Vector2(bramble.cocklebur_contact_pixels * 0.5, 0.0)
+	)
+	bramble.advance_relics(1.0 / 60.0)
+	var burr_spread := prototype.combat.get_enemy_entanglement(burr_target)
+	bramble.advance_relics(1.0 / 60.0)
+	var burr_capped := is_equal_approx(
+		prototype.combat.get_enemy_entanglement(burr_target), burr_spread
+	)
+	_check(
+		burr_under_threshold == 0 and burr_carried == 1 and burr_spread > 0.0 and burr_capped,
+		"COCKLEBUR burrs only a heavily Entangled leaver and respects its touch cooldown"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.COCKLEBUR] = 0
+
+	# Briar Knot: a heavily Entangled corpse leaves a one-use trap, and the active
+	# cap replaces the oldest rather than refusing the newest.
+	bramble.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BRIAR_KNOT] = 1
+	prototype.combat.enemy_died_entangled.emit(
+		bramble_spot,
+		bramble.briar_knot_required_entanglement - 0.1,
+		PhaseBCombatDirector.EnemyRole.HUNTER
+	)
+	var knot_under_threshold := bramble.get_knot_count()
+	for knot_index in range(bramble.briar_knot_maximum + 3):
+		prototype.combat.enemy_died_entangled.emit(
+			bramble_spot + Vector2(float(knot_index) * 400.0, 0.0),
+			1.0,
+			PhaseBCombatDirector.EnemyRole.HUNTER
+		)
+	var knots_capped := bramble.get_knot_count()
+	# One use: an enemy walking into a Knot springs it and the Knot is gone.
+	bramble.reset_director()
+	prototype.combat.enemy_died_entangled.emit(
+		bramble_spot, 1.0, PhaseBCombatDirector.EnemyRole.HUNTER
+	)
+	var caught_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, bramble_spot
+	)
+	for _knot_tick in range(30):
+		bramble.advance_relics(1.0 / 60.0)
+	_check(
+		knot_under_threshold == 0
+		and knots_capped == bramble.briar_knot_maximum
+		and bramble.get_knot_count() == 0
+		and prototype.combat.get_enemy_entanglement(caught_id) > 0.0,
+		"BRIAR KNOT arms on a tangled corpse, caps its count, and springs exactly once"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BRIAR_KNOT] = 0
+
+	# Briarball: four heavily Entangled deaths roll into one ball, and the active
+	# cap preserves a completed charge rather than spending it into nothing.
+	bramble.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BRIARBALL] = 1
+	for _ball_death in range(bramble.briarball_deaths_required - 1):
+		prototype.combat.enemy_died_entangled.emit(
+			bramble_spot, 1.0, PhaseBCombatDirector.EnemyRole.HUNTER
+		)
+	var ball_under_charge := bramble.get_briarball_count()
+	prototype.combat.enemy_died_entangled.emit(
+		bramble_spot, 1.0, PhaseBCombatDirector.EnemyRole.HUNTER
+	)
+	var ball_rolled := bramble.get_briarball_count()
+	# A ball damages and tangles what it rolls over.
+	var rolled_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER,
+		bramble_spot + Vector2(bramble.briarball_contact_pixels * 0.5, 0.0)
+	)
+	var rolled_health := prototype.combat.get_enemy_health(rolled_id)
+	bramble.advance_relics(1.0 / 60.0)
+	_check(
+		ball_under_charge == 0
+		and ball_rolled == 1
+		and prototype.combat.get_enemy_health(rolled_id) < rolled_health
+		and prototype.combat.get_enemy_entanglement(rolled_id) > 0.0,
+		"BRIARBALL rolls on its fourth tangled corpse and crashes through the crowd"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BRIARBALL] = 0
+	bramble.reset_director()
+	prototype.combat.reset_combat()
+
+	# ----------------------------------------------------------- Pruning relics
+	# Pruning's pool turns one release into a cycle, so every case here asserts the
+	# limiter as well as the payout: an unbounded Pruning build is the failure mode.
+	prototype.progression.reset_progression()
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.PRUNING,
+		PhaseBProgression.PathId.SPORE
+	)
+	prototype._apply_progression_modifiers()
+	var pruning_relics := prototype.pruning_director
+	var prune_spot := _find_owned_cell_position(prototype)
+	prototype.player.global_position = prototype.territory_field.to_global(prune_spot)
+
+	# Brush Pile: only Green cut past half Charge is stored, the bundle count is
+	# capped, and a release empties the store whether or not it was full.
+	pruning_relics.reset_director()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BRUSH_PILE] = 1
+	pruning_relics._charge = pruning_relics.brush_pile_charge_threshold - 0.1
+	pruning_relics._note_brush_harvest(pruning_relics.brush_pile_cells_per_bundle * 2)
+	var brush_below_threshold := pruning_relics.get_brush_bundles()
+	pruning_relics._charge = pruning_relics.brush_pile_charge_threshold
+	pruning_relics._note_brush_harvest(
+		pruning_relics.brush_pile_cells_per_bundle * (pruning_relics.brush_pile_maximum_bundles + 3)
+	)
+	var brush_capped := pruning_relics.get_brush_bundles()
+	_check(
+		brush_below_threshold == 0
+		and brush_capped == pruning_relics.brush_pile_maximum_bundles,
+		"BRUSH PILE stores only what is cut past half Charge and stops at its cap"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.BRUSH_PILE] = 0
+
+	# Callus: standing in the wound when the ring fires is not returning to it. The
+	# player has to leave and come back before the pulse is owed.
+	pruning_relics.reset_director()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CALLUS] = 1
+	pruning_relics._callus_position = prune_spot
+	pruning_relics._callus_remaining = pruning_relics.callus_window_seconds
+	pruning_relics._callus_used = false
+	pruning_relics._callus_left_wound = false
+	prototype.player.global_position = prototype.territory_field.to_global(prune_spot)
+	pruning_relics._advance_callus(1.0 / 60.0)
+	var callus_standing_still := pruning_relics._callus_used
+	# Leave the wound, then come back.
+	prototype.player.global_position = prototype.territory_field.to_global(
+		prune_spot + Vector2(pruning_relics.callus_radius_pixels * 2.0, 0.0)
+	)
+	pruning_relics._advance_callus(1.0 / 60.0)
+	prototype.player.global_position = prototype.territory_field.to_global(prune_spot)
+	pruning_relics._advance_callus(1.0 / 60.0)
+	var callus_paid := pruning_relics._callus_used
+	# One pulse per release: a second return is worth nothing.
+	pruning_relics._advance_callus(1.0 / 60.0)
+	_check(
+		not callus_standing_still and callus_paid and not pruning_relics.is_callus_armed(),
+		"CALLUS pays once, and only after the player has actually left the wound"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CALLUS] = 0
+
+	# Stubble: the wound stays sharp, each enemy is on its own tick cooldown, and
+	# only two wounds are ever hazardous at once.
+	pruning_relics.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.STUBBLE] = 1
+	for stubble_wound_index in range(pruning_relics.stubble_maximum_wounds + 2):
+		pruning_relics._stubble_wounds.append([
+			prune_spot + Vector2(float(stubble_wound_index) * 500.0, 0.0),
+			pruning_relics.stubble_seconds,
+			{},
+		])
+		if pruning_relics._stubble_wounds.size() > pruning_relics.stubble_maximum_wounds:
+			pruning_relics._stubble_wounds.remove_at(0)
+	var stubble_capped := pruning_relics.get_stubble_wound_count()
+	# A wound expires rather than lingering.
+	for _stubble_tick in range(int(pruning_relics.stubble_seconds * 60.0) + 10):
+		pruning_relics._advance_stubble(1.0 / 60.0)
+	_check(
+		stubble_capped == pruning_relics.stubble_maximum_wounds
+		and pruning_relics.get_stubble_wound_count() == 0,
+		"STUBBLE keeps at most two sharp wounds and each one expires on its own clock"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.STUBBLE] = 0
+
+	# Skimming Cut: a natural spike glances off terrain toward a new target once,
+	# and a spike that has already glanced is spent by its next collision.
+	pruning_relics.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.SKIMMING_CUT] = 1
+	prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, prune_spot + Vector2(60.0, 0.0)
+	)
+	var skimmer := pruning_relics._get_inactive_cutting()
+	skimmer.position = prune_spot
+	skimmer.damage = 40.0
+	skimmer.velocity = Vector2(200.0, 0.0)
+	skimmer.natural_release = true
+	skimmer.has_ricocheted = false
+	var skimmed := pruning_relics._try_skimming_cut(skimmer)
+	var skim_damage_cut := skimmer.damage < 40.0
+	var skim_again := pruning_relics._try_skimming_cut(skimmer)
+	# A relic-thrown spike is not a natural release and never glances.
+	var relic_spike := pruning_relics._get_inactive_cutting()
+	relic_spike.position = prune_spot
+	relic_spike.damage = 40.0
+	relic_spike.velocity = Vector2(200.0, 0.0)
+	relic_spike.natural_release = false
+	var relic_skimmed := pruning_relics._try_skimming_cut(relic_spike)
+	_check(
+		skimmed and skim_damage_cut and not skim_again and not relic_skimmed,
+		"SKIMMING CUT redirects a natural spike once and never a relic-thrown one"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.SKIMMING_CUT] = 0
+
+	# Watersprouts: a natural killing spike sprouts children, those children may
+	# branch once more, and generation two is the end of it.
+	pruning_relics.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.WATERSPROUTS] = 1
+	for sprout_index in range(8):
+		prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.HUNTER,
+			prune_spot + Vector2(40.0 + float(sprout_index) * 12.0, 0.0)
+		)
+	var parent := pruning_relics._get_inactive_cutting()
+	parent.position = prune_spot
+	parent.damage = 40.0
+	parent.natural_release = true
+	parent.sprout_generation = 0
+	pruning_relics._sprout_watersprouts(parent, prune_spot)
+	var generation_one := pruning_relics._watersprouts_this_release
+	# A generation-2 spike must not reproduce at all.
+	var final_child := pruning_relics._get_inactive_cutting()
+	final_child.position = prune_spot
+	final_child.damage = 20.0
+	final_child.natural_release = false
+	final_child.sprout_generation = 2
+	pruning_relics._sprout_watersprouts(final_child, prune_spot)
+	var after_final := pruning_relics._watersprouts_this_release
+	# The per-release cap is absolute across both generations.
+	pruning_relics._watersprouts_this_release = pruning_relics.watersprout_release_maximum
+	pruning_relics._sprout_watersprouts(parent, prune_spot)
+	var at_cap := pruning_relics._watersprouts_this_release
+	_check(
+		generation_one == pruning_relics.watersprout_children
+		and after_final == generation_one
+		and at_cap == pruning_relics.watersprout_release_maximum,
+		"WATERSPROUTS branches twice, stops at generation two, and honours its release cap"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.WATERSPROUTS] = 0
+	pruning_relics.reset_director()
+	prototype.combat.reset_combat()
+	prototype.progression.reset_progression()
+	prototype._apply_progression_modifiers()
+
+	# ----------------------------------------------------------- Thistle relics
+	# The network's counters are the whole safety story: a bonus thorn that advanced
+	# the counter that produced it would make the turrets fire forever. Every case
+	# below asserts that separation as well as the payout.
+	prototype.progression.debug_select_paths(
+		PhaseBProgression.PathId.THISTLE,
+		PhaseBProgression.PathId.SPORE
+	)
+	prototype._apply_progression_modifiers()
+	var adaptation := prototype.adaptation_director
+	var thistle_spot := _find_owned_cell_position(prototype)
+
+	# Only a natural thorn advances a network counter.
+	adaptation.reset_adaptations()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.THORN_RELAY] = 1
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.FORKING_PATTERN] = 1
+	var bonus_thorn := PhaseBAdaptationDirector.ThornState.new()
+	bonus_thorn.source_tag = PhaseBAdaptationDirector.ThornSource.CROWN
+	for _bonus_impact in range(
+		maxi(adaptation.thorn_relay_impacts, adaptation.forking_pattern_impacts) * 2
+	):
+		adaptation._note_natural_thorn_impact(bonus_thorn, -1, thistle_spot, false)
+	var counters_untouched := (
+		adaptation._relay_impacts == 0 and adaptation._forking_impacts == 0
+	)
+	var natural_thorn := PhaseBAdaptationDirector.ThornState.new()
+	natural_thorn.source_tag = PhaseBAdaptationDirector.ThornSource.NATURAL
+	natural_thorn.source_thistle_sequence = -1
+	for _natural_impact in range(adaptation.thorn_relay_impacts - 1):
+		adaptation._note_natural_thorn_impact(natural_thorn, -1, thistle_spot, false)
+	var counted_naturals := adaptation._relay_impacts
+	_check(
+		counters_untouched and counted_naturals == adaptation.thorn_relay_impacts - 1,
+		"a relic-fired thorn never advances a Thistle network counter, and a natural one does"
 	)
 
-	# Blood in the Water adds damage inside Cane's existing sector; it does not
-	# reintroduce target-priority logic from the removed projectile weapon.
-	prototype.combat.reset_combat()
-	prototype.combat.set_cane_auto_targeting(false)
-	prototype.player.global_position = prototype.territory_field.to_global(lone_spot)
-	prototype.player._facing = Vector2.RIGHT
-	var healthy_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-		lone_spot + Vector2(56.0, -14.0)
-	)
-	var wounded_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-		lone_spot + Vector2(56.0, 14.0)
-	)
-	# Leave more than the amplified 30 damage below the 20% gate so overkill
-	# clamping cannot hide the full 1.25x packet the assertion is measuring.
-	for blood_target_id in [healthy_id, wounded_id]:
-		var blood_target := prototype.combat._find_enemy(blood_target_id)
-		if blood_target != null:
-			blood_target.maximum_health = 240.0
-			blood_target.health = blood_target.maximum_health
-	prototype.combat.damage_enemy_by_id(
-		wounded_id,
-		prototype.combat.get_enemy_health(wounded_id) * 0.81,
-		PhaseBCombatDirector.DeathSource.DEBUG
-	)
-	prototype.combat.set_relic_rules(0, 0.0, 0.55, 0.20, 0, 0.0, 1.0)
-	var healthy_before := prototype.combat.get_enemy_health(healthy_id)
-	var wounded_before := prototype.combat.get_enemy_health(wounded_id)
-	prototype.combat.perform_bonus_cane_sweep(Vector2.RIGHT, true)
-	var healthy_damage := healthy_before - prototype.combat.get_enemy_health(healthy_id)
-	var wounded_damage := wounded_before - prototype.combat.get_enemy_health(wounded_id)
-	prototype.combat.set_relic_rules(0, 0.0, 0.55, 0.0, 0, 0.0, 1.0)
+	# Thorn Relay: the counter resets on its threshold, and the rate limiter holds.
+	adaptation._relay_impacts = adaptation.thorn_relay_impacts - 1
+	adaptation._relay_cooldown = 0.0
+	adaptation._note_natural_thorn_impact(natural_thorn, -1, thistle_spot, false)
+	var relay_reset := adaptation._relay_impacts
 	_check(
-		healthy_damage > 0.0
-		and is_equal_approx(wounded_damage, healthy_damage * 1.25),
-		"BLOOD IN THE WATER adds 25% Cane damage below its 20% health gate"
+		relay_reset == 0,
+		"THORN RELAY answers on its eighth natural impact and starts counting again"
 	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.THORN_RELAY] = 0
+
+	# Forking Pattern: the active-thorn cap bounds it, and a split thorn cannot
+	# advance the counter that split it.
+	adaptation._forking_impacts = 0
+	adaptation._forking_cooldown = 0.0
+	var forked_thorn := PhaseBAdaptationDirector.ThornState.new()
+	forked_thorn.source_tag = PhaseBAdaptationDirector.ThornSource.FORKING
+	for _forked_impact in range(adaptation.forking_pattern_impacts * 2):
+		adaptation._note_natural_thorn_impact(forked_thorn, -1, thistle_spot, false)
+	_check(
+		adaptation._forking_impacts == 0,
+		"FORKING PATTERN branches cannot advance Forking Pattern"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.FORKING_PATTERN] = 0
+
+	# Pincushion: stacks come only from the thorns the relic names, they cap at the
+	# threshold, and the burst spends them.
+	adaptation.reset_adaptations()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PINCUSHION] = 1
+	var pincushion_victim := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, thistle_spot
+	)
+	var ineligible_thorn := PhaseBAdaptationDirector.ThornState.new()
+	ineligible_thorn.source_tag = PhaseBAdaptationDirector.ThornSource.PHYLLOTAXIS
+	for _ineligible in range(adaptation.pincushion_threshold):
+		adaptation._add_pincushion_stack(pincushion_victim, ineligible_thorn)
+	var stacks_from_ineligible := adaptation._pincushion_stacks.size()
+	for _eligible in range(adaptation.pincushion_threshold + 4):
+		adaptation._add_pincushion_stack(pincushion_victim, natural_thorn)
+	var pincushion_stack: Array = adaptation._pincushion_stacks[pincushion_victim]
+	var stacks_capped := int(pincushion_stack[0])
+	adaptation._burst_pincushion(pincushion_victim, thistle_spot)
+	var stacks_spent := not adaptation._pincushion_stacks.has(pincushion_victim)
+	_check(
+		stacks_from_ineligible == 0
+		and stacks_capped == adaptation.pincushion_threshold
+		and stacks_spent,
+		"PINCUSHION embeds only qualifying thorns, caps the stack, and spends it on death"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.PINCUSHION] = 0
+
+	# Answering Thorn: a natural kill makes a different turret answer, on a shared
+	# cooldown, and a relic-fired kill never starts it.
+	adaptation.reset_adaptations()
+	prototype.combat.reset_combat()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.ANSWERING_THORN] = 1
+	adaptation._answering_cooldown = 0.0
+	adaptation._answer_thorn(bonus_thorn, thistle_spot)
+	var answered_by_relic := adaptation._answering_cooldown > 0.0
+	adaptation._answer_thorn(natural_thorn, thistle_spot)
+	var answered_by_natural := adaptation._answering_cooldown > 0.0
+	_check(
+		not answered_by_relic and answered_by_natural,
+		"ANSWERING THORN is started by a natural volley's kill and never by a relic's"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.ANSWERING_THORN] = 0
+
+	# Rosette: a newly grown permanent Thistle is owed one opening volley, and a
+	# temporary turret is owed nothing.
+	adaptation.reset_adaptations()
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.ROSETTE] = 1
+	adaptation._plant_thistle(false, 5.0)
+	var rosette_for_temporary := adaptation._rosette_queue.size()
+	adaptation._plant_thistle(true, 0.0)
+	var rosette_for_permanent := adaptation._rosette_queue.size()
+	for _rosette_tick in range(int(adaptation.rosette_delay_seconds * 60.0) + 6):
+		adaptation._advance_thistle_relics(1.0 / 60.0)
+	_check(
+		rosette_for_temporary == 0
+		and rosette_for_permanent == 1
+		and adaptation._rosette_queue.is_empty(),
+		"ROSETTE owes an opening volley to a new permanent Thistle only, and pays it once"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.ROSETTE] = 0
+	adaptation.reset_adaptations()
+	prototype.combat.reset_combat()
+	prototype.progression.reset_progression()
+	prototype._apply_progression_modifiers()
 
 	# Snare Vine spreads a capped share of a root to the nearest few enemies.
 	prototype.combat.reset_combat()
@@ -6724,16 +7192,6 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.overlay.clear_effects()
 	prototype.territory_field.reset_field()
-
-	# Insurance Policy needs a mechanic the prototype does not have, so it is
-	# authored but never offered until the objective layer exists.
-	_check(
-		not prototype.progression.is_relic_eligible(
-			PhaseBRelicCatalog.Id.INSURANCE_POLICY
-		),
-		"a relic requiring an unimplemented mechanic is never offered"
-	)
-	prototype.progression.reset_progression()
 
 	# Relic rewards are on a wave schedule as well as on the elite and the boss.
 	# A crossing owes the run a relic only on the authored cycle, and the debt is

@@ -13,8 +13,8 @@ extends Node
 ## is the number the interface printed.
 
 @export_group("Collaborators")
-## Where the Clover relics are read from. Every one of them is a rule about this table,
-## so the table is what has to answer for them when the readout asks what a spin pays.
+## The run this table belongs to. Kept as a collaborator because the machine is scoped
+## to a run, not because the table reads relics: Clover deliberately has no relic pool.
 @export var progression: PhaseBProgression
 
 @export_group("Base Table")
@@ -46,19 +46,6 @@ extends Node
 ## which is a different feeling from having gambled and lost.
 @export var post_bust_multipliers := PackedFloat32Array([0.0, 0.5, 1.0])
 
-@export_group("Clover Relics")
-## Bent Coin: Triple Busts absorbed before one is bent into a whiff.
-@export_range(1, 10, 1) var bent_coin_pity := 3
-## Side Pot: whiffs it can hold, and what each one adds to the next jackpot's scale.
-@export_range(1, 40, 1) var side_pot_capacity := 8
-@export_range(0.0, 0.5, 0.01) var side_pot_scale_per_stake := 0.06
-## High Roller: which spin of every N is doubled.
-@export_range(2, 20, 1) var high_roller_cadence := 7
-## The House Always Loses: how much of the Bust chance each removal takes, and how many
-## removals a run may earn.
-@export_range(0.0, 1.0, 0.05) var house_removal_share := 0.34
-@export_range(1, 6, 1) var house_removal_limit := 3
-
 @export_group("Display")
 ## How a Path jackpot is drawn: three of the Path, two plus a Clover, or one plus two
 ## Clovers. Weights in that order.
@@ -71,14 +58,6 @@ extends Node
 
 var _drought := PackedInt32Array([0, 0, 0, 0])
 var _spins_since_bust := 999
-## Clover relic state. Held here rather than on the relic director because every one of
-## these is a rule about the odds table, and the table is what has to answer for them
-## when the readout asks what this spin actually pays.
-var _bent_coin_pity := 0
-var _side_pot := 0
-var _spins_taken := 0
-var _house_removals := 0
-var _free_spins := 0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -93,11 +72,6 @@ func reset_odds() -> void:
 	# Starts clear rather than in cooldown, so the first spin of a run plays the table
 	# the interface is showing.
 	_spins_since_bust = 999
-	_bent_coin_pity = 0
-	_side_pot = 0
-	_spins_taken = 0
-	_house_removals = 0
-	_free_spins = 0
 
 
 func set_seed(seed_value: int) -> void:
@@ -126,78 +100,15 @@ func get_bust_multiplier() -> float:
 	return post_bust_multipliers[mini(_spins_since_bust, post_bust_multipliers.size() - 1)]
 
 
-func has_relic(relic_id: int) -> bool:
-	return progression != null and progression.has_relic(relic_id)
-
-
-func is_bent_coin_ready() -> bool:
-	## Bent Coin has absorbed enough Busts to bend the next one. The shield is spent by
-	## the spin that follows, won or lost, which is what keeps it visible: the readout
-	## prints a Bust chance of zero and then stops printing it.
-	return (
-		has_relic(PhaseBRelicCatalog.Id.BENT_COIN)
-		and _bent_coin_pity >= bent_coin_pity
-	)
-
-
-func is_high_roller_spin() -> bool:
-	## Whether the spin about to be taken is the doubled one. Counted from spins actually
-	## taken, so the readout can show the player where in the cycle they are before they
-	## commit rather than after.
-	return (
-		has_relic(PhaseBRelicCatalog.Id.HIGH_ROLLER)
-		and high_roller_cadence > 0
-		and (_spins_taken + 1) % high_roller_cadence == 0
-	)
-
-
-func get_high_roller_countdown() -> int:
-	if not has_relic(PhaseBRelicCatalog.Id.HIGH_ROLLER) or high_roller_cadence <= 0:
-		return 0
-	return high_roller_cadence - (_spins_taken % high_roller_cadence)
-
-
-func get_side_pot() -> int:
-	return _side_pot
-
-
-func get_side_pot_scale_bonus() -> float:
-	if not has_relic(PhaseBRelicCatalog.Id.SIDE_POT):
-		return 0.0
-	return float(_side_pot) * side_pot_scale_per_stake
-
-
-func get_house_removals() -> int:
-	return _house_removals
-
-
-func take_free_spin() -> bool:
-	## The House Always Loses pays one free spin when its third removal lands. Consumed
-	## rather than read, so it cannot be spent twice.
-	if _free_spins <= 0:
-		return false
-	_free_spins -= 1
-	return true
-
-
-func get_free_spins() -> int:
-	return _free_spins
-
-
 func get_effective_odds(stake: int) -> Dictionary:
 	## What this spin would actually pay right now, which is what the HUD prints. The
 	## machine is allowed to protect the player from ugly randomness; it is not allowed
-	## to advertise one number and roll another. That rule is why every Clover relic that
-	## changes the odds changes them here, where the readout reads them, rather than
-	## quietly at the point of the roll.
+	## to advertise one number and roll another. That rule is why anything that changes the
+	## odds changes them here, where the readout reads them, rather than quietly at the
+	## point of the roll.
 	var index := clampi(stake, 0, path_jackpot_chances.size() - 1)
 	var clover := triple_clover_chances[index]
 	var bust := triple_bust_chances[index] * get_bust_multiplier()
-	if has_relic(PhaseBRelicCatalog.Id.THE_HOUSE_ALWAYS_LOSES):
-		# Each Bust the run has taken has torn a Bust face off the reel for good.
-		bust *= maxf(0.0, 1.0 - house_removal_share * float(_house_removals))
-	if is_bent_coin_ready():
-		bust = 0.0
 	var cap := positive_caps[index]
 	var path := path_jackpot_chances[index] + get_drought_bonus(stake)
 	path = clampf(path, 0.0, maxf(0.0, cap - clover))
@@ -239,33 +150,10 @@ func note_outcome(stake: int, outcome: int) -> void:
 	# it cashed out on an All In.
 	var index := clampi(stake, 0, _drought.size() - 1)
 	_drought[index] = 0 if CloverSlot.is_positive_outcome(outcome) else _drought[index] + 1
-	# The shield is spent by the spin that followed it, whatever that spin did. Holding it
-	# until a Bust actually arrives would mean the readout printed a Bust chance of zero
-	# for an unbounded number of spins, which stops being information.
-	if is_bent_coin_ready():
-		_bent_coin_pity = 0
-	_spins_taken += 1
 	if outcome == CloverSlot.Outcome.TRIPLE_BUST:
 		_spins_since_bust = 0
-		_bent_coin_pity += 1
-		if (
-			has_relic(PhaseBRelicCatalog.Id.THE_HOUSE_ALWAYS_LOSES)
-			and _house_removals < house_removal_limit
-		):
-			_house_removals += 1
-			if _house_removals >= house_removal_limit:
-				# The last removal is on the house.
-				_free_spins += 1
-		# A Bust takes the Side Pot with it. That is the whole of the risk the pot carries:
-		# it is built out of the spins that paid nothing and lost to the one that cost.
-		_side_pot = 0
 	else:
 		_spins_since_bust = mini(_spins_since_bust + 1, 999)
-		if outcome == CloverSlot.Outcome.WHIFF:
-			_side_pot = mini(_side_pot + 1, side_pot_capacity)
-		else:
-			# Cashed into the jackpot the machine is about to fire, then emptied.
-			_side_pot = 0
 
 
 func build_display(outcome: int, path_symbol: int) -> PackedInt32Array:

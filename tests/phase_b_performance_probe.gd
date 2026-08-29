@@ -30,21 +30,16 @@ func _run() -> void:
 	)
 	# A relic engine is exactly the kind of layer that quietly eats a frame, so
 	# the stress case holds every relic that does per-frame or per-enemy work:
-	# the two Core Weapon scans, the crowd-density scan, the two territory
-	# watchers, the Seed proximity check, and the Entanglement sweep.
+	# the crowd-density scan, the Seed proximity check, and the Entanglement
+	# sweep, plus the standing world objects that redraw every frame.
 	for stressed_relic in [
-		PhaseBRelicCatalog.Id.PREDATORS_EYE,
-		PhaseBRelicCatalog.Id.BLOOD_IN_THE_WATER,
-		PhaseBRelicCatalog.Id.UNDERDOG,
-		PhaseBRelicCatalog.Id.LAST_BASTION,
-		PhaseBRelicCatalog.Id.RESURRECTION_FERN,
 		PhaseBRelicCatalog.Id.GREEN_THUMB,
-		PhaseBRelicCatalog.Id.REGROWTH,
 		PhaseBRelicCatalog.Id.LIVING_RAMPART,
 		PhaseBRelicCatalog.Id.THE_HEDGE,
-		PhaseBRelicCatalog.Id.DEEP_SNARE,
 		PhaseBRelicCatalog.Id.SNARE_VINE,
-		PhaseBRelicCatalog.Id.ENCORE,
+		PhaseBRelicCatalog.Id.TAPROOT,
+		PhaseBRelicCatalog.Id.ANNUAL_RINGS,
+		PhaseBRelicCatalog.Id.WORLD_TREE,
 	]:
 		prototype.progression._owned_relics[stressed_relic] = 1
 	prototype._apply_progression_modifiers()
