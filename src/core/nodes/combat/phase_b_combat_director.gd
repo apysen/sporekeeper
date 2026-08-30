@@ -264,6 +264,10 @@ class DamageNumberState:
 	var color := Color.WHITE
 	var age := 0.0
 	var impact_radius := 8.0
+	## Size the text renders at, and the measurement of it. Neither changes once the
+	## number is spawned, so both are worked out there rather than every frame.
+	var font_size := 16
+	var text_size := Vector2.ZERO
 
 class RootEruptionState:
 	var active := false
@@ -516,6 +520,10 @@ class PendingEruptionState:
 @export_range(0.1, 2.0, 0.05) var damage_number_lifetime_seconds := 0.70
 ## Upward movement speed of floating damage numbers in pixels per second.
 @export_range(0.0, 160.0, 1.0) var damage_number_rise_speed_pixels_per_second := 42.0
+## Point size a damage number renders at. Each number remembers the size it was
+## spawned with, so varying this per hit -- a larger one for a critical, say -- costs
+## nothing beyond one extra glyph cache the first time that size is drawn.
+@export_range(8, 48, 1) var damage_number_font_size := 16
 
 @export_group("Bramble Territory")
 ## Base thorn damage per tick against an enemy that has only just stepped onto Green.
@@ -4704,6 +4712,16 @@ func _spawn_damage_number(
 	)
 	selected.text = str(maxi(1, int(round(damage))))
 	selected.color = color
+	selected.font_size = damage_number_font_size
+	# Measured once here. Doing it in _draw re-shaped every number's text on every
+	# frame, which was a third of the whole damage-number draw cost for a string that
+	# cannot change after this point.
+	selected.text_size = _damage_number_font.get_string_size(
+		selected.text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		selected.font_size
+	)
 	selected.age = 0.0
 	selected.impact_radius = enemy_radius
 	if spawn_began > 0:
@@ -5556,6 +5574,7 @@ func _draw_enemy_state_overlay(canvas: CanvasItem, enemy: EnemyState) -> void:
 
 
 func _draw_damage_number(damage_number: DamageNumberState) -> void:
+	var draw_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var lifetime := maxf(damage_number_lifetime_seconds, 0.001)
 	var lifetime_progress := clampf(damage_number.age / lifetime, 0.0, 1.0)
 	var text_alpha := 1.0 - clampf((lifetime_progress - 0.48) / 0.52, 0.0, 1.0)
@@ -5583,13 +5602,8 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 			true
 		)
 
-	var font_size := 16
-	var text_size := _damage_number_font.get_string_size(
-		damage_number.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		font_size
-	)
+	var font_size := damage_number.font_size
+	var text_size := damage_number.text_size
 	var baseline := damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
 	var shadow_color := Color(0.01, 0.018, 0.02, 0.92 * text_alpha)
 	draw_string(
@@ -5612,3 +5626,7 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 		font_size,
 		text_color
 	)
+	if draw_began > 0:
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_DRAW, draw_began
+		)

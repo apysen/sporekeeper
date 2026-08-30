@@ -107,6 +107,9 @@ const TIMER_BLAST_DAMAGE := &"blast_damage_ms"
 ## Finding a slot for one floating damage number. Cosmetic, and a scan of the whole
 ## pool per damage instance.
 const TIMER_DAMAGE_NUMBER_SPAWN := &"damage_number_spawn_ms"
+## Drawing them, and the string measurement inside that.
+const TIMER_DAMAGE_NUMBER_DRAW := &"damage_number_draw_ms"
+const TIMER_DAMAGE_NUMBER_MEASURE := &"damage_number_measure_ms"
 const TIMER_FRUITSEEDS := &"fruitseeds_ms"
 const TIMER_SAPLINGS := &"saplings_ms"
 
@@ -200,6 +203,8 @@ const TIMER_NAMES: Array[StringName] = [
 	TIMER_BLAST_LINE_OF_SIGHT,
 	TIMER_BLAST_DAMAGE,
 	TIMER_DAMAGE_NUMBER_SPAWN,
+	TIMER_DAMAGE_NUMBER_DRAW,
+	TIMER_DAMAGE_NUMBER_MEASURE,
 	TIMER_FRUITSEEDS,
 	TIMER_SAPLINGS,
 ]
