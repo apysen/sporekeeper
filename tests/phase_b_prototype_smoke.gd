@@ -997,22 +997,17 @@ func _run() -> void:
 		and not prototype.progression.has_secondary_path(),
 		"taking a path line before the milestone commits that path as the primary"
 	)
-	prototype.debug_advance_time(prototype.wave_director.primary_path_choice_seconds)
+	# A bare Path is never a reward. There is no timed milestone that hands the
+	# player a screen of Adaptations to pick between: the only way into a Path is to
+	# draft one of its upgrade lines, so running the clock past where those
+	# milestones used to sit must raise no choice at all.
+	prototype.debug_advance_time(600.0)
+	prototype.debug_advance_time(600.0)
 	_check(
-		not prototype.progression.has_pending_path_choice()
-		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE,
-		"an auto-committed run is never asked to choose its primary path again"
-	)
-	prototype.debug_advance_time(
-		prototype.wave_director.secondary_path_choice_seconds
-		- prototype.get_elapsed_seconds()
-	)
-	var auto_secondary_options := prototype.progression.get_pending_path_options()
-	_check(
-		not prototype.progression.is_pending_primary_path_choice()
-		and auto_secondary_options.size() == PhaseBProgression.PathId.size() - 1
-		and not auto_secondary_options.has(PhaseBProgression.PathId.BRAMBLE),
-		"the secondary milestone still offers the two remaining paths after an auto-commit"
+		prototype._choice_kind == PhaseBPrototype.ChoiceKind.RELIC
+		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE
+		and not prototype.progression.has_secondary_path(),
+		"no elapsed-time milestone ever offers bare Paths as a reward"
 	)
 
 	prototype.reset_run()
@@ -1028,13 +1023,11 @@ func _run() -> void:
 		and prototype.territory_field.is_bramble_enabled(),
 		"a second uncommitted path line fills the secondary slot without waiting for its milestone"
 	)
-	prototype.debug_advance_time(
-		prototype.wave_director.secondary_path_choice_seconds + 1.0
-	)
+	prototype.debug_advance_time(600.0)
 	_check(
-		not prototype.progression.has_pending_path_choice()
+		prototype._choice_kind == PhaseBPrototype.ChoiceKind.RELIC
 		and prototype.progression.has_secondary_path(),
-		"a fully committed run is never asked to choose a path at either milestone"
+		"a fully committed run is never interrupted by a Path screen either"
 	)
 
 	prototype.reset_run()
@@ -1197,8 +1190,6 @@ func _run() -> void:
 
 	prototype.progression.reset_progression()
 	prototype.progression.offer_bramble_path = false
-	var narrowed_milestone := prototype.progression.request_primary_path_choice()
-	var narrowed_path_options := prototype.progression.get_pending_path_options()
 	var switched_off_line_draftable := prototype.progression._is_upgrade_draftable(
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 	)
@@ -1208,15 +1199,12 @@ func _run() -> void:
 	prototype.progression.offer_bramble_path = true
 	prototype.progression.reset_progression()
 	_check(
-		narrowed_milestone
-		and not narrowed_path_options.has(PhaseBProgression.PathId.BRAMBLE)
-		and narrowed_path_options.size() == PhaseBProgression.PathId.size() - 1
-		and not switched_off_line_draftable
+		not switched_off_line_draftable
 		and other_path_line_still_draftable
 		and prototype.progression._is_upgrade_draftable(
 			PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 		),
-		"a path switched off in the inspector leaves the milestone and every draft"
+		"a path switched off in the inspector leaves every draft"
 	)
 	prototype.reset_run()
 	prototype.set_process(false)
@@ -3682,18 +3670,9 @@ func _run() -> void:
 		"a Grazer that finishes a burst pauses far longer than its normal action cadence"
 	)
 	prototype.combat.reset_combat()
-	prototype.debug_advance_time(prototype.wave_director.primary_path_choice_seconds)
-	var primary_path_options := prototype.progression.get_pending_path_options()
-	_check(
-		prototype.choice_panel.visible
-		and prototype.choice_header.text == "PRIMARY PLANT PATH"
-		and primary_path_options.size() == PhaseBProgression.PathId.size()
-		and primary_path_options.has(PhaseBProgression.PathId.BRAMBLE)
-		and primary_path_options.has(PhaseBProgression.PathId.ROOT),
-		"the first path milestone offers every Plant path through the paused choice panel"
-	)
-	var bramble_choice_index := primary_path_options.find(PhaseBProgression.PathId.BRAMBLE)
-	prototype._choose_displayed_option(bramble_choice_index)
+	# Bramble is entered the only way any Adaptation is: by drafting one of its
+	# upgrade lines out of an ordinary level-up.
+	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT)
 	_check(
 		prototype.progression.has_path(PhaseBProgression.PathId.BRAMBLE)
 		and prototype.territory_field.is_bramble_enabled(),
@@ -4449,18 +4428,14 @@ func _run() -> void:
 
 	prototype._apply_progression_modifiers()
 
-	prototype.debug_advance_time(
-		prototype.wave_director.secondary_path_choice_seconds - prototype.get_elapsed_seconds()
-	)
-	var secondary_path_options := prototype.progression.get_pending_path_options()
+	# The pairing closes the same way it opened: a second Adaptation arrives as an
+	# upgrade line, never as a Path handed over on its own.
+	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.SEED_PRODUCTION)
 	_check(
-		prototype.choice_header.text == "SECONDARY PLANT PATH"
-		and secondary_path_options.size() == PhaseBProgression.PathId.size() - 1
-		and not secondary_path_options.has(PhaseBProgression.PathId.BRAMBLE),
-		"the second path milestone excludes the committed primary path and locks a two-path build"
+		prototype.progression.secondary_path == PhaseBProgression.PathId.SPORE
+		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE,
+		"drafting a second uncommitted line locks the run pairing without a Path screen"
 	)
-	var spore_choice_index := secondary_path_options.find(PhaseBProgression.PathId.SPORE)
-	prototype._choose_displayed_option(spore_choice_index)
 
 	prototype.progression._upgrade_offer_cursor = (
 		PhaseBProgression.UpgradeId.BLOOM_FORCE
@@ -7025,6 +7000,58 @@ func _run() -> void:
 	prototype.progression.reset_progression()
 	prototype._apply_progression_modifiers()
 
+	# A long relic description wraps inside its card instead of widening it. A
+	# Button's minimum width otherwise includes the whole unwrapped line, so the
+	# longest relic in the catalog was pushing the reward box past its own panel.
+	prototype.progression.reset_progression()
+	var widest_relic := 0
+	for catalog_id in range(PhaseBRelicCatalog.get_count()):
+		if (
+			PhaseBRelicCatalog.get_relic_description(catalog_id).length()
+			> PhaseBRelicCatalog.get_relic_description(widest_relic).length()
+		):
+			widest_relic = catalog_id
+	prototype._show_choice(
+		PhaseBPrototype.ChoiceKind.RELIC, PackedInt32Array([widest_relic])
+	)
+	# The card has to lay out before its size means anything.
+	await process_frame
+	await process_frame
+	var relic_card := prototype.choice_button_one
+	var card_fits := (
+		relic_card.size.x <= prototype.choice_panel.size.x
+		and relic_card.get_combined_minimum_size().x <= prototype.choice_panel.size.x
+	)
+	var wraps := relic_card.autowrap_mode != TextServer.AUTOWRAP_OFF
+	prototype._choice_kind = PhaseBPrototype.ChoiceKind.NONE
+	prototype._choice_ids.clear()
+	prototype.choice_panel.visible = false
+	_check(
+		wraps and card_fits,
+		"a long relic description wraps inside its card rather than widening the box"
+	)
+
+	# The tray has to hold a whole run's relics. Campaign awards twelve, so a row
+	# that stopped at six was hiding half of what the player had earned.
+	prototype.progression.reset_progression()
+	var campaign_relic_target := 14
+	for tray_relic in range(campaign_relic_target):
+		prototype.progression._owned_relics[tray_relic] = 1
+	prototype._update_relic_slots()
+	var shown := prototype.relic_slots.get_slot_count()
+	var every_relic_named := true
+	for tray_index in range(campaign_relic_target):
+		if prototype.relic_slots.get_slot_tooltip(tray_index).is_empty():
+			every_relic_named = false
+			break
+	prototype.progression.reset_progression()
+	prototype._update_relic_slots()
+	_check(
+		shown >= campaign_relic_target and every_relic_named,
+		"the relic tray shows a whole run's relics rather than stopping at six (%d)"
+			% shown
+	)
+
 	# --------------------------------------------------------------- Relic VFX
 	# Two of the document's VFX rules are mechanical rather than artistic, so they
 	# are enforced in code and checked here: a generated echo is drawn weaker than
@@ -7064,6 +7091,31 @@ func _run() -> void:
 		and is_equal_approx(first_lead_in, 0.0)
 		and second_lead_in >= prototype.overlay.cue_stagger_seconds - 0.001,
 		"a relic echo is drawn weaker than its source and same-frame accents are staggered"
+	)
+	# Spin is what carries the effects whose identity is rotation. It accumulates
+	# with the cue's age rather than with its progress, so a long-lived cue keeps
+	# turning instead of easing to a stop halfway through.
+	prototype.overlay.clear_relic_cues()
+	prototype.overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.GHOST,
+		Vector2(100.0, 100.0),
+		40.0,
+		Color.WHITE,
+		Vector2.RIGHT,
+		false,
+		1.0,
+		TerritoryPrototypeOverlay.RelicMotif.SWIRL,
+		2.0
+	)
+	var spun_cue: Object = prototype.overlay._relic_cues[0]
+	var spin_rate := float(spun_cue.spin)
+	var still_at_start := spin_rate * TAU * 0.0
+	var turned_after := spin_rate * TAU * 0.25
+	_check(
+		is_equal_approx(still_at_start, 0.0)
+		and turned_after > 0.0
+		and is_equal_approx(spin_rate, 2.0),
+		"a cue can carry a spin rate, so a rolling effect turns as it plays"
 	)
 	prototype.overlay.clear_relic_cues()
 
@@ -7738,6 +7790,43 @@ func _run() -> void:
 		and prototype.progression.get_evolution_upgrade_level() == 1,
 		"choosing the pairing grants Super Bloom and its rank-1 line immediately"
 	)
+
+	# An Evolution line's hover has to grow with the line. Every rank does something
+	# different, so a single "now" line threw away most of what the run had bought:
+	# the hover is the only place the finished build can be read back.
+	var evolution_upgrade_id := PhaseBEvolutions.get_evolution_upgrade_id(
+		PhaseBProgression.EvolutionId.SUPER_BLOOM
+	)
+	prototype._update_hud()
+	var hover_rank_one_tooltip := prototype._evolution_upgrade_slot.get_slot_tooltip(0)
+	prototype.progression._upgrade_levels[evolution_upgrade_id] = 3
+	prototype._apply_progression_modifiers()
+	prototype._update_hud()
+	var hover_rank_three_tooltip := prototype._evolution_upgrade_slot.get_slot_tooltip(0)
+	var hover_rank_one_text := prototype.evolutions.get_evolution_upgrade_rank_description(
+		evolution_upgrade_id,
+		1
+	)
+	var hover_rank_three_text := prototype.evolutions.get_evolution_upgrade_rank_description(
+		evolution_upgrade_id,
+		3
+	)
+	_check(
+		not hover_rank_one_text.is_empty()
+		and not hover_rank_three_text.is_empty()
+		and hover_rank_one_tooltip.contains(hover_rank_one_text)
+		and not hover_rank_one_tooltip.contains(hover_rank_three_text)
+		and hover_rank_three_tooltip.contains(hover_rank_one_text)
+		and hover_rank_three_tooltip.contains(hover_rank_three_text)
+		and hover_rank_three_tooltip.split("
+").size()
+		> hover_rank_one_tooltip.split("
+").size(),
+		"an Evolution hover lists every rank the run owns, not only the newest"
+	)
+	prototype.progression._upgrade_levels[evolution_upgrade_id] = 1
+	prototype._apply_progression_modifiers()
+	prototype._update_hud()
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
 	_check(
 		not prototype.progression.get_pending_upgrade_options().has(
@@ -7829,10 +7918,6 @@ func _run() -> void:
 		) == 1,
 		"the shortened timeline introduces its elite milestone"
 	)
-	var timeline_primary_index := prototype.progression.get_pending_path_options().find(
-		PhaseBProgression.PathId.SPORE
-	)
-	prototype._choose_displayed_option(timeline_primary_index)
 	prototype.debug_advance_time(
 		prototype.wave_director.boss_time_seconds
 		- prototype.wave_director.elite_time_seconds
@@ -7842,10 +7927,6 @@ func _run() -> void:
 		and prototype.is_wave_grace_period_active(),
 		"the Burrower waits through the grace period at its wave milestone"
 	)
-	var timeline_secondary_index := prototype.progression.get_pending_path_options().find(
-		PhaseBProgression.PathId.BLOOM
-	)
-	prototype._choose_displayed_option(timeline_secondary_index)
 	prototype.debug_advance_time(prototype.wave_director.wave_grace_period_seconds)
 	_check(
 		prototype.combat.has_active_boss(),

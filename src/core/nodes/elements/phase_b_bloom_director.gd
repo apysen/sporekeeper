@@ -830,7 +830,7 @@ func _scatter_petals(
 			source.direction_to(enemy_position),
 			false,
 			1.0,
-			TerritoryPrototypeOverlay.RelicMotif.PETAL
+			TerritoryPrototypeOverlay.RelicMotif.STREAK
 		)
 		_petals.append([
 			enemy_position,

@@ -916,6 +916,19 @@ func _fire_thistle(
 		and phyllotaxis_cycle_interval > 0
 		and thistle.firing_cycles % phyllotaxis_cycle_interval == 0
 	):
+		# The spiral packet has to be unmistakable against an ordinary clustered
+		# volley, so the cue turns as it plays rather than sitting still.
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.GHOST,
+			thistle.position,
+			thistle_range_pixels * 0.35,
+			Color("d7e86a"),
+			Vector2.ZERO,
+			false,
+			1.0,
+			TerritoryPrototypeOverlay.RelicMotif.SWIRL,
+			1.6
+		)
 		for bonus_index in range(phyllotaxis_bonus_thorns):
 			var spread_progress := (
 				0.5
@@ -1051,7 +1064,7 @@ func _note_vine_apical_hit(enemy_id: int, damage: float) -> void:
 			Vector2.ZERO,
 			false,
 			1.0,
-			TerritoryPrototypeOverlay.RelicMotif.BAND
+			TerritoryPrototypeOverlay.RelicMotif.RING
 		)
 	if _girdling.size() >= girdling_maximum_marks and not _girdling.has(enemy_id):
 		return
@@ -2323,7 +2336,7 @@ func _begin_normal_fruit_release() -> void:
 		_gourdvine_directions.clear()
 		for index in range(fruit_count):
 			_gourdvine_directions.append(_fruit_fan_offset(index, fruit_count, 0.42))
-		status_requested.emit("GOURDVINE — a weighted harvest is armed on the Cane tip.")
+		status_requested.emit("GOURDVINE — a weighted harvest is armed on the Vine tip.")
 		return
 	var origins := _get_normal_fruit_origins(fruit_count)
 	for index in range(fruit_count):

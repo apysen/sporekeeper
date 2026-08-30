@@ -5,22 +5,6 @@
 [ext_resource type="Script" uid="uid://nuttrlsbrksy" path="res://src/core/nodes/territory/prototype_overlay.gd" id="3_overlay"]
 [ext_resource type="Script" uid="uid://62m5bm78sii0" path="res://src/core/nodes/player/phase_b_player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://cb667b3kv5sg8" path="res://src/core/nodes/combat/phase_b_combat_director.gd" id="5_combat"]
-[ext_resource type="Texture2D" uid="uid://ckefuylanwpbv" path="res://assets/placeholder_art/cue_spray_stream.png" id="cue_0"]
-[ext_resource type="Texture2D" uid="uid://c1glau81u7xk0" path="res://assets/placeholder_art/cue_compost_heap.png" id="cue_1"]
-[ext_resource type="Texture2D" uid="uid://cj80fq3j1kp5a" path="res://assets/placeholder_art/cue_burr.png" id="cue_2"]
-[ext_resource type="Texture2D" uid="uid://beiptkehcxgp2" path="res://assets/placeholder_art/cue_maw.png" id="cue_3"]
-[ext_resource type="Texture2D" uid="uid://bond0mpnd7m" path="res://assets/placeholder_art/cue_petal.png" id="cue_4"]
-[ext_resource type="Texture2D" uid="uid://dgifsmv7bncxe" path="res://assets/placeholder_art/cue_thorn.png" id="cue_5"]
-[ext_resource type="Texture2D" uid="uid://bsvcs8pj6k1f4" path="res://assets/placeholder_art/cue_ghost_ring.png" id="cue_6"]
-[ext_resource type="Texture2D" uid="uid://bm2on6cwis202" path="res://assets/placeholder_art/cue_band.png" id="cue_7"]
-[ext_resource type="Texture2D" uid="uid://rkcgsgafk4eh" path="res://assets/placeholder_art/cue_tumbleweed.png" id="cue_8"]
-[ext_resource type="Texture2D" uid="uid://cdk2rct1tobsa" path="res://assets/placeholder_art/cue_seedling.png" id="cue_9"]
-[ext_resource type="Texture2D" uid="uid://bpi3qx67yfths" path="res://assets/placeholder_art/cue_knot.png" id="cue_10"]
-[ext_resource type="Texture2D" uid="uid://bh3nkpfe6u03a" path="res://assets/placeholder_art/cue_root_pulse.png" id="cue_11"]
-[ext_resource type="Texture2D" uid="uid://cva5cvkuht1tn" path="res://assets/placeholder_art/cue_runner.png" id="cue_12"]
-[ext_resource type="Texture2D" uid="uid://c6oio5wbrg8a3" path="res://assets/placeholder_art/cue_cutting.png" id="cue_13"]
-[ext_resource type="Texture2D" uid="uid://dnuqxgfl3plmr" path="res://assets/placeholder_art/cue_fuse_spark.png" id="cue_14"]
-[ext_resource type="Texture2D" uid="uid://p31nc4pdqa37" path="res://assets/placeholder_art/cue_falling_body.png" id="cue_15"]
 [ext_resource type="Script" uid="uid://bfrtbxapgejnc" path="res://src/core/nodes/elements/phase_b_vine_whip.gd" id="5_vinewhip"]
 [ext_resource type="Script" uid="uid://dsf82wv3j6wir" path="res://src/core/nodes/progression/phase_b_progression.gd" id="6_progression"]
 [ext_resource type="Resource" path="res://data/territory/phase_a_tuning.tres" id="7_territory_tuning"]
@@ -58,19 +42,14 @@
 [ext_resource type="StyleBox" path="res://assets/ui/tray_style.tres" id="31_tray_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/slot_style.tres" id="35_slot_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/divider_style.tres" id="36_divider_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/button_biomass_style.tres" id="37_biomass_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_hp_track.tres" id="90_wx_hp_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_hp_fill.tres" id="91_wx_hp_fill"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_territory_track.tres" id="92_wx_territory_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_territory_fill.tres" id="93_wx_territory_fill"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_xp_track.tres" id="94_wx_xp_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_xp_fill.tres" id="95_wx_xp_fill"]
-[ext_resource type="StyleBox" path="res://assets/ui/wx_system_track.tres" id="96_wx_system_track"]
-[ext_resource type="StyleBox" path="res://assets/ui/wx_system_fill.tres" id="97_wx_system_fill"]
-[ext_resource type="Script" uid="uid://dr7wbvhjdbbha" path="res://src/core/nodes/run/phase_b_metabolism_button.gd" id="98_metabolism_button"]
 [ext_resource type="Shader" uid="uid://c77hgm8vg3lm7" path="res://assets/shaders/slot_symbol.gdshader" id="99_slot_symbol_shader"]
 [ext_resource type="Script" uid="uid://dgs51bp3axarv" path="res://src/core/nodes/economy/phase_b_clover_odds.gd" id="100_clover_odds"]
 [ext_resource type="Script" uid="uid://c5cdk57s4o6nv" path="res://src/core/nodes/economy/phase_b_wager_selector.gd" id="101_wager_selector"]
@@ -92,7 +71,7 @@
 [ext_resource type="AudioStream" uid="uid://d4b547i831715" path="res://assets/sfx/reel_click.wav" id="115_reel_sfx"]
 [ext_resource type="AudioStream" uid="uid://claxf5xw710a3" path="res://assets/sfx/jackpot.wav" id="116_jackpot_sfx"]
 [ext_resource type="Texture2D" uid="uid://c5i5acfk08rlo" path="res://assets/art/seed/seed.png" id="117_seed_art"]
-[ext_resource type="Texture2D" uid="uid://bjtqiob5lt3x1" path="res://assets/art/bloom/bloom_512x512_teal.png" id="118_bloom_art"]
+[ext_resource type="Texture2D" uid="uid://bjtqiob5lt3x1" path="res://assets/art/adaptation_icons/bloom/bloom_512x512_teal.png" id="118_bloom_art"]
 [ext_resource type="Script" uid="uid://dtiy1kqr3wume" path="res://src/core/nodes/territory/territory_aftergrowth_layer.gd" id="119_aftergrowth_layer"]
 [ext_resource type="Script" uid="uid://bwe81wquypf6w" path="res://src/core/nodes/territory/territory_obstacle_layer.gd" id="120_obstacle_layer"]
 [ext_resource type="StyleBox" uid="uid://b5op5esvwk6sv" path="res://assets/ui/wx_fantasy_button.tres" id="121_btn"]
@@ -104,6 +83,14 @@
 [ext_resource type="Texture2D" uid="uid://ey44dnfyoi0r" path="res://assets/ui/kenney/frame_circle.png" id="127_circle_frame"]
 [ext_resource type="StyleBox" path="res://assets/ui/circle_slot_style.tres" id="128_circle_style"]
 [ext_resource type="Texture2D" uid="uid://clat12ctf147k" path="res://assets/ui/kenney/divider-fade-003.png" id="129_divider_fade"]
+[ext_resource type="Texture2D" uid="uid://d04lnhgnrgxss" path="res://assets/placeholder_art/vfx_particle.png" id="vfx_0"]
+[ext_resource type="Texture2D" uid="uid://q58fdohctaku" path="res://assets/placeholder_art/vfx_glow.png" id="vfx_1"]
+[ext_resource type="Texture2D" uid="uid://bwwftdqy810w5" path="res://assets/placeholder_art/vfx_ring.png" id="vfx_2"]
+[ext_resource type="Texture2D" uid="uid://crw6fpqd64qjv" path="res://assets/placeholder_art/vfx_shockwave.png" id="vfx_3"]
+[ext_resource type="Texture2D" uid="uid://xkchv5u6ke3n" path="res://assets/placeholder_art/vfx_streak.png" id="vfx_4"]
+[ext_resource type="Texture2D" uid="uid://2lubkivbn8ul" path="res://assets/placeholder_art/vfx_spark.png" id="vfx_5"]
+[ext_resource type="Texture2D" uid="uid://cia0s6g53yajr" path="res://assets/placeholder_art/vfx_burst.png" id="vfx_6"]
+[ext_resource type="Texture2D" uid="uid://daxxj0uh6aukd" path="res://assets/placeholder_art/vfx_swirl.png" id="vfx_7"]
 
 [sub_resource type="ShaderMaterial" id="BotanicalArtMaterial"]
 shader = ExtResource("125_botanical_shader")
@@ -340,6 +327,12 @@ bloom_director = NodePath("../../Paths/BloomDirector")
 pruning_director = NodePath("../../Paths/PruningDirector")
 adaptation_director = NodePath("../../Paths/AdaptationDirector")
 metabolism = NodePath("../Metabolism")
+offer_spore_path = false
+offer_bloom_path = false
+offer_bramble_path = false
+offer_root_path = false
+offer_pruning_path = false
+offer_fruit_path = false
 
 [node name="Evolutions" type="Node" parent="GameplayComponents" unique_id=1946342541 node_paths=PackedStringArray("progression")]
 script = ExtResource("28_evolutions")
@@ -467,11 +460,10 @@ progression = NodePath("../../GameplayComponents/Progression")
 relic_director = NodePath("../../GameplayComponents/RelicDirector")
 network_bonus_per_level = 0.25
 
-[node name="ManEater" type="Node2D" parent="Paths" unique_id=771204553 node_paths=PackedStringArray("territory_field", "overlay", "combat", "progression")]
+[node name="ManEater" type="Node2D" parent="Paths" unique_id=771204553 node_paths=PackedStringArray("overlay", "combat", "progression")]
 z_index = 3
 position = Vector2(24, 104)
 script = ExtResource("19_man_eater")
-territory_field = NodePath("../../TerritoryField")
 overlay = NodePath("../../PrototypeOverlay")
 combat = NodePath("../../CombatDirector")
 progression = NodePath("../../GameplayComponents/Progression")
@@ -537,9 +529,9 @@ position = Vector2(24, 104)
 script = ExtResource("3_overlay")
 tuning = ExtResource("7_territory_tuning")
 territory_field = NodePath("../TerritoryField")
-relic_motif_textures = Array[Texture2D]([ExtResource("cue_0"), ExtResource("cue_1"), ExtResource("cue_2"), ExtResource("cue_3"), ExtResource("cue_4"), ExtResource("cue_5"), ExtResource("cue_6"), ExtResource("cue_7"), ExtResource("cue_8"), ExtResource("cue_9"), ExtResource("cue_10"), ExtResource("cue_11"), ExtResource("cue_12"), ExtResource("cue_13"), ExtResource("cue_14"), ExtResource("cue_15")])
 seed_texture = ExtResource("117_seed_art")
 bloom_texture = ExtResource("118_bloom_art")
+relic_motif_textures = Array[Texture2D]([ExtResource("vfx_0"), ExtResource("vfx_1"), ExtResource("vfx_2"), ExtResource("vfx_3"), ExtResource("vfx_4"), ExtResource("vfx_5"), ExtResource("vfx_6"), ExtResource("vfx_7")])
 
 [node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "display_settings", "root_director", "vine_whip", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile", "heavy_grazer_profile", "rusher_profile", "siege_corruptor_profile")]
 z_index = 3
@@ -569,7 +561,7 @@ xp_collect_sfx = ExtResource("16_xp_sfx")
 plant_explosion_sfx = ExtResource("17_explosion_sfx")
 old_growth_sfx = ExtResource("18_old_growth_sfx")
 
-[node name="VineWhip" type="Node2D" parent="CombatDirector" node_paths=PackedStringArray("territory_field")]
+[node name="VineWhip" type="Node2D" parent="CombatDirector" unique_id=433787726 node_paths=PackedStringArray("territory_field")]
 script = ExtResource("5_vinewhip")
 territory_field = NodePath("../../TerritoryField")
 
@@ -1161,7 +1153,7 @@ text = "?"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Path1EmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path1Frame/Path1EmblemFrame"]
+[node name="Path1EmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path1Frame/Path1EmblemFrame" unique_id=72572557]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -1262,7 +1254,7 @@ text = "?"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Path2EmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path2Frame/Path2EmblemFrame"]
+[node name="Path2EmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/Path2Frame/Path2EmblemFrame" unique_id=441746165]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -1424,7 +1416,7 @@ text = "?"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="SupportEmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/SupportFrame/SupportEmblemFrame"]
+[node name="SupportEmblemIcon" type="TextureRect" parent="Interface/SidePanel/UpgradeSection/SupportFrame/SupportEmblemFrame" unique_id=1489538321]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -1517,10 +1509,10 @@ autowrap_mode = 2
 anchors_preset = 0
 offset_left = 102.0
 offset_top = 12.0
-offset_right = 476.0
+offset_right = 616.0
 offset_bottom = 46.0
 script = ExtResource("20_upgrade_slots")
-slot_count = 6
+slot_count = 14
 slot_size = 33.0
 slot_spacing = 4.0
 level_font_size = 7
@@ -1590,6 +1582,7 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "Seed Production  1/5
 1 Seed per kill threshold"
+autowrap_mode = 2
 
 [node name="Choice2" type="Button" parent="Interface/ChoicePanel" unique_id=1706058646]
 layout_mode = 0
@@ -1604,6 +1597,7 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "Growth Mass  1/5
 +22% Seed growth mass"
+autowrap_mode = 2
 
 [node name="Choice3" type="Button" parent="Interface/ChoicePanel" unique_id=178445218]
 layout_mode = 0
@@ -1619,6 +1613,7 @@ theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "Seed Production  1/5
 One fewer kill required per Seed
 ROOTED 1.74x → Seeds germinate in 0.78s instead of 1.35s"
+autowrap_mode = 2
 
 [node name="Choice4" type="Button" parent="Interface/ChoicePanel" unique_id=612884907]
 layout_mode = 0
@@ -1633,6 +1628,7 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "Root
 Age Green into resistant, high-yield territory."
+autowrap_mode = 2
 
 [node name="Reroll" type="Button" parent="Interface/ChoicePanel" unique_id=884213770]
 layout_mode = 0
@@ -1712,9 +1708,9 @@ color = Color(0.003, 0.008, 0.011, 0.82)
 
 [node name="DebugHelp" type="Label" parent="Interface/PauseOverlay" unique_id=2105709273]
 layout_mode = 0
-offset_left = 780.0
+offset_left = 831.0
 offset_top = 238.0
-offset_right = 1000.0
+offset_right = 1051.0
 offset_bottom = 311.0
 theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
 theme_override_font_sizes/font_size = 10

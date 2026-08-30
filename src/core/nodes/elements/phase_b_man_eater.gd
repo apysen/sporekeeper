@@ -202,7 +202,7 @@ func _bite(site: Vector2) -> void:
 			Vector2.ZERO,
 			false,
 			1.0,
-			TerritoryPrototypeOverlay.RelicMotif.MAW
+			TerritoryPrototypeOverlay.RelicMotif.BURST
 		)
 	if taken > 0:
 		status_requested.emit("MAN-EATER — the jaws close on %d." % taken)

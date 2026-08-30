@@ -104,22 +104,23 @@ enum RelicCue {
 ## so the layer works with no art wired at all.
 enum RelicMotif {
 	NONE,
-	SPRAY,
-	HEAP,
-	BURR,
-	MAW,
-	PETAL,
-	THORN,
-	GHOST,
-	BAND,
-	TUMBLEWEED,
-	SEEDLING,
-	KNOT,
-	ROOT_PULSE,
-	RUNNER,
-	CUTTING,
-	FUSE,
-	FALLING_BODY,
+	## A soft dab. One is a droplet; a line of them is a spray; a scatter is a
+	## puff. Most of the pool is this sprite drawn more than once.
+	PARTICLE,
+	## The same idea spread wide and soft: a charge, a primed relic.
+	GLOW,
+	## An expanding wave, and the shape an echo borrows.
+	RING,
+	## A wave with a bright leading edge, for something travelling outward.
+	SHOCKWAVE,
+	## A soft taper pointing along the cue's heading.
+	STREAK,
+	## A small hot accent: a chip off basalt, the head of a fuse.
+	SPARK,
+	## Radial spokes: a detonation, an eruption, a synchronised volley.
+	BURST,
+	## A soft spiral, for the effects whose identity is rotation.
+	SWIRL,
 }
 
 
@@ -141,6 +142,10 @@ class RelicCueVisual:
 	var intensity := 1.0
 	var color := Color.WHITE
 	var motif := RelicMotif.NONE
+	## Turns per second while the cue plays. Zero holds the sprite on its heading,
+	## which is what a streak or a ring wants; a rolling or unwinding effect sets it
+	## so the motion is in the drawing rather than in the art.
+	var spin := 0.0
 
 
 class PulseVisual:
@@ -1312,7 +1317,8 @@ func spawn_relic_cue(
 	toward: Vector2 = Vector2.ZERO,
 	generated: bool = false,
 	source_intensity: float = 1.0,
-	motif: int = RelicMotif.NONE
+	motif: int = RelicMotif.NONE,
+	spin: float = 0.0
 ) -> void:
 	## Draw one relic cue.
 	##
@@ -1335,6 +1341,7 @@ func spawn_relic_cue(
 	else:
 		cue.intensity = clampf(source_intensity, 0.0, 1.0)
 	cue.motif = motif
+	cue.spin = spin
 	cue.lead_in = cue_stagger_seconds * float(mini(_cues_this_frame, cue_stagger_limit))
 	_cues_this_frame += 1
 	_cue_frame_remaining = 0.0001
@@ -1375,20 +1382,46 @@ func _draw_relic_cues() -> void:
 		if heading.length_squared() <= 0.0001:
 			heading = Vector2.RIGHT
 		heading = heading.normalized()
+		var spun := heading.angle() + cue.spin * TAU * (cue.age - cue.lead_in)
 		var motif_texture := _relic_motif_texture(cue.motif)
 		if motif_texture != null:
-			# The motif is the cue when there is art for it. It is drawn along the
-			# cue's own heading and fades on the same curve as the shape it replaces,
-			# so wiring art in changes how a relic looks and not how it reads.
-			var extent := cue.radius * (0.55 + 0.45 * progress)
-			draw_set_transform(cue.position, heading.angle(), Vector2.ONE)
-			draw_texture_rect(
-				motif_texture,
-				Rect2(Vector2(-extent, -extent) * 0.5, Vector2(extent, extent)),
-				false,
-				tint
-			)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			# The art is eight soft primitives; anything with structure is that art
+			# drawn more than once along a path. A spray is one particle down five
+			# streams, a travelling pulse is one along its route -- cheaper than a
+			# bespoke sprite per relic, and it keeps the pool looking like one family.
+			match cue.kind:
+				RelicCue.SPRAY:
+					for stream in range(5):
+						var spread := heading.rotated(deg_to_rad(lerpf(-45.0, 45.0, float(stream) / 4.0)))
+						for step in range(4):
+							var reach := cue.radius * (0.25 + 0.25 * float(step)) * progress
+							_draw_motif(
+								motif_texture,
+								cue.position + spread * reach,
+								spread.angle(),
+								cue.radius * 0.22,
+								tint
+							)
+				RelicCue.TRAVELLING:
+					for step in range(4):
+						var trail := progress - float(step) * 0.10
+						if trail <= 0.0:
+							continue
+						_draw_motif(
+							motif_texture,
+							cue.position + heading * cue.radius * trail,
+							spun,
+							cue.radius * 0.20 * (1.0 - float(step) * 0.18),
+							Color(tint, tint.a * (1.0 - float(step) * 0.22))
+						)
+				_:
+					_draw_motif(
+						motif_texture,
+						cue.position,
+						spun,
+						cue.radius * (0.55 + 0.45 * progress),
+						tint
+					)
 			continue
 		match cue.kind:
 			RelicCue.SPRAY:
@@ -1424,6 +1457,23 @@ func _draw_relic_cues() -> void:
 				var closing := cue.radius * (1.0 - progress)
 				draw_arc(cue.position, closing, -0.6, 0.6, 10, tint, 3.0, true)
 				draw_arc(cue.position, closing, PI - 0.6, PI + 0.6, 10, tint, 3.0, true)
+
+
+func _draw_motif(
+	texture: Texture2D,
+	at: Vector2,
+	rotation: float,
+	extent: float,
+	tint: Color
+) -> void:
+	draw_set_transform(at, rotation, Vector2.ONE)
+	draw_texture_rect(
+		texture,
+		Rect2(Vector2(-extent, -extent) * 0.5, Vector2(extent, extent)),
+		false,
+		tint
+	)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _relic_motif_texture(motif: int) -> Texture2D:

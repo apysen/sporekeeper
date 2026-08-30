@@ -22,12 +22,16 @@ signal cleanup_began
 @export_range(20.0, 1800.0, 1.0) var boss_time_seconds := 360.0
 ## Elapsed run time in seconds when final-invasion spawning begins.
 @export_range(30.0, 1800.0, 1.0) var final_invasion_time_seconds := 600.0
+## Seconds over which pressure ramps from opening to full: spawn cadence, pack
+## size, enemy health and contact damage all read it.
+##
+## Deliberately separate from the final invasion. Those are two different
+## questions -- how fast the run gets hard, and when the last wave arrives -- and
+## tying them together is what made a longer run a slower one rather than a bigger
+## one. Zero falls back to the invasion time, which is the behaviour Quick wants.
+@export_range(0.0, 1800.0, 1.0) var pressure_ramp_seconds := 0.0
 ## Elapsed run time in seconds when reinforcements stop and cleanup begins.
 @export_range(30.0, 1800.0, 1.0) var cleanup_time_seconds := 690.0
-## Elapsed run time when the player commits to the first of Plant's three paths.
-@export_range(0.0, 1800.0, 1.0) var primary_path_choice_seconds := 75.0
-## Elapsed run time when the player commits to a second path and locks the run pairing.
-@export_range(0.0, 1800.0, 1.0) var secondary_path_choice_seconds := 180.0
 ## Earliest elapsed run time at which an evolved run is offered its support path.
 ## A run that evolves later than this is offered the path as soon as it evolves.
 @export_range(0.0, 1800.0, 1.0) var tertiary_path_choice_seconds := 480.0
@@ -141,22 +145,32 @@ func configure_mode(mode: int) -> void:
 	boss_time_seconds = 900.0
 	final_invasion_time_seconds = 1500.0
 	cleanup_time_seconds = 1725.0
-	primary_path_choice_seconds = 180.0
-	secondary_path_choice_seconds = 450.0
+	# Pressure builds on its own clock rather than across the whole timeline. A
+	# thirty-minute run should be a bigger run than a twelve-minute one, not a
+	# slower one, so it reaches full pressure around the boss and then holds there
+	# until the invasion rather than creeping toward it for twenty-five minutes.
+	pressure_ramp_seconds = 900.0
 	tertiary_path_choice_seconds = 1200.0
-	early_spawn_interval_seconds = 1.35
+	# The opening was slower than Quick's, not faster: a longer run was reading as
+	# an emptier one. Campaign now opens denser than Quick and doubles its packs
+	# before the boss instead of at the fifteen-minute mark.
+	early_spawn_interval_seconds = 0.95
 	late_spawn_interval_seconds = 0.38
 	final_spawn_interval_seconds = 0.14
+	late_pack_progress = 0.45
 	final_health_scale = 3.0
 	final_contact_damage_scale = 2.0
-	saboteur_intro_seconds = 188.0
-	corruptor_intro_seconds = 450.0
-	colonizer_intro_seconds = 713.0
-	warden_intro_seconds = 1050.0
-	heavy_grazer_intro_seconds = 825.0
-	rusher_intro_seconds = 750.0
-	siege_corruptor_intro_seconds = 1050.0
-	elite_modifier_intro_seconds = 750.0
+	# Role introductions follow the pressure ramp rather than the whole timeline.
+	# Stretched across thirty minutes, the specialists that make a wave feel
+	# different arrived long after the wave that needed them.
+	saboteur_intro_seconds = 115.0
+	corruptor_intro_seconds = 270.0
+	colonizer_intro_seconds = 430.0
+	warden_intro_seconds = 630.0
+	heavy_grazer_intro_seconds = 495.0
+	rusher_intro_seconds = 450.0
+	siege_corruptor_intro_seconds = 630.0
+	elite_modifier_intro_seconds = 450.0
 
 
 func _ready() -> void:
@@ -387,8 +401,9 @@ func _apply_enemy_spawn_scaling() -> void:
 
 
 func _pressure_progress() -> float:
-	return clampf(
-		elapsed_seconds / maxf(1.0, final_invasion_time_seconds),
-		0.0,
-		1.0
+	var ramp := (
+		pressure_ramp_seconds
+		if pressure_ramp_seconds > 0.0
+		else final_invasion_time_seconds
 	)
+	return clampf(elapsed_seconds / maxf(1.0, ramp), 0.0, 1.0)

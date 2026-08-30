@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cva5cvkuht1tn"
-path="res://.godot/imported/cue_runner.png-f588ceb0e5f3c851fd246ff00f25b644.ctex"
+uid="uid://crw6fpqd64qjv"
+path="res://.godot/imported/vfx_shockwave.png-1a77436a6bbe3fe436b0af656d021aad.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/placeholder_art/cue_runner.png"
-dest_files=["res://.godot/imported/cue_runner.png-f588ceb0e5f3c851fd246ff00f25b644.ctex"]
+source_file="res://assets/placeholder_art/vfx_shockwave.png"
+dest_files=["res://.godot/imported/vfx_shockwave.png-1a77436a6bbe3fe436b0af656d021aad.ctex"]
 
 [params]
 

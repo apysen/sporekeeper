@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bond0mpnd7m"
-path="res://.godot/imported/cue_petal.png-84a053677461c9d0b6e56ace66bf7236.ctex"
+uid="uid://bwwftdqy810w5"
+path="res://.godot/imported/vfx_ring.png-6ec4667c7ec4e6c4a65205c2f3fa2e28.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/placeholder_art/cue_petal.png"
-dest_files=["res://.godot/imported/cue_petal.png-84a053677461c9d0b6e56ace66bf7236.ctex"]
+source_file="res://assets/placeholder_art/vfx_ring.png"
+dest_files=["res://.godot/imported/vfx_ring.png-6ec4667c7ec4e6c4a65205c2f3fa2e28.ctex"]
 
 [params]
 

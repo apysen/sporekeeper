@@ -7,7 +7,6 @@ signal xp_changed(level: int, current_xp: int, required_xp: int)
 signal upgrade_choice_requested(options: PackedInt32Array)
 signal rerolls_changed(remaining: int)
 signal upgrades_changed
-signal path_choice_requested(options: PackedInt32Array, selecting_primary: bool)
 signal paths_changed
 signal biomass_changed(current: float, per_second: float)
 signal metabolism_changed
@@ -28,10 +27,6 @@ enum PathId {
 
 const UNSELECTED_PATH := -1
 
-enum PathSlot {
-	PRIMARY,
-	SECONDARY,
-}
 ## Draft option identifying the pair evolution rather than an upgrade line.
 const EVOLUTION_DRAFT_OPTION := -2
 
@@ -263,9 +258,6 @@ var _owned_relics := PackedByteArray()
 var _pending_upgrade_options := PackedInt32Array()
 var _pending_upgrade_is_support_choice := false
 var _pending_relic_options := PackedInt32Array()
-var _pending_path_options := PackedInt32Array()
-var _pending_path_is_primary := true
-var _pending_path_slot := PathSlot.PRIMARY
 var _upgrade_slot_order := PackedInt32Array()
 var _upgrade_offer_cursor := 0
 var _relic_rerolls_remaining := 0
@@ -325,51 +317,12 @@ func reset_progression() -> void:
 	_pending_upgrade_options.clear()
 	_pending_upgrade_is_support_choice = false
 	_pending_relic_options.clear()
-	_pending_path_options.clear()
-	_pending_path_is_primary = true
-	_pending_path_slot = PathSlot.PRIMARY
 	_upgrade_slot_order.clear()
 	_upgrade_levels.resize(UpgradeId.size())
 	_upgrade_levels.fill(0)
 	_owned_relics.resize(PhaseBRelicCatalog.get_count())
 	_owned_relics.fill(0)
 	_emit_all_state()
-
-func request_primary_path_choice() -> bool:
-	if primary_path != UNSELECTED_PATH or _has_any_pending_choice():
-		return false
-	_pending_path_is_primary = true
-	_pending_path_slot = PathSlot.PRIMARY
-	_pending_path_options.clear()
-	for path_id in range(PathId.size()):
-		if not is_path_offered(path_id):
-			continue
-		_pending_path_options.append(path_id)
-	if _pending_path_options.is_empty():
-		# Every path is switched off for development, so the milestone simply never
-		# fires rather than presenting an empty choice.
-		return false
-	path_choice_requested.emit(_pending_path_options.duplicate(), true)
-	return true
-
-func request_secondary_path_choice() -> bool:
-	if (
-		primary_path == UNSELECTED_PATH
-		or secondary_path != UNSELECTED_PATH
-		or _has_any_pending_choice()
-	):
-		return false
-	_pending_path_is_primary = false
-	_pending_path_slot = PathSlot.SECONDARY
-	_pending_path_options.clear()
-	for path_id in range(PathId.size()):
-		if path_id == primary_path or not is_path_offered(path_id):
-			continue
-		_pending_path_options.append(path_id)
-	if _pending_path_options.is_empty():
-		return false
-	path_choice_requested.emit(_pending_path_options.duplicate(), false)
-	return true
 
 func is_path_offered(path_id: int) -> bool:
 	match path_id:
@@ -433,31 +386,6 @@ func get_upgrade_slot_count() -> int:
 	if evolution_status == EvolutionStatus.EVOLVED:
 		return upgrade_slot_count + evolution_bonus_upgrade_slots
 	return upgrade_slot_count
-
-func choose_path(path_id: int) -> bool:
-	if _pending_path_options.find(path_id) == -1:
-		return false
-	if _pending_path_is_primary:
-		primary_path = path_id
-	else:
-		secondary_path = path_id
-	_pending_path_options.clear()
-	if evolutions != null:
-		# Changing either pairing Path invalidates whatever it would have evolved into.
-		evolutions.clear_active_evolution()
-	_update_evolution_readiness()
-	paths_changed.emit()
-	_try_request_level_up()
-	return true
-
-func get_pending_path_options() -> PackedInt32Array:
-	return _pending_path_options.duplicate()
-
-func has_pending_path_choice() -> bool:
-	return not _pending_path_options.is_empty()
-
-func is_pending_primary_path_choice() -> bool:
-	return _pending_path_is_primary
 
 func has_primary_path() -> bool:
 	return primary_path != UNSELECTED_PATH
@@ -526,7 +454,6 @@ func debug_select_tertiary_path(path_id: int) -> bool:
 	if path_id < 0 or path_id >= PathId.size() or is_evolution_path(path_id):
 		return false
 	tertiary_path = path_id
-	_pending_path_options.clear()
 	paths_changed.emit()
 	return true
 
@@ -542,7 +469,6 @@ func debug_select_paths(first_path: int, second_path: int) -> bool:
 	primary_path = first_path
 	secondary_path = second_path
 	tertiary_path = UNSELECTED_PATH
-	_pending_path_options.clear()
 	if evolutions != null:
 		evolutions.reset_evolutions()
 	paths_changed.emit()
@@ -1177,13 +1103,13 @@ func get_upgrade_description(upgrade_id: int) -> String:
 		UpgradeId.THISTLE_NEEDLEPOINT:
 			return "+10 percentage points Thistle critical chance (2x damage)"
 		UpgradeId.VINE_ELONGATION:
-			return "+20% Cane sweep reach"
+			return "+20% Vine sweep reach"
 		UpgradeId.VINE_LIGNIFICATION:
-			return "+25% Cane sweep damage"
+			return "+25% Vine sweep damage"
 		UpgradeId.VINE_TURGOR:
-			return "+15% Cane attack speed"
+			return "+15% Vine attack speed"
 		UpgradeId.VINE_APICAL_DOMINANCE:
-			return "+25% damage in the outermost 25% of the Cane sweep"
+			return "+25% damage in the outermost 25% of the Vine sweep"
 		UpgradeId.FRUIT_SET:
 			return "+1 Fruit per release"
 		UpgradeId.FRUIT_RIPENING:
@@ -1214,26 +1140,6 @@ static func get_path_name(path_id: int) -> String:
 			return "Fruit"
 	return "Unchosen"
 
-static func get_path_description(path_id: int) -> String:
-	match path_id:
-		PathId.SPORE:
-			return "Seed catalysts turn kills into deliberate bursts of new Green."
-		PathId.BLOOM:
-			return "Periodic radial surges reclaim space and convert hostile territory."
-		PathId.BRAMBLE:
-			return "Your Green entangles, slows, roots, and repels whatever stands on it."
-		PathId.ROOT:
-			return "Age Green into a Root Network that amplifies everything else your build does."
-		PathId.PRUNING:
-			return "Burn the Green under your feet into an orbiting ring of blades."
-		PathId.THISTLE:
-			return "Plant two stationary Thistles on your Green; they fire thorns and replant when their support is lost."
-		PathId.VINE:
-			return "Grow Cane into a green lash that auto-targets the densest valid sector."
-		PathId.FRUIT:
-			return "Roll painted Fruit toward enemy crowds, trail Green, then burst into a terminal foothold."
-	return ""
-
 static func get_relic_name(relic_id: int) -> String:
 	return PhaseBRelicCatalog.get_relic_name(relic_id)
 
@@ -1250,7 +1156,7 @@ func get_relic_requirement_text(relic_id: int) -> String:
 	return PhaseBRelicCatalog.get_pool_name(PhaseBRelicCatalog.get_pool(relic_id))
 
 func _try_request_level_up() -> void:
-	if not _pending_upgrade_options.is_empty() or not _pending_path_options.is_empty():
+	if not _pending_upgrade_options.is_empty():
 		return
 	var required := get_required_xp()
 	if current_xp < required:
@@ -1403,8 +1309,7 @@ func _update_evolution_readiness() -> void:
 
 func _has_any_pending_choice() -> bool:
 	return (
-		not _pending_path_options.is_empty()
-		or not _pending_upgrade_options.is_empty()
+		not _pending_upgrade_options.is_empty()
 		or not _pending_relic_options.is_empty()
 	)
 

@@ -309,7 +309,7 @@ func _spring_knot(index: int, knot_position: Vector2) -> void:
 			Vector2.ZERO,
 			false,
 			1.0,
-			TerritoryPrototypeOverlay.RelicMotif.KNOT
+			TerritoryPrototypeOverlay.RelicMotif.SHOCKWAVE
 		)
 
 
@@ -350,7 +350,20 @@ func _advance_briarballs(delta: float) -> void:
 			)
 			combat.knockback_enemy_from(enemy_id, next_position, briarball_repulsion_pixels)
 		if overlay != null:
-			overlay.spawn_hostile_pulse(next_position, briarball_contact_pixels)
+			# Rotation tied to how fast it is actually rolling, so a ball crossing the
+			# field spins visibly harder than one grinding through a crowd. The tumble
+			# is the whole read on a Briarball: without it, it is a sliding disc.
+			overlay.spawn_relic_cue(
+				TerritoryPrototypeOverlay.RelicCue.TRAVELLING,
+				next_position,
+				briarball_contact_pixels * 2.0,
+				Color("b06fd7"),
+				heading,
+				false,
+				1.0,
+				TerritoryPrototypeOverlay.RelicMotif.SWIRL,
+				briarball_speed / maxf(1.0, briarball_contact_pixels * TAU)
+			)
 
 
 func _find_briarball_target(from_position: Vector2, hit: Dictionary) -> Vector2:
@@ -432,7 +445,7 @@ func _on_enemy_left_green(
 			Vector2.ZERO,
 			false,
 			1.0,
-			TerritoryPrototypeOverlay.RelicMotif.BURR
+			TerritoryPrototypeOverlay.RelicMotif.RING
 		)
 
 

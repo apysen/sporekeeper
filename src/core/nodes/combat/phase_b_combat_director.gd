@@ -626,7 +626,18 @@ class PendingEruptionState:
 @export_group("Rendering Performance")
 ## Above this population, cosmetic battlefield detail is reduced while role colours,
 ## hit feedback, status effects, and major-enemy telegraphs remain.
+## Active enemies at which ornamental detail is dropped from pickups and
+## projectiles. It no longer touches enemy bodies: those are drawn from baked art,
+## so density never costs the player the ability to tell what is coming at them.
 @export_range(20, 300, 1) var crowd_visual_lod_enemy_threshold := 80
+## Padding around a baked role's art, in pixels. The art reaches past the body
+## radius -- a Grazer's spines, a Rusher's nose and speed streaks -- so the canvas
+## has to be wider than the enemy it draws.
+@export_range(8.0, 128.0, 1.0) var enemy_art_bake_padding := 26.0
+## Per-enemy art variants baked per role. The Heavy Grazer rotates its plating by
+## its own id, so baking a handful keeps that variation instead of making every
+## one of them identical.
+@export_range(1, 16, 1) var enemy_art_variants := 6
 
 @export_group("Enemy Navigation")
 ## Seconds between navigation-field rebuild checks and direct-path visibility refreshes.
@@ -687,6 +698,14 @@ var _temporary_attack_remaining := 0.0
 ## The enemy that died most recently, readable for the duration of the kill signal
 ## so a relic can tell whose corpse it is looking at.
 var _last_killed_enemy_id := -1
+## Baked role art, keyed by role * enemy_art_variants + variant. Empty until the
+## bake completes, and left empty on a driver that cannot render to a viewport.
+var _enemy_art := {}
+## Body radius each role was baked at, so the quad can be scaled to the enemy's
+## actual radius rather than assuming they match.
+var _enemy_art_radius := {}
+var _enemy_art_ready := false
+var _enemy_art_baking := false
 var _rampart_center := Vector2(-1.0, -1.0)
 var _rampart_radius := 0.0
 var _rampart_ensnare_bonus := 0.0
@@ -787,6 +806,9 @@ func _ready() -> void:
 	assert(boss_profile != null, "PhaseBCombatDirector requires a Boss profile")
 	assert(saboteur_profile != null, "PhaseBCombatDirector requires a Saboteur profile")
 	_sfx_random.randomize()
+	# Started rather than awaited: the run must not wait on a render pass to begin,
+	# and until it finishes the art draws directly exactly as it always did.
+	_start_enemy_art_bake()
 	assert(corruptor_profile != null, "PhaseBCombatDirector requires a Corruptor profile")
 	assert(colonizer_profile != null, "PhaseBCombatDirector requires a Colonizer profile")
 	assert(warden_profile != null, "PhaseBCombatDirector requires a Warden profile")
@@ -920,10 +942,14 @@ func _draw() -> void:
 				_draw_enemy_root_hold_lod(enemy)
 			else:
 				_draw_enemy_root_hold(enemy)
-		if use_crowd_lod and not _enemy_requires_full_detail(enemy):
-			_draw_enemy_crowd_lod(enemy)
-		else:
-			_draw_enemy(enemy)
+		# The baked quad is the art, so there is no longer a density at which the
+		# enemy stops looking like itself. The direct path stays as the fallback for
+		# a driver that could not bake, and for the few enemies whose art is not a
+		# static shape at all.
+		if not _enemy_art_ready or _enemy_requires_full_detail(enemy):
+			_draw_enemy(self, enemy)
+		elif not _draw_enemy_baked(enemy):
+			_draw_enemy(self, enemy)
 
 	for damage_number in _damage_numbers:
 		if damage_number.active:
@@ -4763,84 +4789,119 @@ func _enemy_requires_full_detail(enemy: EnemyState) -> bool:
 	return false
 
 
-func _draw_enemy_crowd_lod(enemy: EnemyState) -> void:
-	var body_color := Color("ff625b")
-	match enemy.role:
-		EnemyRole.GRAZER:
-			body_color = Color("ff9d45")
-		EnemyRole.HEAVY_GRAZER:
-			body_color = Color("e07a2a")
-		EnemyRole.SABOTEUR:
-			body_color = Color("ff477e")
-		EnemyRole.CORRUPTOR:
-			body_color = Color("a338c7")
-		EnemyRole.COLONIZER:
-			body_color = Color("59d7c6")
+func _start_enemy_art_bake() -> void:
+	# Fire and forget. The await inside belongs to the bake, not to _ready: the run
+	# must not wait on a render pass to start, and until the bake lands the art
+	# draws directly exactly as it always did.
+	bake_enemy_art()
 
-	if enemy.role == EnemyRole.RUSHER:
+
+func bake_enemy_art() -> void:
+	## Render each role once into a texture, so the live frame draws a quad instead
+	## of replaying the vector art per enemy per frame.
+	##
+	## Awaits a rendering pass, so it cannot run on a driver that has none. A failed
+	## bake leaves _enemy_art_ready false and the game keeps drawing the art
+	## directly -- slower, but correct. That fallback is what makes this safe to
+	## attempt at startup rather than ship as a build step.
+	if _enemy_art_ready or _enemy_art_baking:
+		return
+	_enemy_art_baking = true
+	var roles := [
+		EnemyRole.HUNTER,
+		EnemyRole.RUSHER,
+		EnemyRole.GRAZER,
+		EnemyRole.HEAVY_GRAZER,
+		EnemyRole.SABOTEUR,
+		EnemyRole.CORRUPTOR,
+		EnemyRole.COLONIZER,
+	]
+	for role in roles:
+		var radius := _get_role_bake_radius(role)
+		var extent := radius + enemy_art_bake_padding
+		var side := int(ceil(extent * 2.0))
+		for variant in range(enemy_art_variants):
+			var viewport := SubViewport.new()
+			viewport.size = Vector2i(side, side)
+			viewport.transparent_bg = true
+			viewport.disable_3d = true
+			viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+			var painter := PhaseBEnemyArtPainter.new()
+			painter.director = self
+			painter.role = role
+			painter.variant = variant
+			painter.body_radius = radius
+			painter.centre = Vector2(extent, extent)
+			viewport.add_child(painter)
+			add_child(viewport)
+			await RenderingServer.frame_post_draw
+			var image := viewport.get_texture().get_image()
+			viewport.queue_free()
+			if image == null or image.is_empty():
+				# No rendering driver, or the target never resolved. Abandon the whole
+				# bake rather than shipping half a roster of blanks.
+				_enemy_art.clear()
+				_enemy_art_radius.clear()
+				_enemy_art_baking = false
+				return
+			_enemy_art[role * enemy_art_variants + variant] = (
+				ImageTexture.create_from_image(image)
+			)
+		_enemy_art_radius[role] = radius
+	_enemy_art_baking = false
+	_enemy_art_ready = not _enemy_art.is_empty()
+
+
+func _get_role_bake_radius(role: int) -> float:
+	var profile := _profile_for_role(role)
+	if profile != null and profile.body_radius_pixels > 0.0:
+		return profile.body_radius_pixels
+	return 10.0
+
+
+func is_enemy_art_baked() -> bool:
+	return _enemy_art_ready
+
+
+func get_baked_enemy_art_count() -> int:
+	return _enemy_art.size()
+
+
+func _draw_enemy_baked(enemy: EnemyState) -> bool:
+	## One textured quad in place of the role's vector art. Returns false when the
+	## role has no baked art, so the caller can fall back to drawing it directly.
+	var key := enemy.role * enemy_art_variants + (enemy.id % enemy_art_variants)
+	if not _enemy_art.has(key):
+		return false
+	var texture: Texture2D = _enemy_art[key]
+	var baked_radius: float = _enemy_art_radius.get(enemy.role, 10.0)
+	var art_scale := enemy.radius / maxf(1.0, baked_radius)
+	var extent := Vector2(texture.get_width(), texture.get_height()) * art_scale
+	# Directional roles were baked facing +X, so the quad is turned rather than the
+	# art being redrawn at a new angle.
+	var art_rotation := 0.0
+	if enemy.role == EnemyRole.RUSHER and player != null:
 		var heading := enemy.position.direction_to(player.get_arena_position())
-		if heading.length_squared() <= 0.01:
-			heading = Vector2.RIGHT
-		var flank := heading.orthogonal()
-		var nose := enemy.position + heading * (enemy.radius + 4.0)
-		var tail := enemy.position - heading * (enemy.radius * 0.65)
-		var points := PackedVector2Array([
-			nose,
-			tail + flank * enemy.radius,
-			tail - flank * enemy.radius,
-		])
-		draw_colored_polygon(points, Color(0.09, 0.02, 0.03, 0.92))
-		draw_colored_polygon(
-			PackedVector2Array([
-				nose - heading * 2.0,
-				tail + flank * (enemy.radius - 2.0),
-				tail - flank * (enemy.radius - 2.0),
-			]),
-			Color("ff7a4a")
-		)
-	else:
-		draw_circle(enemy.position, enemy.radius + 2.0, Color(0.07, 0.025, 0.04, 0.90))
-		draw_circle(enemy.position, enemy.radius, body_color)
-
-	if enemy.overgrown:
-		draw_arc(
-			enemy.position,
-			enemy.radius + 3.5,
-			0.0,
-			TAU,
-			14,
-			Color(0.72, 1.0, 0.55, 0.42),
-			1.5,
-			true
-		)
-	if enemy.hit_flash_remaining > 0.0:
-		var flash_strength := clampf(
-			enemy.hit_flash_remaining / maxf(enemy_hit_flash_seconds, 0.001),
-			0.0,
-			1.0
-		)
-		var flash_color := enemy.hit_flash_color
-		flash_color.a = 0.68 * flash_strength
-		draw_circle(enemy.position, enemy.radius + 1.5, flash_color)
-	if enemy.health < enemy.maximum_health:
-		var bar_width := enemy.radius * 2.2
-		var bar_position := enemy.position + Vector2(-bar_width * 0.5, -enemy.radius - 10.0)
-		draw_rect(Rect2(bar_position, Vector2(bar_width, 4.0)), Color(0.03, 0.03, 0.04, 0.9), true)
-		draw_rect(
-			Rect2(
-				bar_position,
-				Vector2(bar_width * clampf(enemy.health / enemy.maximum_health, 0.0, 1.0), 4.0)
-			),
-			Color("ff6a82"),
-			true
-		)
+		if heading.length_squared() > 0.01:
+			art_rotation = heading.angle()
+	draw_set_transform(enemy.position, art_rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-extent * 0.5, extent), false, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# The aura and the flash belong to this enemy in this moment, so they are drawn
+	# over the baked body rather than baked into it.
+	_draw_enemy_state_overlay(self, enemy)
+	return true
 
 
-func _draw_enemy(enemy: EnemyState) -> void:
+func _draw_enemy(
+	canvas: CanvasItem,
+	enemy: EnemyState,
+	heading_override: Vector2 = Vector2.ZERO
+) -> void:
 	match enemy.role:
 		EnemyRole.HUNTER:
-			draw_circle(enemy.position, enemy.radius + 2.0, Color(0.08, 0.02, 0.03, 0.92))
-			draw_circle(enemy.position, enemy.radius, Color("ff625b"))
+			canvas.draw_circle(enemy.position, enemy.radius + 2.0, Color(0.08, 0.02, 0.03, 0.92))
+			canvas.draw_circle(enemy.position, enemy.radius, Color("ff625b"))
 		EnemyRole.RUSHER:
 			# A Hunter that arrives before Bramble can take hold, so it is drawn as one
 			# that is already moving: the same red, swept into a wedge that points where
@@ -4848,7 +4909,9 @@ func _draw_enemy(enemy: EnemyState) -> void:
 			# has to be able to tell at a glance which red body is the one that will not
 			# be slowed on the way in.
 			var heading := Vector2.RIGHT
-			if player != null:
+			if heading_override.length_squared() > 0.01:
+				heading = heading_override.normalized()
+			elif player != null:
 				var toward_player := enemy.position.direction_to(player.get_arena_position())
 				if toward_player.length_squared() > 0.01:
 					heading = toward_player
@@ -4857,21 +4920,21 @@ func _draw_enemy(enemy: EnemyState) -> void:
 			var tail := enemy.position - heading * (enemy.radius * 0.7)
 			for streak_index in range(2):
 				var side := flank * (enemy.radius * (0.45 + 0.35 * float(streak_index)))
-				draw_line(
+				canvas.draw_line(
 					tail + side,
 					tail - heading * (7.0 + 5.0 * float(streak_index)) + side,
 					Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
 					2.0,
 					true
 				)
-				draw_line(
+				canvas.draw_line(
 					tail - side,
 					tail - heading * (7.0 + 5.0 * float(streak_index)) - side,
 					Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
 					2.0,
 					true
 				)
-			draw_colored_polygon(
+			canvas.draw_colored_polygon(
 				PackedVector2Array([
 					nose,
 					tail + flank * enemy.radius,
@@ -4879,7 +4942,7 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				]),
 				Color(0.09, 0.02, 0.03, 0.92)
 			)
-			draw_colored_polygon(
+			canvas.draw_colored_polygon(
 				PackedVector2Array([
 					nose - heading * 2.5,
 					tail + flank * (enemy.radius - 2.5),
@@ -4887,7 +4950,7 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				]),
 				Color("ff7a4a")
 			)
-			draw_line(
+			canvas.draw_line(
 				enemy.position + heading * (enemy.radius * 0.2),
 				nose - heading * 3.0,
 				Color("ffe1b8"),
@@ -4895,10 +4958,10 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				true
 			)
 		EnemyRole.GRAZER:
-			draw_circle(enemy.position, enemy.radius + 3.0, Color(0.08, 0.04, 0.01, 0.95))
-			draw_circle(enemy.position, enemy.radius, Color("ff9d45"))
+			canvas.draw_circle(enemy.position, enemy.radius + 3.0, Color(0.08, 0.04, 0.01, 0.95))
+			canvas.draw_circle(enemy.position, enemy.radius, Color("ff9d45"))
 			for axis in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
-				draw_line(
+				canvas.draw_line(
 					enemy.position + axis * (enemy.radius - 2.0),
 					enemy.position + axis * (enemy.radius + 5.0),
 					Color("ffe0a3"),
@@ -4910,13 +4973,13 @@ func _draw_enemy(enemy: EnemyState) -> void:
 			# it, so what it says about itself is weight: a hide too thick to move, blunt
 			# tusks rather than the ordinary Grazer's fine ones, and a body that fills its
 			# own outline instead of sitting inside it.
-			draw_circle(enemy.position, enemy.radius + 5.0, Color(0.10, 0.05, 0.01, 0.95))
-			draw_circle(enemy.position, enemy.radius + 2.0, Color("6b3312"))
-			draw_circle(enemy.position, enemy.radius - 1.0, Color("e07a2a"))
+			canvas.draw_circle(enemy.position, enemy.radius + 5.0, Color(0.10, 0.05, 0.01, 0.95))
+			canvas.draw_circle(enemy.position, enemy.radius + 2.0, Color("6b3312"))
+			canvas.draw_circle(enemy.position, enemy.radius - 1.0, Color("e07a2a"))
 			for plate_index in range(6):
 				var plate_angle := TAU * float(plate_index) / 6.0 + float(enemy.id % 6) * 0.18
 				var plate_direction := Vector2.from_angle(plate_angle)
-				draw_line(
+				canvas.draw_line(
 					enemy.position + plate_direction * (enemy.radius - 4.0),
 					enemy.position + plate_direction * (enemy.radius + 2.0),
 					Color("8f4a18"),
@@ -4924,32 +4987,32 @@ func _draw_enemy(enemy: EnemyState) -> void:
 					true
 				)
 			for tusk in [Vector2.RIGHT, Vector2.LEFT]:
-				draw_line(
+				canvas.draw_line(
 					enemy.position + tusk * (enemy.radius - 2.0),
 					enemy.position + tusk * (enemy.radius + 8.0),
 					Color("ffd9a0"),
 					4.5,
 					true
 				)
-			draw_circle(enemy.position, 4.5, Color("40190a"))
+			canvas.draw_circle(enemy.position, 4.5, Color("40190a"))
 		EnemyRole.SABOTEUR:
 			var top := enemy.position + Vector2(0.0, -enemy.radius)
 			var right := enemy.position + Vector2(enemy.radius, 0.0)
 			var bottom := enemy.position + Vector2(0.0, enemy.radius)
 			var left := enemy.position + Vector2(-enemy.radius, 0.0)
-			draw_circle(enemy.position, enemy.radius + 4.0, Color(0.28, 0.02, 0.12, 0.42))
-			draw_line(top, right, Color("ff477e"), 4.0, true)
-			draw_line(right, bottom, Color("ff477e"), 4.0, true)
-			draw_line(bottom, left, Color("ff477e"), 4.0, true)
-			draw_line(left, top, Color("ff477e"), 4.0, true)
-			draw_line(
+			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.28, 0.02, 0.12, 0.42))
+			canvas.draw_line(top, right, Color("ff477e"), 4.0, true)
+			canvas.draw_line(right, bottom, Color("ff477e"), 4.0, true)
+			canvas.draw_line(bottom, left, Color("ff477e"), 4.0, true)
+			canvas.draw_line(left, top, Color("ff477e"), 4.0, true)
+			canvas.draw_line(
 				enemy.position + Vector2(-5.0, -5.0),
 				enemy.position + Vector2(6.0, 6.0),
 				Color("fff0a6"),
 				2.0,
 				true
 			)
-			draw_line(
+			canvas.draw_line(
 				enemy.position + Vector2(5.0, -5.0),
 				enemy.position + Vector2(-6.0, 6.0),
 				Color("fff0a6"),
@@ -4957,10 +5020,10 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				true
 			)
 		EnemyRole.CORRUPTOR:
-			draw_circle(enemy.position, enemy.radius + 4.0, Color(0.30, 0.02, 0.38, 0.48))
-			draw_circle(enemy.position, enemy.radius, Color("a338c7"))
-			draw_circle(enemy.position, enemy.radius - 5.0, Color("42114f"))
-			draw_arc(
+			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.30, 0.02, 0.38, 0.48))
+			canvas.draw_circle(enemy.position, enemy.radius, Color("a338c7"))
+			canvas.draw_circle(enemy.position, enemy.radius - 5.0, Color("42114f"))
+			canvas.draw_arc(
 				enemy.position,
 				enemy.radius - 2.0,
 				-PI * 0.25,
@@ -4983,14 +5046,14 @@ func _draw_enemy(enemy: EnemyState) -> void:
 					0.0,
 					1.0
 				)
-			draw_circle(
+			canvas.draw_circle(
 				enemy.position,
 				enemy.radius + 6.0,
 				Color(0.34, 0.02, 0.30, 0.30 + 0.30 * escalation_fraction)
 			)
 			for siege_spike in range(8):
 				var spike_direction := Vector2.from_angle(TAU * float(siege_spike) / 8.0)
-				draw_line(
+				canvas.draw_line(
 					enemy.position + spike_direction * (enemy.radius - 2.0),
 					enemy.position + spike_direction * (
 						enemy.radius + 4.0 + 5.0 * escalation_fraction
@@ -4999,15 +5062,15 @@ func _draw_enemy(enemy: EnemyState) -> void:
 					2.5,
 					true
 				)
-			draw_circle(enemy.position, enemy.radius, Color("7a1f9c"))
-			draw_circle(enemy.position, enemy.radius - 6.0, Color("2b0838"))
-			draw_circle(
+			canvas.draw_circle(enemy.position, enemy.radius, Color("7a1f9c"))
+			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("2b0838"))
+			canvas.draw_circle(
 				enemy.position,
 				maxf(2.0, (enemy.radius - 6.0) * escalation_fraction),
 				Color(1.0, 0.52, 0.95, 0.85)
 			)
 			if escalation_fraction > 0.0:
-				draw_arc(
+				canvas.draw_arc(
 					enemy.position,
 					enemy.radius + 3.0,
 					-PI * 0.5,
@@ -5018,16 +5081,16 @@ func _draw_enemy(enemy: EnemyState) -> void:
 					true
 				)
 		EnemyRole.COLONIZER:
-			draw_circle(enemy.position, enemy.radius + 4.0, Color(0.02, 0.26, 0.30, 0.46))
+			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.02, 0.26, 0.30, 0.46))
 			for pod_index in range(3):
 				var direction := Vector2.from_angle(TAU * float(pod_index) / 3.0)
-				draw_circle(
+				canvas.draw_circle(
 					enemy.position + direction * (enemy.radius - 1.0),
 					5.0,
 					Color("59d7c6")
 				)
-			draw_circle(enemy.position, enemy.radius - 3.0, Color("155b67"))
-			draw_circle(enemy.position, 4.0, Color("b8fff2"))
+			canvas.draw_circle(enemy.position, enemy.radius - 3.0, Color("155b67"))
+			canvas.draw_circle(enemy.position, 4.0, Color("b8fff2"))
 		EnemyRole.WARDEN:
 			var pixels_per_cell := (
 				territory_field.tuning.arena_size.x
@@ -5043,12 +5106,12 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				0.0,
 				1.0
 			)
-			draw_circle(
+			canvas.draw_circle(
 				enemy.position,
 				suppression_radius,
 				Color(0.25, 0.38, 1.0, 0.055 + pulse_progress * 0.035)
 			)
-			draw_arc(
+			canvas.draw_arc(
 				enemy.position,
 				suppression_radius,
 				0.0,
@@ -5058,45 +5121,55 @@ func _draw_enemy(enemy: EnemyState) -> void:
 				2.0,
 				true
 			)
-			draw_rect(
+			canvas.draw_rect(
 				Rect2(enemy.position - Vector2.ONE * enemy.radius, Vector2.ONE * enemy.radius * 2.0),
 				Color("5267d8"),
 				true
 			)
-			draw_rect(
+			canvas.draw_rect(
 				Rect2(enemy.position - Vector2.ONE * (enemy.radius - 5.0), Vector2.ONE * (enemy.radius - 5.0) * 2.0),
 				Color("172758"),
 				true
 			)
-			draw_circle(enemy.position, 4.0, Color("c8d5ff"))
+			canvas.draw_circle(enemy.position, 4.0, Color("c8d5ff"))
 		EnemyRole.COLONY_CORE:
-			draw_circle(enemy.position, enemy.radius + 7.0, Color(0.38, 0.02, 0.14, 0.30))
+			canvas.draw_circle(enemy.position, enemy.radius + 7.0, Color(0.38, 0.02, 0.14, 0.30))
 			for spine_index in range(6):
 				var direction := Vector2.from_angle(TAU * float(spine_index) / 6.0)
-				draw_line(
+				canvas.draw_line(
 					enemy.position + direction * (enemy.radius - 3.0),
 					enemy.position + direction * (enemy.radius + 7.0),
 					Color("ff5d78"),
 					3.0,
 					true
 				)
-			draw_circle(enemy.position, enemy.radius, Color("781b3e"))
-			draw_circle(enemy.position, enemy.radius - 6.0, Color("2d1029"))
-			draw_circle(enemy.position, 4.0, Color("ff9bb0"))
+			canvas.draw_circle(enemy.position, enemy.radius, Color("781b3e"))
+			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("2d1029"))
+			canvas.draw_circle(enemy.position, 4.0, Color("ff9bb0"))
 		EnemyRole.ELITE:
-			draw_circle(enemy.position, enemy.radius + 5.0, Color(0.35, 0.09, 0.42, 0.55))
-			draw_circle(enemy.position, enemy.radius, Color("d85cff"))
-			draw_circle(enemy.position, enemy.radius - 6.0, Color("4a153e"))
-			draw_arc(enemy.position, enemy.radius + 4.0, 0.0, TAU, 24, Color("f5c4ff"), 2.0, true)
+			canvas.draw_circle(enemy.position, enemy.radius + 5.0, Color(0.35, 0.09, 0.42, 0.55))
+			canvas.draw_circle(enemy.position, enemy.radius, Color("d85cff"))
+			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("4a153e"))
+			canvas.draw_arc(enemy.position, enemy.radius + 4.0, 0.0, TAU, 24, Color("f5c4ff"), 2.0, true)
 		EnemyRole.BOSS:
-			draw_circle(enemy.position, enemy.radius + 8.0, Color(0.45, 0.02, 0.12, 0.38))
+			canvas.draw_circle(enemy.position, enemy.radius + 8.0, Color(0.45, 0.02, 0.12, 0.38))
 			for petal_index in range(6):
 				var direction := Vector2.from_angle(TAU * float(petal_index) / 6.0)
-				draw_circle(enemy.position + direction * 20.0, 10.0, Color("c72d58"))
-			draw_circle(enemy.position, enemy.radius, Color("8f173d"))
-			draw_circle(enemy.position, 10.0, Color("ff8096"))
-			draw_arc(enemy.position, enemy.radius + 5.0, 0.0, TAU, 36, Color("ffc1cc"), 3.0, true)
+				canvas.draw_circle(enemy.position + direction * 20.0, 10.0, Color("c72d58"))
+			canvas.draw_circle(enemy.position, enemy.radius, Color("8f173d"))
+			canvas.draw_circle(enemy.position, 10.0, Color("ff8096"))
+			canvas.draw_arc(enemy.position, enemy.radius + 5.0, 0.0, TAU, 36, Color("ffc1cc"), 3.0, true)
 
+	# Everything that depends on what this particular enemy is doing right now is
+	# drawn separately, because the body art above it is baked into a texture and a
+	# texture cannot carry a pulse or a flash.
+	_draw_enemy_state_overlay(canvas, enemy)
+
+
+func _draw_enemy_state_overlay(canvas: CanvasItem, enemy: EnemyState) -> void:
+	## Per-enemy state drawn over the body: the Overgrown aura and the hit flash.
+	## Shared by both draw paths so a baked enemy and a directly drawn one report
+	## the same state in the same way.
 	if enemy.overgrown:
 		# Overgrown reads as the enemy itself breathing out. The pulse is driven by the
 		# contagion clock rather than by wall time, so what the player sees flashing is
@@ -5109,12 +5182,12 @@ func _draw_enemy(enemy: EnemyState) -> void:
 			0.0,
 			1.0
 		)
-		draw_circle(
+		canvas.draw_circle(
 			enemy.position,
 			enemy.radius + 1.0,
 			Color(0.55, 0.95, 0.42, 0.10 + 0.22 * spore_pulse)
 		)
-		draw_arc(
+		canvas.draw_arc(
 			enemy.position,
 			enemy.radius + 3.5,
 			0.0,
@@ -5133,9 +5206,9 @@ func _draw_enemy(enemy: EnemyState) -> void:
 		)
 		var flash_color := enemy.hit_flash_color
 		flash_color.a = 0.68 * flash_strength
-		draw_circle(enemy.position, enemy.radius + 1.5, flash_color)
+		canvas.draw_circle(enemy.position, enemy.radius + 1.5, flash_color)
 		var flash_edge := Color(1.0, 1.0, 1.0, 0.85 * flash_strength)
-		draw_arc(
+		canvas.draw_arc(
 			enemy.position,
 			enemy.radius + 3.0,
 			0.0,
@@ -5154,8 +5227,8 @@ func _draw_enemy(enemy: EnemyState) -> void:
 	):
 		var bar_width := enemy.radius * 2.2
 		var bar_position := enemy.position + Vector2(-bar_width * 0.5, -enemy.radius - 10.0)
-		draw_rect(Rect2(bar_position, Vector2(bar_width, 4.0)), Color(0.03, 0.03, 0.04, 0.9), true)
-		draw_rect(
+		canvas.draw_rect(Rect2(bar_position, Vector2(bar_width, 4.0)), Color(0.03, 0.03, 0.04, 0.9), true)
+		canvas.draw_rect(
 			Rect2(
 				bar_position,
 				Vector2(bar_width * clampf(enemy.health / enemy.maximum_health, 0.0, 1.0), 4.0)

@@ -34,7 +34,6 @@ enum ChoiceKind {
 	NONE,
 	UPGRADE,
 	RELIC,
-	PATH,
 }
 
 @export_group("Gameplay Components")
@@ -330,9 +329,7 @@ FULLY DEVELOPED"
 @export var volume_unavailable_text := "UNAVAILABLE"
 @export var choice_header_upgrade := "ROOT MEMORY"
 @export var choice_header_relic := "ELITE RELIC"
-@export var choice_header_primary_path := "PRIMARY PLANT PATH"
 @export var choice_header_support_path := "SUPPORT PLANT PATH"
-@export var choice_header_secondary_path := "SECONDARY PLANT PATH"
 @export_multiline var choice_evolution_template := "{name}   EVOLUTION
 {detail}"
 @export_multiline var choice_upgrade_template := (
@@ -345,8 +342,6 @@ FULLY DEVELOPED"
 ## the arithmetic themselves.
 @export_multiline var root_potency_note_template := "ROOTED {multiplier}x → {effect}"
 @export_multiline var choice_relic_template := "{name}   {rarity}
-{detail}"
-@export_multiline var choice_path_template := "{name}
 {detail}"
 @export var result_victory_header := "FRONTIER HELD"
 @export var result_defeat_header := "THE FRONTIER WITHERED"
@@ -594,7 +589,6 @@ func _ready() -> void:
 	adaptation_director.status_requested.connect(_set_status)
 	progression.upgrade_choice_requested.connect(_on_upgrade_choice_requested)
 	progression.relic_choice_requested.connect(_on_relic_choice_requested)
-	progression.path_choice_requested.connect(_on_path_choice_requested)
 	progression.upgrades_changed.connect(_apply_progression_modifiers)
 	progression.paths_changed.connect(_apply_progression_modifiers)
 	progression.metabolism_changed.connect(_apply_progression_modifiers)
@@ -843,7 +837,7 @@ func advance_run(delta: float) -> void:
 	wave_director.advance(delta)
 	# Path milestones share the panel with relic rewards and land on the same wave
 	# boundaries, so the path choice is asked first and the relic waits its turn.
-	_request_due_path_choice()
+	_request_due_support_choice()
 	_grant_owed_wave_relic()
 	if _choice_kind != ChoiceKind.NONE:
 		return
@@ -933,7 +927,7 @@ func debug_advance_time(seconds: float) -> void:
 	if _run_state != RunState.RUNNING:
 		return
 	wave_director.debug_advance_time(seconds)
-	_request_due_path_choice()
+	_request_due_support_choice()
 	_grant_owed_wave_relic()
 	_set_status("Debug: timeline advanced to %s." % _format_time(get_elapsed_seconds()))
 	_update_hud()
@@ -1074,10 +1068,6 @@ func _on_relic_choice_requested(options: PackedInt32Array) -> void:
 	_show_choice(ChoiceKind.RELIC, options)
 
 
-func _on_path_choice_requested(options: PackedInt32Array, _selecting_primary: bool) -> void:
-	_show_choice(ChoiceKind.PATH, options)
-
-
 func _show_choice(kind: int, options: PackedInt32Array) -> void:
 	_choice_kind = kind
 	_choice_ids = options.duplicate()
@@ -1093,13 +1083,6 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 			)
 		ChoiceKind.RELIC:
 			choice_header.text = choice_header_relic
-		ChoiceKind.PATH:
-			if progression.is_pending_primary_path_choice():
-				choice_header.text = choice_header_primary_path
-			elif progression.has_secondary_path():
-				choice_header.text = choice_header_support_path
-			else:
-				choice_header.text = choice_header_secondary_path
 	for index in range(choice_buttons.size()):
 		var button := choice_buttons[index]
 		if index >= _choice_ids.size():
@@ -1142,11 +1125,6 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 			button.modulate = PhaseBRelicCatalog.get_rarity_color(
 				PhaseBRelicCatalog.get_rarity(option_id)
 			)
-		else:
-			button.text = AuthoredText.render(choice_path_template, {
-				"name": PhaseBProgression.get_path_name(option_id).to_upper(),
-				"detail": PhaseBProgression.get_path_description(option_id),
-			})
 		# Reward explanations are rendered by PhaseBMechanicsHelp. Leaving the native
 		# tooltip empty prevents a delayed duplicate from appearing over the styled cards.
 		button.tooltip_text = ""
@@ -1193,34 +1171,20 @@ func _choose_displayed_option(index: int) -> void:
 	elif prior_kind == ChoiceKind.RELIC:
 		if progression.choose_relic(selected_id):
 			_set_status("Relic claimed: %s." % PhaseBProgression.get_relic_name(selected_id))
-	else:
-		if progression.choose_path(selected_id):
-			_set_status("Path rooted: %s." % PhaseBProgression.get_path_name(selected_id))
-	_request_due_path_choice()
+	_request_due_support_choice()
 	_grant_owed_wave_relic()
 	_refresh_simulation_pause()
 
 
-func _request_due_path_choice() -> void:
+func _request_due_support_choice() -> void:
+	# The pairing Paths are never offered as Paths. A run commits an Adaptation by
+	# drafting one of its upgrade lines, so the only scheduled choice left is the
+	# evolved run's support Path -- and that one is a draft of real upgrade lines too.
 	if _choice_kind != ChoiceKind.NONE or _run_state != RunState.RUNNING:
-		return
-	var elapsed := get_elapsed_seconds()
-	if (
-		not progression.has_primary_path()
-		and elapsed >= wave_director.primary_path_choice_seconds
-	):
-		progression.request_primary_path_choice()
-		return
-	if (
-		progression.has_primary_path()
-		and not progression.has_secondary_path()
-		and elapsed >= wave_director.secondary_path_choice_seconds
-	):
-		progression.request_secondary_path_choice()
 		return
 	if (
 		progression.is_tertiary_path_available()
-		and elapsed >= wave_director.tertiary_path_choice_seconds
+		and get_elapsed_seconds() >= wave_director.tertiary_path_choice_seconds
 	):
 		progression.request_tertiary_upgrade_choice()
 
@@ -2488,13 +2452,10 @@ func _update_hud() -> void:
 	)
 	match progression.evolution_status:
 		PhaseBProgression.EvolutionStatus.READY:
-			_authored.write(
-				evolution_label,
-				{"evolution": PhaseBEvolutions.get_evolution_name(
-					progression.get_pair_evolution_id()
-				)},
-				"{evolution}",
-			)
+			# What a pairing becomes is the discovery, so it is not printed here
+			# before the player has ever seen it. The colour shift is the whole of
+			# the signal, the same way it is once the run has evolved.
+			evolution_label.text = ""
 			evolution_label.modulate = Color("b2cb82")
 		PhaseBProgression.EvolutionStatus.EVOLVED:
 			# The evolution line was emptied when the sidebar was decluttered: what the
@@ -2667,7 +2628,6 @@ func _update_path_upgrade_row(
 
 func _update_evolution_tree_slot() -> void:
 	_evolution_upgrade_slot.slot_count = 1
-	var pair_id := progression.get_pair_evolution_id()
 	match progression.evolution_status:
 		PhaseBProgression.EvolutionStatus.EVOLVED:
 			var evolution_name := PhaseBEvolutions.get_evolution_name(progression.active_evolution)
@@ -2682,13 +2642,14 @@ func _update_evolution_tree_slot() -> void:
 				Color("d4a94f")
 			)
 		PhaseBProgression.EvolutionStatus.READY:
-			var evolution_name := PhaseBEvolutions.get_evolution_name(pair_id)
-			_evolution_tree_label.text = evolution_name
+			# Named only once it has been claimed. Until then the slot says what it
+			# is for and nothing about what is waiting in it.
+			_evolution_tree_label.text = "EVOLUTION"
 			_evolution_upgrade_slot.set_slot(
 				0,
 				_evolution_upgrade_slot.empty_marker,
 				"",
-				"%s is ready to claim." % evolution_name,
+				"This pairing has not evolved yet.",
 				PhaseBUpgradeSlots.SlotState.EMPTY,
 				Color("d4a94f")
 			)
@@ -2845,23 +2806,30 @@ func _build_upgrade_tooltip(upgrade_id: int) -> String:
 	# What the line is, what one more rank buys, and what the run's numbers
 	# actually resolve to right now.
 	var level := progression.get_owned_upgrade_level(upgrade_id)
+	var maximum := progression.get_upgrade_maximum_level(upgrade_id)
 	var lines := PackedStringArray()
 	lines.append("%s   %d/%d" % [
 		PhaseBProgression.get_upgrade_name(upgrade_id),
 		level,
-		progression.get_upgrade_maximum_level(upgrade_id),
+		maximum,
 	])
+	# An Evolution line's ranks each do something different, so the hover carries
+	# every rank the run has bought rather than one averaged line. This is the only
+	# place the player can read the finished build back, and it is empty for the
+	# ordinary lines, whose ranks are all the same thing again.
+	var owned := _get_evolution_owned_ranks(upgrade_id)
+	for owned_rank in owned:
+		lines.append(owned_rank)
 	var per_rank := progression.get_upgrade_description(upgrade_id)
 	if not per_rank.is_empty():
-		var rank_label := (
-			"Next rank"
-			if level < progression.get_upgrade_maximum_level(upgrade_id)
-			else "Maxed"
-		)
+		var rank_label := "Next rank" if level < maximum else "Maxed"
 		lines.append("%s: %s" % [rank_label, per_rank])
-	var resolved := _get_upgrade_resolved_effect(upgrade_id)
-	if not resolved.is_empty():
-		lines.append("Now: %s" % resolved)
+	if owned.is_empty():
+		# For an Evolution line the last owned rank above already says this, and the
+		# hover should not print it twice.
+		var resolved := _get_upgrade_resolved_effect(upgrade_id)
+		if not resolved.is_empty():
+			lines.append("Now: %s" % resolved)
 	# The Root Network row sits under the base number rather than replacing it, so
 	# the hover shows what the line is worth on its own and what Mature ground turns
 	# that into, in that order.
@@ -2869,6 +2837,22 @@ func _build_upgrade_tooltip(upgrade_id: int) -> String:
 	if not rooted.is_empty():
 		lines.append(rooted)
 	return "\n".join(lines)
+
+
+func _get_evolution_owned_ranks(upgrade_id: int) -> PackedStringArray:
+	# Every Evolution rank the run has actually bought, in the order it bought them.
+	# Owned rather than effective level: a Clover jackpot lends a Path its ceiling for
+	# a few seconds, and the hover must not claim the run holds ranks it never took.
+	var owned := PackedStringArray()
+	if PhaseBEvolutions.get_upgrade_evolution(upgrade_id) == PhaseBProgression.EvolutionId.NONE:
+		return owned
+	var level := progression.get_owned_upgrade_level(upgrade_id)
+	for rank in range(1, level + 1):
+		var description := evolutions.get_evolution_upgrade_rank_description(upgrade_id, rank)
+		if description.is_empty():
+			continue
+		owned.append("%d. %s" % [rank, description])
+	return owned
 
 
 func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
@@ -2993,7 +2977,7 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 				adaptation_director.thistle_critical_multiplier,
 			]
 		PhaseBProgression.UpgradeId.VINE_ELONGATION:
-			return "%.0f px Cane/Vine reach" % combat.get_cane_reach()
+			return "%.0f px Vine reach" % combat.get_cane_reach()
 		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION:
 			return "%.1f damage before Apical, Root, and relic modifiers" % (
 				combat.cane_damage

@@ -90,8 +90,13 @@ class SweepState:
 @export_range(0.0, 2.0, 0.01) var garden_hose_mass_per_projectile := 0.11
 ## Mulch: the share of what an enemy eats that it carries, the ceiling on that
 ## store, and how little is too little to bother erupting.
-@export_range(0.0, 1.0, 0.01) var mulch_stored_share := 0.65
-@export_range(0.1, 8.0, 0.05) var mulch_maximum_store := 1.25
+##
+## Both are below the master document's initial targets of 0.65 and 1.25, which
+## played as a Rare rather than a Common: a single well-fed corpse returned more
+## than a whole Seed's worth of ground. The document asks for those numbers to be
+## balanced from playtests, and this is that.
+@export_range(0.0, 1.0, 0.01) var mulch_stored_share := 0.40
+@export_range(0.1, 8.0, 0.05) var mulch_maximum_store := 0.60
 @export_range(0.0, 2.0, 0.01) var mulch_minimum_store := 0.15
 @export_range(10.0, 400.0, 5.0) var mulch_radius_pixels := 95.0
 ## Mimosa: the Green underfoot snaps shut when Grandma is hurt standing on it.
@@ -763,7 +768,7 @@ func notify_amplified_event(local_position: Vector2, amplification: float) -> vo
 		local_position.direction_to(target),
 		false,
 		1.0,
-		TerritoryPrototypeOverlay.RelicMotif.ROOT_PULSE
+		TerritoryPrototypeOverlay.RelicMotif.PARTICLE
 	)
 	status_requested.emit("FEEDER ROOTS — the network feeds its own frontier.")
 	_notify_triggered(PhaseBRelicCatalog.Id.FEEDER_ROOTS)
@@ -1114,7 +1119,7 @@ func _advance_generated_events(delta: float) -> void:
 			Vector2.ZERO,
 			true,
 			float(event[2]),
-			TerritoryPrototypeOverlay.RelicMotif.GHOST
+			TerritoryPrototypeOverlay.RelicMotif.RING
 		)
 		_resolve_generated_event(int(event[0]), event[1], float(event[2]))
 		_repeating = false
@@ -1263,7 +1268,7 @@ func _spray_garden_hose(origin: Vector2, strength: float) -> void:
 			facing,
 			not is_equal_approx(strength, 1.0),
 			strength,
-			TerritoryPrototypeOverlay.RelicMotif.SPRAY
+			TerritoryPrototypeOverlay.RelicMotif.PARTICLE
 		)
 		status_requested.emit("GARDEN HOSE — a fan of fresh Green sprays ahead.")
 
@@ -1388,7 +1393,7 @@ func _add_compost(local_position: Vector2, amount: int) -> void:
 		Vector2.ZERO,
 		false,
 		1.0,
-		TerritoryPrototypeOverlay.RelicMotif.HEAP
+		TerritoryPrototypeOverlay.RelicMotif.GLOW
 	)
 
 

@@ -213,6 +213,12 @@ var _topology_accumulator := 0.0
 var _simulation_turn_when_both_due := true
 
 var _control := PackedFloat32Array()
+## Root Network projection, cached per field revision. See _ensure_mature_projection.
+var _projection := PackedFloat32Array()
+var _field_revision := 0
+var _projection_revision := -1
+var _projection_reach := -1.0
+var _projection_minimum := -1.0
 var _next_control := PackedFloat32Array()
 var _maturity := PackedFloat32Array()
 var _next_maturity := PackedFloat32Array()
@@ -350,6 +356,7 @@ func _draw() -> void:
 
 
 func reset_field() -> void:
+	_mark_field_changed()
 	if _cell_count == 0:
 		_configure_buffers()
 
@@ -457,6 +464,7 @@ func reset_field() -> void:
 
 func step_simulation() -> void:
 	var started_at := Time.get_ticks_usec()
+	_mark_field_changed()
 	_apply_pending_commands()
 	_decay_aftergrowth(_fixed_delta)
 
@@ -675,6 +683,10 @@ func step_simulation() -> void:
 		_metrics_accumulator = fmod(_metrics_accumulator, tuning.metrics_interval_seconds)
 		recalculate_metrics_now()
 
+	# Bumped at both ends of the step. The opening bump stops a query made partway
+	# through from being answered out of the previous step's cache; this one stops
+	# anything cached from the half-written field midway surviving the step.
+	_mark_field_changed()
 	var elapsed_ms := float(Time.get_ticks_usec() - started_at) / 1000.0
 	_measured_steps += 1
 	_average_step_ms = elapsed_ms if _measured_steps == 1 else lerpf(_average_step_ms, elapsed_ms, 0.08)
@@ -834,17 +846,56 @@ func get_mature_projection_at(
 		return 0.0
 	if _maturity[start] >= minimum_maturity:
 		return 1.0
+	_ensure_mature_projection(reach_pixels, minimum_maturity)
+	return _projection[start]
+
+
+func _ensure_mature_projection(reach_pixels: float, minimum_maturity: float) -> void:
+	## Rebuilds the projection for the whole field, but only when something has
+	## actually changed under it.
+	##
+	## This used to be a flood fill per query, which read as cheap because one query
+	## is. It is not one query: every enemy standing on young owned Green asks for
+	## it every frame, so a crowd on a fresh Fruit patch ran a hundred and thirty
+	## flood fills a frame and cost 38ms. Distance through Green is symmetric, so
+	## one breadth-first pass outward from every Mature cell answers all of them at
+	## once, and it is thrown away only when the field is written to.
+	if (
+		_projection_revision == _field_revision
+		and is_equal_approx(_projection_reach, reach_pixels)
+		and is_equal_approx(_projection_minimum, minimum_maturity)
+	):
+		return
+	_projection_revision = _field_revision
+	_projection_reach = reach_pixels
+	_projection_minimum = minimum_maturity
+	if _projection.size() != _cell_count:
+		_projection.resize(_cell_count)
+	_projection.fill(0.0)
 	var cell_width := tuning.arena_size.x / float(_width)
 	var cell_height := tuning.arena_size.y / float(_height)
 	var step := minf(cell_width, cell_height)
 	var maximum_steps := int(ceil(reach_pixels / maxf(1.0, step)))
-	# Breadth-first over owned cells: the first Mature cell reached is the nearest
-	# one by connected distance, which is exactly what the projection wants.
-	var visited := {start: 0}
-	var frontier := PackedInt32Array([start])
+	# Every Mature cell is a source at full strength. A PackedByteArray rather than
+	# a Dictionary for visited: this runs over the whole field now, and the hashing
+	# was a real share of the old cost.
+	var visited := PackedByteArray()
+	visited.resize(_cell_count)
+	var frontier := PackedInt32Array()
+	for index in range(_cell_count):
+		if _claimable_mask[index] == 0:
+			continue
+		if _control[index] <= tuning.ownership_threshold:
+			continue
+		if _maturity[index] < minimum_maturity:
+			continue
+		visited[index] = 1
+		_projection[index] = 1.0
+		frontier.append(index)
 	var depth := 0
 	while not frontier.is_empty() and depth < maximum_steps:
 		depth += 1
+		var strength := clampf(1.0 - (float(depth) * step) / reach_pixels, 0.0, 1.0)
 		var next_frontier := PackedInt32Array()
 		for index in frontier:
 			var x := index % _width
@@ -855,20 +906,22 @@ func get_mature_projection_at(
 				if next_x < 0 or next_x >= _width or next_y < 0 or next_y >= _height:
 					continue
 				var next_index := next_y * _width + next_x
-				if visited.has(next_index):
+				if visited[next_index] != 0:
 					continue
 				if _claimable_mask[next_index] == 0:
 					continue
 				if _control[next_index] <= tuning.ownership_threshold:
 					continue
-				visited[next_index] = depth
-				if _maturity[next_index] >= minimum_maturity:
-					return clampf(
-						1.0 - (float(depth) * step) / reach_pixels, 0.0, 1.0
-					)
+				visited[next_index] = 1
+				_projection[next_index] = strength
 				next_frontier.append(next_index)
 		frontier = next_frontier
-	return 0.0
+
+
+func _mark_field_changed() -> void:
+	## Every write to control or maturity passes through here, so the Root Network
+	## projection above knows its cached field is stale.
+	_field_revision += 1
 
 
 func get_owned_cell_components(minimum_cells: int = 1) -> Array:
@@ -1171,6 +1224,7 @@ func apply_overgrow(
 	pressure_budget: float,
 	cohesion_budget: float
 ) -> OvergrowResult:
+	_mark_field_changed()
 	var result := OvergrowResult.new()
 	if sampled.is_empty():
 		return result
@@ -1369,6 +1423,7 @@ func prune_territory(
 	pruned_seconds: float,
 	sample_stride: int = 6
 ) -> PruneHarvest:
+	_mark_field_changed()
 	# A Pruning Cycle eats the ecosystem from its youngest edge inward: Fresh ground
 	# first, then Established, and Mature only when there is nothing else left. The
 	# cost is a fixed number of cells rather than a share of what the run holds, so
@@ -1424,6 +1479,7 @@ func prune_territory_in_radius(
 	radius_pixels: float,
 	pruned_seconds: float
 ) -> PruneHarvest:
+	_mark_field_changed()
 	# The same cut, but drawn inward toward one point rather than from the whole
 	# ecosystem, which is what a Bloom pulling Green into itself needs.
 	var harvest := PruneHarvest.new()
@@ -1468,6 +1524,7 @@ func drain_territory_in_radius(
 	pruned_seconds: float,
 	inner_radius_pixels: float = 0.0
 ) -> PruneHarvest:
+	_mark_field_changed()
 	# A bounded cut around one point that takes the youngest ground it can find
 	# first, which is what an upkeep drain under the player needs: it should eat the
 	# fresh growth it is standing on and only bite into ancient ground when there is
@@ -1766,6 +1823,7 @@ func find_nearest_owned_cell(local_position: Vector2) -> int:
 
 
 func neutralize_cells(cells: PackedInt32Array) -> int:
+	_mark_field_changed()
 	# A lost wager. Only ground the run still holds is taken: a committed cell the
 	# enemy already took during the spin stays hostile rather than being handed back
 	# as neutral, which would make losing the bet a favour.
@@ -1786,6 +1844,7 @@ func neutralize_cells(cells: PackedInt32Array) -> int:
 
 
 func make_cells_hostile(cells: PackedInt32Array, hostile_control := 0.75) -> int:
+	_mark_field_changed()
 	# A Bust. Neutral ground in the region goes with the Green, which is the whole
 	# difference between a whiff and a Bust: one takes the tissue, the other leaves
 	# something behind that has to be fought back through.
@@ -1950,6 +2009,7 @@ func recalculate_metrics_now() -> void:
 
 
 func analyze_topology_now() -> void:
+	_mark_field_changed()
 	# The labels about to be overwritten are what the next component has to be
 	# recognised by, so they are kept before the fill rather than after it.
 	var swap := _previous_topology_labels
@@ -2038,6 +2098,9 @@ func analyze_topology_now() -> void:
 	_component_count = next_label
 	_topology_generation += 1
 	_resolve_component_overlap()
+	# Fragment decay above writes control, so the projection cached from before that
+	# write has to go the same way step_simulation's does.
+	_mark_field_changed()
 
 
 func _count_support_contact(index: int) -> int:

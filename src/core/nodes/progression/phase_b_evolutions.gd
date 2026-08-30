@@ -757,7 +757,7 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 		PhaseBProgression.UpgradeId.EVOLUTION_THORNWHIP:
 			match rank:
 				1:
-					return "Two mounted Thistle heads fire once through each Cane sweep"
+					return "Two mounted Thistle heads fire once through each Vine sweep"
 				2:
 					return "Mount a third Thistle head"
 				3:
@@ -781,19 +781,19 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 		PhaseBProgression.UpgradeId.EVOLUTION_MYCELIAL_VINE:
 			match rank:
 				1:
-					return "Every Cane hit applies 15% Spore"
+					return "Every Vine hit applies 15% Spore"
 				2:
 					return "Apical hits apply another 15% Spore"
 				3:
-					return "Cane kills count twice toward Seed Production"
+					return "Vine kills count twice toward Seed Production"
 				4:
-					return "Cane deals 20% more damage to enemies at 50% Spore"
+					return "Vine deals 20% more damage to enemies at 50% Spore"
 				5:
 					return "Apical hits collapse Overgrown enemies (elite 25% max HP, boss 8%)"
 		PhaseBProgression.UpgradeId.EVOLUTION_WISTERIA:
 			match rank:
 				1:
-					return "A normal Bloom arms 3 blossoms along the next Cane sweep at 35% Force"
+					return "A normal Bloom arms 3 blossoms along the next Vine sweep at 35% Force"
 				2:
 					return "The armed sweep grows a fourth blossom"
 				3:
@@ -805,9 +805,9 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 		PhaseBProgression.UpgradeId.EVOLUTION_BRIAR_CANE:
 			match rank:
 				1:
-					return "Cane hits apply 15% Entanglement, or 25% on your Green"
+					return "Vine hits apply 15% Entanglement, or 25% on your Green"
 				2:
-					return "Fully Entangled enemies take 20% more Cane damage"
+					return "Fully Entangled enemies take 20% more Vine damage"
 				3:
 					return "Fully Entangled enemies are repelled 50%, or 100% on your Green"
 				4:
@@ -817,7 +817,7 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 		PhaseBProgression.UpgradeId.EVOLUTION_HEARTWOOD:
 			match rank:
 				1:
-					return "Every fifth Cane sweep deals 1.5x damage at 1.15x reach"
+					return "Every fifth Vine sweep deals 1.5x damage at 1.15x reach"
 				2:
 					return "The Heartwood sweep's outer 40% is Apical"
 				3:
@@ -825,7 +825,7 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 				4:
 					return "The opposite sweep after Heartwood arrives 40% sooner"
 				5:
-					return "A root echo repeats the sector after 0.3s at 60% Cane damage"
+					return "A root echo repeats the sector after 0.3s at 60% Vine damage"
 		PhaseBProgression.UpgradeId.EVOLUTION_ESPALIER:
 			match rank:
 				1:
@@ -833,21 +833,21 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 				2:
 					return "Cuttings gain launch distance equal to 50% of Elongation"
 				3:
-					return "A full Charge adds a Cane sweep in the release direction"
+					return "A full Charge adds a Vine sweep in the release direction"
 				4:
-					return "The bonus Cane inherits 50% of the Charge payout bonus"
+					return "The bonus Vine inherits 50% of the Charge payout bonus"
 				5:
 					return "A second Cutting fan follows after 0.5s at 60% damage"
 		PhaseBProgression.UpgradeId.EVOLUTION_GOURDVINE:
 			match rank:
 				1:
-					return "Fruit attach to the outer next Cane sweep and detach at full extension"
+					return "Fruit attach to the outer next Vine sweep and detach at full extension"
 				2:
 					return "Attached Fruit deal 50% collision damage on Apical enemies"
 				3:
 					return "Detached Fruit gain 50% of Elongation as roll distance"
 				4:
-					return "Armed Fruit add 25% of Ripening to Cane Apical damage"
+					return "Armed Fruit add 25% of Ripening to Vine Apical damage"
 				5:
 					return "Detached Fruit start 50% faster and first-hit damage rises 50%"
 		PhaseBProgression.UpgradeId.EVOLUTION_ROT:
@@ -1025,21 +1025,21 @@ static func get_evolution_description(evolution_id: int) -> String:
 		PhaseBProgression.EvolutionId.DEADHEADING:
 			return "Intentional Pruning releases command every Thistle to fire together."
 		PhaseBProgression.EvolutionId.THORNWHIP:
-			return "Thistle heads mount along the Cane and fire through every sweep sector."
+			return "Thistle heads mount along the Vine and fire through every sweep sector."
 		PhaseBProgression.EvolutionId.BURDOCK:
 			return "Each Fruit carries a firing Thistle and plants temporary artillery at its end."
 		PhaseBProgression.EvolutionId.MYCELIAL_VINE:
-			return "Cane sweeps spread Spore and collapse infections struck by the apical tip."
+			return "Vine sweeps spread Spore and collapse infections struck by the apical tip."
 		PhaseBProgression.EvolutionId.WISTERIA:
-			return "Normal Blooms arm a blossom sequence along the next Cane sweep."
+			return "Normal Blooms arm a blossom sequence along the next Vine sweep."
 		PhaseBProgression.EvolutionId.BRIAR_CANE:
-			return "Cane sweeps Entangle and repel enemies whether or not the sweep stands on Green."
+			return "Vine sweeps Entangle and repel enemies whether or not the sweep stands on Green."
 		PhaseBProgression.EvolutionId.HEARTWOOD:
-			return "Every fifth Cane sweep grows into a heavy, long-reaching root echo."
+			return "Every fifth Vine sweep grows into a heavy, long-reaching root echo."
 		PhaseBProgression.EvolutionId.ESPALIER:
-			return "Pruning releases train Cuttings into the Cane's forward sweep sector."
+			return "Pruning releases train Cuttings into the Vine's forward sweep sector."
 		PhaseBProgression.EvolutionId.GOURDVINE:
-			return "Fruit ride the outer Cane arc before launching with stored sweep momentum."
+			return "Fruit ride the outer Vine arc before launching with stored sweep momentum."
 		PhaseBProgression.EvolutionId.ROT:
 			return "Fruit spread Spore through collisions, trails, and terminal rupture."
 		PhaseBProgression.EvolutionId.OVERRIPE:
