@@ -110,6 +110,11 @@ const TIMER_DAMAGE_NUMBER_SPAWN := &"damage_number_spawn_ms"
 ## Drawing them, and the string measurement inside that.
 const TIMER_DAMAGE_NUMBER_DRAW := &"damage_number_draw_ms"
 const TIMER_DAMAGE_NUMBER_MEASURE := &"damage_number_measure_ms"
+
+## The rendered half. None of this runs headless, so it went unmeasured while the
+## simulation was taken apart seven times over.
+const TIMER_COMBAT_DRAW := &"combat_draw_ms"
+const TIMER_ENEMY_DRAW := &"enemy_draw_ms"
 const TIMER_FRUITSEEDS := &"fruitseeds_ms"
 const TIMER_SAPLINGS := &"saplings_ms"
 
@@ -205,6 +210,8 @@ const TIMER_NAMES: Array[StringName] = [
 	TIMER_DAMAGE_NUMBER_SPAWN,
 	TIMER_DAMAGE_NUMBER_DRAW,
 	TIMER_DAMAGE_NUMBER_MEASURE,
+	TIMER_COMBAT_DRAW,
+	TIMER_ENEMY_DRAW,
 	TIMER_FRUITSEEDS,
 	TIMER_SAPLINGS,
 ]

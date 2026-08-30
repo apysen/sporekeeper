@@ -908,6 +908,7 @@ func simulate_step(delta: float) -> void:
 
 
 func _draw() -> void:
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
 	var use_crowd_lod := _active_enemy_count >= crowd_visual_lod_enemy_threshold
 	_draw_cane_sweep()
 	for zone in _bramble_zones:
@@ -956,6 +957,7 @@ func _draw() -> void:
 		if not use_crowd_lod:
 			draw_circle(projectile.position + direction * 3.0, 2.2, Color("efffc9"))
 
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_ENEMY_DRAW)
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
@@ -973,9 +975,12 @@ func _draw() -> void:
 		elif not _draw_enemy_baked(enemy):
 			_draw_enemy(self, enemy)
 
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_ENEMY_DRAW)
+
 	for damage_number in _damage_numbers:
 		if damage_number.active:
 			_draw_damage_number(damage_number)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
 
 
 func set_temporary_attack_rate_multiplier(multiplier: float, seconds: float) -> void:
