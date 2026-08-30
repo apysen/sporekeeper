@@ -41,6 +41,10 @@ signal enemy_left_green(enemy_id: int, local_position: Vector2, entanglement: fl
 ## An enemy died with Entanglement still on it, which is what the corpse-reading
 ## Bramble relics are counting.
 signal enemy_died_entangled(local_position: Vector2, entanglement: float, role: int)
+## How much Green an enemy personally erased. Only what the enemy itself destroys is
+## reported: territory the player gives up to Pruning or wagers on Clover is their
+## own doing and must never be readable as something an enemy ate.
+signal enemy_ate_green(enemy_id: int, mass: float)
 signal active_enemy_count_changed(count: int)
 ## An elite spawned carrying a rule change. The player has to be able to see which
 ## one before it matters, so this is what the battlefield reads to mark it.
@@ -329,6 +333,9 @@ class PendingEruptionState:
 ## which is how the relics that deepen the Network locally reach the Bramble rules.
 ## Optional: without it the path falls back to the run-wide bonus Bramble pushes in.
 @export var root_director: PhaseBRootDirector
+## The persistent Vine body. Optional: without it the Cane resolves through its
+## authored sector exactly as it always has, for every build that lacks Vine.
+@export var vine_whip: PhaseBVineWhip
 
 @export_group("Sporulation")
 ## Spore an enemy standing on owned Green gains per second before the Sporulation
@@ -657,6 +664,16 @@ var _cane_visual_left_to_right := true
 var _cane_visual_reach := 0.0
 var _cane_visual_path := PackedVector2Array()
 var _cane_route_cache: Dictionary = {}
+## The sweep the rope is currently resolving: damage, apical bonus, and whether it
+## was a bonus stroke, held because the hits arrive over several frames.
+var _vine_sweep_active := false
+var _vine_sweep_damage := 0.0
+var _vine_sweep_is_bonus := false
+var _vine_sweep_facing := Vector2.RIGHT
+var _vine_sweep_left_to_right := true
+var _vine_sweep_reach := 0.0
+var _vine_sweep_origin := Vector2.ZERO
+var _vine_sweep_hits := 0
 var _cane_sweep_count := 0
 var _heartwood_rank := 0
 var _heartwood_progress := 0
@@ -667,6 +684,9 @@ var _next_cane_cooldown_multiplier := 1.0
 var _cane_apical_fraction_bonus := 0.0
 var _temporary_attack_multiplier := 1.0
 var _temporary_attack_remaining := 0.0
+## The enemy that died most recently, readable for the duration of the kill signal
+## so a relic can tell whose corpse it is looking at.
+var _last_killed_enemy_id := -1
 var _rampart_center := Vector2(-1.0, -1.0)
 var _rampart_radius := 0.0
 var _rampart_ensnare_bonus := 0.0
@@ -1308,6 +1328,10 @@ func get_enemy_xp_value(enemy_id: int) -> int:
 		if enemy.active and enemy.id == enemy_id:
 			return enemy.xp_value
 	return 0
+
+
+func get_last_killed_enemy_id() -> int:
+	return _last_killed_enemy_id
 
 
 func get_enemy_territory_erosion_scale(enemy_id: int) -> float:
@@ -1963,7 +1987,87 @@ func _configure_navigation() -> void:
 			))
 
 
+## Whether the run currently has Vine running the Cane. Pushed in by the Adaptation
+## director, which is what owns the question of which Paths are active.
+var _vine_enabled := false
+
+
+func set_vine_enabled(enabled: bool) -> void:
+	_vine_enabled = enabled
+
+
+func is_vine_driven() -> bool:
+	## Whether the Vine Adaptation is running the Cane, in which case the rope and
+	## not the authored sector is what resolves a stroke.
+	return _vine_enabled and vine_whip != null and vine_whip.is_built()
+
+
+func _update_vine_whip(delta: float) -> void:
+	if vine_whip == null:
+		return
+	var origin := player.get_arena_position()
+	if not vine_whip.is_built():
+		vine_whip.build(origin, cane_reach_pixels * _cane_reach_multiplier)
+	vine_whip.set_reach(cane_reach_pixels * _cane_reach_multiplier)
+	vine_whip.set_apical_share(
+		clampf(cane_apical_fraction + _cane_apical_fraction_bonus, 0.05, 0.95)
+	)
+	# Simulated continuously. The rope exists between attacks, which is the whole
+	# point of it being an appendage rather than an attack effect.
+	vine_whip.advance(origin, player.get_facing_direction(), delta)
+	if not _vine_sweep_active:
+		return
+	_resolve_vine_hits()
+	if not vine_whip.is_sweeping():
+		_vine_sweep_active = false
+		cane_sweep_finished.emit(
+			_vine_sweep_origin,
+			_vine_sweep_facing,
+			_vine_sweep_left_to_right,
+			_vine_sweep_reach,
+			_vine_sweep_hits,
+			_vine_sweep_is_bonus
+		)
+
+
+func _resolve_vine_hits() -> void:
+	var ids := PackedInt32Array()
+	var positions := PackedVector2Array()
+	var radii := PackedFloat32Array()
+	for enemy in _enemies:
+		if not enemy.active:
+			continue
+		ids.append(enemy.id)
+		positions.append(enemy.position)
+		radii.append(enemy.radius)
+	if ids.is_empty():
+		return
+	for hit in vine_whip.collect_hits(ids, positions, radii):
+		var enemy_id := int(hit[0])
+		var apical: bool = hit[1]
+		var chain_position := float(hit[2])
+		var enemy := _find_enemy(enemy_id)
+		if enemy == null or not enemy.active:
+			continue
+		var damage := _vine_sweep_damage
+		if apical:
+			damage *= 1.0 + _cane_apical_damage_bonus
+		var hit_position := enemy.position
+		_damage_enemy(enemy, damage, DeathSource.CANE, 0)
+		_vine_sweep_hits += 1
+		cane_enemy_hit.emit(
+			enemy_id,
+			hit_position,
+			chain_position,
+			apical,
+			damage,
+			not enemy.active,
+			_vine_sweep_is_bonus
+		)
+
+
 func _update_cane(delta: float) -> void:
+	_update_vine_whip(delta)
 	if _temporary_attack_remaining > 0.0:
 		_temporary_attack_remaining -= delta
 		if _temporary_attack_remaining <= 0.0:
@@ -2078,6 +2182,31 @@ func _perform_cane_sweep(
 		is_bonus
 	)
 	_play_cane_sfx()
+	if is_vine_driven():
+		# The rope resolves this sweep. Hits arrive over the driving window rather
+		# than all at once, so cane_sweep_finished is emitted when the stroke ends.
+		if _vine_sweep_active:
+			# A stroke arriving on top of one still running closes the old one first,
+			# so every started sweep is matched by exactly one finished.
+			cane_sweep_finished.emit(
+				_vine_sweep_origin,
+				_vine_sweep_facing,
+				_vine_sweep_left_to_right,
+				_vine_sweep_reach,
+				_vine_sweep_hits,
+				_vine_sweep_is_bonus
+			)
+		vine_whip.begin_sweep(facing, left_to_right, cane_cooldown_seconds)
+		_vine_sweep_active = true
+		_vine_sweep_damage = base_damage
+		_vine_sweep_is_bonus = is_bonus
+		_vine_sweep_facing = facing
+		_vine_sweep_left_to_right = left_to_right
+		_vine_sweep_reach = reach
+		_vine_sweep_origin = origin
+		_vine_sweep_hits = 0
+		_cane_route_cache.clear()
+		return 0
 	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
 	var apical_fraction := clampf(
 		(
@@ -2168,6 +2297,11 @@ func _play_cane_sfx() -> void:
 
 
 func _draw_cane_sweep() -> void:
+	if is_vine_driven():
+		# One body: the drawn Vine is the simulated Vine, so what the player sees is
+		# exactly what resolved the hit.
+		_draw_vine_whip()
+		return
 	if _cane_visual_remaining <= 0.0 or cane_sweep_seconds <= 0.0:
 		return
 	var progress := clampf(
@@ -2228,6 +2362,21 @@ func _draw_cane_sweep() -> void:
 	for bend_index in range(1, shaft_path.size() - 1):
 		draw_circle(shaft_path[bend_index], 1.75, shaft_color)
 	draw_circle(shaft_end, 4.0, tip_color)
+
+
+func _draw_vine_whip() -> void:
+	if vine_whip == null or not vine_whip.is_built():
+		return
+	var body := vine_whip.points
+	if body.size() < 2:
+		return
+	var attacking := vine_whip.is_sweeping()
+	var shadow := Color(0.055, 0.20, 0.075, 0.96 if attacking else 0.55)
+	var shaft := Color(0.24, 0.72, 0.25, 0.96 if attacking else 0.55)
+	var tip_color := Color(0.63, 1.0, 0.45, 0.95 if attacking else 0.45)
+	draw_polyline(body, shadow, 7.0 if attacking else 5.0, true)
+	draw_polyline(body, shaft, 3.5 if attacking else 2.5, true)
+	draw_circle(body[body.size() - 1], 4.0 if attacking else 3.0, tip_color)
 
 
 func _update_enemies(delta: float) -> void:
@@ -3045,6 +3194,12 @@ func get_enemy_entanglement(enemy_id: int) -> float:
 	return 0.0
 
 
+func get_cane_damage_multiplier() -> float:
+	## What the run's Vine investment has made one stroke worth. Published so the
+	## relics that deal a share of a Vine hit read the same number the stroke did.
+	return _cane_damage_multiplier
+
+
 func get_enemy_radius(enemy_id: int) -> float:
 	var enemy := _find_enemy(enemy_id)
 	return enemy.radius if enemy != null else 0.0
@@ -3560,6 +3715,7 @@ func _perform_enemy_territory_action(enemy: EnemyState) -> void:
 				scaled_strength,
 				enemy.territory_action_radius_multiplier
 			)
+			enemy_ate_green.emit(enemy.id, scaled_strength)
 			weakened_territory = true
 			if enemy.emit_eruption_signal:
 				boss_erupted.emit(enemy.position)
@@ -4125,6 +4281,7 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 	var xp_value := enemy.xp_value
 	var was_overgrown := enemy.overgrown
 	var death_entanglement := enemy.entanglement
+	_last_killed_enemy_id = enemy.id
 	enemy.active = false
 	enemy.state = EnemyStateKind.INACTIVE
 	_active_enemy_count = maxi(0, _active_enemy_count - 1)

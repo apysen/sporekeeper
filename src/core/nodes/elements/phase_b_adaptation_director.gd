@@ -117,6 +117,21 @@ class FruitState:
 	var graft_cuttings := 0
 	var prize := false
 	var can_raise_sapling := true
+	## Which release threw this Fruit, and which Fruit of that release it is. Fruit
+	## Salad needs both: two hits from the same Fruit are not two Fruit.
+	var release_id := 0
+	var fruit_id := 0
+	## Stem Steering and Windfall each redirect the same Fruit, so each keeps its own
+	## budget rather than sharing one and quietly stealing from the other.
+	var steering_uses := 0
+	var windfall_uses := 0
+	var windfall_cooldown := 0.0
+	## Bruised Fruit is measured in travel rather than time, so a Fruit that has
+	## nearly stopped does not keep painting wide.
+	var juicy_remaining := 0.0
+	## Newton's Apple chain starters this Fruit has spent, and the clock between them.
+	var newton_starters := 0
+	var newton_cooldown := 0.0
 
 
 class FruitseedState:
@@ -277,6 +292,73 @@ class PendingEvent:
 @export_range(20.0, 600.0, 5.0) var forking_pattern_range_pixels := 210.0
 @export_range(0.05, 10.0, 0.05) var forking_pattern_cooldown_seconds := 0.75
 @export_range(1, 40, 1) var forking_pattern_active_maximum := 8
+## Stem Steering: how often one Fruit may curve, how far it looks, and how sharply
+## it is allowed to turn while keeping every bit of its speed.
+@export_range(1, 8, 1) var stem_steering_uses := 2
+@export_range(20.0, 600.0, 5.0) var stem_steering_range_pixels := 180.0
+@export_range(1.0, 90.0, 1.0) var stem_steering_degrees := 28.0
+@export_range(0.0, 400.0, 5.0) var stem_steering_minimum_speed := 90.0
+## Bruised Fruit: how far the Juicy state lasts and how much wider it paints.
+@export_range(10.0, 400.0, 2.0) var bruised_fruit_distance_pixels := 72.0
+@export_range(1.0, 4.0, 0.05) var bruised_fruit_area_multiplier := 1.75
+## Fruit Salad: how long the first Fruit's mark stands, and what the second does.
+@export_range(0.1, 10.0, 0.05) var fruit_salad_mark_seconds := 1.25
+@export_range(10.0, 300.0, 5.0) var fruit_salad_burst_radius := 65.0
+@export_range(0.0, 2.0, 0.01) var fruit_salad_damage_share := 0.45
+@export_range(0.0, 200.0, 1.0) var fruit_salad_knockback := 20.0
+## Windfall: what a collision kill gives back, and how often.
+@export_range(0.0, 1.0, 0.01) var windfall_speed_share := 0.22
+@export_range(1.0, 2.0, 0.01) var windfall_maximum_speed_share := 1.10
+@export_range(20.0, 600.0, 5.0) var windfall_range_pixels := 220.0
+@export_range(1.0, 90.0, 1.0) var windfall_degrees := 35.0
+@export_range(1, 8, 1) var windfall_uses := 3
+@export_range(0.0, 2.0, 0.01) var windfall_cooldown_seconds := 0.12
+## Newton's Apple: how many chains one Fruit may start, what a launched body does
+## on impact, and the global budget that keeps a dense fight bounded.
+@export_range(1, 8, 1) var newton_starters_per_fruit := 3
+@export_range(0.0, 5.0, 0.05) var newton_starter_cooldown := 0.25
+@export_range(0.05, 3.0, 0.05) var newton_active_seconds := 0.45
+@export_range(0.0, 2.0, 0.01) var newton_first_damage_share := 0.55
+@export_range(0.0, 2.0, 0.01) var newton_first_knockback_share := 0.65
+@export_range(0.0, 2.0, 0.01) var newton_second_damage_share := 0.30
+@export_range(0.0, 2.0, 0.01) var newton_second_knockback_share := 0.40
+@export_range(1, 20, 1) var newton_active_maximum := 6
+@export_range(1, 40, 1) var newton_impacts_per_second := 8
+@export_range(1, 8, 1) var newton_impacts_per_frame := 2
+@export_range(1, 64, 1) var newton_trajectory_candidates := 16
+## Elite and boss shares for a Falling Body, which can strike them but never
+## become one: turning a boss into a projectile is not a thing this may do.
+@export_range(0.0, 1.0, 0.01) var newton_elite_damage_share := 0.50
+@export_range(0.0, 1.0, 0.01) var newton_elite_knockback_share := 0.35
+@export_range(0.0, 1.0, 0.01) var newton_boss_damage_share := 0.25
+## Whiplash: an Apical hit snaps the tip past its endpoint at reduced damage,
+## reaching only enemies the parent stroke did not.
+@export_range(0.0, 3.0, 0.05) var whiplash_delay_seconds := 0.10
+@export_range(10.0, 400.0, 5.0) var whiplash_reach_pixels := 70.0
+@export_range(4.0, 120.0, 1.0) var whiplash_width_pixels := 30.0
+@export_range(0.0, 2.0, 0.01) var whiplash_damage_share := 0.40
+## Runner: the first enemy a natural sweep kills sprouts one lash at a neighbour.
+@export_range(0.0, 3.0, 0.05) var runner_delay_seconds := 0.30
+@export_range(10.0, 400.0, 5.0) var runner_range_pixels := 135.0
+@export_range(0.0, 2.0, 0.01) var runner_damage_share := 0.45
+@export_range(1, 12, 1) var runner_active_maximum := 3
+## Climber: a wrapped Vine cinches the section past its first bend.
+@export_range(0.0, 3.0, 0.05) var climber_delay_seconds := 0.12
+@export_range(0.0, 2.0, 0.01) var climber_damage_share := 0.40
+## Girdling: consecutive Apical hits on one enemy crush it on the next contact.
+@export_range(1, 8, 1) var girdling_required_hits := 2
+@export_range(0.1, 20.0, 0.1) var girdling_window_seconds := 2.5
+@export_range(0.1, 30.0, 0.1) var girdling_duration_seconds := 3.0
+@export_range(0.0, 4.0, 0.01) var girdling_damage_share := 0.75
+@export_range(0.0, 30.0, 0.1) var girdling_target_cooldown := 4.0
+@export_range(1, 20, 1) var girdling_maximum_marks := 4
+## Liana: three consecutive successful Apical sweeps unleash a rapid cascade.
+@export_range(1, 8, 1) var liana_required_sweeps := 3
+@export_range(1, 12, 1) var liana_bonus_sweeps := 4
+@export_range(0.0, 3.0, 0.05) var liana_first_delay := 0.12
+@export_range(0.02, 2.0, 0.01) var liana_interval_seconds := 0.16
+@export_range(0.0, 2.0, 0.01) var liana_damage_share := 0.60
+@export_range(0.1, 60.0, 0.5) var liana_cooldown_seconds := 5.0
 @export_range(1, 20, 1) var twining_sweep_interval := 4
 @export_range(0.0, 1.0, 0.01) var twining_damage_share := 0.55
 @export_range(0.05, 2.0, 0.05) var twining_delay_seconds := 0.30
@@ -310,6 +392,34 @@ var _answering_cooldown := 0.0
 var _rosette_queue: Array = []
 ## Embedded thorns per enemy: {enemy_id: [stacks, remaining]}.
 var _pincushion_stacks := {}
+## Fruit Salad marks: {enemy_id: [release_id, fruit_id, remaining]}.
+var _fruit_salad_marks := {}
+## Falling Bodies in flight, each [enemy_id, target_id, remaining, generation,
+## damage, knockback]. The target is chosen once, when the body is launched.
+var _falling_bodies: Array = []
+var _newton_impacts_this_second := 0
+var _newton_second_remaining := 1.0
+var _newton_impacts_this_frame := 0
+## Runners waiting to lash, each [position, remaining, damage].
+var _runners: Array = []
+## Girdling progress and marks: {enemy_id: [consecutive_hits, last_sweep, mark_remaining]}.
+var _girdling: Dictionary = {}
+var _girdling_cooldowns := {}
+## Consecutive natural sweeps that landed an Apical hit.
+var _liana_progress := 0
+var _liana_cooldown := 0.0
+var _liana_remaining := 0
+var _liana_step := 0.0
+var _liana_facing := Vector2.RIGHT
+var _liana_left_to_right := true
+## Whether the stroke being resolved actually bent around terrain, and whether it
+## hit anything past that bend. Climber requires both.
+var _sweep_bend_index := -1
+var _sweep_hit_past_bend := false
+## Natural sweeps so far, so consecutive-sweep relics can tell one from the next.
+var _natural_sweep_index := 0
+## Runner is one sprout per natural sweep, taken by the first kill it scores.
+var _runner_spawned_this_sweep := false
 var _hedge_battery_cooldown := 0.0
 var _rootstock_network_cooldown := 0.0
 var _inoculator_pulsed := {}
@@ -364,6 +474,8 @@ func advance(delta: float) -> void:
 	_rootstock_network_cooldown = maxf(0.0, _rootstock_network_cooldown - delta)
 	_update_pending_events(delta)
 	_advance_thistle_relics(delta)
+	_advance_fruit_relics(delta)
+	_advance_vine_relics(delta)
 	_update_thistles(delta)
 	_update_thorns(delta)
 	_update_fruits(delta)
@@ -408,6 +520,22 @@ func reset_adaptations() -> void:
 	_answering_cooldown = 0.0
 	_rosette_queue.clear()
 	_pincushion_stacks.clear()
+	_fruit_salad_marks.clear()
+	_falling_bodies.clear()
+	_runners.clear()
+	_girdling.clear()
+	_girdling_cooldowns.clear()
+	_liana_progress = 0
+	_liana_cooldown = 0.0
+	_liana_remaining = 0
+	_liana_step = 0.0
+	_sweep_bend_index = -1
+	_sweep_hit_past_bend = false
+	_natural_sweep_index = 0
+	_runner_spawned_this_sweep = false
+	_newton_impacts_this_second = 0
+	_newton_second_remaining = 1.0
+	_newton_impacts_this_frame = 0
 	_hedge_battery_cooldown = 0.0
 	_rootstock_network_cooldown = 0.0
 	_inoculator_pulsed.clear()
@@ -467,6 +595,9 @@ func _refresh_vine_modifiers() -> void:
 		reach_multiplier,
 		apical_bonus
 	)
+	# The rope is the Vine. Holding the Adaptation is what makes the Cane resolve
+	# through a simulated body instead of through its authored sector.
+	combat.set_vine_enabled(vine_active)
 
 
 func _effective_upgrade(upgrade_id: int, origin: Vector2) -> int:
@@ -834,6 +965,156 @@ func _fire_thistle(
 			_rootstock_network_cooldown = 8.0
 			_fire_rootstock_network_salvo()
 	return fired
+
+
+func _advance_vine_relics(delta: float) -> void:
+	_liana_cooldown = maxf(0.0, _liana_cooldown - delta)
+	for enemy_id in _girdling_cooldowns.keys():
+		var remaining := float(_girdling_cooldowns[enemy_id]) - delta
+		if remaining <= 0.0:
+			_girdling_cooldowns.erase(enemy_id)
+		else:
+			_girdling_cooldowns[enemy_id] = remaining
+	for enemy_id in _girdling.keys():
+		var mark: Array = _girdling[enemy_id]
+		mark[2] = float(mark[2]) - delta
+		if float(mark[2]) <= 0.0 or not combat.is_enemy_active(enemy_id):
+			_girdling.erase(enemy_id)
+	for index in range(_runners.size() - 1, -1, -1):
+		var runner: Array = _runners[index]
+		runner[1] = float(runner[1]) - delta
+		if float(runner[1]) > 0.0:
+			continue
+		_runners.remove_at(index)
+		_lash_runner(runner[0], float(runner[2]))
+	if _liana_remaining <= 0:
+		return
+	_liana_step -= delta
+	if _liana_step > 0.0:
+		return
+	_liana_step = liana_interval_seconds
+	_liana_remaining -= 1
+	# Alternating, from Grandma's current position, on the same continuous rope.
+	_liana_left_to_right = not _liana_left_to_right
+	combat.perform_bonus_cane_sweep(
+		_liana_facing,
+		_liana_left_to_right,
+		liana_damage_share
+	)
+
+
+func _lash_runner(origin: Vector2, damage: float) -> void:
+	# A direct lash from the corpse to one neighbour. It has no sweep arc of its own
+	# and never receives Apical Dominance: it is a runner, not a second Vine.
+	var target := -1
+	var nearest := runner_range_pixels
+	for enemy_id in combat.get_active_enemy_ids():
+		var distance := combat.get_enemy_position(enemy_id).distance_to(origin)
+		if distance > nearest:
+			continue
+		if not territory_field.is_growth_path_clear(
+			origin, combat.get_enemy_position(enemy_id)
+		):
+			continue
+		nearest = distance
+		target = enemy_id
+	if target < 0:
+		return
+	combat.damage_enemy_by_id(target, damage, PhaseBCombatDirector.DeathSource.RELIC)
+
+
+func _note_vine_apical_hit(enemy_id: int, damage: float) -> void:
+	## Girdling builds only on natural Apical hits, and only while the same enemy
+	## keeps taking them on consecutive sweeps.
+	if not _has_relic(PhaseBRelicCatalog.Id.GIRDLING):
+		return
+	if _girdling_cooldowns.has(enemy_id):
+		return
+	var mark: Array = _girdling.get(enemy_id, [0, -1, 0.0])
+	if int(mark[1]) == _natural_sweep_index:
+		return
+	# A gap of more than one sweep breaks the streak, which is what makes Girdling
+	# about sustained accuracy rather than about hitting the same body eventually.
+	if int(mark[1]) >= 0 and _natural_sweep_index - int(mark[1]) > 1:
+		mark[0] = 0
+	mark[0] = int(mark[0]) + 1
+	mark[1] = _natural_sweep_index
+	if int(mark[0]) >= girdling_required_hits:
+		mark[2] = girdling_duration_seconds
+	if _girdling.size() >= girdling_maximum_marks and not _girdling.has(enemy_id):
+		return
+	_girdling[enemy_id] = mark
+
+
+func _try_consume_girdling(enemy_id: int, damage: float) -> void:
+	## Any Vine contact spends the mark, relic-generated strokes included. Only
+	## building it is restricted to natural Apical hits.
+	if not _girdling.has(enemy_id):
+		return
+	var mark: Array = _girdling[enemy_id]
+	if float(mark[2]) <= 0.0:
+		return
+	_girdling.erase(enemy_id)
+	_girdling_cooldowns[enemy_id] = girdling_target_cooldown
+	combat.damage_enemy_by_id(
+		enemy_id,
+		damage * girdling_damage_share,
+		PhaseBCombatDirector.DeathSource.RELIC
+	)
+
+
+func _try_whiplash(origin: Vector2, facing: Vector2, damage: float) -> void:
+	if not _has_relic(PhaseBRelicCatalog.Id.WHIPLASH):
+		return
+	# Past the tip, and only onto bodies the parent stroke did not already reach.
+	var tip := origin + facing * _current_sweep_reach
+	for enemy_id in combat.get_active_enemy_ids():
+		if _cane_sweep_hits.has(enemy_id):
+			continue
+		var enemy_position := combat.get_enemy_position(enemy_id)
+		if Geometry2D.get_closest_point_to_segment(
+			enemy_position, tip, tip + facing * whiplash_reach_pixels
+		).distance_to(enemy_position) > whiplash_width_pixels:
+			continue
+		if not territory_field.is_growth_path_clear(tip, enemy_position):
+			continue
+		combat.damage_enemy_by_id(
+			enemy_id,
+			damage * whiplash_damage_share,
+			PhaseBCombatDirector.DeathSource.RELIC
+		)
+		_try_consume_girdling(enemy_id, damage)
+
+
+func _try_climber(damage: float) -> void:
+	## Requires a real bend in the simulated rope and a hit past it. The cinch
+	## replays the actual post-bend path rather than an independently drawn line, so
+	## it can never reach through an obstacle the Vine did not itself go around.
+	if not _has_relic(PhaseBRelicCatalog.Id.CLIMBER):
+		return
+	if _sweep_bend_index < 0 or not _sweep_hit_past_bend:
+		return
+	var whip: PhaseBVineWhip = combat.vine_whip
+	if whip == null or not whip.is_built():
+		return
+	var body := whip.points
+	for enemy_id in combat.get_active_enemy_ids():
+		var enemy_position := combat.get_enemy_position(enemy_id)
+		var reached := false
+		for index in range(_sweep_bend_index, body.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(
+				enemy_position, body[index], body[index + 1]
+			).distance_to(enemy_position) <= combat.get_enemy_radius(enemy_id):
+				reached = true
+				break
+		if not reached:
+			continue
+		combat.damage_enemy_by_id(
+			enemy_id,
+			damage * climber_damage_share,
+			PhaseBCombatDirector.DeathSource.RELIC
+		)
+		_try_consume_girdling(enemy_id, damage)
 
 
 func _advance_thistle_relics(delta: float) -> void:
@@ -1427,6 +1708,15 @@ func _on_cane_sweep_started(
 	_cane_sweep_hits.clear()
 	_briar_cane_full_hit = false
 	_current_sweep_apical_hit = false
+	_natural_sweep_index += 1
+	# Read from the rope itself: Climber requires the Vine to have genuinely bent
+	# around something, not merely to have been routed past it.
+	_sweep_bend_index = -1
+	_sweep_hit_past_bend = false
+	_runner_spawned_this_sweep = false
+	var sweep_whip: PhaseBVineWhip = combat.vine_whip
+	if sweep_whip != null and sweep_whip.is_built():
+		_sweep_bend_index = sweep_whip.get_first_bend_index()
 	_current_sweep_facing = facing
 	_current_sweep_left_to_right = left_to_right
 	_current_sweep_reach = reach
@@ -1471,6 +1761,21 @@ func _on_cane_enemy_hit(
 		if _has_relic(PhaseBRelicCatalog.Id.RECURVE) and not _recurve_armed:
 			_recurve_armed = true
 			combat.multiply_next_cane_cooldown(0.80)
+		_note_vine_apical_hit(enemy_id, damage)
+	# Any Vine contact spends a Girdle, including a relic-generated stroke.
+	_try_consume_girdling(enemy_id, damage)
+	if _sweep_bend_index >= 0 and _distance_fraction > 0.0:
+		# The hit landed on the far side of the wrap, which is what Climber answers.
+		_sweep_hit_past_bend = true
+	if (
+		killed
+		and not is_bonus
+		and _has_relic(PhaseBRelicCatalog.Id.RUNNER)
+		and _runners.size() < runner_active_maximum
+		and not _runner_spawned_this_sweep
+	):
+		_runner_spawned_this_sweep = true
+		_runners.append([local_position, runner_delay_seconds, damage * runner_damage_share])
 	_apply_mycelial_vine_hit(enemy_id, local_position, apical, damage)
 	if (
 		killed
@@ -1509,6 +1814,23 @@ func _on_cane_sweep_finished(
 			combat.knockback_enemy_from(enemy_id, origin, distance)
 	if _current_sweep_wisteria:
 		_fire_wisteria_sequence(origin, facing, left_to_right, reach, 1.0)
+	var sweep_damage := combat.cane_damage * combat.get_cane_damage_multiplier()
+	if _current_sweep_apical_hit:
+		_try_whiplash(origin, facing, sweep_damage)
+	_try_climber(sweep_damage)
+	if _has_relic(PhaseBRelicCatalog.Id.LIANA):
+		if not _current_sweep_apical_hit:
+			# A sweep that lands no Apical hit breaks the streak outright.
+			_liana_progress = 0
+		elif _liana_cooldown <= 0.0 and _liana_remaining <= 0:
+			_liana_progress += 1
+			if _liana_progress >= liana_required_sweeps:
+				_liana_progress = 0
+				_liana_cooldown = liana_cooldown_seconds
+				_liana_remaining = liana_bonus_sweeps
+				_liana_step = liana_first_delay
+				_liana_facing = facing
+				_liana_left_to_right = left_to_right
 		if _evolution_rank(PhaseBProgression.EvolutionId.WISTERIA) >= 5:
 			_queue_pending_event(
 				PendingKind.WISTERIA_SEQUENCE,
@@ -2169,6 +2491,14 @@ func _spawn_fruit(
 	fruit.graft_cuttings = graft_cuttings
 	fruit.prize = prize
 	fruit.can_raise_sapling = can_raise_sapling
+	fruit.release_id = _fruit_release_count
+	fruit.fruit_id = _fruit_sequence
+	fruit.steering_uses = 0
+	fruit.windfall_uses = 0
+	fruit.windfall_cooldown = 0.0
+	fruit.juicy_remaining = 0.0
+	fruit.newton_starters = 0
+	fruit.newton_cooldown = 0.0
 	_stamp_fruit_trail(fruit, origin)
 	return fruit
 
@@ -2185,6 +2515,8 @@ func _recompute_fruit_deceleration(fruit: FruitState) -> void:
 
 func _advance_fruit(fruit: FruitState, delta: float) -> void:
 	_update_fruit_hit_cooldowns(fruit, delta)
+	fruit.windfall_cooldown = maxf(0.0, fruit.windfall_cooldown - delta)
+	fruit.newton_cooldown = maxf(0.0, fruit.newton_cooldown - delta)
 	fruit.burdock_reset_remaining = maxf(0.0, fruit.burdock_reset_remaining - delta)
 	_update_burdock_head(fruit, delta)
 	if fruit.speed <= 0.0:
@@ -2227,6 +2559,7 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 		return
 	fruit.position = next
 	fruit.remaining_distance = maxf(0.0, fruit.remaining_distance - step_distance)
+	fruit.juicy_remaining = maxf(0.0, fruit.juicy_remaining - step_distance)
 	fruit.rotation += step_distance / maxf(4.0, fruit_radius_pixels * fruit.visual_scale)
 	_stamp_fruit_trail_segment(fruit, previous, fruit.position)
 	var enemy_id := _find_fruit_segment_hit(fruit, previous, next)
@@ -2326,6 +2659,21 @@ func _resolve_fruit_enemy_hit(fruit: FruitState, enemy_id: int) -> void:
 		fruit.carried_thistle_remaining = 0.0
 		fruit.burdock_reset_remaining = 0.50
 	fruit.first_enemy_collision = false
+	var survived := combat.is_enemy_active(enemy_id)
+	if not fruit.dropped_seed and not fruit.fragment:
+		# Bruised Fruit is refreshed by any qualifying collision, and the wider trail
+		# starts from the very next stamp rather than the next frame.
+		if _has_relic(PhaseBRelicCatalog.Id.BRUISED_FRUIT):
+			fruit.juicy_remaining = bruised_fruit_distance_pixels
+		_try_fruit_salad(fruit, enemy_id)
+		_try_newtons_apple(fruit, enemy_id)
+		if survived:
+			_try_stem_steering(fruit, enemy_id)
+		else:
+			# Windfall answers a kill; Stem Steering answers a hit. A collision that
+			# kills is not also a hit for steering purposes, so the two never both
+			# redirect the same Fruit off one body.
+			_try_windfall(fruit, enemy_id)
 	var momentum_loss := fruit_enemy_momentum_loss * _get_enemy_momentum_weight(enemy_id)
 	if not fruit.dropped_seed and rot_rank >= 3 and prior_spore >= 0.50:
 		momentum_loss *= 0.50
@@ -2342,6 +2690,253 @@ func _resolve_fruit_enemy_hit(fruit: FruitState, enemy_id: int) -> void:
 	else:
 		fruit.speed *= 1.0 - clampf(momentum_loss, 0.0, 0.85)
 		fruit.velocity = fruit.last_direction * fruit.speed
+
+
+func _advance_fruit_relics(delta: float) -> void:
+	## Fruit Salad marks age out, and Falling Bodies resolve the one collision each
+	## was launched at. Both are global rather than per-Fruit, so both live here.
+	_newton_impacts_this_frame = 0
+	_newton_second_remaining -= delta
+	if _newton_second_remaining <= 0.0:
+		_newton_second_remaining = 1.0
+		_newton_impacts_this_second = 0
+	for enemy_id in _fruit_salad_marks.keys():
+		var mark: Array = _fruit_salad_marks[enemy_id]
+		mark[2] = float(mark[2]) - delta
+		if float(mark[2]) <= 0.0 or not combat.is_enemy_active(enemy_id):
+			_fruit_salad_marks.erase(enemy_id)
+	for index in range(_falling_bodies.size() - 1, -1, -1):
+		var body: Array = _falling_bodies[index]
+		body[2] = float(body[2]) - delta
+		if float(body[2]) > 0.0:
+			continue
+		_falling_bodies.remove_at(index)
+		_resolve_falling_body(body)
+
+
+func _resolve_falling_body(body: Array) -> void:
+	# The collision was predicted once, when the body was launched. Nothing is
+	# searched for while it is in the air, which is what keeps the cost flat.
+	var target_id := int(body[1])
+	if target_id < 0 or not combat.is_enemy_active(target_id):
+		return
+	if _newton_impacts_this_second >= newton_impacts_per_second:
+		return
+	if _newton_impacts_this_frame >= newton_impacts_per_frame:
+		return
+	_newton_impacts_this_second += 1
+	_newton_impacts_this_frame += 1
+	var generation := int(body[3])
+	var damage := float(body[4])
+	var knockback := float(body[5])
+	var target_position := combat.get_enemy_position(target_id)
+	match combat.get_enemy_role(target_id):
+		PhaseBCombatDirector.EnemyRole.BOSS:
+			damage *= newton_boss_damage_share
+			knockback = 0.0
+		PhaseBCombatDirector.EnemyRole.ELITE:
+			damage *= newton_elite_damage_share
+			knockback *= newton_elite_knockback_share
+	# Falling Body damage is relic damage: it may kill and it may activate generic
+	# kill relics, but it is never a Fruit collision, so it cannot feed this pool.
+	combat.damage_enemy_by_id(
+		target_id, damage, PhaseBCombatDirector.DeathSource.RELIC
+	)
+	if knockback > 0.0:
+		combat.knockback_enemy_from(
+			target_id, target_position - Vector2(knockback, 0.0), knockback
+		)
+	if generation >= 2:
+		return
+	# The struck body may become the final generation, if it is an ordinary enemy
+	# and the global budget still has room.
+	if not combat.is_enemy_active(target_id):
+		return
+	if combat.get_enemy_role(target_id) != PhaseBCombatDirector.EnemyRole.HUNTER:
+		return
+	_launch_falling_body(
+		target_id,
+		target_position,
+		2,
+		float(body[4]) * (newton_second_damage_share / maxf(0.01, newton_first_damage_share)),
+		float(body[5]) * (newton_second_knockback_share / maxf(0.01, newton_first_knockback_share))
+	)
+
+
+func _launch_falling_body(
+	enemy_id: int,
+	from_position: Vector2,
+	generation: int,
+	damage: float,
+	knockback: float
+) -> bool:
+	if _falling_bodies.size() >= newton_active_maximum:
+		return false
+	var target := _predict_falling_body_target(enemy_id, from_position)
+	if target < 0:
+		return false
+	_falling_bodies.append([
+		enemy_id,
+		target,
+		newton_active_seconds,
+		generation,
+		damage,
+		knockback,
+	])
+	return true
+
+
+func _predict_falling_body_target(enemy_id: int, from_position: Vector2) -> int:
+	# One bounded query at launch, capped at the authored candidate count, rather
+	# than a search every frame while the body flies.
+	var nearest := -1
+	var nearest_distance := INF
+	var inspected := 0
+	for candidate_id in combat.get_active_enemy_ids():
+		if candidate_id == enemy_id:
+			continue
+		inspected += 1
+		if inspected > newton_trajectory_candidates:
+			break
+		var distance := combat.get_enemy_position(candidate_id).distance_squared_to(
+			from_position
+		)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = candidate_id
+	return nearest
+
+
+func _try_stem_steering(fruit: FruitState, enemy_id: int) -> void:
+	if not _has_relic(PhaseBRelicCatalog.Id.STEM_STEERING):
+		return
+	if fruit.dropped_seed or fruit.fragment:
+		return
+	if fruit.steering_uses >= stem_steering_uses:
+		return
+	if fruit.speed < stem_steering_minimum_speed:
+		return
+	var target := _find_fruit_redirect_target(
+		fruit, enemy_id, stem_steering_range_pixels
+	)
+	if target.x < 0.0:
+		return
+	fruit.steering_uses += 1
+	# Heading only. The relic preserves speed exactly and adds nothing, so it can
+	# never make a Fruit roll further than its Momentum paid for.
+	_curve_fruit_toward(fruit, target, stem_steering_degrees)
+
+
+func _try_windfall(fruit: FruitState, enemy_id: int) -> void:
+	if not _has_relic(PhaseBRelicCatalog.Id.WINDFALL):
+		return
+	if fruit.dropped_seed or fruit.fragment:
+		return
+	if fruit.windfall_uses >= windfall_uses or fruit.windfall_cooldown > 0.0:
+		return
+	fruit.windfall_uses += 1
+	fruit.windfall_cooldown = windfall_cooldown_seconds
+	fruit.speed = minf(
+		fruit.speed + fruit.base_speed * windfall_speed_share,
+		fruit.base_speed * windfall_maximum_speed_share
+	)
+	fruit.velocity = fruit.last_direction * fruit.speed
+	var target := _find_fruit_redirect_target(fruit, enemy_id, windfall_range_pixels)
+	if target.x < 0.0:
+		return
+	_curve_fruit_toward(fruit, target, windfall_degrees)
+
+
+func _find_fruit_redirect_target(
+	fruit: FruitState,
+	exclude_id: int,
+	range_pixels: float
+) -> Vector2:
+	# Prefer somebody this Fruit has not already been through, so a redirect opens
+	# new ground instead of grinding the same body.
+	var best := Vector2(-1.0, -1.0)
+	var best_distance := INF
+	for candidate_id in combat.get_active_enemy_ids():
+		if candidate_id == exclude_id or fruit.hit_cooldowns.has(candidate_id):
+			continue
+		var candidate := combat.get_enemy_position(candidate_id)
+		var distance := candidate.distance_to(fruit.position)
+		if distance > range_pixels or distance >= best_distance:
+			continue
+		best_distance = distance
+		best = candidate
+	return best
+
+
+func _curve_fruit_toward(fruit: FruitState, target: Vector2, maximum_degrees: float) -> void:
+	var wanted := fruit.position.direction_to(target)
+	if wanted.length_squared() <= 0.0001:
+		return
+	var limit := deg_to_rad(maximum_degrees)
+	var turn := clampf(fruit.last_direction.angle_to(wanted), -limit, limit)
+	fruit.last_direction = fruit.last_direction.rotated(turn).normalized()
+	fruit.velocity = fruit.last_direction * fruit.speed
+
+
+func _try_fruit_salad(fruit: FruitState, enemy_id: int) -> void:
+	if not _has_relic(PhaseBRelicCatalog.Id.FRUIT_SALAD):
+		return
+	if fruit.dropped_seed or fruit.fragment:
+		return
+	var mark: Array = _fruit_salad_marks.get(enemy_id, [])
+	if (
+		mark.size() == 3
+		and int(mark[0]) == fruit.release_id
+		and int(mark[1]) != fruit.fruit_id
+	):
+		# Two different Fruit of the same release. The burst is not a Fruit
+		# collision, so it can never mark, chain, or feed anything in this pool.
+		_fruit_salad_marks.erase(enemy_id)
+		var burst_position := combat.get_enemy_position(enemy_id)
+		combat.damage_enemies_in_radius(
+			burst_position,
+			fruit_salad_burst_radius,
+			fruit.damage * fruit_salad_damage_share,
+			PhaseBCombatDirector.DeathSource.RELIC
+		)
+		territory_field.queue_splat(
+			burst_position,
+			fruit_trail_mass * 0.6,
+			fruit_trail_pressure_cells,
+			progression.get_conversion_multiplier(),
+			1.0
+		)
+		overlay.spawn_hostile_pulse(burst_position, fruit_salad_burst_radius)
+		return
+	_fruit_salad_marks[enemy_id] = [
+		fruit.release_id,
+		fruit.fruit_id,
+		fruit_salad_mark_seconds,
+	]
+
+
+func _try_newtons_apple(fruit: FruitState, enemy_id: int) -> void:
+	if not _has_relic(PhaseBRelicCatalog.Id.NEWTONS_APPLE):
+		return
+	if fruit.dropped_seed or fruit.fragment:
+		return
+	if fruit.newton_starters >= newton_starters_per_fruit or fruit.newton_cooldown > 0.0:
+		return
+	if not combat.is_enemy_active(enemy_id):
+		return
+	# Only an ordinary enemy becomes a projectile. An elite or a boss can be struck
+	# by one and is never launched.
+	if combat.get_enemy_role(enemy_id) != PhaseBCombatDirector.EnemyRole.HUNTER:
+		return
+	if _launch_falling_body(
+		enemy_id,
+		combat.get_enemy_position(enemy_id),
+		1,
+		fruit.damage * newton_first_damage_share,
+		fruit.knockback * newton_first_knockback_share
+	):
+		fruit.newton_starters += 1
+		fruit.newton_cooldown = newton_starter_cooldown
 
 
 func _get_enemy_momentum_weight(enemy_id: int) -> float:
@@ -2393,6 +2988,10 @@ func _stamp_fruit_trail(fruit: FruitState, position: Vector2) -> void:
 	if not territory_field.contains_local_point(position):
 		return
 	var area := maxf(0.05, fruit.germination_multiplier)
+	if fruit.juicy_remaining > 0.0:
+		# A bruised Fruit leaks. The terminal foothold is deliberately untouched:
+		# this widens the trail, not the landing.
+		area *= bruised_fruit_area_multiplier
 	var radius_scale := sqrt(area)
 	territory_field.queue_splat(
 		position,

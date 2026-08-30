@@ -804,6 +804,180 @@ func find_oldest_mature_position() -> Vector2:
 	return best_position
 
 
+## Four-way neighbours for the flood fills below. Typed so the walk keeps its
+## static types through the loop.
+const NEIGHBOUR_OFFSETS: Array[Vector2i] = [
+	Vector2i(1, 0),
+	Vector2i(-1, 0),
+	Vector2i(0, 1),
+	Vector2i(0, -1),
+]
+
+
+func get_owned_cell_components(minimum_cells: int = 1) -> Array:
+	## Every connected body of owned Green, largest first. Each entry is
+	## [cell_count, centre_of_mass, average_maturity]. Regions smaller than the
+	## minimum are ignored, so a few scattered cells are not a second organism.
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var visited := {}
+	var components: Array = []
+	for start_y in range(_height):
+		for start_x in range(_width):
+			var start_index := start_y * _width + start_x
+			if visited.has(start_index):
+				continue
+			if not _is_owned_cell(start_index):
+				continue
+			var stack := PackedInt32Array([start_index])
+			visited[start_index] = true
+			var cells := 0
+			var centre := Vector2.ZERO
+			var maturity_total := 0.0
+			while not stack.is_empty():
+				var index := stack[stack.size() - 1]
+				stack.remove_at(stack.size() - 1)
+				var x := index % _width
+				var y := index / _width
+				cells += 1
+				maturity_total += _maturity[index]
+				centre += Vector2(
+					(float(x) + 0.5) * cell_width,
+					(float(y) + 0.5) * cell_height
+				)
+				for offset in NEIGHBOUR_OFFSETS:
+					var next_x := x + offset.x
+					var next_y := y + offset.y
+					if next_x < 0 or next_x >= _width or next_y < 0 or next_y >= _height:
+						continue
+					var next_index := next_y * _width + next_x
+					if visited.has(next_index) or not _is_owned_cell(next_index):
+						continue
+					visited[next_index] = true
+					stack.append(next_index)
+			if cells < minimum_cells:
+				continue
+			components.append([cells, centre / float(cells), maturity_total / float(cells)])
+	components.sort_custom(
+		func(first: Array, second: Array) -> bool:
+			return int(first[0]) > int(second[0])
+	)
+	return components
+
+
+func get_owned_component_count(minimum_cells: int = 8) -> int:
+	## How many pieces the organism is currently in. The minimum keeps a handful of
+	## stray cells from reading as a severed network.
+	return get_owned_cell_components(minimum_cells).size()
+
+
+func find_isolated_colony(
+	minimum_cells: int,
+	minimum_maturity: float
+) -> Vector2:
+	## The centre of an established body of Green that is not part of the main one.
+	## Returns an invalid position when the organism is whole, or when nothing cut
+	## off is established enough to be worth reconnecting.
+	var components := get_owned_cell_components(1)
+	if components.size() < 2:
+		return Vector2(-1.0, -1.0)
+	# The largest component is the main organism by definition; everything else is
+	# a colony. The best candidate is the biggest one that qualifies.
+	for index in range(1, components.size()):
+		var component: Array = components[index]
+		if int(component[0]) < minimum_cells:
+			continue
+		if float(component[2]) < minimum_maturity:
+			continue
+		return component[1]
+	return Vector2(-1.0, -1.0)
+
+
+func _is_owned_cell(index: int) -> bool:
+	return (
+		_claimable_mask[index] != 0
+		and _control[index] > tuning.ownership_threshold
+	)
+
+
+func get_ancient_regions(
+	minimum_maturity: float = 0.90,
+	minimum_cells: int = 16
+) -> Array:
+	## Every connected region of deeply Mature Green worth establishing on, as
+	## [centre, average_age, cell_count]. One flood fill: callers pick between the
+	## regions themselves rather than each asking the field to walk the grid again.
+	##
+	## The centre is snapped onto a cell of the region it belongs to, because the
+	## centre of mass of an L-shaped region falls outside the region itself.
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var visited := {}
+	var regions: Array = []
+	for start_y in range(_height):
+		for start_x in range(_width):
+			var start_index := start_y * _width + start_x
+			if visited.has(start_index):
+				continue
+			if not _is_ancient_cell(start_index, minimum_maturity):
+				continue
+			var stack := PackedInt32Array([start_index])
+			visited[start_index] = true
+			var members := PackedInt32Array()
+			var age_total := 0.0
+			var centre := Vector2.ZERO
+			while not stack.is_empty():
+				var index := stack[stack.size() - 1]
+				stack.remove_at(stack.size() - 1)
+				var x := index % _width
+				var y := index / _width
+				members.append(index)
+				age_total += _territory_age[index]
+				centre += Vector2(
+					(float(x) + 0.5) * cell_width,
+					(float(y) + 0.5) * cell_height
+				)
+				for offset in NEIGHBOUR_OFFSETS:
+					var next_x := x + offset.x
+					var next_y := y + offset.y
+					if next_x < 0 or next_x >= _width or next_y < 0 or next_y >= _height:
+						continue
+					var next_index := next_y * _width + next_x
+					if visited.has(next_index):
+						continue
+					if not _is_ancient_cell(next_index, minimum_maturity):
+						continue
+					visited[next_index] = true
+					stack.append(next_index)
+			if members.size() < minimum_cells:
+				continue
+			centre /= float(members.size())
+			# Snap onto a member cell, searching only this region rather than the grid.
+			var anchor := centre
+			var best_distance := INF
+			for index in members:
+				var x := index % _width
+				var y := index / _width
+				var position := Vector2(
+					(float(x) + 0.5) * cell_width,
+					(float(y) + 0.5) * cell_height
+				)
+				var distance := position.distance_squared_to(centre)
+				if distance < best_distance:
+					best_distance = distance
+					anchor = position
+			regions.append([anchor, age_total / float(members.size()), members.size()])
+	return regions
+
+
+func _is_ancient_cell(index: int, minimum_maturity: float) -> bool:
+	return (
+		_claimable_mask[index] != 0
+		and _control[index] > tuning.ownership_threshold
+		and _maturity[index] >= minimum_maturity
+	)
+
+
 func set_cohesion_multiplier(multiplier: float) -> void:
 	# Cambium's structural integrity. Cohesion is a material property of Green, so
 	# it lives on the field beside maturity rather than inside an ability.
