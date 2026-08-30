@@ -20,9 +20,13 @@ extends Node
 ## Additive maturation-rate multiplier granted by each Maturation Speed rank.
 @export_range(0.0, 2.0, 0.01) var maturation_per_level := 0.22
 
-@export_group("Biomass Yield")
+@export_group("Lateral Roots")
 ## Additive multiplier on Biomass from Mature Green per Biomass Yield rank.
-@export_range(0.0, 2.0, 0.01) var biomass_yield_per_level := 0.20
+## Root Network reach one Lateral Roots rank projects out of Mature Green, in
+## pixels. At rank 5 a point 60 px from Mature ground receives half the support.
+@export_range(0.0, 200.0, 1.0) var lateral_reach_per_level := 24.0
+## Maturity a cell needs before it projects support at all.
+@export_range(0.1, 1.0, 0.01) var lateral_source_maturity := 0.90
 
 @export_group("Mature Strength")
 ## Resistance multiplier applied to Mature Plant territory whenever Root is selected.
@@ -84,11 +88,29 @@ func get_maturation_multiplier() -> float:
 	)
 
 
-func get_biomass_yield_multiplier() -> float:
+func get_lateral_reach() -> float:
+	## How far this run's Mature Green reaches. Zero without the line, in which case
+	## the projection is skipped entirely rather than being computed and discarded.
 	if not has_path():
-		return 1.0
-	return 1.0 + biomass_yield_per_level * float(
-		progression.get_upgrade_level(PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD)
+		return 0.0
+	return lateral_reach_per_level * float(
+		progression.get_upgrade_level(PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS)
+	)
+
+
+func get_projected_maturity_at(local_position: Vector2, ground_maturity: float) -> float:
+	## The maturity the Root Network should treat this point as having: whatever the
+	## ground itself holds, or what nearby Mature Green projects into it, whichever
+	## is stronger. Lateral Roots never makes ground Mature -- it only lets an
+	## established colony support the young Green in front of it.
+	var reach := get_lateral_reach()
+	if reach <= 0.0:
+		return ground_maturity
+	return maxf(
+		ground_maturity,
+		territory_field.get_mature_projection_at(
+			local_position, reach, lateral_source_maturity
+		)
 	)
 
 
@@ -157,7 +179,9 @@ func get_network_multiplier_at(local_position: Vector2, ground_maturity: float) 
 	# happening, scaled by the age of the ground under it. Every consumer was
 	# writing this same expression by hand and reading the global bonus while
 	# doing it, which is how Annual Rings and Seedbed came to amplify nothing.
-	return 1.0 + get_network_bonus_at(local_position) * clampf(ground_maturity, 0.0, 1.0)
+	return 1.0 + get_network_bonus_at(local_position) * clampf(
+		get_projected_maturity_at(local_position, ground_maturity), 0.0, 1.0
+	)
 
 
 func get_network_multiplier_here(local_position: Vector2) -> float:

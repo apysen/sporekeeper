@@ -75,6 +75,74 @@ class BloomVisual:
 	## up from a table the bud has no way to stay in step with.
 	var strength := 1.0
 
+## The shapes the relic pool draws with. Every one is a short deformation, a
+## directional streak or a ground pulse, which is what the master document asks
+## for in place of a particle emitter per trigger.
+enum RelicCue {
+	## A fan of separated streams, not a fog cone: Garden Hose.
+	SPRAY,
+	## Something on the ground that swells before it pays out: Compost Heap.
+	HEAP,
+	## A pulse that visibly crosses the ground rather than arriving everywhere at
+	## once: Feeder Roots, The Hedge's sweep, Rhizome's runner.
+	TRAVELLING,
+	## A ghosted second image of an effect that just happened: Hybrid Vigor,
+	## Miracle-Gro, Twining's repeat.
+	GHOST,
+	## A directional line thrown from one place to another: Thorn Relay's ping,
+	## Petal Scatter, Runner, Whiplash.
+	STREAK,
+	## A band tightening around a body: Girdling, Cocklebur's burrs.
+	BAND,
+	## One strong closing motion: Man-Eater, Briar Knot's yank.
+	BITE,
+}
+
+
+## The placeholder motifs in assets/placeholder_art, in the order the exported
+## texture array holds them. A cue without a motif falls back to its drawn shape,
+## so the layer works with no art wired at all.
+enum RelicMotif {
+	NONE,
+	SPRAY,
+	HEAP,
+	BURR,
+	MAW,
+	PETAL,
+	THORN,
+	GHOST,
+	BAND,
+	TUMBLEWEED,
+	SEEDLING,
+	KNOT,
+	ROOT_PULSE,
+	RUNNER,
+	CUTTING,
+	FUSE,
+	FALLING_BODY,
+}
+
+
+class RelicCueVisual:
+	## One relic cue in flight. Held as plain values and drawn from the same pass as
+	## every other overlay effect, so a dense chain costs one loop rather than a
+	## node per activation.
+	var kind := RelicCue.SPRAY
+	var position := Vector2.ZERO
+	var toward := Vector2.ZERO
+	var radius := 0.0
+	var age := 0.0
+	var duration := 0.0
+	## Delay before the accent actually starts, which is how same-frame cues are
+	## spread out rather than landing on top of one another.
+	var lead_in := 0.0
+	## 1.0 for a natural event. A generated echo is clamped below it on the way in,
+	## so nothing downstream has to remember to weaken it.
+	var intensity := 1.0
+	var color := Color.WHITE
+	var motif := RelicMotif.NONE
+
+
 class PulseVisual:
 	var position := Vector2.ZERO
 	var age := 0.0
@@ -139,6 +207,11 @@ var show_annotations := true
 var _seeds: Array[SeedVisual] = []
 var _blooms: Array[BloomVisual] = []
 var _pulses: Array[PulseVisual] = []
+var _relic_cues: Array[RelicCueVisual] = []
+## Cues already started this frame, so several resolving together are spread by the
+## authored stagger instead of flashing at once.
+var _cues_this_frame := 0
+var _cue_frame_remaining := 0.0
 var _splatters: Array[SplatterVisual] = []
 var _tethers: Array[TetherVisual] = []
 ## Where the root network currently has colonies cut off from the main organism.
@@ -179,6 +252,21 @@ var _overgrow_aim_radius := 0.0
 ## quietly pull the sprite off centre.
 @export var bloom_texture_content := Rect2(0.0078125, 0.013672, 0.984375, 0.978516)
 @export_range(0.25, 4.0, 0.05) var bloom_art_scale := 1.0
+
+@export_group("Relic Cues")
+## The band a generated echo's intensity is clamped into. A repeat is recognisably
+## the same effect and unmistakably the weaker one.
+@export_range(0.1, 1.0, 0.01) var echo_intensity_minimum := 0.70
+@export_range(0.1, 1.0, 0.01) var echo_intensity_maximum := 0.85
+## How far apart the strongest accents of same-frame cues are pushed.
+@export_range(0.0, 0.5, 0.005) var cue_stagger_seconds := 0.05
+## Accents past this many in one frame stop being staggered further; beyond it the
+## chain is dense enough that spreading it more would just delay it.
+@export_range(1, 24, 1) var cue_stagger_limit := 6
+@export_range(0.05, 3.0, 0.05) var cue_duration_seconds := 0.42
+## Motif art indexed by RelicMotif, skipping NONE. Optional: a cue with no texture
+## behind it draws its authored shape instead, so the pool works unwired.
+@export var relic_motif_textures: Array[Texture2D] = []
 
 @export_group("Presentation")
 ## Presentation options. Optional: without it everything is drawn at full strength,
@@ -266,6 +354,17 @@ func _process(delta: float) -> void:
 			if pulse.age >= pulse.duration:
 				_pulses.remove_at(index)
 
+		# The stagger window is a frame, not a wall clock: cues that arrive in the
+		# same frame share it and the count resets once that frame has passed.
+		_cue_frame_remaining -= delta
+		if _cue_frame_remaining <= 0.0:
+			_cues_this_frame = 0
+		for index in range(_relic_cues.size() - 1, -1, -1):
+			var cue := _relic_cues[index]
+			cue.age += delta
+			if cue.age >= cue.lead_in + cue.duration:
+				_relic_cues.remove_at(index)
+
 		for index in range(_splatters.size() - 1, -1, -1):
 			var splatter := _splatters[index]
 			splatter.age += delta
@@ -310,6 +409,7 @@ func _draw() -> void:
 
 	_draw_injections()
 
+	_draw_relic_cues()
 	for pulse in _pulses:
 		var progress := clampf(pulse.age / pulse.duration, 0.0, 1.0)
 		var radius := lerpf(8.0, pulse.maximum_radius, progress)
@@ -1091,6 +1191,7 @@ func damage_nearest_catalyst(
 
 
 func clear_effects() -> void:
+	clear_relic_cues()
 	_injections.clear()
 	_last_germinated_seed_id = -1
 	_seeds.clear()
@@ -1201,6 +1302,137 @@ func _draw_injections() -> void:
 					-1.0,
 					true
 				)
+
+
+func spawn_relic_cue(
+	kind: int,
+	local_position: Vector2,
+	radius: float,
+	color: Color,
+	toward: Vector2 = Vector2.ZERO,
+	generated: bool = false,
+	source_intensity: float = 1.0,
+	motif: int = RelicMotif.NONE
+) -> void:
+	## Draw one relic cue.
+	##
+	## `generated` is what makes an echo look like an echo: its intensity is clamped
+	## into the authored band and then held below whatever caused it, so a repeat can
+	## never out-shout the natural event. Callers do not get to opt out of that,
+	## which is the point -- the rule lives here rather than in forty call sites.
+	var cue := RelicCueVisual.new()
+	cue.kind = kind
+	cue.position = local_position
+	cue.toward = toward
+	cue.radius = maxf(1.0, radius)
+	cue.duration = cue_duration_seconds
+	cue.color = color
+	if generated:
+		cue.intensity = minf(
+			source_intensity,
+			randf_range(echo_intensity_minimum, echo_intensity_maximum) * source_intensity
+		)
+	else:
+		cue.intensity = clampf(source_intensity, 0.0, 1.0)
+	cue.motif = motif
+	cue.lead_in = cue_stagger_seconds * float(mini(_cues_this_frame, cue_stagger_limit))
+	_cues_this_frame += 1
+	_cue_frame_remaining = 0.0001
+	_relic_cues.append(cue)
+
+
+func get_relic_cue_count() -> int:
+	return _relic_cues.size()
+
+
+func get_last_relic_cue_intensity() -> float:
+	if _relic_cues.is_empty():
+		return 0.0
+	return _relic_cues[_relic_cues.size() - 1].intensity
+
+
+func get_last_relic_cue_lead_in() -> float:
+	if _relic_cues.is_empty():
+		return 0.0
+	return _relic_cues[_relic_cues.size() - 1].lead_in
+
+
+func clear_relic_cues() -> void:
+	_relic_cues.clear()
+	_cues_this_frame = 0
+
+
+func _draw_relic_cues() -> void:
+	for cue in _relic_cues:
+		if cue.age < cue.lead_in:
+			continue
+		var progress := clampf((cue.age - cue.lead_in) / maxf(0.0001, cue.duration), 0.0, 1.0)
+		var alpha := (1.0 - progress) * cue.intensity * _friendly_scale()
+		if alpha <= 0.004:
+			continue
+		var tint := Color(cue.color, alpha)
+		var heading := cue.toward
+		if heading.length_squared() <= 0.0001:
+			heading = Vector2.RIGHT
+		heading = heading.normalized()
+		var motif_texture := _relic_motif_texture(cue.motif)
+		if motif_texture != null:
+			# The motif is the cue when there is art for it. It is drawn along the
+			# cue's own heading and fades on the same curve as the shape it replaces,
+			# so wiring art in changes how a relic looks and not how it reads.
+			var extent := cue.radius * (0.55 + 0.45 * progress)
+			draw_set_transform(cue.position, heading.angle(), Vector2.ONE)
+			draw_texture_rect(
+				motif_texture,
+				Rect2(Vector2(-extent, -extent) * 0.5, Vector2(extent, extent)),
+				false,
+				tint
+			)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			continue
+		match cue.kind:
+			RelicCue.SPRAY:
+				# Separated streams rather than a cone, so the player can see where
+				# each one landed.
+				for stream in range(5):
+					var angle := deg_to_rad(lerpf(-45.0, 45.0, float(stream) / 4.0))
+					var tip := cue.position + heading.rotated(angle) * cue.radius * progress
+					draw_line(cue.position, tip, tint, 2.0, true)
+			RelicCue.HEAP:
+				# Swells before it pays out, so the eruption can be anticipated.
+				draw_circle(cue.position, cue.radius * (0.35 + 0.65 * progress), tint)
+			RelicCue.TRAVELLING:
+				# Crosses the ground rather than appearing along its whole length.
+				draw_line(
+					cue.position,
+					cue.position.lerp(cue.position + heading * cue.radius, progress),
+					tint,
+					3.0,
+					true
+				)
+			RelicCue.GHOST:
+				# A second, weaker image of something that already happened.
+				draw_arc(cue.position, cue.radius * (0.8 + 0.2 * progress), 0.0, TAU, 20, tint, 2.0, true)
+			RelicCue.STREAK:
+				var reach := cue.position + heading * cue.radius
+				draw_line(cue.position.lerp(reach, progress * 0.6), reach, tint, 2.5, true)
+			RelicCue.BAND:
+				# Tightens rather than expands: the target is being constricted.
+				draw_arc(cue.position, cue.radius * (1.0 - 0.45 * progress), 0.0, TAU, 18, tint, 2.5, true)
+			RelicCue.BITE:
+				# One closing motion, not a lingering cloud.
+				var closing := cue.radius * (1.0 - progress)
+				draw_arc(cue.position, closing, -0.6, 0.6, 10, tint, 3.0, true)
+				draw_arc(cue.position, closing, PI - 0.6, PI + 0.6, 10, tint, 3.0, true)
+
+
+func _relic_motif_texture(motif: int) -> Texture2D:
+	if motif <= RelicMotif.NONE:
+		return null
+	var index := motif - 1
+	if index >= relic_motif_textures.size():
+		return null
+	return relic_motif_textures[index]
 
 
 func _spawn_pulse(

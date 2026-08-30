@@ -49,7 +49,7 @@ enum UpgradeId {
 	BRAMBLE_GRASPING_ROOTS,
 	BRAMBLE_REPULSION,
 	ROOT_MATURATION,
-	ROOT_BIOMASS_YIELD,
+	ROOT_LATERAL_ROOTS,
 	ROOT_MATURE_STRENGTH,
 	ROOT_POTENCY,
 	PRUNING_HARVEST_RATE,
@@ -981,7 +981,7 @@ static func get_upgrade_name(upgrade_id: int) -> String:
 			return "Repulsion"
 		UpgradeId.ROOT_MATURATION:
 			return "Maturation Speed"
-		UpgradeId.ROOT_BIOMASS_YIELD:
+		UpgradeId.ROOT_LATERAL_ROOTS:
 			return "Biomass Yield"
 		UpgradeId.ROOT_MATURE_STRENGTH:
 			return "Mature Strength"
@@ -1135,9 +1135,9 @@ func get_upgrade_description(upgrade_id: int) -> String:
 			return "+%d%% territory maturation rate" % roundi(
 				root_director.maturation_per_level * 100.0 if root_director != null else 0.0
 			)
-		UpgradeId.ROOT_BIOMASS_YIELD:
-			return "+%d%% Biomass from Mature Green" % roundi(
-				root_director.biomass_yield_per_level * 100.0 if root_director != null else 0.0
+		UpgradeId.ROOT_LATERAL_ROOTS:
+			return "+%d px Root Network reach projected from Mature Green" % roundi(
+				root_director.lateral_reach_per_level if root_director != null else 0.0
 			)
 		UpgradeId.ROOT_MATURE_STRENGTH:
 			return "+%d%% Mature resistance and +%.3f control per second regrowth" % [
@@ -1437,7 +1437,7 @@ func _get_upgrade_path(upgrade_id: int) -> int:
 		UpgradeId.BRAMBLE_ENTANGLEMENT, UpgradeId.BRAMBLE_ENSNARE_RATE, \
 		UpgradeId.BRAMBLE_GRASPING_ROOTS, UpgradeId.BRAMBLE_REPULSION:
 			return PathId.BRAMBLE
-		UpgradeId.ROOT_MATURATION, UpgradeId.ROOT_BIOMASS_YIELD, \
+		UpgradeId.ROOT_MATURATION, UpgradeId.ROOT_LATERAL_ROOTS, \
 		UpgradeId.ROOT_MATURE_STRENGTH, UpgradeId.ROOT_POTENCY:
 			return PathId.ROOT
 		UpgradeId.PRUNING_HARVEST_RATE, UpgradeId.PRUNING_CUTTING_YIELD, \

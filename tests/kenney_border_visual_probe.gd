@@ -14,7 +14,6 @@ func _run() -> void:
 	_check_style("res://assets/ui/button_style.tres", 12, "run button style")
 	_check_style("res://assets/ui/button_hover_style.tres", 12, "run hover style")
 	_check_style("res://assets/ui/button_disabled_style.tres", 4, "run disabled style")
-	_check_style("res://assets/ui/button_biomass_style.tres", 12, "biomass button style")
 	_check_style("res://assets/ui/wx_panel_ornate.tres", 24, "ornate panel style")
 	_check_style("res://assets/ui/wx_panel_plain.tres", 20, "plain panel style")
 	_check_style("res://assets/ui/wx_fantasy_button.tres", 24, "fantasy button style")
@@ -54,16 +53,15 @@ func _run() -> void:
 	_check_border(prototype.get_node("Interface/UpgradeTray") as Control, 4, "relic tray")
 	_check_border(prototype.relic_slots.get_node("Slot1") as Control, 8, "relic slot")
 	_check_border(prototype.upgrade_slots.get_node("Slot1") as Control, 8, "adaptation slot")
-	_check_border(prototype.mass_button, 12, "adaptation/metabolism button")
 	_check_border(prototype.pause_resume_button, 12, "pause button")
-	prototype.mass_button.disabled = true
+	prototype.pause_resume_button.disabled = true
 	await process_frame
-	_check_border(prototype.mass_button, 4, "disabled adaptation/metabolism button")
-	prototype.mass_button.disabled = false
-	Input.warp_mouse(prototype.biomass_button.get_global_rect().get_center() * 2.0)
+	_check_border(prototype.pause_resume_button, 4, "disabled pause button")
+	prototype.pause_resume_button.disabled = false
+	Input.warp_mouse(prototype.pause_resume_button.get_global_rect().get_center() * 2.0)
 	await process_frame
 	await process_frame
-	_check_border(prototype.biomass_button, 12, "hovered biomass button")
+	_check_border(prototype.pause_resume_button, 12, "hovered pause button")
 	_save("res://.godot/kenney_borders_run_hud.png")
 	if _failed:
 		quit(1)

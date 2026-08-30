@@ -44,7 +44,7 @@ signal enemy_died_entangled(local_position: Vector2, entanglement: float, role: 
 ## How much Green an enemy personally erased. Only what the enemy itself destroys is
 ## reported: territory the player gives up to Pruning or wagers on Clover is their
 ## own doing and must never be readable as something an enemy ate.
-signal enemy_ate_green(enemy_id: int, mass: float)
+signal enemy_ate_green(enemy_id: int, mass: float, seconds: float)
 signal active_enemy_count_changed(count: int)
 ## An elite spawned carrying a rule change. The player has to be able to see which
 ## one before it matters, so this is what the battlefield reads to mark it.
@@ -3063,6 +3063,18 @@ func get_active_enemy_ids() -> PackedInt32Array:
 	return ids
 
 
+func get_active_enemy_radii() -> PackedFloat32Array:
+	## Paired by index with get_active_enemy_ids and get_active_enemy_positions, so a
+	## hot loop can read the whole roster once instead of asking for one enemy at a
+	## time -- every by-id accessor here is a scan of the pool, and a projectile
+	## asking per enemy per frame turns that into millions of iterations.
+	var radii := PackedFloat32Array()
+	for enemy in _enemies:
+		if enemy.active:
+			radii.append(enemy.radius)
+	return radii
+
+
 func damage_enemy_by_id(enemy_id: int, damage: float, death_source: int) -> bool:
 	for enemy in _enemies:
 		if enemy.active and enemy.id == enemy_id:
@@ -3715,7 +3727,11 @@ func _perform_enemy_territory_action(enemy: EnemyState) -> void:
 				scaled_strength,
 				enemy.territory_action_radius_multiplier
 			)
-			enemy_ate_green.emit(enemy.id, scaled_strength)
+			# The seconds this bite represents, so a relic can count grazing time
+			# without watching every enemy every frame.
+			enemy_ate_green.emit(
+				enemy.id, scaled_strength, maxf(0.0, enemy.territory_action_interval)
+			)
 			weakened_territory = true
 			if enemy.emit_eruption_signal:
 				boss_erupted.emit(enemy.position)

@@ -5,6 +5,22 @@
 [ext_resource type="Script" uid="uid://nuttrlsbrksy" path="res://src/core/nodes/territory/prototype_overlay.gd" id="3_overlay"]
 [ext_resource type="Script" uid="uid://62m5bm78sii0" path="res://src/core/nodes/player/phase_b_player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://cb667b3kv5sg8" path="res://src/core/nodes/combat/phase_b_combat_director.gd" id="5_combat"]
+[ext_resource type="Texture2D" uid="uid://ckefuylanwpbv" path="res://assets/placeholder_art/cue_spray_stream.png" id="cue_0"]
+[ext_resource type="Texture2D" uid="uid://c1glau81u7xk0" path="res://assets/placeholder_art/cue_compost_heap.png" id="cue_1"]
+[ext_resource type="Texture2D" uid="uid://cj80fq3j1kp5a" path="res://assets/placeholder_art/cue_burr.png" id="cue_2"]
+[ext_resource type="Texture2D" uid="uid://beiptkehcxgp2" path="res://assets/placeholder_art/cue_maw.png" id="cue_3"]
+[ext_resource type="Texture2D" uid="uid://bond0mpnd7m" path="res://assets/placeholder_art/cue_petal.png" id="cue_4"]
+[ext_resource type="Texture2D" uid="uid://dgifsmv7bncxe" path="res://assets/placeholder_art/cue_thorn.png" id="cue_5"]
+[ext_resource type="Texture2D" uid="uid://bsvcs8pj6k1f4" path="res://assets/placeholder_art/cue_ghost_ring.png" id="cue_6"]
+[ext_resource type="Texture2D" uid="uid://bm2on6cwis202" path="res://assets/placeholder_art/cue_band.png" id="cue_7"]
+[ext_resource type="Texture2D" uid="uid://rkcgsgafk4eh" path="res://assets/placeholder_art/cue_tumbleweed.png" id="cue_8"]
+[ext_resource type="Texture2D" uid="uid://cdk2rct1tobsa" path="res://assets/placeholder_art/cue_seedling.png" id="cue_9"]
+[ext_resource type="Texture2D" uid="uid://bpi3qx67yfths" path="res://assets/placeholder_art/cue_knot.png" id="cue_10"]
+[ext_resource type="Texture2D" uid="uid://bh3nkpfe6u03a" path="res://assets/placeholder_art/cue_root_pulse.png" id="cue_11"]
+[ext_resource type="Texture2D" uid="uid://cva5cvkuht1tn" path="res://assets/placeholder_art/cue_runner.png" id="cue_12"]
+[ext_resource type="Texture2D" uid="uid://c6oio5wbrg8a3" path="res://assets/placeholder_art/cue_cutting.png" id="cue_13"]
+[ext_resource type="Texture2D" uid="uid://dnuqxgfl3plmr" path="res://assets/placeholder_art/cue_fuse_spark.png" id="cue_14"]
+[ext_resource type="Texture2D" uid="uid://p31nc4pdqa37" path="res://assets/placeholder_art/cue_falling_body.png" id="cue_15"]
 [ext_resource type="Script" uid="uid://bfrtbxapgejnc" path="res://src/core/nodes/elements/phase_b_vine_whip.gd" id="5_vinewhip"]
 [ext_resource type="Script" uid="uid://dsf82wv3j6wir" path="res://src/core/nodes/progression/phase_b_progression.gd" id="6_progression"]
 [ext_resource type="Resource" path="res://data/territory/phase_a_tuning.tres" id="7_territory_tuning"]
@@ -207,7 +223,7 @@ region = Rect2(138, 0, 627, 624)
 atlas = ExtResource("26_slot_lever_down")
 region = Rect2(138, 0, 627, 624)
 
-[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "biomass_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "mass_button", "push_button", "hold_button", "overgrow_button", "metabolism_label", "metabolism_drawer", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "biomass_button", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -246,7 +262,6 @@ xp_label = NodePath("Interface/SidePanel/XPLabel")
 wave_label = NodePath("Interface/SidePanel/WaveLabel")
 clock_label = NodePath("Interface/SidePanel/ClockLabel")
 hostile_label = NodePath("Interface/SidePanel/HostileLabel")
-biomass_label = NodePath("Interface/UpgradeTray/BiomassLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
 relics_label = NodePath("Interface/UpgradeTray/RelicsLabel")
 relic_slots = NodePath("Interface/UpgradeTray/RelicSlots")
@@ -259,12 +274,6 @@ choice_button_two = NodePath("Interface/ChoicePanel/Choice2")
 choice_button_three = NodePath("Interface/ChoicePanel/Choice3")
 choice_button_four = NodePath("Interface/ChoicePanel/Choice4")
 choice_reroll_button = NodePath("Interface/ChoicePanel/Reroll")
-mass_button = NodePath("Interface/MetabolismDrawer/Mass")
-push_button = NodePath("Interface/MetabolismDrawer/Push")
-hold_button = NodePath("Interface/MetabolismDrawer/Hold")
-overgrow_button = NodePath("Interface/MetabolismDrawer/Overgrow")
-metabolism_label = NodePath("Interface/MetabolismDrawer/MetabolismLabel")
-metabolism_drawer = NodePath("Interface/MetabolismDrawer")
 reel_one = NodePath("Interface/SidePanel/SlotMachine/Reel1")
 reel_two = NodePath("Interface/SidePanel/SlotMachine/Reel2")
 reel_three = NodePath("Interface/SidePanel/SlotMachine/Reel3")
@@ -276,7 +285,6 @@ all_in_label = NodePath("Interface/AllInCountdown")
 lever_grab = NodePath("Interface/SidePanel/SlotMachine/LeverGrab")
 lever_up = NodePath("Interface/SidePanel/SlotMachine/LeverUp")
 lever_down = NodePath("Interface/SidePanel/SlotMachine/LeverDown")
-biomass_button = NodePath("Interface/UpgradeTray/BiomassButton")
 banner_label = NodePath("Interface/Banner")
 result_panel = NodePath("Interface/ResultPanel")
 result_header = NodePath("Interface/ResultPanel/Header")
@@ -529,6 +537,7 @@ position = Vector2(24, 104)
 script = ExtResource("3_overlay")
 tuning = ExtResource("7_territory_tuning")
 territory_field = NodePath("../TerritoryField")
+relic_motif_textures = Array[Texture2D]([ExtResource("cue_0"), ExtResource("cue_1"), ExtResource("cue_2"), ExtResource("cue_3"), ExtResource("cue_4"), ExtResource("cue_5"), ExtResource("cue_6"), ExtResource("cue_7"), ExtResource("cue_8"), ExtResource("cue_9"), ExtResource("cue_10"), ExtResource("cue_11"), ExtResource("cue_12"), ExtResource("cue_13"), ExtResource("cue_14"), ExtResource("cue_15")])
 seed_texture = ExtResource("117_seed_art")
 bloom_texture = ExtResource("118_bloom_art")
 
@@ -1522,251 +1531,6 @@ empty_marker_font_size = 13
 title_offset_scale = 0.07
 level_offset_scale = 0.4
 slot_texture_style = ExtResource("35_slot_style")
-
-[node name="BiomassLabel" type="Label" parent="Interface/UpgradeTray" unique_id=533912317]
-layout_mode = 0
-offset_left = 576.0
-offset_top = 17.0
-offset_right = 716.0
-offset_bottom = 34.006805
-scale = Vector2(1.47, 1.47)
-theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
-theme_override_font_sizes/font_size = 10
-text = "{held}        +{gain}/s"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="BiomassButton" type="Button" parent="Interface/UpgradeTray" unique_id=1904772312]
-layout_mode = 0
-offset_left = 790.0
-offset_top = 9.0
-offset_right = 947.0
-offset_bottom = 49.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
-theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = ExtResource("37_biomass_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-text = "BIOMASS  [B]"
-
-[node name="MetabolismDrawer" type="Panel" parent="Interface" unique_id=771320544]
-visible = false
-offset_left = 24.0
-offset_top = 465.0
-offset_right = 984.0
-offset_bottom = 642.0
-theme_override_styles/panel = ExtResource("30_panel_style")
-
-[node name="Header" type="Label" parent="Interface/MetabolismDrawer" unique_id=771320545]
-layout_mode = 0
-offset_left = 20.0
-offset_top = 14.0
-offset_right = 500.0
-offset_bottom = 36.0
-theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
-theme_override_font_sizes/font_size = 14
-text = "ECOSYSTEM DEVELOPMENT"
-vertical_alignment = 1
-
-[node name="Reserve" type="Label" parent="Interface/MetabolismDrawer" unique_id=771320546]
-layout_mode = 0
-offset_left = 620.0
-offset_top = 14.0
-offset_right = 940.0
-offset_bottom = 36.0
-theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
-theme_override_font_sizes/font_size = 14
-text = "BIOMASS {biomass}"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="Mass" type="Button" parent="Interface/MetabolismDrawer" unique_id=1586179802]
-layout_mode = 0
-offset_left = 20.0
-offset_top = 48.0
-offset_right = 320.0
-offset_bottom = 112.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_colors/font_disabled_color = Color(0.337, 0.376, 0.322, 1)
-theme_override_font_sizes/font_size = 10
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-script = ExtResource("98_metabolism_button")
-display_text = "MASS   RANK {rank}
-[ {progress}% ]   {summary}"
-
-[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Mass" unique_id=1589413697]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -12.0
-offset_bottom = -12.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 10
-text = "MASS   RANK {rank}
-[ {progress}% ]   {summary}"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Mass" unique_id=1999639706]
-texture_filter = 1
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 12.0
-offset_top = -23.0
-offset_right = -12.0
-offset_bottom = -14.0
-grow_horizontal = 2
-grow_vertical = 0
-mouse_filter = 2
-theme_override_styles/background = ExtResource("96_wx_system_track")
-theme_override_styles/fill = ExtResource("97_wx_system_fill")
-max_value = 1.0
-step = 0.001
-show_percentage = false
-
-[node name="Push" type="Button" parent="Interface/MetabolismDrawer" unique_id=1580967168]
-layout_mode = 0
-offset_left = 332.0
-offset_top = 48.0
-offset_right = 632.0
-offset_bottom = 112.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_colors/font_disabled_color = Color(0.337, 0.376, 0.322, 1)
-theme_override_font_sizes/font_size = 10
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-script = ExtResource("98_metabolism_button")
-display_text = "PUSH   RANK {rank}
-[ {progress}% ]   {summary}"
-
-[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Push" unique_id=998395635]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -12.0
-offset_bottom = -12.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 10
-text = "PUSH   RANK {rank}
-[ {progress}% ]   {summary}"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Push" unique_id=564813745]
-texture_filter = 1
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 12.0
-offset_top = -23.0
-offset_right = -12.0
-offset_bottom = -14.0
-grow_horizontal = 2
-grow_vertical = 0
-mouse_filter = 2
-theme_override_styles/background = ExtResource("96_wx_system_track")
-theme_override_styles/fill = ExtResource("97_wx_system_fill")
-max_value = 1.0
-step = 0.001
-show_percentage = false
-
-[node name="Hold" type="Button" parent="Interface/MetabolismDrawer" unique_id=1276774779]
-layout_mode = 0
-offset_left = 644.0
-offset_top = 48.0
-offset_right = 944.0
-offset_bottom = 112.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_colors/font_disabled_color = Color(0.337, 0.376, 0.322, 1)
-theme_override_font_sizes/font_size = 10
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-script = ExtResource("98_metabolism_button")
-display_text = "HOLD   RANK {rank}
-[ {progress}% ]   {summary}"
-
-[node name="Caption" type="Label" parent="Interface/MetabolismDrawer/Hold" unique_id=946512971]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -12.0
-offset_bottom = -12.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 10
-text = "HOLD   RANK {rank}
-[ {progress}% ]   {summary}"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="LevelMeter" type="ProgressBar" parent="Interface/MetabolismDrawer/Hold" unique_id=743392121]
-texture_filter = 1
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 12.0
-offset_top = -23.0
-offset_right = -12.0
-offset_bottom = -14.0
-grow_horizontal = 2
-grow_vertical = 0
-mouse_filter = 2
-theme_override_styles/background = ExtResource("96_wx_system_track")
-theme_override_styles/fill = ExtResource("97_wx_system_fill")
-max_value = 1.0
-step = 0.001
-show_percentage = false
-
-[node name="Overgrow" type="Button" parent="Interface/MetabolismDrawer" unique_id=86364626]
-layout_mode = 0
-offset_left = 20.0
-offset_top = 122.0
-offset_right = 196.0
-offset_bottom = 156.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_colors/font_disabled_color = Color(0.337, 0.376, 0.322, 1)
-theme_override_font_sizes/font_size = 10
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-text = "OVERGROW  {cost}"
-
-[node name="MetabolismLabel" type="Label" parent="Interface/MetabolismDrawer" unique_id=1988530491]
-layout_mode = 0
-offset_left = 20.0
-offset_top = 135.0
-offset_right = 944.0
-offset_bottom = 164.0
-theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
-theme_override_font_sizes/font_size = 9
-text = "LIFETIME BIOMASS {lifetime}
-NEXT RANK: {axis} in {cost}"
-horizontal_alignment = 2
-vertical_alignment = 1
 
 [node name="Banner" type="Label" parent="Interface" unique_id=771320547]
 modulate = Color(1, 1, 1, 0)

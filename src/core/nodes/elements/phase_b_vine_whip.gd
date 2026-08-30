@@ -373,6 +373,27 @@ func _recover() -> void:
 	_recovery_remaining = recovery_seconds
 
 
+func get_wrap_index() -> int:
+	## The first point past which Grandma can no longer see the rest of the rope in
+	## a straight line -- that is, where the Vine has actually gone around
+	## something. Returns -1 when the whole body is in the open.
+	##
+	## This is deliberately not "the rope is bent": a whipping rope curves sharply
+	## all the time under its own momentum. A wrap is specifically terrain between
+	## the anchor and the far end, with the rope itself still legal, which is the
+	## only shape Climber is meant to answer.
+	if territory_field == null or points.size() < 3:
+		return -1
+	for index in range(1, points.size()):
+		if not territory_field.is_growth_path_clear(points[0], points[index]):
+			return index
+	return -1
+
+
+func is_wrapped() -> bool:
+	return get_wrap_index() >= 0
+
+
 func get_bend_count(tolerance_degrees: float = 25.0) -> int:
 	## How many real corners the rope is currently folded around. Climber requires
 	## an actual bend rather than a routed line, so this counts the shape the

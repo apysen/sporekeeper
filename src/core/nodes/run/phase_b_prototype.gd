@@ -50,8 +50,9 @@ enum ChoiceKind {
 @export var progression: PhaseBProgression
 ## Evolutions component owning every Evolution's state and tuning.
 @export var evolutions: PhaseBEvolutions
-## Ecosystem Metabolism component that reads Mass, Push and Hold out of the run's
-## lifetime earnings and owns Overgrow.
+## Ecosystem Metabolism component. It develops Mass, Push and Hold out of the run's
+## lifetime earnings and pushes them into the field as territory strength. Nothing
+## here is player-facing any more: there is no meter to watch and nothing to spend.
 @export var metabolism: PhaseBMetabolism
 ## The Clover machine. Territory is staked here and the reels pay out in Path events.
 ## Biomass is never touched, so a run can gamble away its body without ever losing the
@@ -127,7 +128,7 @@ enum ChoiceKind {
 @export_group("Relic Rewards")
 ## Waves between scheduled relic rewards; every Nth wave puts one on the table.
 ## Zero turns the schedule off and leaves relics to the elite and the boss.
-@export_range(0, 12, 1) var relic_reward_wave_cycle := 4
+@export_range(0, 12, 1) var relic_reward_wave_cycle := 3
 
 @export_group("Interface Wiring")
 ## Audio player that starts and loops the authored ambient forest theme.
@@ -160,8 +161,6 @@ enum ChoiceKind {
 @export var clock_label: Label
 ## The hostile-count warning, its own node so the panel can place it.
 @export var hostile_label: Label
-## Label that displays the Biomass economy: Reserve, Production, Consumption, Net.
-@export var biomass_label: Label
 ## Label that displays selected Plant paths, mastery readiness, and active evolution.
 @export var evolution_label: Label
 ## Label that lists relics acquired during the current run.
@@ -187,21 +186,6 @@ enum ChoiceKind {
 @export var choice_button_four: Button
 ## Button that spends one of the run's rerolls to redraw the current upgrade offer.
 @export var choice_reroll_button: Button
-## Readout for the Mass axis. Nothing here is pressed: the bar it draws is how far
-## the run's lifetime earnings have carried this axis toward its next rank, which is
-## the same for all three.
-@export var mass_button: PhaseBMetabolismButton
-## Readout for the Push axis; see Mass Button.
-@export var push_button: PhaseBMetabolismButton
-## Readout for the Hold axis; see Mass Button.
-@export var hold_button: PhaseBMetabolismButton
-## Button that releases a share of the Reserve into the frontier the player aims at.
-@export var overgrow_button: Button
-## Label that reports what the organism is holding and what it cannot reach.
-@export var metabolism_label: Label
-## Bottom drawer that owns every detailed Biomass decision. Closed by default: the
-## sidebar says what is true, and decisions are made down here.
-@export var metabolism_drawer: Control
 
 @export_group("Clover Machine")
 ## Seconds the first matching pair of a run holds the battlefield still while the
@@ -255,8 +239,6 @@ enum ChoiceKind {
 ## slide: dragging the whole sprite down moved the ball and the shaft and the base
 ## together, which reads as the lever falling off the machine rather than being pulled.
 @export_range(0.05, 2.0, 0.05) var lever_seat_seconds := 0.28
-## Bottom-bar control that opens the Biomass drawer.
-@export var biomass_button: Button
 ## Large transient banner over the battlefield for major progression events.
 @export var banner_label: Label
 ## Side-panel button that resets the current run to its initial state.
@@ -344,7 +326,6 @@ enum ChoiceKind {
 	"LIFETIME BIOMASS {lifetime}
 FULLY DEVELOPED"
 )
-@export var biomass_button_open_text := "CLOSE  [B]"
 @export var fullscreen_exit_text := "EXIT FULLSCREEN"
 @export var volume_unavailable_text := "UNAVAILABLE"
 @export var choice_header_upgrade := "ROOT MEMORY"
@@ -378,10 +359,6 @@ Time  {time}    Level  {level}    Green  {green}%"
 @export var action_cooldown_template := "{action}  {seconds}s"
 
 var choice_buttons: Array[Button] = []
-var metabolism_buttons: Array[PhaseBMetabolismButton] = []
-## Action buttons indexed by PhaseBMetabolism.ActionId, so a second verb is one entry
-## rather than a second copy of the same update code.
-var action_buttons: Array[Button] = []
 ## Setting buttons indexed by PhaseBDisplaySettings.OptionId, so one loop drives
 ## all seven and an eighth option is one entry rather than a seventh copy.
 var setting_buttons: Array[Button] = []
@@ -397,13 +374,9 @@ var _choice_ids := PackedInt32Array()
 var _zero_territory_remaining := 0.0
 var _owed_wave_relics := 0
 var _banner_remaining := 0.0
-var _drawer_open := false
 ## Whether the run is currently choosing where to put a release, and which action is
 ## waiting on the answer. The run keeps running while it is: the doc treats a release
 ## as a decision made under pressure, not a pause to plan in.
-var _overgrow_aiming := false
-var _aiming_action := PhaseBMetabolism.ActionId.OVERGROW
-var _overgrow_aim_position := Vector2.ZERO
 ## Seconds left of the reach ring Circulation throws up when it is developed, so the
 ## development shows the player what it just widened.
 var _conductive_reveal_remaining := 0.0
@@ -490,12 +463,10 @@ func _ready() -> void:
 	assert(relic_director != null, "PhaseBPrototype requires PhaseBRelicDirector")
 	assert(pruning_director != null, "PhaseBPrototype requires PhaseBPruningDirector")
 	assert(audio_settings != null, "PhaseBPrototype requires PhaseBAudioSettings")
-	assert(metabolism_drawer != null, "PhaseBPrototype requires the Biomass drawer")
 	# The authored row lengths are the ceiling the run grows toward, so they are
 	# read once before either row is trimmed to what the run currently holds.
 	if relic_slots != null:
 		_maximum_relic_slots = relic_slots.slot_count
-	assert(biomass_button != null, "PhaseBPrototype requires the Biomass drawer button")
 	assert(banner_label != null, "PhaseBPrototype requires the event banner")
 	assert(ambient_music_audio != null, "PhaseBPrototype requires its ambient music player")
 	choice_buttons = [
@@ -504,11 +475,6 @@ func _ready() -> void:
 		choice_button_three,
 		choice_button_four,
 	]
-	metabolism_buttons = [
-		mass_button,
-		push_button,
-		hold_button,
-	]
 	setting_buttons = [
 		setting_button_friendly_effects,
 		setting_button_enemy_telegraphs,
@@ -516,9 +482,6 @@ func _ready() -> void:
 		setting_button_damage_numbers,
 		setting_button_player_highlight,
 	]
-	# Indexed by ActionId, so the order of this array is the order of the enum and not
-	# a second opinion about it.
-	action_buttons = [overgrow_button]
 	var required_interface_controls: Array[Control] = [
 		health_bar,
 		health_label,
@@ -529,7 +492,6 @@ func _ready() -> void:
 		wave_label,
 		clock_label,
 		hostile_label,
-		biomass_label,
 		evolution_label,
 		relics_label,
 		relic_slots,
@@ -542,11 +504,6 @@ func _ready() -> void:
 		choice_button_three,
 		choice_button_four,
 		choice_reroll_button,
-		mass_button,
-		push_button,
-		hold_button,
-		overgrow_button,
-		metabolism_label,
 		result_panel,
 		result_header,
 		result_detail,
@@ -567,20 +524,14 @@ func _ready() -> void:
 		wager_label,
 		odds_label,
 		all_in_label,
-		biomass_button,
 		banner_label,
-		_metabolism_reserve_label(),
 	])
 	_authored.capture(setting_buttons)
-	_authored.capture(action_buttons)
 	# Tooltips are authored the same way, on the same nodes.
 	_authored.capture(required_interface_controls, "tooltip_text")
 	_authored.capture(setting_buttons, "tooltip_text")
-	_authored.capture(action_buttons, "tooltip_text")
 	# An axis button draws its wording through a child caption, so its template is
 	# the button's own `display_text` rather than the Button `text` nothing shows.
-	_authored.capture(metabolism_buttons, "display_text")
-	_authored.capture(metabolism_buttons, "tooltip_text")
 	for interface_control in required_interface_controls:
 		assert(
 			interface_control != null,
@@ -636,13 +587,9 @@ func _ready() -> void:
 			continue
 		hover_region.mouse_entered.connect(_on_slot_hover_changed.bind(true))
 		hover_region.mouse_exited.connect(_on_slot_hover_changed.bind(false))
-	metabolism.system_unlocked.connect(_on_system_unlocked)
 	metabolism.status_requested.connect(_set_status)
 	relic_director.status_requested.connect(_set_status)
 	progression.relics_changed.connect(relic_director.apply_relics)
-	metabolism.levels_changed.connect(_update_metabolism_controls)
-	biomass_button.pressed.connect(_toggle_metabolism_drawer)
-	metabolism.production_milestone_reached.connect(_on_production_milestone_reached)
 	pruning_director.status_requested.connect(_set_status)
 	adaptation_director.status_requested.connect(_set_status)
 	progression.upgrade_choice_requested.connect(_on_upgrade_choice_requested)
@@ -654,22 +601,16 @@ func _ready() -> void:
 	progression.relics_changed.connect(_apply_progression_modifiers)
 	progression.evolution_changed.connect(_on_evolution_changed)
 	progression.xp_changed.connect(_on_xp_changed)
-	progression.biomass_changed.connect(_on_biomass_changed)
 	territory_field.metrics_changed.connect(_on_territory_metrics_changed)
 
 	for index in range(choice_buttons.size()):
 		choice_buttons[index].pressed.connect(_choose_displayed_option.bind(index))
-	for index in range(action_buttons.size()):
-		if action_buttons[index] == null:
-			continue
-		action_buttons[index].pressed.connect(_press_action.bind(index))
 	for index in range(setting_buttons.size()):
 		if setting_buttons[index] == null:
 			continue
 		setting_buttons[index].pressed.connect(_cycle_setting.bind(index))
 	display_settings.settings_changed.connect(_on_display_settings_changed)
 	_on_display_settings_changed()
-	metabolism.injection_started.connect(_on_injection_started)
 	choice_reroll_button.pressed.connect(_reroll_upgrade_choice)
 	progression.rerolls_changed.connect(_on_rerolls_changed)
 	pause_resume_button.pressed.connect(_close_pause_menu)
@@ -716,12 +657,6 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	_note_input_device(event)
-	# Aiming owns the mouse and the Escape key while it is up, so it is answered
-	# before anything else can read them. The run keeps going underneath: choosing
-	# where to release is a decision made under pressure, not a pause to plan in.
-	if _overgrow_aiming and _handle_overgrow_aim_input(event):
-		get_viewport().set_input_as_handled()
-		return
 	# Held rather than toggled, and it does not stop the run. The doc allows inspect to
 	# be a live overlay where readability permits, and holding it means the player
 	# cannot leave it up by accident while the battlefield needs them.
@@ -749,28 +684,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _pause_menu_open:
 		return
-	# Reset and the Biomass drawer come first and are never gated: both are advertised
-	# on the interface itself rather than on the dev card, and a player pressing them
-	# is using the game rather than inspecting it.
+	# Reset comes first and is never gated: it is advertised on the interface itself
+	# rather than on the dev card, and a player pressing it is using the game rather
+	# than inspecting it.
 	match event.keycode:
 		KEY_R:
 			reset_run()
-			return
-		KEY_B:
-			_toggle_metabolism_drawer()
 			return
 	# Everything past here is a debug key and answers only while the dev controls are on.
 	if not dev_controls_enabled:
 		return
 	match event.keycode:
-		KEY_F4:
-			# The ladder is slow on purpose and the physique is the part of the run
-			# least likely to be reached by hand, so the debug key pays the run the
-			# lifetime earnings a rank costs rather than writing the rank itself.
-			for system_id in range(metabolism_buttons.size()):
-				metabolism.debug_grant_axis(system_id)
-			_apply_progression_modifiers()
-			_set_status("Debug: every physical axis advanced one rank.")
 		KEY_F2:
 			# The guide's wager debug, printed rather than drawn: what it has to show is
 			# eight numbers about one region, and eight numbers are easier to read in a
@@ -878,19 +802,17 @@ func _report_odds_debug() -> void:
 
 
 func _report_man_eater_state() -> void:
-	# Hunger is invisible field-adjacent state, so a run that has not seen the Maw
-	# come up has no way to tell whether it is close. This prints what the relic
-	# actually holds.
+	# Which enemies are marked is invisible until one dies, so a run that has not
+	# seen a Maw come up has no way to tell whether it is close. This prints what
+	# the relic is actually holding.
 	var report := (
-		"MAN-EATER  held=%s  hunger %.1f / %.1f (%d%%)  meals %d  swallowed %d  lockout %.1fs"
+		"MAN-EATER  held=%s  marked %d  maws %d  eruptions %d  cooldown %.2fs"
 		% [
 			"yes" if man_eater.is_held() else "no",
-			man_eater.get_hunger(),
-			man_eater.hunger_threshold,
-			int(round(man_eater.get_hunger_fraction() * 100.0)),
-			man_eater.get_meal_count(),
-			man_eater.get_swallowed_count(),
-			man_eater.get_lockout_remaining(),
+			man_eater.get_marked_count(),
+			man_eater.get_active_maw_count(),
+			man_eater.get_eruption_count(),
+			man_eater.get_cooldown_remaining(),
 		]
 	)
 	print(report)
@@ -908,7 +830,7 @@ func advance_run(delta: float) -> void:
 		delta,
 		territory_field.get_player_percent(),
 		territory_field.get_mature_player_percent(),
-		root_director.get_biomass_yield_multiplier()
+		1.0
 	)
 	slot_machine.advance(delta)
 	slot_machine.advance_preview(delta, player.get_arena_position())
@@ -953,7 +875,6 @@ func reset_run() -> void:
 	_pair_focus_remaining = 0.0
 	_pair_focus_is_cinematic = false
 	_apply_slot_focus(1.0)
-	_overgrow_aiming = false
 	overlay.clear_overgrow_aim()
 	_run_state = RunState.RUNNING
 	_final_stand_announced = false
@@ -1317,7 +1238,6 @@ func _on_display_settings_changed() -> void:
 	_update_setting_buttons()
 	if is_node_ready():
 		_update_hud()
-		_update_metabolism_controls()
 	if player != null:
 		player.queue_redraw()
 	if overlay != null:
@@ -1347,21 +1267,6 @@ func _update_setting_buttons() -> void:
 		)
 
 
-func _toggle_metabolism_drawer() -> void:
-	_set_metabolism_drawer_open(not _drawer_open)
-
-
-func _set_metabolism_drawer_open(open: bool) -> void:
-	_drawer_open = open
-	metabolism_drawer.visible = open
-	if open:
-		biomass_button.text = biomass_button_open_text
-	else:
-		_authored.write(biomass_button)
-	if open:
-		_update_metabolism_controls()
-
-
 func _show_banner(text: String) -> void:
 	# Major events get the battlefield's attention briefly and then give it back.
 	# Nothing here earns a permanent HUD section.
@@ -1379,149 +1284,11 @@ func _advance_banner(delta: float) -> void:
 		return
 	if _conductive_reveal_remaining > 0.0:
 		_conductive_reveal_remaining = maxf(0.0, _conductive_reveal_remaining - delta)
-		if _conductive_reveal_remaining <= 0.0 and not _overgrow_aiming:
+		if _conductive_reveal_remaining <= 0.0:
 			overlay.clear_overgrow_aim()
 	_banner_remaining = maxf(0.0, _banner_remaining - delta)
 	var fade := clampf(_banner_remaining / maxf(0.05, banner_fade_seconds), 0.0, 1.0)
 	banner_label.modulate = Color(1.0, 1.0, 1.0, fade)
-
-
-func _on_injection_started(
-	mass: float,
-	pressure: float,
-	cohesion: float,
-	cells: PackedInt32Array
-) -> void:
-	# The border answers a purchase in the axis that was bought. Mass swells, Pressure
-	# shoves outward, Cohesion knits along the frontier — three different actions, so
-	# the player can tell which one they paid for without reading the number.
-	var described := territory_field.describe_frontier_cells(cells)
-	overlay.spawn_injection(
-		described[0],
-		described[1],
-		mass,
-		pressure,
-		cohesion,
-		metabolism.injection_ramp_seconds * injection_visual_duration_scale
-	)
-
-
-func _press_action(action_id: int) -> void:
-	# Pressing a button no longer releases anything. It asks where, and the drawer gets
-	# out of the way of the answer. Translocate is the exception: it acts on the whole
-	# network rather than on a place, so there is nothing to point at.
-	if _overgrow_aiming:
-		# A second press of the button that is already aiming cancels; a press of any
-		# other action switches the aim to that one rather than doing nothing, because
-		# a live aim that silently eats the click reads as the panel being broken.
-		var was := _aiming_action
-		_cancel_overgrow_aim()
-		if was == action_id:
-			return
-	if not metabolism.can_perform(action_id):
-		_set_status(_describe_unavailable_action(action_id))
-		_update_metabolism_controls()
-		return
-	_begin_overgrow_aim(action_id)
-
-
-func _describe_unavailable_action(action_id: int) -> String:
-	# Why it cannot be pressed, in the words of the thing that is missing.
-	var name := PhaseBMetabolism.get_action_name(action_id)
-	var cooldown := metabolism.get_action_cooldown_remaining(action_id)
-	if cooldown > 0.0:
-		return "%s is still recovering: %.1fs." % [name, cooldown]
-	return "Not enough Biomass banked for %s yet." % name
-
-
-func _begin_overgrow_aim(action_id: int = PhaseBMetabolism.ActionId.OVERGROW) -> void:
-	_overgrow_aiming = true
-	_aiming_action = action_id
-	_set_metabolism_drawer_open(false)
-	# The button keeps keyboard focus after being pressed, and a focused Button eats
-	# Enter before unhandled input ever sees it, which would re-press the button
-	# instead of committing the aim.
-	for button in action_buttons:
-		if button != null:
-			button.release_focus()
-	# Opens on the player, because that is where a release aimed at nothing in
-	# particular would have gone, and the mouse takes it from there.
-	_overgrow_aim_position = player.get_arena_position()
-	var mouse_position := territory_field.to_local(territory_field.get_global_mouse_position())
-	if territory_field.contains_local_point(mouse_position):
-		_overgrow_aim_position = mouse_position
-	overlay.set_overgrow_aim(_overgrow_aim_position, _get_overgrow_reach())
-	_set_status("Choose where to release: click to %s, right click or Esc to cancel." % (
-		PhaseBMetabolism.get_action_name(action_id)
-	))
-	_update_metabolism_controls()
-
-
-func _cancel_overgrow_aim() -> void:
-	_overgrow_aiming = false
-	overlay.clear_overgrow_aim()
-	_set_status("%s held." % PhaseBMetabolism.get_action_name(_aiming_action))
-	_update_metabolism_controls()
-
-
-func _handle_overgrow_aim_input(event: InputEvent) -> bool:
-	if event is InputEventMouseMotion:
-		_move_overgrow_aim(territory_field.to_local(event.position))
-		return true
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_cancel_overgrow_aim()
-			return true
-		# Confirming from the keyboard releases at the player, so the aim is never a
-		# mouse-only ability.
-		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-			_release_overgrow_at(player.get_arena_position())
-			return true
-		return false
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			_cancel_overgrow_aim()
-			return true
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			_move_overgrow_aim(territory_field.to_local(event.position))
-			_release_overgrow_at(_overgrow_aim_position)
-			return true
-	return false
-
-
-func _move_overgrow_aim(local_position: Vector2) -> void:
-	# Clamped to the arena rather than refused outside it, so dragging past the edge
-	# leaves the crosshair on the nearest ground instead of stranding it where it was.
-	_overgrow_aim_position = Vector2(
-		clampf(local_position.x, 0.0, territory_field.tuning.arena_size.x),
-		clampf(local_position.y, 0.0, territory_field.tuning.arena_size.y)
-	)
-	overlay.set_overgrow_aim(_overgrow_aim_position, _get_overgrow_reach())
-
-
-func _get_overgrow_reach() -> float:
-	# What the ring shows has to be what the release actually favours, or the aim
-	# would promise ground the discharge never reaches.
-	return metabolism.overgrow_focus_radius
-
-
-func _release_overgrow_at(local_position: Vector2) -> void:
-	var action_id := _aiming_action
-	_overgrow_aiming = false
-	overlay.clear_overgrow_aim()
-	var performed := false
-	if action_id == PhaseBMetabolism.ActionId.OVERGROW:
-		performed = metabolism.try_overgrow(local_position)
-	if performed:
-		overlay.spawn_discharge_pulse(local_position)
-		# The release is seen leaving the organism through its own vessels before it
-		# reaches the ground it was aimed at.
-		combat.play_plant_explosion_sfx()
-	else:
-		# The reserve can drain between opening the aim and committing it, because the
-		# run does not stop while the player is choosing.
-		_set_status(_describe_unavailable_action(action_id))
-	_update_metabolism_controls()
 
 
 func _on_lever_input(event: InputEvent) -> void:
@@ -2156,32 +1923,6 @@ func _advance_all_in_countdown() -> void:
 	})
 
 
-func _on_system_unlocked(system_id: int) -> void:
-	# An axis arriving is the economy gaining a capability, and it is announced over
-	# the battlefield rather than appearing quietly in a drawer the player may not
-	# have open. Nothing is bought: from here it develops on what the run earns.
-	if system_id == PhaseBMetabolism.SystemId.PHOTOSYNTHESIS:
-		return
-	_show_banner(PhaseBMetabolism.get_axis_name(system_id).to_upper())
-	_set_status(
-		"%s — %s. It develops on its own out of what the run earns."
-		% [
-			PhaseBMetabolism.get_system_name(system_id),
-			PhaseBMetabolism.get_axis_summary(system_id),
-		]
-	)
-	_update_metabolism_controls()
-
-
-func _on_production_milestone_reached(per_second: float, _index: int) -> void:
-	combat.play_old_growth_sfx()
-	_show_banner("%s BIOMASS / SEC" % _format_compact(per_second))
-	_set_status(
-		"PRODUCTION MILESTONE — the ecosystem now makes %.0f Biomass every second."
-		% per_second
-	)
-
-
 func _apply_progression_modifiers() -> void:
 	if not is_instance_valid(territory_field) or not is_instance_valid(combat):
 		return
@@ -2255,7 +1996,6 @@ func _apply_progression_modifiers() -> void:
 		* metabolism.get_fragment_decay_multiplier()
 		* root_director.get_fragment_decay_multiplier()
 	)
-	_update_metabolism_controls()
 	_update_hud()
 
 
@@ -2305,23 +2045,6 @@ func _on_xp_changed(level: int, current_xp: int, required_xp: int) -> void:
 		"xp": current_xp,
 		"need": required_xp,
 	})
-
-
-func _on_biomass_changed(current: float, per_second: float) -> void:
-	if not is_node_ready():
-		return
-	# The reserve and what it is earning, and nothing else. A soft dot appears only
-	# when a decision is actually affordable; everything else lives in the drawer.
-	# One line, matching the tray's own layout: the heading it used to carry cost a
-	# line of the tray and repeated what the column already says.
-	# Nothing is banked against a ceiling and nothing here is pressed, so the line is
-	# what the run holds and what it is earning. What the earning has developed is a
-	# question the drawer answers.
-	_authored.write(biomass_label, {
-		"held": _format_compact(progression.biomass),
-		"gain": "%.1f" % per_second,
-	})
-	_update_metabolism_controls()
 
 
 func _format_compact(value: float) -> String:
@@ -2467,8 +2190,6 @@ func _show_pause_settings(open: bool) -> void:
 
 
 func _open_pause_menu() -> void:
-	if _overgrow_aiming:
-		_cancel_overgrow_aim()
 	if _pause_menu_open or _choice_kind != ChoiceKind.NONE:
 		return
 	_pause_menu_open = true
@@ -2795,7 +2516,6 @@ func _update_hud() -> void:
 		"total": progression.get_upgrade_slot_count(),
 	})
 	_update_upgrade_slots()
-	_update_metabolism_controls()
 
 
 
@@ -3217,9 +2937,9 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 			return "%d%% maturation rate" % roundi(
 				root_director.get_maturation_multiplier() * 100.0
 			)
-		PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD:
-			return "%d%% Biomass from Mature Green" % roundi(
-				root_director.get_biomass_yield_multiplier() * 100.0
+		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS:
+			return "+%d px projected Root reach" % roundi(
+				root_director.get_lateral_reach()
 			)
 		PhaseBProgression.UpgradeId.ROOT_MATURE_STRENGTH:
 			return "%.2fx Mature resistance, +%.3f control per second" % [
@@ -3434,162 +3154,6 @@ func _get_root_potency_effect(upgrade_id: int) -> String:
 		PhaseBProgression.UpgradeId.ROOT_POTENCY:
 			return "Seeds, Blooms, thorns, and Cuttings out of Mature ground"
 	return ""
-
-
-func _update_metabolism_controls() -> void:
-	if not is_node_ready():
-		return
-	_update_development_controls()
-	_update_action_controls()
-
-
-func _update_development_controls() -> void:
-	# A readout, not a shop. Nothing here is pressed: each axis shows the rank the
-	# run's lifetime earnings have carried it to, and how far along it is toward the
-	# next one. An axis the run has not discovered yet is absent rather than greyed
-	# out, so the drawer grows with the run.
-	var closest_axis := -1
-	var closest_cost := 0.0
-	for system_id in range(metabolism_buttons.size()):
-		var button := metabolism_buttons[system_id]
-		if button == null:
-			continue
-		var unlocked := metabolism.is_system_unlocked(system_id)
-		button.visible = unlocked
-		var level := metabolism.get_level(system_id)
-		var progress := metabolism.get_axis_progress(system_id)
-		var remaining := metabolism.get_next_rank_cost(system_id)
-		# A locked axis is filled in and then hidden rather than skipped: a row that is
-		# only ever written once it unlocks sits there holding its unfilled template,
-		# which is what the player would see the instant anything revealed it.
-		if unlocked and remaining > 0.0 and (closest_axis < 0 or remaining < closest_cost):
-			closest_axis = system_id
-			closest_cost = remaining
-		# The axis names itself on its own button. This fills in the rank and the
-		# progress; what the row is called, and in what order, is the scene.
-		var axis_values := {
-			"axis": PhaseBMetabolism.get_axis_name(system_id).to_upper(),
-			"rank": level,
-			"progress": roundi(progress * 100.0),
-			"summary": PhaseBMetabolism.get_axis_summary(system_id),
-			"name": PhaseBMetabolism.get_system_name(system_id),
-			"detail": PhaseBMetabolism.get_system_description(system_id),
-			"remaining": _format_compact(remaining),
-			"paths": _describe_axis_paths(system_id),
-		}
-		button.set_display_text(AuthoredText.render(
-			_authored.template(
-				button,
-				"{axis}   RANK {rank}\n[ {progress}% ]   {summary}",
-				"display_text",
-			),
-			axis_values,
-		))
-		var meter := button.get_meter()
-		if meter != null:
-			meter.value = progress
-		# Nothing is bought, so nothing is ever unaffordable. The control is left
-		# enabled rather than disabled: a greyed-out readout reads as broken.
-		button.disabled = false
-		_authored.write(
-			button,
-			axis_values,
-			String.chr(10).join(PackedStringArray([
-				"{name}",
-				"{detail}",
-				"",
-				"Rank {rank}. It develops on its own out of the Biomass this run has earned; the next rank arrives {remaining} Biomass from now.",
-				"{paths} leans toward this axis.",
-			])),
-			"tooltip_text",
-		)
-	_authored.write(
-		_metabolism_reserve_label(),
-		{"biomass": _format_compact(progression.biomass)},
-	)
-	metabolism_label.visible = true
-	var lifetime_values := {
-		"lifetime": _format_compact(metabolism.get_lifetime_biomass()),
-		"axis": (
-			PhaseBMetabolism.get_axis_name(closest_axis).to_upper()
-			if closest_axis >= 0
-			else ""
-		),
-		"cost": _format_compact(closest_cost),
-	}
-	if closest_axis < 0:
-		_authored.write_variant(
-			metabolism_label, metabolism_complete_template, lifetime_values
-		)
-	else:
-		_authored.write(metabolism_label, lifetime_values)
-
-
-func _metabolism_reserve_label() -> Label:
-	# Placed in the drawer scene rather than exported, because it is the drawer's
-	# own line and nothing outside the drawer reads it.
-	if metabolism_drawer == null:
-		return null
-	return metabolism_drawer.get_node_or_null("Reserve") as Label
-
-
-func _describe_axis_paths(system_id: int) -> String:
-	# Which Paths lean this axis, named rather than implied, because the leaning is
-	# the only influence the player has over where the ladder goes.
-	var named := PackedStringArray()
-	for path_id in PhaseBMetabolism.get_axis_paths(system_id):
-		named.append(PhaseBProgression.get_path_name(path_id))
-	return " and ".join(named)
-
-
-func _update_action_controls() -> void:
-	# One verb, one loop, so a second discharge is an entry in the array rather than a
-	# second copy of this.
-	for action_id in range(action_buttons.size()):
-		var button := action_buttons[action_id]
-		if button == null:
-			continue
-		button.visible = true
-		var name := PhaseBMetabolism.get_action_name(action_id)
-		var cooldown := metabolism.get_action_cooldown_remaining(action_id)
-		var action_values := {
-			"action": name,
-			"seconds": "%.1f" % cooldown,
-			"cost": _format_compact(metabolism.get_action_cost(action_id)),
-		}
-		if _overgrow_aiming and _aiming_action == action_id:
-			_authored.write_variant(button, action_aiming_template, action_values)
-		elif cooldown > 0.0:
-			_authored.write_variant(button, action_cooldown_template, action_values)
-		else:
-			_authored.write(button, action_values)
-		button.disabled = not metabolism.can_perform(action_id)
-		action_values["summary"] = PhaseBMetabolism.get_action_summary(action_id)
-		action_values["share"] = "%d" % roundi(
-			metabolism.overgrow_reserve_fraction * 100.0
-		)
-		var lines := PackedStringArray([
-			"{action}",
-			"{summary}",
-			"",
-			"Spends {share}% of the reserve.",
-		])
-		if action_id == PhaseBMetabolism.ActionId.OVERGROW:
-			action_values["mass"] = roundi(metabolism.get_identity_share(
-				PhaseBMetabolism.SystemId.PHOTOSYNTHESIS
-			) * 100.0)
-			action_values["push"] = roundi(metabolism.get_identity_share(
-				PhaseBMetabolism.SystemId.MERISTEM
-			) * 100.0)
-			action_values["hold"] = roundi(metabolism.get_identity_share(
-				PhaseBMetabolism.SystemId.CAMBIUM
-			) * 100.0)
-			lines.append(
-				"This organism's split: {mass}% Mass, {push}% Push, {hold}% Hold."
-			)
-		_authored.write(
-			button, action_values, String.chr(10).join(lines), "tooltip_text"
-		)
 
 
 func _format_time(seconds: float) -> String:

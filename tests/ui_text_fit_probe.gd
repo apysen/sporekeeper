@@ -19,11 +19,8 @@ func _run() -> void:
 	var prototype := current_scene as PhaseBPrototype
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
-	prototype.progression.add_biomass(600.0)
-	prototype._set_metabolism_drawer_open(true)
 	prototype._open_pause_menu()
 	prototype._update_hud()
-	prototype._update_metabolism_controls()
 	await process_frame
 	await process_frame
 	var overflowing := 0

@@ -300,7 +300,17 @@ func _spring_knot(index: int, knot_position: Vector2) -> void:
 		caught, _entanglement_for(caught, briar_knot_entanglement)
 	)
 	if overlay != null:
-		overlay.spawn_hostile_pulse(knot_position, briar_knot_trigger_pixels * 0.6)
+		# One sharp yank rather than an area explosion.
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.BITE,
+			knot_position,
+			briar_knot_trigger_pixels * 0.6,
+			Color("b06fd7"),
+			Vector2.ZERO,
+			false,
+			1.0,
+			TerritoryPrototypeOverlay.RelicMotif.KNOT
+		)
 
 
 func _advance_briarballs(delta: float) -> void:
@@ -411,6 +421,19 @@ func _on_enemy_left_green(
 		# Leaving Green again while already carrying does not refresh the timer.
 		return
 	_burr_carriers[enemy_id] = [cocklebur_seconds, {}, 0]
+	if overlay != null:
+		# A carrier has to be identifiable off the Green, or the player cannot tell
+		# which body is spreading thorns.
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.BAND,
+			_local_position,
+			cocklebur_contact_pixels,
+			Color("b06fd7"),
+			Vector2.ZERO,
+			false,
+			1.0,
+			TerritoryPrototypeOverlay.RelicMotif.BURR
+		)
 
 
 func _on_enemy_died_entangled(

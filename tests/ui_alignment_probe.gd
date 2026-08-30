@@ -26,7 +26,6 @@ func _run() -> void:
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	# Everything that can be on screen at once, so nothing is judged while hidden.
-	prototype._set_metabolism_drawer_open(true)
 	prototype._open_pause_menu()
 	await process_frame
 	await process_frame

@@ -181,8 +181,10 @@ class SweepState:
 @export_range(0.1, 1.0, 0.01) var hedge_minimum_entanglement := 0.75
 ## Fraction of that floor applied to elites and bosses instead.
 @export_range(0.0, 1.0, 0.01) var hedge_elite_share := 0.35
-## Pixels per second the Sweep front travels.
-@export_range(50.0, 2000.0, 10.0) var hedge_sweep_speed := 620.0
+## Pixels per second the Sweep front travels. The master document suggests 520,
+## which is slow enough for the ridge of thorns to read as travelling through the
+## Green rather than arriving everywhere at once.
+@export_range(50.0, 2000.0, 10.0) var hedge_sweep_speed := 520.0
 ## Global cooldown in seconds between Briar Sweeps.
 @export_range(1.0, 60.0, 0.5) var hedge_cooldown_seconds := 10.0
 
@@ -288,6 +290,13 @@ var _repeating := false
 ## The global generated-event queue: [relic_id, position, strength, remaining].
 var _generated_events: Array = []
 var _generated_this_frame := 0
+## Telemetry for the stress fixtures: how deep the queue has ever been, how many
+## events had to wait for a later frame, and how many were dropped outright. A
+## dropped event is the only one that costs the player something, so it is counted
+## separately from one that merely arrived late.
+var _generated_peak_depth := 0
+var _generated_staggered := 0
+var _generated_dropped := 0
 
 ## Rootbound: seconds stood on deeply Mature Green, and the pulse being carried.
 var _rootbound_standing := 0.0
@@ -371,6 +380,9 @@ func reset_director() -> void:
 	_repeating = false
 	_generated_events.clear()
 	_generated_this_frame = 0
+	_generated_peak_depth = 0
+	_generated_staggered = 0
+	_generated_dropped = 0
 	_rootbound_standing = 0.0
 	_rootbound_carrying = 0.0
 	_rootbound_cooldown = 0.0
@@ -743,7 +755,16 @@ func notify_amplified_event(local_position: Vector2, amplification: float) -> vo
 		progression.get_conversion_multiplier(),
 		1.0
 	)
-	overlay.spawn_bloom(target)
+	overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.TRAVELLING,
+		local_position,
+		local_position.distance_to(target),
+		Color("6fd7a0"),
+		local_position.direction_to(target),
+		false,
+		1.0,
+		TerritoryPrototypeOverlay.RelicMotif.ROOT_PULSE
+	)
 	status_requested.emit("FEEDER ROOTS — the network feeds its own frontier.")
 	_notify_triggered(PhaseBRelicCatalog.Id.FEEDER_ROOTS)
 
@@ -1078,12 +1099,41 @@ func _advance_generated_events(delta: float) -> void:
 			continue
 		if _generated_this_frame >= generated_events_per_frame:
 			event[3] = generated_event_stagger_seconds
+			_generated_staggered += 1
 			continue
 		_generated_events.remove_at(index)
 		_generated_this_frame += 1
 		_repeating = true
+		# A repeat is drawn as a ghost of the effect it copies: recognisably the same
+		# thing, unmistakably the weaker one.
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.GHOST,
+			event[1],
+			48.0,
+			Color("cfe8a0"),
+			Vector2.ZERO,
+			true,
+			float(event[2]),
+			TerritoryPrototypeOverlay.RelicMotif.GHOST
+		)
 		_resolve_generated_event(int(event[0]), event[1], float(event[2]))
 		_repeating = false
+
+
+func get_generated_queue_depth() -> int:
+	return _generated_events.size()
+
+
+func get_generated_peak_depth() -> int:
+	return _generated_peak_depth
+
+
+func get_generated_staggered_count() -> int:
+	return _generated_staggered
+
+
+func get_generated_dropped_count() -> int:
+	return _generated_dropped
 
 
 func _queue_generated_event(
@@ -1103,9 +1153,12 @@ func _queue_generated_event(
 				weakest_rarity = queued_rarity
 				weakest = index
 		if weakest < 0:
+			_generated_dropped += 1
 			return false
 		_generated_events.remove_at(weakest)
+		_generated_dropped += 1
 	_generated_events.append([relic_id, position, strength, maxf(0.0, delay)])
+	_generated_peak_depth = maxi(_generated_peak_depth, _generated_events.size())
 	return true
 
 
@@ -1200,10 +1253,22 @@ func _spray_garden_hose(origin: Vector2, strength: float) -> void:
 		)
 		sprayed += 1
 	if sprayed > 0:
+		# Five separated streams rather than a fog cone, kept low to the ground so it
+		# does not sit on top of the enemies the player is reading.
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.SPRAY,
+			origin,
+			garden_hose_range_pixels,
+			Color("9cff63"),
+			facing,
+			not is_equal_approx(strength, 1.0),
+			strength,
+			TerritoryPrototypeOverlay.RelicMotif.SPRAY
+		)
 		status_requested.emit("GARDEN HOSE — a fan of fresh Green sprays ahead.")
 
 
-func notify_green_eaten(enemy_id: int, mass: float) -> void:
+func notify_green_eaten(enemy_id: int, mass: float, _seconds: float = 0.0) -> void:
 	## Reported by whatever erases Green on an enemy's behalf. Only what the enemy
 	## itself destroys is stored: Green given up to Pruning or wagered on Clover is
 	## the player's own doing and must never come back as fertiliser.
@@ -1258,7 +1323,15 @@ func _snap_mimosa(origin: Vector2, strength: float) -> void:
 		)
 		pushed += 1
 	if pushed > 0:
-		overlay.spawn_hostile_pulse(origin, mimosa_radius_pixels)
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.BITE,
+			origin,
+			mimosa_radius_pixels,
+			Color("8fe86a"),
+			Vector2.ZERO,
+			not is_equal_approx(strength, 1.0),
+			strength
+		)
 		status_requested.emit("MIMOSA — the Green snaps shut and throws them off.")
 
 
@@ -1305,6 +1378,18 @@ func _add_compost(local_position: Vector2, amount: int) -> void:
 		compost_lifetime_seconds,
 		compost_eruption_delay if amount >= compost_threshold else 0.0,
 	])
+	# The pile is visible as it grows, so the eruption can be anticipated rather
+	# than only recognised after it has happened.
+	overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.HEAP,
+		local_position,
+		compost_merge_pixels * 0.35,
+		Color("8a6b3a"),
+		Vector2.ZERO,
+		false,
+		1.0,
+		TerritoryPrototypeOverlay.RelicMotif.HEAP
+	)
 
 
 func _erupt_compost(origin: Vector2, strength: float) -> void:

@@ -1041,6 +1041,18 @@ func _note_vine_apical_hit(enemy_id: int, damage: float) -> void:
 	mark[1] = _natural_sweep_index
 	if int(mark[0]) >= girdling_required_hits:
 		mark[2] = girdling_duration_seconds
+		# A visible tightening band, so a Girdled target can be picked out of a crowd
+		# before the constriction lands.
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.BAND,
+			combat.get_enemy_position(enemy_id),
+			26.0,
+			Color("6fe8c8"),
+			Vector2.ZERO,
+			false,
+			1.0,
+			TerritoryPrototypeOverlay.RelicMotif.BAND
+		)
 	if _girdling.size() >= girdling_maximum_marks and not _girdling.has(enemy_id):
 		return
 	_girdling[enemy_id] = mark
@@ -1199,6 +1211,14 @@ func _fire_thorn_relay(thorn: ThornState, hit_position: Vector2) -> void:
 	if responder == null:
 		return
 	_relay_cooldown = 1.0 / thorn_relay_per_second
+	# A very fast network ping between the impact and the turret that answers it.
+	overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.STREAK,
+		hit_position,
+		hit_position.distance_to(responder.position),
+		Color("d7e86a"),
+		hit_position.direction_to(responder.position)
+	)
 	# One bonus thorn, not a volley: Clustering is explicitly not inherited.
 	var targets := _collect_enemy_targets(responder.position, thistle_range_pixels)
 	if targets.is_empty():
@@ -1464,6 +1484,12 @@ func _spawn_thorn(
 
 
 func _update_thorns(delta: float) -> void:
+	# The roster is read once for the whole pass. Asking combat for a position or a
+	# radius by id is a scan of the enemy pool, and doing that per enemy per thorn
+	# was costing more than everything else in this component put together.
+	var enemy_ids := combat.get_active_enemy_ids()
+	var enemy_positions := combat.get_active_enemy_positions()
+	var enemy_radii := combat.get_active_enemy_radii()
 	for thorn in _thorns:
 		if not thorn.active:
 			continue
@@ -1479,7 +1505,9 @@ func _update_thorns(delta: float) -> void:
 		if not territory_field.is_growth_path_clear(previous, next):
 			thorn.active = false
 			continue
-		var struck_id := _find_thorn_segment_hit(thorn, previous, next)
+		var struck_id := _find_thorn_segment_hit(
+			thorn, previous, next, enemy_ids, enemy_positions, enemy_radii
+		)
 		thorn.position = next
 		if struck_id < 0:
 			continue
@@ -1489,17 +1517,21 @@ func _update_thorns(delta: float) -> void:
 func _find_thorn_segment_hit(
 	thorn: ThornState,
 	segment_start: Vector2,
-	segment_end: Vector2
+	segment_end: Vector2,
+	enemy_ids: PackedInt32Array,
+	enemy_positions: PackedVector2Array,
+	enemy_radii: PackedFloat32Array
 ) -> int:
 	var struck := -1
 	var nearest_progress := INF
 	var segment := segment_end - segment_start
 	var segment_length_squared := maxf(segment.length_squared(), 0.0001)
-	for enemy_id in combat.get_active_enemy_ids():
+	for index in range(enemy_ids.size()):
+		var enemy_id := enemy_ids[index]
 		if thorn.hit_ids.has(enemy_id):
 			continue
-		var enemy_position := combat.get_enemy_position(enemy_id)
-		var hit_radius := thorn_hit_radius_pixels + combat.get_enemy_radius(enemy_id)
+		var enemy_position := enemy_positions[index]
+		var hit_radius := thorn_hit_radius_pixels + enemy_radii[index]
 		var progress := clampf(
 			(enemy_position - segment_start).dot(segment) / segment_length_squared,
 			0.0,
@@ -1716,7 +1748,9 @@ func _on_cane_sweep_started(
 	_runner_spawned_this_sweep = false
 	var sweep_whip: PhaseBVineWhip = combat.vine_whip
 	if sweep_whip != null and sweep_whip.is_built():
-		_sweep_bend_index = sweep_whip.get_first_bend_index()
+		# A wrap, not a bend: a rope whipping through open ground curves sharply on
+		# its own, and that must never read as having gone around something.
+		_sweep_bend_index = sweep_whip.get_wrap_index()
 	_current_sweep_facing = facing
 	_current_sweep_left_to_right = left_to_right
 	_current_sweep_reach = reach

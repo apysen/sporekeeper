@@ -814,6 +814,63 @@ const NEIGHBOUR_OFFSETS: Array[Vector2i] = [
 ]
 
 
+func get_mature_projection_at(
+	local_position: Vector2,
+	reach_pixels: float,
+	minimum_maturity: float = 0.90
+) -> float:
+	## How strongly nearby Mature Green reaches this point, from 1.0 standing on it
+	## to 0.0 at the edge of its reach.
+	##
+	## Distance is measured through contiguous owned Green rather than straight
+	## through the air, so support cannot cross Neutral, Hostile, void or basalt: a
+	## colony on the far side of a wall projects nothing through it.
+	if reach_pixels <= 0.0:
+		return 0.0
+	var start := local_to_cell_index(local_position)
+	if start < 0 or _claimable_mask[start] == 0:
+		return 0.0
+	if _control[start] <= tuning.ownership_threshold:
+		return 0.0
+	if _maturity[start] >= minimum_maturity:
+		return 1.0
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var step := minf(cell_width, cell_height)
+	var maximum_steps := int(ceil(reach_pixels / maxf(1.0, step)))
+	# Breadth-first over owned cells: the first Mature cell reached is the nearest
+	# one by connected distance, which is exactly what the projection wants.
+	var visited := {start: 0}
+	var frontier := PackedInt32Array([start])
+	var depth := 0
+	while not frontier.is_empty() and depth < maximum_steps:
+		depth += 1
+		var next_frontier := PackedInt32Array()
+		for index in frontier:
+			var x := index % _width
+			var y := index / _width
+			for offset in NEIGHBOUR_OFFSETS:
+				var next_x := x + offset.x
+				var next_y := y + offset.y
+				if next_x < 0 or next_x >= _width or next_y < 0 or next_y >= _height:
+					continue
+				var next_index := next_y * _width + next_x
+				if visited.has(next_index):
+					continue
+				if _claimable_mask[next_index] == 0:
+					continue
+				if _control[next_index] <= tuning.ownership_threshold:
+					continue
+				visited[next_index] = depth
+				if _maturity[next_index] >= minimum_maturity:
+					return clampf(
+						1.0 - (float(depth) * step) / reach_pixels, 0.0, 1.0
+					)
+				next_frontier.append(next_index)
+		frontier = next_frontier
+	return 0.0
+
+
 func get_owned_cell_components(minimum_cells: int = 1) -> Array:
 	## Every connected body of owned Green, largest first. Each entry is
 	## [cell_count, centre_of_mass, average_maturity]. Regions smaller than the

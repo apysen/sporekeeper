@@ -307,6 +307,8 @@ enum SourceTag {
 ## dropped: a Bloom the player earned has to happen, even if it happens 0.05s later.
 var _pending_detonations: Array = []
 var _detonations_this_frame := 0
+## How many detonations had to wait for a later frame, for the stress fixtures.
+var _detonations_staggered := 0
 ## Petals in flight, each [position, remaining, damage].
 var _petals: Array = []
 var _overkill_banked := 0.0
@@ -368,6 +370,7 @@ func reset_director() -> void:
 	_echo_bloom_origin = Vector2(-1.0, -1.0)
 	_pending_detonations.clear()
 	_detonations_this_frame = 0
+	_detonations_staggered = 0
 	_petals.clear()
 	_overkill_banked = 0.0
 	_overkill_charged = false
@@ -588,6 +591,7 @@ func on_bloom_detonated(
 			strength,
 			relic_detonation_stagger_seconds,
 		])
+		_detonations_staggered += 1
 		return
 	_detonations_this_frame += 1
 	combat.play_plant_explosion_sfx()
@@ -741,6 +745,14 @@ func _advance_petals(delta: float) -> void:
 		overlay.spawn_hostile_pulse(target, 18.0)
 
 
+func get_pending_detonation_count() -> int:
+	return _pending_detonations.size()
+
+
+func get_staggered_detonation_count() -> int:
+	return _detonations_staggered
+
+
 func get_relic_bud_count() -> int:
 	## Buds standing on the field that a relic planted. The global safety cap is read
 	## from the overlay rather than from a counter here, so a bud destroyed by a
@@ -810,6 +822,16 @@ func _scatter_petals(
 		if already_claimed:
 			continue
 		claimed.append(enemy_position)
+		overlay.spawn_relic_cue(
+			TerritoryPrototypeOverlay.RelicCue.STREAK,
+			source,
+			source.distance_to(enemy_position),
+			Color("ff9ad2"),
+			source.direction_to(enemy_position),
+			false,
+			1.0,
+			TerritoryPrototypeOverlay.RelicMotif.PETAL
+		)
 		_petals.append([
 			enemy_position,
 			enemy_position.distance_to(source) / maxf(1.0, petal_scatter_speed),

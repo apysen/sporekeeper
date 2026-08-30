@@ -1179,7 +1179,7 @@ func _run() -> void:
 	prototype.player.input_enabled = false
 	var root_lines := PackedInt32Array([
 		PhaseBProgression.UpgradeId.ROOT_MATURATION,
-		PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD,
+		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS,
 		PhaseBProgression.UpgradeId.ROOT_MATURE_STRENGTH,
 		PhaseBProgression.UpgradeId.ROOT_POTENCY,
 	])
@@ -1228,7 +1228,7 @@ func _run() -> void:
 	)
 	prototype._apply_progression_modifiers()
 	var root_base_maturation: float = prototype.territory_field.tuning.maturation_per_second
-	var root_base_biomass := prototype.root_director.get_biomass_yield_multiplier()
+	var root_base_reach := prototype.root_director.get_lateral_reach()
 	var root_base_resistance := prototype.territory_field.get_mature_resistance_multiplier()
 	var root_base_network := prototype.root_director.get_network_bonus()
 	for line_id in root_lines:
@@ -1236,12 +1236,12 @@ func _run() -> void:
 	prototype._apply_progression_modifiers()
 	_check(
 		prototype.territory_field.tuning.maturation_per_second > root_base_maturation
-		and prototype.root_director.get_biomass_yield_multiplier() > root_base_biomass
+		and prototype.root_director.get_lateral_reach() > root_base_reach
 		and prototype.territory_field.get_mature_resistance_multiplier()
 		> root_base_resistance
 		and prototype.territory_field.tuning.regeneration_per_second > 0.0
 		and prototype.root_director.get_network_bonus() > root_base_network,
-		"Root's lines raise maturation, Biomass yield, Mature Strength, and Root Potency"
+		"Root's lines raise maturation, Lateral reach, Mature Strength, and Root Potency"
 	)
 	_check(
 		root_base_network > 0.0
@@ -1250,27 +1250,44 @@ func _run() -> void:
 		"Root Potency deepens the Root Network amplification Root already supplies"
 	)
 
-	prototype.progression.tick_biomass(
-		1.0,
-		20.0,
-		10.0,
-		prototype.root_director.get_biomass_yield_multiplier()
-	)
-	var root_yield_income := prototype.progression.biomass_per_second
+	# Lateral Roots: an established colony projects Root support into the younger
+	# Green in front of it, and that support never crosses ground the run does not
+	# hold. It also never makes the supported ground Mature.
 	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.SPORE,
-		PhaseBProgression.PathId.BLOOM
+		PhaseBProgression.PathId.ROOT,
+		PhaseBProgression.PathId.SPORE
 	)
-	prototype.progression.tick_biomass(
-		1.0,
-		20.0,
-		10.0,
-		prototype.root_director.get_biomass_yield_multiplier()
+	prototype.progression._upgrade_levels[
+		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS
+	] = 5
+	prototype._apply_progression_modifiers()
+	var lateral_spot := _find_owned_cell_position(prototype)
+	for _lateral_ripen in range(6):
+		prototype.territory_field.queue_maturity_support(lateral_spot, 1.0, 4.0)
+		prototype.territory_field.step_simulation()
+	var lateral_reach := prototype.root_director.get_lateral_reach()
+	var on_mature := prototype.territory_field.get_mature_projection_at(
+		lateral_spot, lateral_reach
+	)
+	var raw_maturity := prototype.territory_field.get_maturity_at_local(lateral_spot)
+	var projected := prototype.root_director.get_projected_maturity_at(
+		lateral_spot, raw_maturity
+	)
+	# Off the board entirely there is no owned Green to carry support through.
+	var unowned_projection := prototype.territory_field.get_mature_projection_at(
+		Vector2(-500.0, -500.0), lateral_reach
 	)
 	_check(
-		root_yield_income > prototype.progression.biomass_per_second,
-		"Biomass Yield pays out only while the Root path is held"
+		lateral_reach > 0.0
+		and on_mature > 0.0
+		and projected >= raw_maturity
+		and is_equal_approx(unowned_projection, 0.0),
+		"LATERAL ROOTS projects Root support through owned Green and never off it"
 	)
+	prototype.progression._upgrade_levels[
+		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS
+	] = 0
+	prototype._apply_progression_modifiers()
 
 	prototype.progression.debug_select_paths(
 		PhaseBProgression.PathId.ROOT,
@@ -1633,7 +1650,7 @@ func _run() -> void:
 		PhaseBProgression.UpgradeId.SPORULATION,
 		PhaseBProgression.UpgradeId.FRUITING_BODIES,
 		PhaseBProgression.UpgradeId.ROOT_MATURATION,
-		PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD,
+		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS,
 		PhaseBProgression.UpgradeId.ROOT_MATURE_STRENGTH,
 		PhaseBProgression.UpgradeId.ROOT_POTENCY,
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT,
@@ -2327,7 +2344,6 @@ func _run() -> void:
 	# this point the suite has drafted paths and populated the choice panel.
 	prototype.reset_run()
 	prototype._update_hud()
-	prototype._update_metabolism_controls()
 	var literals_of := func(value: String) -> PackedStringArray:
 		# The words either side of every {placeholder}, which is what the author
 		# controls and what therefore has to reach the screen unchanged.
@@ -2792,9 +2808,9 @@ func _run() -> void:
 	prototype.overlay.clear_effects()
 	prototype.territory_field.reset_field()
 
-	# Man-Eater: the Legendary relic that replaced the Path. Enemies standing on
-	# Green build Hunger; when it fills, a giant Maw comes up under the densest
-	# group, eats it, and goes back underground. Nothing about it persists.
+	# Man-Eater: enemies that graze on the run's Green long enough are marked, and
+	# killing a marked one sprouts a plant out of the corpse that bites once. The
+	# relic is paid for by the enemy, so nothing here is aimed or charged.
 	prototype.progression.reset_progression()
 	prototype._apply_progression_modifiers()
 	prototype.combat.reset_combat()
@@ -2803,88 +2819,112 @@ func _run() -> void:
 	var man_eater := prototype.man_eater
 	man_eater.reset_man_eater()
 	var green_spot := _find_owned_cell_position(prototype)
-	var unheld_hunger_seconds := man_eater.hunger_threshold * 2.0
-	_spawn_bramble_contact_enemy(
-		prototype,
-		PhaseBCombatDirector.EnemyRole.HUNTER,
-		green_spot
+
+	# Without the relic, grazing marks nobody.
+	var grazer_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.GRAZER, green_spot
 	)
-	man_eater.advance(unheld_hunger_seconds)
-	var dormant_without_relic := man_eater.get_hunger() <= 0.0
+	prototype.combat.enemy_ate_green.emit(
+		grazer_id, 1.0, man_eater.required_consumption_seconds * 2.0
+	)
+	var marked_without_relic := man_eater.get_marked_count()
 	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.MAN_EATER] = 1
-	# One enemy alone has to stand there for the whole threshold.
-	man_eater.advance(1.0)
-	var lone_hunger := man_eater.get_hunger()
-	for _pack_body in range(4):
-		_spawn_bramble_contact_enemy(
-			prototype,
-			PhaseBCombatDirector.EnemyRole.HUNTER,
-			green_spot
-		)
-	man_eater.advance(1.0)
-	var pack_hunger := man_eater.get_hunger() - lone_hunger
+
+	# The mark is earned by cumulative consumption, and it does not have to be
+	# continuous: two short grazes add up to the same as one long one.
+	prototype.combat.enemy_ate_green.emit(
+		grazer_id, 1.0, man_eater.required_consumption_seconds * 0.5
+	)
+	var marked_halfway := man_eater.get_marked_count()
+	var partial_progress := man_eater.get_consumption_seconds(grazer_id) > 0.0
+	prototype.combat.enemy_ate_green.emit(
+		grazer_id, 1.0, man_eater.required_consumption_seconds * 0.5
+	)
+	var marked_after := man_eater.is_marked(grazer_id)
 	_check(
-		dormant_without_relic
-		and is_equal_approx(lone_hunger, man_eater.hunger_per_enemy_second)
-		and pack_hunger > lone_hunger * 4.0,
-		"Hunger is enemy-seconds on Green: a pack feeds it as fast as its bodies"
+		marked_without_relic == 0
+		and marked_halfway == 0
+		and partial_progress
+		and marked_after,
+		"MAN-EATER marks a grazer on cumulative Green consumption, not on one long graze"
 	)
 
-	# The Maw does not appear the instant Hunger fills: the ground telegraphs first,
-	# which is what makes it a battlefield event rather than free invisible damage.
-	man_eater.advance(man_eater.hunger_threshold)
-	var telegraphing := man_eater.get_state() == PhaseBManEater.State.TELEGRAPHING
-	var telegraph_site := man_eater.get_site()
-	var enemies_before := prototype.combat.get_active_enemy_count()
-	var still_alive_during_telegraph := (
-		prototype.combat.get_active_enemy_count() == enemies_before
+	# An unmarked corpse sprouts nothing; a marked one does, after its delay.
+	var plain_id := prototype.combat.spawn_enemy(
+		PhaseBCombatDirector.EnemyRole.HUNTER, green_spot + Vector2(60.0, 0.0)
 	)
-	man_eater.advance(man_eater.telegraph_seconds + 0.01)
+	prototype.combat.damage_enemy_by_id(
+		plain_id, 100000.0, PhaseBCombatDirector.DeathSource.DEBUG
+	)
+	for _plain_tick in range(30):
+		man_eater.advance(1.0 / 60.0)
+	var maws_from_plain_corpse := man_eater.get_active_maw_count()
+	prototype.combat.damage_enemy_by_id(
+		grazer_id, 100000.0, PhaseBCombatDirector.DeathSource.DEBUG
+	)
+	var erupted_instantly := man_eater.get_active_maw_count()
+	for _erupt_tick in range(int(man_eater.eruption_delay_seconds * 60.0) + 4):
+		man_eater.advance(1.0 / 60.0)
+	var erupted_after_delay := man_eater.get_active_maw_count()
 	_check(
-		telegraphing
-		and telegraph_site.x >= 0.0
-		and still_alive_during_telegraph
-		and prototype.combat.get_active_enemy_count() < enemies_before
-		and man_eater.get_meal_count() == 1,
-		"Hunger telegraphs under the densest group and only then closes the jaws"
+		maws_from_plain_corpse == 0
+		and erupted_instantly == 0
+		and erupted_after_delay == 1,
+		"MAN-EATER sprouts only from a marked corpse, and only after its delay"
 	)
 
-	# What it ate is gone, and the Hunger with it.
+	# The bite lands once, is capped in how many it takes, and then the plant dies.
+	var prey := PackedInt32Array()
+	for prey_index in range(man_eater.maximum_bite_targets + 3):
+		prey.append(prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
+			green_spot + Vector2(-20.0 + float(prey_index) * 6.0, 0.0)
+		))
+	var healthy_before := 0
+	for prey_id in prey:
+		if is_equal_approx(
+			prototype.combat.get_enemy_health(prey_id),
+			prototype.combat.heavy_grazer_profile.maximum_health
+		):
+			healthy_before += 1
+	for _bite_tick in range(int(man_eater.maw_lifetime_seconds * 60.0) + 10):
+		man_eater.advance(1.0 / 60.0)
+	var bitten := 0
+	for prey_id in prey:
+		if prototype.combat.get_enemy_health(prey_id) < prototype.combat.heavy_grazer_profile.maximum_health:
+			bitten += 1
 	_check(
-		man_eater.get_swallowed_count() > 0
-		and is_equal_approx(man_eater.get_hunger(), 0.0)
-		and man_eater.get_lockout_remaining() > 0.0,
-		"the meal is swallowed whole, and Hunger resets behind a short lockout"
+		healthy_before == prey.size()
+		and bitten > 0
+		and bitten <= man_eater.maximum_bite_targets
+		and man_eater.get_active_maw_count() == 0,
+		"MAN-EATER bites once, takes no more than its cap, and the plant then dies (%d)"
+			% bitten
 	)
 
-	# The Maw is an event, not a structure: once it has retracted nothing remains
-	# for an enemy to attack.
-	man_eater.advance(man_eater.retract_seconds + 0.01)
-	_check(
-		man_eater.get_state() == PhaseBManEater.State.DORMANT
-		and man_eater.get_site().x < 0.0,
-		"the Maw retracts completely, leaving nothing standing to be killed"
-	)
-
-	# A boss is bitten, never eaten.
-	prototype.combat.reset_combat()
+	# The global cooldown is the crowd-safety rule: a pile of marked deaths on one
+	# frame cannot carpet the field with plants.
 	man_eater.reset_man_eater()
-	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.MAN_EATER] = 1
-	var boss := _spawn_bramble_contact_enemy(
-		prototype,
-		PhaseBCombatDirector.EnemyRole.BOSS,
-		green_spot
-	)
-	var boss_health_before := boss.health
-	man_eater.advance(man_eater.hunger_threshold * 2.0)
-	man_eater.advance(man_eater.telegraph_seconds + 0.01)
+	prototype.combat.reset_combat()
+	var marked_pack := PackedInt32Array()
+	for _pack_index in range(5):
+		var packed_id := prototype.combat.spawn_enemy(
+			PhaseBCombatDirector.EnemyRole.GRAZER, green_spot
+		)
+		marked_pack.append(packed_id)
+		prototype.combat.enemy_ate_green.emit(
+			packed_id, 1.0, man_eater.required_consumption_seconds
+		)
+	for packed_id in marked_pack:
+		prototype.combat.damage_enemy_by_id(
+			packed_id, 100000.0, PhaseBCombatDirector.DeathSource.DEBUG
+		)
+	for _flood_tick in range(int(man_eater.eruption_delay_seconds * 60.0) + 4):
+		man_eater.advance(1.0 / 60.0)
 	_check(
-		boss != null
-		and boss.active
-		and boss.health < boss_health_before
-		and boss.health
-		> boss_health_before - man_eater.bite_damage,
-		"a boss takes a reduced Bite and is never swallowed"
+		man_eater.get_active_maw_count() <= 1
+		and man_eater.get_eruption_count() <= 1 + man_eater.maximum_queued_eruptions,
+		"MAN-EATER holds its global cooldown when a marked pack dies at once"
 	)
 	prototype.progression.reset_progression()
 	prototype.combat.reset_combat()
@@ -5257,7 +5297,7 @@ func _run() -> void:
 		PhaseBProgression.UpgradeId.ROOT_MATURATION
 	)
 	var unowned_with_jackpot := prototype.progression.get_upgrade_level(
-		PhaseBProgression.UpgradeId.ROOT_BIOMASS_YIELD
+		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS
 	)
 	# Ownership is still ownership: a relic that requires the player to have selected a
 	# path must keep requiring it, whatever the reels paid.
@@ -5398,230 +5438,15 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	prototype.progression.reset_progression()
 
-	# Overgrow spends the reserve that actually exists, aimed where the player is
-	# standing rather than spread evenly around the whole border.
+	# The release is poured in over a ramp rather than dropped in one step, so the
+	# border grows into the ground instead of jumping a visible distance between two
+	# frames. It still has to arrive, and it still has to be the whole of it.
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()
-	prototype.territory_field.recalculate_metrics_now()
-	prototype.progression.add_biomass(400.0)
-	_check(
-		is_equal_approx(metabolism.get_spendable_reserve(), prototype.progression.biomass),
-		"Overgrow spends the run own reserve, wherever the player is standing"
-	)
-
-	var aim_point := prototype.territory_field.get_component_centroid(
-		prototype.territory_field.get_component_id_at_local(prototype.player.get_arena_position())
-	)
-	var unfocused_cells := prototype.territory_field.sample_overgrow_frontier(40.0)
-	var focused_cells := prototype.territory_field.sample_overgrow_frontier(
-		40.0,
-		aim_point,
-		metabolism.overgrow_focus_radius
-	)
-	var mean_distance := func(cells: PackedInt32Array) -> float:
-		var described: Array = prototype.territory_field.describe_frontier_cells(cells)
-		var positions: PackedVector2Array = described[0]
-		if positions.is_empty():
-			return INF
-		var total := 0.0
-		for position in positions:
-			total += position.distance_to(aim_point)
-		return total / float(positions.size())
-	var unfocused_distance: float = mean_distance.call(unfocused_cells)
-	var focused_distance: float = mean_distance.call(focused_cells)
-	_check(
-		not focused_cells.is_empty() and focused_distance < unfocused_distance,
-		"a release is aimed at the player front rather than spread evenly "
-			+ "(%.0f away focused, %.0f unfocused)" % [focused_distance, unfocused_distance]
-	)
-
-	# Pressing it actually moves the reserve, and the cooldown stops a second press.
-	var reserve_before_press := prototype.progression.biomass
-	var expected_cost := metabolism.get_overgrow_cost()
-	var pressed := metabolism.try_overgrow(prototype.player.get_arena_position())
-	_check(
-		pressed
-		and expected_cost > 0.0
-		and prototype.progression.biomass < reserve_before_press
-		and absf(
-			(reserve_before_press - prototype.progression.biomass) - expected_cost
-		) < maxf(1.0, expected_cost * 0.05)
-		and not metabolism.can_overgrow(),
-		"pressing Overgrow spends the reserve and then has to recharge"
-	)
-
-	# With the reserve drained there is nothing to press at all.
-	prototype.progression.spend_biomass(1000000.0)
-	_check(
-		not metabolism.can_overgrow()
-		and not metabolism.try_overgrow(prototype.player.get_arena_position()),
-		"a drained organism cannot Overgrow"
-	)
-
-	# Aiming. Pressing Overgrow asks where rather than releasing, and the run keeps
-	# going while the player decides, so the reserve must not move until they commit.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	prototype.progression.add_biomass(400.0)
-	prototype._set_metabolism_drawer_open(true)
-	var reserve_at_aim := prototype.progression.biomass
-	prototype._press_action(PhaseBMetabolism.ActionId.OVERGROW)
-	_check(
-		prototype._overgrow_aiming
-		and prototype.overlay.is_aiming_overgrow()
-		and not prototype.metabolism_drawer.visible
-		and is_equal_approx(prototype.progression.biomass, reserve_at_aim),
-		"pressing Overgrow opens an aim, hides the drawer, and spends nothing yet"
-	)
-
-	# The crosshair follows the mouse and is clamped to the arena, so dragging past
-	# the edge leaves it on the nearest ground rather than stranding it.
-	var arena_size := prototype.territory_field.tuning.arena_size
-	var aimed_at := Vector2(arena_size.x * 0.32, arena_size.y * 0.42)
-	var motion := InputEventMouseMotion.new()
-	motion.position = prototype.territory_field.to_global(aimed_at)
-	prototype._unhandled_input(motion)
-	var followed_the_mouse := prototype.overlay.get_overgrow_aim_position().distance_to(
-		aimed_at
-	) < 1.0
-	var beyond := InputEventMouseMotion.new()
-	beyond.position = prototype.territory_field.to_global(
-		Vector2(arena_size.x + 400.0, arena_size.y + 400.0)
-	)
-	prototype._unhandled_input(beyond)
-	var clamped := prototype.overlay.get_overgrow_aim_position()
-	_check(
-		followed_the_mouse
-		and is_equal_approx(clamped.x, arena_size.x)
-		and is_equal_approx(clamped.y, arena_size.y),
-		"the crosshair follows the mouse and stays inside the arena"
-	)
-
-	# Right click backs out and costs nothing.
-	var cancel := InputEventMouseButton.new()
-	cancel.button_index = MOUSE_BUTTON_RIGHT
-	cancel.pressed = true
-	prototype._unhandled_input(cancel)
-	_check(
-		not prototype._overgrow_aiming
-		and not prototype.overlay.is_aiming_overgrow()
-		and is_equal_approx(prototype.progression.biomass, reserve_at_aim),
-		"backing out of an aim releases nothing and keeps the reserve"
-	)
-
-	# Left click commits, at the point clicked rather than at the player.
-	prototype._press_action(PhaseBMetabolism.ActionId.OVERGROW)
-	var commit := InputEventMouseButton.new()
-	commit.button_index = MOUSE_BUTTON_LEFT
-	commit.pressed = true
-	commit.position = prototype.territory_field.to_global(aimed_at)
-	var injected: Array = []
-	var on_injected := func(
-		_mass: float,
-		_pressure: float,
-		_cohesion: float,
-		cells: PackedInt32Array
-	) -> void:
-		injected.append(cells)
-	metabolism.injection_started.connect(on_injected)
-	prototype._unhandled_input(commit)
-	metabolism.injection_started.disconnect(on_injected)
-	var released_where_aimed := not injected.is_empty()
-	if released_where_aimed:
-		var described: Array = prototype.territory_field.describe_frontier_cells(injected[0])
-		var positions: PackedVector2Array = described[0]
-		var mean := Vector2.ZERO
-		for position in positions:
-			mean += position
-		mean /= maxf(1.0, float(positions.size()))
-		released_where_aimed = (
-			mean.distance_to(aimed_at) < mean.distance_to(prototype.player.position)
-		)
-	_check(
-		not prototype._overgrow_aiming
-		and not prototype.overlay.is_aiming_overgrow()
-		and prototype.progression.biomass < reserve_at_aim
-		and released_where_aimed,
-		"clicking commits the release at the crosshair rather than at the player"
-	)
-
-	# With nothing banked there is nothing to aim, so the button refuses rather than
-	# opening a crosshair the player cannot use.
-	prototype.progression.spend_biomass(1000000.0)
-	prototype._press_action(PhaseBMetabolism.ActionId.OVERGROW)
-	_check(
-		not prototype._overgrow_aiming and not prototype.overlay.is_aiming_overgrow(),
-		"an unaffordable Overgrow never opens an aim"
-	)
-
-	# The drawer is a readout rather than a shop: it reports what the earning has
-	# developed, and there is nothing on it to press.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	for _drawer_unlock in range(int(metabolism.cohesion_unlock_seconds * 30.0) + 60):
-		metabolism.advance(1.0 / 30.0)
-	prototype.progression.add_biomass(600.0)
-	prototype._update_metabolism_controls()
-	var mass_caption := prototype.mass_button.get_caption().text
-	var reported_rank := mass_caption.contains(
-		"RANK %d" % metabolism.get_level(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
-	)
-	_check(
-		reported_rank
-		and mass_caption.begins_with("MASS")
-		and not prototype.mass_button.disabled
-		and prototype.mass_button.get_meter() != null
-		and absf(
-			prototype.mass_button.get_meter().value
-			- metabolism.get_axis_progress(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS)
-		) < 0.01,
-		"the drawer reports the rank the earning developed rather than offering a price"
-	)
-
-	# An axis the run has not discovered yet is absent from the drawer rather than
-	# sitting there greyed out, so the drawer grows with the run.
-	metabolism.reset_metabolism()
-	prototype._update_metabolism_controls()
-	var hold_hidden_at_the_start := not prototype.hold_button.visible
-	for _hold_unlock in range(int(metabolism.cohesion_unlock_seconds * 30.0) + 60):
-		metabolism.advance(1.0 / 30.0)
-	prototype._update_metabolism_controls()
-	_check(
-		prototype.mass_button.visible
-		and hold_hidden_at_the_start
-		and prototype.hold_button.visible,
-		"an undiscovered axis is absent from the drawer rather than sitting there locked"
-	)
-
-	# The permanent line is the reserve and what it is earning. Nothing is banked
-	# against a ceiling any more, and nothing on it is waiting to be afforded.
-	prototype.progression.reset_progression()
-	prototype.progression.add_biomass(250.0)
-	prototype._update_hud()
-	var reserve_line := prototype.biomass_label.text
-	_check(
-		reserve_line.contains("/s")
-		and not reserve_line.contains("❦")
-		and not reserve_line.contains(String.chr(10)),
-		"the Biomass line is one line of reserve and rate"
-	)
-
-	prototype.territory_field.reset_field()
-	prototype.progression.reset_progression()
-
-	# A rank answers in the simulation, not only in the number. Nothing is bought any
-	# more, so what has to be checked is that a rank arriving on its own still puts
-	# material into the ground the way a bought one used to.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	prototype._apply_progression_modifiers()
 	prototype.territory_field.reset_field()
 	prototype.territory_field.step_simulation()
 	prototype.territory_field.recalculate_metrics_now()
 	metabolism.debug_grant_axis(PhaseBMetabolism.SystemId.PHOTOSYNTHESIS, 1)
-	# The release is poured in over a ramp rather than dropped in one step, so the
-	# border grows into the ground instead of jumping a visible distance between two
-	# frames. It still has to arrive, and it still has to be the whole of it.
 	var pouring := metabolism.get_pending_injection_count()
 	var mid_pour := 0.0
 	for pour_step in range(60):
@@ -5657,80 +5482,6 @@ func _run() -> void:
 		"earning moves Mass, Pressure, and Cohesion in the simulation itself"
 	)
 
-	# Overgrow spends the Reserve into the material rather than granting territory.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	prototype.territory_field.reset_field()
-	prototype.territory_field.step_simulation()
-	prototype.territory_field.recalculate_metrics_now()
-	# What is being measured is the spend, so the reserve is handed over rather than
-	# earned across the ten minutes of holding it would actually take.
-	prototype.progression.add_biomass(400.0)
-	var early_log: Array = []
-	var log_overgrow := func(mass: float, pressure: float, cohesion: float) -> void:
-		early_log.append([mass, pressure, cohesion])
-	metabolism.overgrown.connect(log_overgrow)
-	var early_overgrew := metabolism.try_overgrow(prototype.player.get_arena_position())
-	var early_split: Array = early_log[0] if not early_log.is_empty() else [0.0, 0.0, 0.0]
-	_check(
-		early_overgrew
-		and float(early_split[0]) > 0.0
-		and is_equal_approx(float(early_split[1]), 0.0)
-		and is_equal_approx(float(early_split[2]), 0.0),
-		"a run that has not discovered Push yet spends the whole burst as material"
-	)
-
-	# Once the other axes are discovered the same press is split between them, and it
-	# takes half of what is banked and then has to recharge.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	for _overgrow_unlock in range(int(metabolism.cohesion_unlock_seconds * 30.0) + 60):
-		metabolism.advance(1.0 / 30.0)
-	prototype.progression.add_biomass(400.0)
-	var overgrow_reserve := prototype.progression.biomass
-	var overgrow_log: Array = []
-	var log_split := func(mass: float, pressure: float, cohesion: float) -> void:
-		overgrow_log.append([mass, pressure, cohesion])
-	metabolism.overgrown.connect(log_split)
-	var overgrew := metabolism.try_overgrow(prototype.player.get_arena_position())
-	var overgrow_split: Array = (
-		overgrow_log[0] if not overgrow_log.is_empty() else [0.0, 0.0, 0.0]
-	)
-	_check(
-		overgrew
-		and is_equal_approx(
-			prototype.progression.biomass,
-			overgrow_reserve * (1.0 - metabolism.overgrow_reserve_fraction)
-		)
-		and float(overgrow_split[0]) > 0.0
-		and float(overgrow_split[1]) > 0.0
-		and float(overgrow_split[2]) > 0.0
-		and not metabolism.can_overgrow(),
-		"Overgrow spends half the reserve, then goes on cooldown"
-	)
-	metabolism.overgrown.disconnect(log_overgrow)
-	metabolism.overgrown.disconnect(log_split)
-
-	# The identity split follows the physique the run actually developed, so two
-	# organisms pressing the same button get different physical results. One pool of
-	# earnings feeds all three axes, so what moves the split is the build.
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-	for _split_unlock in range(int(metabolism.pressure_unlock_seconds * 30.0) + 30):
-		metabolism.advance(1.0 / 30.0)
-	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.BLOOM,
-		PhaseBProgression.PathId.PRUNING
-	)
-	prototype.progression.add_biomass(4000.0)
-	_check(
-		metabolism.get_identity_share(PhaseBMetabolism.SystemId.MERISTEM)
-		> metabolism.get_identity_share(PhaseBMetabolism.SystemId.CAMBIUM),
-		"Overgrow inherits the organism own physique"
-	)
-	metabolism.reset_metabolism()
-	prototype.progression.reset_progression()
-
 	# The HUD rules: the sidebar says what is true, the drawer is where decisions
 	# are made, and anything with nothing to say is not on screen.
 	metabolism.reset_metabolism()
@@ -5747,38 +5498,6 @@ func _run() -> void:
 		and threatened_hostiles_shown
 		and prototype.hostile_label.text.contains("3"),
 		"the hostile count appears only while there are hostiles to warn about"
-	)
-
-	# The Biomass line is the reserve and its rate. Consumption, net, the ceiling and
-	# the ready bud are all gone: nothing drains, nothing fills up, nothing is bought.
-	prototype.progression.reset_progression()
-	prototype._update_hud()
-	var broke_line := prototype.biomass_label.text
-	prototype.progression.add_biomass(500.0)
-	prototype._update_hud()
-	var earning_line := prototype.biomass_label.text
-	_check(
-		not broke_line.contains(String.chr(10))
-		and broke_line.contains("/s")
-		and not broke_line.contains("CONSUMPTION")
-		and not broke_line.contains("❦")
-		and earning_line != broke_line,
-		"the Biomass line is one line of reserve and rate"
-	)
-
-	# Every detailed Biomass decision lives in the drawer, and the drawer is closed
-	# until it is asked for.
-	var drawer_closed := not prototype.metabolism_drawer.visible
-	prototype._toggle_metabolism_drawer()
-	var drawer_open := prototype.metabolism_drawer.visible
-	prototype._toggle_metabolism_drawer()
-	_check(
-		drawer_closed
-		and drawer_open
-		and not prototype.metabolism_drawer.visible
-		and prototype.mass_button.get_parent() == prototype.metabolism_drawer
-		and prototype.overgrow_button.get_parent() == prototype.metabolism_drawer,
-		"the Biomass drawer owns the detailed controls and opens only on request"
 	)
 
 	# The first matching pair of a run stops the battlefield and lets the third reel
@@ -6201,7 +5920,6 @@ func _run() -> void:
 		[prototype.xp_label, "LVL {level}"],
 		[prototype.hostile_label, "{hostiles} ENEMIES ABOUT"],
 		[prototype.wave_label, "ROUND {wave}"],
-		[prototype.biomass_label, "STORE {held} GAINING {gain}"],
 	]
 	var authored_reaches_game := true
 	var authored_report := ""
@@ -6218,7 +5936,6 @@ func _run() -> void:
 		prototype.progression.current_xp,
 		prototype.progression.get_required_xp()
 	)
-	prototype._on_biomass_changed(prototype.progression.biomass, 0.0)
 	prototype._on_territory_metrics_changed(
 		prototype.territory_field.get_player_percent(), 0.0, 0.0, 0.0, 0
 	)
@@ -7308,6 +7025,48 @@ func _run() -> void:
 	prototype.progression.reset_progression()
 	prototype._apply_progression_modifiers()
 
+	# --------------------------------------------------------------- Relic VFX
+	# Two of the document's VFX rules are mechanical rather than artistic, so they
+	# are enforced in code and checked here: a generated echo is drawn weaker than
+	# what caused it, and same-frame accents are spread so a chain reads in order.
+	prototype.overlay.clear_relic_cues()
+	prototype.overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.GHOST, Vector2(100.0, 100.0), 40.0, Color.WHITE
+	)
+	var natural_intensity := prototype.overlay.get_last_relic_cue_intensity()
+	var first_lead_in := prototype.overlay.get_last_relic_cue_lead_in()
+	prototype.overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.GHOST,
+		Vector2(100.0, 100.0),
+		40.0,
+		Color.WHITE,
+		Vector2.ZERO,
+		true
+	)
+	var echo_intensity := prototype.overlay.get_last_relic_cue_intensity()
+	var second_lead_in := prototype.overlay.get_last_relic_cue_lead_in()
+	# An echo of an echo can only get quieter: intensity is held under its source.
+	prototype.overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.GHOST,
+		Vector2(100.0, 100.0),
+		40.0,
+		Color.WHITE,
+		Vector2.ZERO,
+		true,
+		echo_intensity
+	)
+	var nested_echo := prototype.overlay.get_last_relic_cue_intensity()
+	_check(
+		is_equal_approx(natural_intensity, 1.0)
+		and echo_intensity >= prototype.overlay.echo_intensity_minimum - 0.001
+		and echo_intensity <= prototype.overlay.echo_intensity_maximum + 0.001
+		and nested_echo <= echo_intensity + 0.001
+		and is_equal_approx(first_lead_in, 0.0)
+		and second_lead_in >= prototype.overlay.cue_stagger_seconds - 0.001,
+		"a relic echo is drawn weaker than its source and same-frame accents are staggered"
+	)
+	prototype.overlay.clear_relic_cues()
+
 	# ------------------------------------------------------------- Plant relics
 	# Plant is the glue pool, and two of its relics repeat other relics' effects,
 	# so the recursion limiters here are the ones guarding the whole catalog.
@@ -7769,6 +7528,98 @@ func _run() -> void:
 		"LIANA needs three consecutive Apical sweeps, resets on a miss, and casts four"
 	)
 	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.LIANA] = 0
+
+	# Continuity: every relic-driven stroke has to drive the rope that is already
+	# there. A relic that rebuilt the Vine would look like it was being respawned
+	# per attack, which is the whole thing the physics rework exists to stop.
+	var whip: PhaseBVineWhip = prototype.combat.vine_whip
+	prototype.player.global_position = prototype.territory_field.to_global(vine_spot)
+	prototype.combat.simulate_step(1.0 / 60.0)
+	var rope_is_driving := prototype.combat.is_vine_driven() and whip.is_built()
+
+	# Recurve reverses a rope that is still carrying momentum: the next stroke
+	# arrives sooner and starts from exactly where the last one left the body.
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.RECURVE] = 1
+	vine._recurve_armed = false
+	vine._on_cane_enemy_hit(-1, vine_spot, 0.9, true, 10.0, false, false)
+	var recurve_armed := vine._recurve_armed
+	var before_recurve := whip.points.duplicate()
+	var sweep_before := whip.get_sweep_id()
+	prototype.combat.perform_bonus_cane_sweep(Vector2.RIGHT, false)
+	var recurve_continuous := true
+	for point_index in range(before_recurve.size()):
+		if not before_recurve[point_index].is_equal_approx(whip.points[point_index]):
+			recurve_continuous = false
+			break
+	_check(
+		rope_is_driving
+		and recurve_armed
+		and whip.get_sweep_id() == sweep_before + 1
+		and recurve_continuous
+		and whip.get_point_count() == before_recurve.size(),
+		"RECURVE reverses the continuously simulated Vine without resetting its momentum"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.RECURVE] = 0
+
+	# Twining's repeat is a stroke of the same body, not a second Vine.
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.TWINING] = 1
+	for _twine_settle in range(10):
+		prototype.combat.simulate_step(1.0 / 60.0)
+	var before_twining := whip.points.duplicate()
+	var twining_sweep_before := whip.get_sweep_id()
+	prototype.combat.perform_bonus_cane_sweep(
+		Vector2.RIGHT, true, vine.twining_damage_share
+	)
+	var twining_continuous := true
+	for point_index in range(before_twining.size()):
+		if not before_twining[point_index].is_equal_approx(whip.points[point_index]):
+			twining_continuous = false
+			break
+	_check(
+		whip.get_sweep_id() == twining_sweep_before + 1
+		and twining_continuous
+		and whip.get_point_count() == before_twining.size(),
+		"TWINING repeats on the persistent Vine state rather than spawning a second one"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.TWINING] = 0
+
+	# Liana's cascade is four strokes of one rope, alternating, with the body never
+	# rebuilt between them.
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.LIANA] = 1
+	vine.reset_adaptations()
+	for _liana_settle in range(10):
+		prototype.combat.simulate_step(1.0 / 60.0)
+	var liana_points_before := whip.get_point_count()
+	var liana_sweep_before := whip.get_sweep_id()
+	vine._liana_remaining = vine.liana_bonus_sweeps
+	vine._liana_step = 0.0
+	vine._liana_facing = Vector2.RIGHT
+	var liana_rebuilt := false
+	for _liana_tick in range(int(vine.liana_interval_seconds * 60.0) * 6 + 30):
+		vine._advance_vine_relics(1.0 / 60.0)
+		if whip.get_point_count() != liana_points_before:
+			liana_rebuilt = true
+	_check(
+		whip.get_sweep_id() - liana_sweep_before == vine.liana_bonus_sweeps
+		and not liana_rebuilt
+		and vine._liana_remaining == 0,
+		"LIANA drives exactly four alternating strokes through one continuous Vine body"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.LIANA] = 0
+
+	# Climber reads a real wrap, not a sharp curve. A rope whipping through open
+	# ground bends hard under its own momentum and must never read as wrapped.
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CLIMBER] = 1
+	var open_wrap := whip.is_wrapped()
+	var curved_hard := whip.get_bend_count() > 0
+	vine._sweep_bend_index = whip.get_wrap_index()
+	var climber_armed_in_the_open := vine._sweep_bend_index >= 0
+	_check(
+		not open_wrap and not climber_armed_in_the_open,
+		"CLIMBER reads an actual wrap rather than a rope merely bent by its own swing"
+	)
+	prototype.progression._owned_relics[PhaseBRelicCatalog.Id.CLIMBER] = 0
+
 	vine.reset_adaptations()
 	prototype.combat.reset_combat()
 	prototype.progression.reset_progression()
