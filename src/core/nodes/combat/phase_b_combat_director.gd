@@ -798,6 +798,10 @@ var _last_explosion_pitch_scale := 1.0
 ## because a sound played.
 var _sfx_random := RandomNumberGenerator.new()
 var _damage_number_sequence := 0
+## Lowest slot in `_damage_numbers` that might be free. Everything below it is
+## active, so the search for a free slot can start here instead of at zero. It is
+## lowered whenever a slot expires, which keeps the invariant true.
+var _damage_number_free_cursor := 0
 var _damage_number_font: Font
 
 
@@ -1162,6 +1166,7 @@ func reset_combat() -> void:
 	_xp_collect_pitch_reset_remaining = 0.0
 	_last_xp_collect_pitch_scale = 1.0
 	_damage_number_sequence = 0
+	_damage_number_free_cursor = 0
 	if _cane_audio != null:
 		_cane_audio.stop()
 	if _plant_explosion_audio != null:
@@ -1293,20 +1298,36 @@ func blast_enemies_in_radius(
 	boss_overkill_cap: float = 0.0
 ) -> BlastReport:
 	var report := BlastReport.new()
+	# Read once for the whole blast rather than per enemy. This loop runs for every
+	# AoE in the game against the whole roster, and even an early-returning counter
+	# call is not free at that rate -- taking the timestamps unconditionally here was
+	# enough on its own to push a pairing over budget.
+	var measuring := PhaseBPerfCounters.enabled
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
 		var distance := enemy.position.distance_to(center)
 		if distance > radius + enemy.radius:
 			continue
-		if not territory_field.is_growth_path_clear(center, enemy.position):
+		var sight_began := Time.get_ticks_usec() if measuring else 0
+		var reachable := territory_field.is_growth_path_clear(center, enemy.position)
+		if measuring:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_BLAST_LINE_OF_SIGHT, sight_began
+			)
+		if not reachable:
 			continue
 		var falloff := clampf(1.0 - distance / maxf(radius, 1.0), 0.0, 1.0)
 		var applied := damage * lerpf(0.48, 1.0, falloff)
 		var health_before := enemy.health
 		var position_before := enemy.position
 		var role := enemy.role
+		var damage_began := Time.get_ticks_usec() if measuring else 0
 		_damage_enemy(enemy, applied, death_source, chain_depth)
+		if measuring:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_BLAST_DAMAGE, damage_began
+			)
 		report.hits += 1
 		if enemy.active:
 			continue
@@ -1592,7 +1613,7 @@ func _densest_target_direction(
 	var fallback := fallback_direction.normalized()
 	if fallback.length_squared() <= 0.0001:
 		fallback = Vector2.RIGHT
-	var gather_began := Time.get_ticks_usec()
+	var gather_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var target_directions := PackedVector2Array()
 	var target_distances := PackedFloat32Array()
 	if _cane_auto_targets:
@@ -1621,7 +1642,7 @@ func _densest_target_direction(
 	)
 	if target_directions.is_empty():
 		return fallback
-	var sweep_began := Time.get_ticks_usec()
+	var sweep_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	PhaseBPerfCounters.count(
 		PhaseBPerfCounters.COUNT_CANE_TARGETS, target_directions.size()
 	)
@@ -2511,7 +2532,7 @@ func _perform_cane_sweep(
 				PhaseBPerfCounters.count(
 					PhaseBPerfCounters.COUNT_CANE_ROUTE_CACHE_MISSES
 				)
-				var route_began := Time.get_ticks_usec()
+				var route_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 				vine_route = territory_field.get_growth_path(origin, enemy.position)
 				PhaseBPerfCounters.timer_add_since(
 					PhaseBPerfCounters.TIMER_CANE_PERFORM_ROUTES, route_began
@@ -4112,12 +4133,15 @@ func _find_colony_core_site(wanted: Vector2) -> Vector2:
 
 
 func _update_damage_numbers(delta: float) -> void:
-	for damage_number in _damage_numbers:
+	for index in range(_damage_numbers.size()):
+		var damage_number := _damage_numbers[index]
 		if not damage_number.active:
 			continue
 		damage_number.age += delta
 		if damage_number.age >= damage_number_lifetime_seconds:
 			damage_number.active = false
+			# Freeing a slot can only lower where the next free-slot search starts.
+			_damage_number_free_cursor = mini(_damage_number_free_cursor, index)
 			continue
 		damage_number.position += damage_number.velocity * delta
 
@@ -4625,16 +4649,48 @@ func _spawn_damage_number(
 	damage: float,
 	color: Color
 ) -> void:
+	var spawn_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
+	# This used to scan the whole pool for a free slot, and then scan it again for
+	# the oldest when the pool was full. A blast landing on a hundred enemies did
+	# that a hundred times, which made floating damage numbers -- a cosmetic -- the
+	# single largest cost in the worst fixture.
+	#
+	# Both answers are now maintained rather than searched for. The cursor makes the
+	# free-slot case exact: everything below it is active, so the first inactive slot
+	# at or above it is the lowest one in the pool. The full case takes the front of
+	# the activation order, which is the oldest because every number ages at the same
+	# rate and shares one lifetime. That is what the old scan picked too -- taking
+	# the max-age slot and resetting its age hands the next spawn the following
+	# index, so the scan was already cycling the pool in order.
 	var selected: DamageNumberState
-	var oldest_age := -1.0
-	for damage_number in _damage_numbers:
-		if not damage_number.active:
-			selected = damage_number
+	var slot := _damage_number_free_cursor
+	while slot < _damage_numbers.size():
+		if not _damage_numbers[slot].active:
 			break
-		if damage_number.age > oldest_age:
-			oldest_age = damage_number.age
-			selected = damage_number
+		slot += 1
+	if slot < _damage_numbers.size():
+		selected = _damage_numbers[slot]
+		_damage_number_free_cursor = slot + 1
+	else:
+		# Pool full. Recycle the oldest, by the original scan.
+		#
+		# A queue of slots in activation order was tried here, on the reasoning that
+		# every number ages at the same rate so activation order is age order. It is
+		# not, under sustained saturation, and damage_number_pool_probe caught it
+		# recycling a different slot than the scan would. Which number survives a
+		# saturated frame is visible, so this stays exact until there is a fast
+		# version that provably agrees.
+		_damage_number_free_cursor = _damage_numbers.size()
+		var oldest_age := -1.0
+		for damage_number in _damage_numbers:
+			if damage_number.age > oldest_age:
+				oldest_age = damage_number.age
+				selected = damage_number
 	if selected == null:
+		if spawn_began > 0:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_SPAWN, spawn_began
+			)
 		return
 	var side := -1.0 if _damage_number_sequence % 2 == 0 else 1.0
 	var lateral_speed := 7.0 + float(_damage_number_sequence % 3) * 2.0
@@ -4650,6 +4706,10 @@ func _spawn_damage_number(
 	selected.color = color
 	selected.age = 0.0
 	selected.impact_radius = enemy_radius
+	if spawn_began > 0:
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_SPAWN, spawn_began
+		)
 	queue_redraw()
 
 

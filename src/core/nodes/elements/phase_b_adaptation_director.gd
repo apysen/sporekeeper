@@ -1564,7 +1564,7 @@ func _update_thorns(delta: float) -> void:
 		thorn.position = next
 		if struck_id < 0:
 			continue
-		var resolve_began := Time.get_ticks_usec()
+		var resolve_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 		_resolve_thorn_hit(thorn, struck_id)
 		PhaseBPerfCounters.timer_add_since(
 			PhaseBPerfCounters.TIMER_THISTLE_HIT_RESOLUTION, resolve_began
@@ -1579,7 +1579,7 @@ func _find_thorn_segment_hit(
 	enemy_positions: PackedVector2Array,
 	enemy_radii: PackedFloat32Array
 ) -> int:
-	var began_usec := Time.get_ticks_usec()
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var struck := -1
 	var nearest_progress := INF
 	var segment := segment_end - segment_start
@@ -1615,7 +1615,7 @@ func _find_thorn_segment_hit(
 
 
 func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
-	var lookup_began := Time.get_ticks_usec()
+	var lookup_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	if not combat.is_enemy_active(enemy_id):
 		return
 	var hit_position := combat.get_enemy_position(enemy_id)
@@ -1635,19 +1635,19 @@ func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
 	var damage := thorn.damage * (thistle_critical_multiplier if critical else 1.0)
 	if hedge_rank >= 2 and was_fully_entangled:
 		damage *= 1.20
-	var cascade_began := Time.get_ticks_usec()
+	var cascade_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	_apply_inoculator_hit(thorn, enemy_id, critical, hit_position)
 	_apply_hedge_battery_hit(enemy_id, critical, was_fully_entangled, hit_position)
 	_add_pincushion_stack(enemy_id, thorn)
 	PhaseBPerfCounters.timer_add_since(
 		PhaseBPerfCounters.TIMER_THISTLE_HIT_CASCADE, cascade_began
 	)
-	var damage_began := Time.get_ticks_usec()
+	var damage_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	combat.damage_enemy_by_id(enemy_id, damage, PhaseBCombatDirector.DeathSource.THISTLE)
 	PhaseBPerfCounters.timer_add_since(
 		PhaseBPerfCounters.TIMER_THISTLE_HIT_DAMAGE, damage_began
 	)
-	cascade_began = Time.get_ticks_usec()
+	cascade_began = Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	thorn.hit_ids.append(enemy_id)
 	_note_natural_thorn_impact(thorn, enemy_id, hit_position, critical)
 	PhaseBPerfCounters.timer_add_since(
@@ -1692,7 +1692,7 @@ func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
 
 
 func _find_ricochet_target(origin: Vector2, excluded: PackedInt32Array) -> int:
-	var began_usec := Time.get_ticks_usec()
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var nearest_id := -1
 	var nearest_distance := thistle_range_pixels * thistle_range_pixels
 	var enemy_ids := combat.get_active_enemy_ids()
@@ -2692,7 +2692,7 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 	fruit.velocity = direction * fruit.speed
 	var previous := fruit.position
 	var next := previous + direction * step_distance
-	var terrain_began := Time.get_ticks_usec()
+	var terrain_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var blocked := (
 		not territory_field.contains_local_point(next)
 		or not territory_field.is_claimable_at_local(next)
@@ -2702,7 +2702,7 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 		PhaseBPerfCounters.TIMER_FRUIT_TERRAIN, terrain_began
 	)
 	if blocked:
-		terrain_began = Time.get_ticks_usec()
+		terrain_began = Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 		_resolve_fruit_obstacle_bounce(fruit, previous, next)
 		PhaseBPerfCounters.timer_add_since(
 			PhaseBPerfCounters.TIMER_FRUIT_TERRAIN, terrain_began
@@ -2757,7 +2757,7 @@ func _find_fruit_segment_hit(
 	segment_start: Vector2,
 	segment_end: Vector2
 ) -> int:
-	var began_usec := Time.get_ticks_usec()
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var struck := -1
 	var nearest_progress := INF
 	var segment := segment_end - segment_start
@@ -2847,8 +2847,12 @@ func _resolve_fruit_enemy_hit(fruit: FruitState, enemy_id: int) -> void:
 		# starts from the very next stamp rather than the next frame.
 		if _has_relic(PhaseBRelicCatalog.Id.BRUISED_FRUIT):
 			fruit.juicy_remaining = bruised_fruit_distance_pixels
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_SALAD)
 		_try_fruit_salad(fruit, enemy_id)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_SALAD)
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_NEWTON)
 		_try_newtons_apple(fruit, enemy_id)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_NEWTON)
 		if survived:
 			_try_stem_steering(fruit, enemy_id)
 		else:
@@ -3036,8 +3040,13 @@ func _find_fruit_redirect_target(
 ) -> Vector2:
 	# Prefer somebody this Fruit has not already been through, so a redirect opens
 	# new ground instead of grinding the same body.
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var best := Vector2(-1.0, -1.0)
 	var best_distance := INF
+	# Left as a by-id read on purpose. Hoisting the paired roster here was tried and
+	# was a pessimisation: the lookup is O(1) since the id-to-slot map landed, so the
+	# hoist bought nothing and cost a second array allocation on a search that runs
+	# on every qualifying collision.
 	for candidate_id in combat.get_active_enemy_ids():
 		if candidate_id == exclude_id or fruit.hit_cooldowns.has(candidate_id):
 			continue
@@ -3047,6 +3056,9 @@ func _find_fruit_redirect_target(
 			continue
 		best_distance = distance
 		best = candidate
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_REDIRECT, began_usec
+	)
 	return best
 
 
@@ -3208,7 +3220,7 @@ func _stamp_fruit_trail_segment(
 	## Every Fruit owns its own spacing accumulator. Sampling exact points along the
 	## travelled segment prevents a multi-Fruit release from collapsing its territory
 	## into whichever Fruit happened to cross a frame boundary first.
-	var began_usec := Time.get_ticks_usec()
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var segment := segment_end - segment_start
 	var segment_length := segment.length()
 	if segment_length <= 0.001:
@@ -3483,6 +3495,7 @@ func _create_fruit_bloom(
 ) -> void:
 	if bloom_director == null or force_share <= 0.0:
 		return
+	var bloom_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var amplification := (
 		root_director.get_network_multiplier_here(position)
 		if root_director != null
@@ -3543,6 +3556,9 @@ func _create_fruit_bloom(
 			overlay.spawn_splatter(position, radius, 0.55, 0.75, globs, 0.70)
 	if play_primary_feedback:
 		combat.play_plant_explosion_sfx()
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_BLOOM, bloom_began
+	)
 
 
 func _spawn_orchard_sapling(position: Vector2) -> bool:

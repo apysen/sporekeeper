@@ -93,6 +93,20 @@ const TIMER_FRUIT_BURDOCK := &"fruit_burdock_ms"
 const TIMER_FRUIT_FINISH := &"fruit_finish_ms"
 ## What a Fruit landing on an enemy sets off, and the two halves of the seed layer.
 const TIMER_FRUIT_HIT_RESOLUTION := &"fruit_hit_resolution_ms"
+## The relic cascade a Fruit collision sets off, split so the next fix is chosen by
+## measurement rather than by which name sounds expensive.
+const TIMER_FRUIT_REDIRECT := &"fruit_redirect_ms"
+const TIMER_FRUIT_SALAD := &"fruit_salad_ms"
+const TIMER_FRUIT_NEWTON := &"fruit_newton_ms"
+const TIMER_FRUIT_BLOOM := &"fruit_bloom_ms"
+
+## Inside a radius blast: the per-enemy line-of-sight walk, and the damage plus
+## whatever a kill sets off. Both are shared by every AoE in the game.
+const TIMER_BLAST_LINE_OF_SIGHT := &"blast_line_of_sight_ms"
+const TIMER_BLAST_DAMAGE := &"blast_damage_ms"
+## Finding a slot for one floating damage number. Cosmetic, and a scan of the whole
+## pool per damage instance.
+const TIMER_DAMAGE_NUMBER_SPAWN := &"damage_number_spawn_ms"
 const TIMER_FRUITSEEDS := &"fruitseeds_ms"
 const TIMER_SAPLINGS := &"saplings_ms"
 
@@ -179,6 +193,13 @@ const TIMER_NAMES: Array[StringName] = [
 	TIMER_FRUIT_BURDOCK,
 	TIMER_FRUIT_FINISH,
 	TIMER_FRUIT_HIT_RESOLUTION,
+	TIMER_FRUIT_REDIRECT,
+	TIMER_FRUIT_SALAD,
+	TIMER_FRUIT_NEWTON,
+	TIMER_FRUIT_BLOOM,
+	TIMER_BLAST_LINE_OF_SIGHT,
+	TIMER_BLAST_DAMAGE,
+	TIMER_DAMAGE_NUMBER_SPAWN,
 	TIMER_FRUITSEEDS,
 	TIMER_SAPLINGS,
 ]
