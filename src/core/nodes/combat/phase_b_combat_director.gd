@@ -660,6 +660,12 @@ var _damage_numbers: Array[DamageNumberState] = []
 var _bramble_zones: Array[BrambleZoneState] = []
 var _active_enemy_count := 0
 var _next_enemy_id := 1
+## Enemy id to its slot in `_enemies`. A cache in front of the linear search in
+## `_find_enemy`, never the authority for what is where -- see that function.
+var _enemy_slot_by_id := {}
+## Slot `_get_inactive_enemy` last handed out, so `spawn_enemy` can register the
+## new id without searching the pool for the object it was just given.
+var _last_inactive_enemy_slot := -1
 var _spawn_sequence := 0
 var _cane_remaining := 0.0
 var _cane_damage_multiplier := 1.0
@@ -864,7 +870,9 @@ func _process(delta: float) -> void:
 
 func simulate_step(delta: float) -> void:
 	_update_bramble_horde_pressure(delta)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_TOTAL)
 	_update_cane(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_TOTAL)
 	_old_growth_sfx_retrigger_remaining = maxf(
 		0.0,
 		_old_growth_sfx_retrigger_remaining - delta
@@ -877,7 +885,9 @@ func simulate_step(delta: float) -> void:
 	_update_spore_rate_zones(delta)
 	_update_pending_eruptions(delta)
 	_update_root_eruptions(delta)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
 	_update_enemies(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
 	_update_damage_numbers(delta)
 	_update_projectiles(delta)
 	_update_xp_collect_pitch(delta)
@@ -1068,8 +1078,24 @@ func get_enemy_maximum_health(enemy_id: int) -> float:
 
 
 func _find_enemy(enemy_id: int) -> EnemyState:
+	## Every by-id accessor on this class funnels through here, and there are
+	## sixteen of them. As a linear scan that made a single hit resolution -- which
+	## asks about the same enemy eight or ten times -- cost as much as a pass over
+	## the whole crowd, and the Fruit and Thistle hit cascades were both dominated
+	## by it.
+	##
+	## The map is a shortcut, never the authority. A slot is only accepted if it
+	## still holds an active enemy with the id asked for, and anything else falls
+	## through to the scan that was here before, so a stale or missing entry can
+	## make this slower but cannot make it wrong.
+	var slot: int = _enemy_slot_by_id.get(enemy_id, -1)
+	if slot >= 0 and slot < _enemies.size():
+		var mapped := _enemies[slot]
+		if mapped.active and mapped.id == enemy_id:
+			return mapped
 	for enemy in _enemies:
 		if enemy.active and enemy.id == enemy_id:
+			PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_ENEMY_LOOKUP_FALLBACKS)
 			return enemy
 	return null
 
@@ -1106,6 +1132,8 @@ func reset_combat() -> void:
 	_briar_trap_sequence = 0
 	_fruiting_body_sequence = 0
 	_active_enemy_count = 0
+	_enemy_slot_by_id.clear()
+	_last_inactive_enemy_slot = -1
 	_next_enemy_id = 1
 	_spawn_sequence = 0
 	_cane_remaining = 0.16
@@ -1169,8 +1197,14 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 
 	enemy.active = true
 	enemy.state = EnemyStateKind.ADVANCING
+	# The slot is about to carry a different enemy, so whatever id used to point at
+	# it must stop doing so. Retiring the old key here is what keeps the map bounded
+	# by the pool rather than by everything ever spawned.
+	_enemy_slot_by_id.erase(enemy.id)
 	enemy.id = _next_enemy_id
 	_next_enemy_id += 1
+	if _last_inactive_enemy_slot >= 0:
+		_enemy_slot_by_id[enemy.id] = _last_inactive_enemy_slot
 	enemy.position = local_position
 	enemy.direct_path_clear = false
 	enemy.path_check_remaining = (
@@ -1322,38 +1356,27 @@ func get_active_enemy_count_by_role(role: int) -> int:
 
 
 func is_enemy_active(enemy_id: int) -> bool:
-	for enemy in _enemies:
-		if enemy.id == enemy_id:
-			return enemy.active
-	return false
+	return _find_enemy(enemy_id) != null
 
 
 func get_enemy_position(enemy_id: int) -> Vector2:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.position
-	return Vector2(-99999.0, -99999.0)
+	var enemy := _find_enemy(enemy_id)
+	return enemy.position if enemy != null else Vector2(-99999.0, -99999.0)
 
 
 func get_enemy_role(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.role
-	return -1
+	var enemy := _find_enemy(enemy_id)
+	return enemy.role if enemy != null else -1
 
 
 func get_enemy_health(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.health
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.health if enemy != null else 0.0
 
 
 func get_enemy_xp_value(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.xp_value
-	return 0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.xp_value if enemy != null else 0
 
 
 func get_last_killed_enemy_id() -> int:
@@ -1361,17 +1384,13 @@ func get_last_killed_enemy_id() -> int:
 
 
 func get_enemy_territory_erosion_scale(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.territory_erosion_scale
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.territory_erosion_scale if enemy != null else 0.0
 
 
 func get_enemy_territory_behavior(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.territory_behavior
-	return PhaseBEnemyProfile.TerritoryBehavior.NONE
+	var enemy := _find_enemy(enemy_id)
+	return enemy.territory_behavior if enemy != null else PhaseBEnemyProfile.TerritoryBehavior.NONE
 
 
 func get_active_projectile_count() -> int:
@@ -1399,10 +1418,8 @@ func get_active_damage_number_count() -> int:
 
 
 func get_enemy_hit_flash_remaining(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.hit_flash_remaining
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.hit_flash_remaining if enemy != null else 0.0
 
 
 func get_cane_sfx_play_count() -> int:
@@ -1478,6 +1495,44 @@ func set_cane_auto_targeting(enabled: bool) -> void:
 	_cane_auto_targets = enabled
 
 
+## How far below the sector's cosine a dot product must sit before the cheap test
+## is allowed to reject a target outright.
+##
+## `angle > threshold` and `dot < cos(threshold)` are the same condition for unit
+## vectors, because cosine decreases monotonically over [0, PI]. Only floating
+## point separates them, so backing the cut off by a margin far larger than the
+## error in a normalized dot product leaves a band around the boundary that is
+## still decided by `angle_to` exactly as before. Nothing inside the sector, or
+## near enough to be arguable, is ever rejected by arithmetic.
+const CANE_SECTOR_DOT_MARGIN := 1.0e-5
+
+## How the densest-target search evaluates each candidate sector.
+##
+## All three produce the same answer for any layout where the tie-breaker is not
+## being asked to separate two candidates that are equal to within its own
+## thresholds. They differ in cost and in how exactly they reproduce the original
+## arithmetic, which is why the slow one stays available to probes forever.
+enum DensestTargetMode {
+	## Every candidate/target pair decided by `angle_to`, as originally written.
+	REFERENCE,
+	## As REFERENCE, but a dot product may reject pairs that are plainly outside the
+	## sector. Bit-identical to REFERENCE: it only skips work whose outcome was
+	## already settled.
+	DOT_PRUNE,
+	## Angles sorted once, then each candidate's contained set found by binary
+	## search and summarised from prefix sums. Mathematically identical to
+	## REFERENCE, but NOT bit-identical: it forms the angular error as a difference
+	## of two `atan2` results rather than one `atan2` of a cross and a dot, and
+	## sums in sorted order rather than pool order. Both are exact to roughly 1e-7,
+	## against a tie-breaker with 1e-4 thresholds.
+	SORTED,
+}
+
+## Which mode ships. Kept as a constant rather than inlined so a regression can be
+## bisected by changing one line.
+const CANE_DENSEST_TARGET_MODE := DensestTargetMode.SORTED
+
+
 func get_densest_target_direction(
 	origin: Vector2,
 	maximum_range: float,
@@ -1487,9 +1542,57 @@ func get_densest_target_direction(
 	## Finds the direction whose fixed-width sector contains the most live,
 	## unobstructed enemies. Testing each target on both sector edges guarantees a
 	## maximal angular window without depending on pool order for the result.
+	return _densest_target_direction(
+		origin,
+		maximum_range,
+		sector_degrees,
+		fallback_direction,
+		CANE_DENSEST_TARGET_MODE
+	)
+
+
+func debug_densest_target_direction_reference(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2 = Vector2.RIGHT
+) -> Vector2:
+	## The original search, every pair decided by `angle_to`. Kept in the shipping
+	## class rather than in the probe so the paths cannot drift apart: they are one
+	## body and one tie-breaker, differing only in how each candidate is evaluated.
+	return _densest_target_direction(
+		origin,
+		maximum_range,
+		sector_degrees,
+		fallback_direction,
+		DensestTargetMode.REFERENCE
+	)
+
+
+func debug_densest_target_direction_mode(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2,
+	mode: DensestTargetMode
+) -> Vector2:
+	## For probes that need to compare one specific mode against the reference.
+	return _densest_target_direction(
+		origin, maximum_range, sector_degrees, fallback_direction, mode
+	)
+
+
+func _densest_target_direction(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2,
+	mode: DensestTargetMode
+) -> Vector2:
 	var fallback := fallback_direction.normalized()
 	if fallback.length_squared() <= 0.0001:
 		fallback = Vector2.RIGHT
+	var gather_began := Time.get_ticks_usec()
 	var target_directions := PackedVector2Array()
 	var target_distances := PackedFloat32Array()
 	if _cane_auto_targets:
@@ -1513,30 +1616,132 @@ func get_densest_target_direction(
 			continue
 		target_directions.append(to_enemy / distance if distance > 0.001 else fallback)
 		target_distances.append(distance)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_CANE_TARGET_GATHER, gather_began
+	)
 	if target_directions.is_empty():
 		return fallback
+	var sweep_began := Time.get_ticks_usec()
+	PhaseBPerfCounters.count(
+		PhaseBPerfCounters.COUNT_CANE_TARGETS, target_directions.size()
+	)
 	var half_angle := deg_to_rad(clampf(sector_degrees, 1.0, 359.0) * 0.5)
+	# The angular threshold the loop below tests against, and the dot product that
+	# corresponds to it. A sector wide enough that no angle can fall outside pushes
+	# this under -1, at which point nothing is ever rejected early -- which is the
+	# correct behaviour, not a special case.
+	var angle_threshold := half_angle + 0.0001
+	var rejection_dot := cos(angle_threshold) - CANE_SECTOR_DOT_MARGIN
 	var candidate_directions := PackedVector2Array()
+	# Unit copies, built once, used only by the cheap rejection.
+	#
+	# These entries are not unit vectors. Gathering divides the straight-line offset
+	# by `distance`, and with auto-targeting on `distance` has by then been replaced
+	# with the routed path length, which is longer -- so the "direction" comes out
+	# shorter than one. `angle_to` never noticed, because atan2 of cross over dot is
+	# scale invariant. A raw dot product is not: it returns |a||b|cos(angle), so
+	# against short vectors it reads as a wider angle than the real one and rejects
+	# targets that are actually inside the sector. Normalizing here costs one pass
+	# and keeps the arrays the tie-breaker reads untouched.
+	var target_units := PackedVector2Array()
+	var candidate_units := PackedVector2Array()
 	for direction in target_directions:
 		candidate_directions.append(direction)
 		candidate_directions.append(direction.rotated(-half_angle))
 		candidate_directions.append(direction.rotated(half_angle))
+		var unit := direction.normalized()
+		target_units.append(unit)
+		candidate_units.append(unit)
+		candidate_units.append(unit.rotated(-half_angle))
+		candidate_units.append(unit.rotated(half_angle))
+	# Sorted mode's one-off preparation. Angles are laid out three times -- shifted
+	# down a turn, as measured, and shifted up a turn -- so that a candidate's window
+	# is one contiguous run whatever it straddles, with no wrap-around case to get
+	# wrong. A window is narrower than a full turn (the widest legal sector is just
+	# under 360 degrees), so no target can appear in one twice.
+	var sorted_angles := PackedFloat64Array()
+	var prefix_distance := PackedFloat64Array()
+	var prefix_angle := PackedFloat64Array()
+	if mode == DensestTargetMode.SORTED:
+		var order: Array[int] = []
+		var raw_angles := PackedFloat64Array()
+		for index in range(target_directions.size()):
+			var target_vector := target_directions[index]
+			raw_angles.append(atan2(target_vector.y, target_vector.x))
+			order.append(index)
+		order.sort_custom(
+			func(first: int, second: int) -> bool:
+				return raw_angles[first] < raw_angles[second]
+		)
+		var turn := TAU
+		for copy in range(3):
+			var shift := float(copy - 1) * turn
+			for index in order:
+				sorted_angles.append(raw_angles[index] + shift)
+		prefix_distance.resize(sorted_angles.size() + 1)
+		prefix_angle.resize(sorted_angles.size() + 1)
+		prefix_distance[0] = 0.0
+		prefix_angle[0] = 0.0
+		for index in range(sorted_angles.size()):
+			var source_index: int = order[index % order.size()]
+			prefix_distance[index + 1] = (
+				prefix_distance[index] + float(target_distances[source_index])
+			)
+			prefix_angle[index + 1] = prefix_angle[index] + sorted_angles[index]
+
 	var best_direction := fallback
 	var best_count := -1
 	var best_distance_sum := INF
 	var best_alignment_error := INF
 	var best_facing_difference := INF
-	for candidate in candidate_directions:
+	for candidate_index in range(candidate_directions.size()):
+		var candidate := candidate_directions[candidate_index]
+		var candidate_unit := candidate_units[candidate_index]
 		var contained := 0
 		var distance_sum := 0.0
 		var alignment_error := 0.0
-		for index in range(target_directions.size()):
-			var angular_error := absf(candidate.angle_to(target_directions[index]))
-			if angular_error > half_angle + 0.0001:
-				continue
-			contained += 1
-			distance_sum += target_distances[index]
-			alignment_error += angular_error
+		if mode == DensestTargetMode.SORTED:
+			# The contained set is exactly the targets whose angle lies within the
+			# threshold of this candidate's, which after sorting is one run. Splitting
+			# that run at the candidate's own angle turns the sum of |candidate -
+			# target| into two prefix-sum differences, so a candidate costs three
+			# binary searches instead of a pass over every target.
+			var candidate_angle := atan2(candidate.y, candidate.x)
+			var low := _lower_bound_float(sorted_angles, candidate_angle - angle_threshold)
+			var high := _upper_bound_float(sorted_angles, candidate_angle + angle_threshold)
+			var split := _upper_bound_float(sorted_angles, candidate_angle)
+			split = clampi(split, low, high)
+			contained = high - low
+			distance_sum = prefix_distance[high] - prefix_distance[low]
+			var below := (
+				candidate_angle * float(split - low)
+				- (prefix_angle[split] - prefix_angle[low])
+			)
+			var above := (
+				(prefix_angle[high] - prefix_angle[split])
+				- candidate_angle * float(high - split)
+			)
+			alignment_error = below + above
+		else:
+			for index in range(target_directions.size()):
+				var target := target_directions[index]
+				# Most targets in a crowd are nowhere near any given candidate's
+				# sector, and rejecting those costs a multiply instead of an atan2.
+				# Anything that survives -- inside the sector, or close enough to the
+				# edge to be arguable -- still goes through `angle_to` and the
+				# identical test, and a contained target needs its true angular error
+				# anyway.
+				if (
+					mode == DensestTargetMode.DOT_PRUNE
+					and candidate_unit.dot(target_units[index]) < rejection_dot
+				):
+					continue
+				var angular_error := absf(candidate.angle_to(target))
+				if angular_error > angle_threshold:
+					continue
+				contained += 1
+				distance_sum += target_distances[index]
+				alignment_error += angular_error
 		var facing_difference := absf(fallback.angle_to(candidate))
 		if (
 			contained > best_count
@@ -1561,7 +1766,36 @@ func get_densest_target_direction(
 			best_distance_sum = distance_sum
 			best_alignment_error = alignment_error
 			best_facing_difference = facing_difference
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_CANE_TARGET_SWEEP, sweep_began
+	)
 	return best_direction.normalized()
+
+
+func _lower_bound_float(values: PackedFloat64Array, wanted: float) -> int:
+	## First index whose value is >= wanted.
+	var low := 0
+	var high := values.size()
+	while low < high:
+		var middle := (low + high) / 2
+		if values[middle] < wanted:
+			low = middle + 1
+		else:
+			high = middle
+	return low
+
+
+func _upper_bound_float(values: PackedFloat64Array, wanted: float) -> int:
+	## First index whose value is > wanted.
+	var low := 0
+	var high := values.size()
+	while low < high:
+		var middle := (low + high) / 2
+		if values[middle] <= wanted:
+			low = middle + 1
+		else:
+			high = middle
+	return low
 
 
 func set_heartwood_rank(rank: int) -> void:
@@ -1825,10 +2059,8 @@ func _draw_briar_trap(trap: BriarTrapState) -> void:
 
 
 func get_enemy_movement_speed_multiplier(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.movement_speed_multiplier
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.movement_speed_multiplier if enemy != null else 0.0
 
 
 func set_enemy_scaling(
@@ -1874,11 +2106,11 @@ func debug_kill_all(death_source: int = DeathSource.DEBUG) -> int:
 
 
 func debug_damage_enemy(enemy_id: int, damage: float) -> bool:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			_damage_enemy(enemy, damage, DeathSource.DEBUG, 0)
-			return true
-	return false
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null:
+		return false
+	_damage_enemy(enemy, damage, DeathSource.DEBUG, 0)
+	return true
 
 
 func debug_fill_stress(enemy_count: int, projectile_count: int, pickup_count: int) -> void:
@@ -2031,6 +2263,7 @@ func is_vine_driven() -> bool:
 func _update_vine_whip(delta: float) -> void:
 	if vine_whip == null:
 		return
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_VINE_TOTAL)
 	var origin := player.get_arena_position()
 	if not vine_whip.is_built():
 		vine_whip.build(origin, cane_reach_pixels * _cane_reach_multiplier)
@@ -2040,10 +2273,16 @@ func _update_vine_whip(delta: float) -> void:
 	)
 	# Simulated continuously. The rope exists between attacks, which is the whole
 	# point of it being an appendage rather than an attack effect.
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_VINE_ADVANCE)
 	vine_whip.advance(origin, player.get_facing_direction(), delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_ADVANCE)
 	if not _vine_sweep_active:
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_TOTAL)
 		return
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_VINE_HITS)
 	_resolve_vine_hits()
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_HITS)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_TOTAL)
 	if not vine_whip.is_sweeping():
 		_vine_sweep_active = false
 		cane_sweep_finished.emit(
@@ -2131,12 +2370,14 @@ func _update_cane(delta: float) -> void:
 			reach_multiplier *= 1.15
 	var facing := player.get_facing_direction()
 	if _cane_auto_targets:
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_TARGETING)
 		facing = get_densest_target_direction(
 			player.get_arena_position(),
 			cane_reach_pixels * _cane_reach_multiplier * reach_multiplier,
 			cane_arc_degrees,
 			facing
 		)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_TARGETING)
 	_perform_cane_sweep(
 		facing,
 		_cane_next_left_to_right,
@@ -2187,6 +2428,7 @@ func _perform_cane_sweep(
 	is_bonus: bool,
 	apical_fraction_override: float = -1.0
 ) -> int:
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_PERFORM)
 	if facing.length_squared() <= 0.0001:
 		facing = Vector2.RIGHT
 	facing = facing.normalized()
@@ -2199,6 +2441,7 @@ func _perform_cane_sweep(
 	_cane_visual_left_to_right = left_to_right
 	_cane_visual_reach = reach
 	_cane_visual_path = PackedVector2Array()
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_SWEEP_SIGNAL)
 	cane_sweep_started.emit(
 		origin,
 		facing,
@@ -2207,7 +2450,10 @@ func _perform_cane_sweep(
 		base_damage,
 		is_bonus
 	)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_SWEEP_SIGNAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_SFX)
 	_play_cane_sfx()
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_SFX)
 	if is_vine_driven():
 		# The rope resolves this sweep. Hits arrive over the driving window rather
 		# than all at once, so cane_sweep_finished is emitted when the stroke ends.
@@ -2232,6 +2478,7 @@ func _perform_cane_sweep(
 		_vine_sweep_origin = origin
 		_vine_sweep_hits = 0
 		_cane_route_cache.clear()
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_PERFORM)
 		return 0
 	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
 	var apical_fraction := clampf(
@@ -2261,7 +2508,18 @@ func _perform_cane_sweep(
 		if _cane_auto_targets:
 			vine_route = _cane_route_cache.get(enemy.id, PackedVector2Array())
 			if vine_route.is_empty():
+				PhaseBPerfCounters.count(
+					PhaseBPerfCounters.COUNT_CANE_ROUTE_CACHE_MISSES
+				)
+				var route_began := Time.get_ticks_usec()
 				vine_route = territory_field.get_growth_path(origin, enemy.position)
+				PhaseBPerfCounters.timer_add_since(
+					PhaseBPerfCounters.TIMER_CANE_PERFORM_ROUTES, route_began
+				)
+			else:
+				PhaseBPerfCounters.count(
+					PhaseBPerfCounters.COUNT_CANE_ROUTE_CACHE_HITS
+				)
 			if vine_route.is_empty():
 				continue
 			distance = territory_field.get_growth_path_length(vine_route)
@@ -2294,6 +2552,7 @@ func _perform_cane_sweep(
 		)
 	cane_sweep_finished.emit(origin, facing, left_to_right, reach, hit_count, is_bonus)
 	_cane_route_cache.clear()
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_PERFORM)
 	return hit_count
 
 
@@ -2712,10 +2971,10 @@ func apply_suppression_in_radius(
 
 
 func get_enemy_suppression(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.suppression_share if enemy.suppression_remaining > 0.0 else 0.0
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null:
+		return 0.0
+	return enemy.suppression_share if enemy.suppression_remaining > 0.0 else 0.0
 
 
 func apply_spore_in_radius(center: Vector2, radius: float, spore_gain: float) -> int:
@@ -3102,11 +3361,11 @@ func get_active_enemy_radii() -> PackedFloat32Array:
 
 
 func damage_enemy_by_id(enemy_id: int, damage: float, death_source: int) -> bool:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			_damage_enemy(enemy, damage, death_source, 0)
-			return true
-	return false
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null:
+		return false
+	_damage_enemy(enemy, damage, death_source, 0)
+	return true
 
 
 func get_active_enemy_positions() -> PackedVector2Array:
@@ -3226,10 +3485,8 @@ func set_mass_entanglement_shares(elite_share: float, boss_share: float) -> void
 
 
 func get_enemy_entanglement(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.entanglement
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.entanglement if enemy != null else 0.0
 
 
 func get_cane_damage_multiplier() -> float:
@@ -3453,10 +3710,8 @@ func _try_root_entangled_enemy(enemy: EnemyState) -> void:
 
 
 func get_enemy_root_remaining(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.bramble_root_remaining
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.bramble_root_remaining if enemy != null else 0.0
 
 
 func _try_erupt_root_network(enemy: EnemyState) -> void:
@@ -4436,10 +4691,8 @@ func get_elite_modifier_chance() -> float:
 
 
 func get_enemy_elite_modifier(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.elite_modifier
-	return EliteModifier.NONE
+	var enemy := _find_enemy(enemy_id)
+	return enemy.elite_modifier if enemy != null else EliteModifier.NONE
 
 
 func debug_force_elite_modifier(modifier: int) -> void:
@@ -4661,9 +4914,13 @@ func _can_occupy_diamond(local_position: Vector2, radius: float) -> bool:
 
 
 func _get_inactive_enemy() -> EnemyState:
-	for enemy in _enemies:
-		if not enemy.active:
-			return enemy
+	for index in range(_enemies.size()):
+		if not _enemies[index].active:
+			# Remembered so the caller can register the slot without searching for it
+			# again. Valid only until the next call.
+			_last_inactive_enemy_slot = index
+			return _enemies[index]
+	_last_inactive_enemy_slot = -1
 	return null
 
 
