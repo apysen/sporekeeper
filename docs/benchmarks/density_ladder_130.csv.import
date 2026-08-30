@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://ybqjv21nhsbr"
+
+[deps]
+
+files=["res://docs/benchmarks/density_ladder_130.build.translation", "res://docs/benchmarks/density_ladder_130.renderer.translation", "res://docs/benchmarks/density_ladder_130.resolution.translation", "res://docs/benchmarks/density_ladder_130.density.translation", "res://docs/benchmarks/density_ladder_130.spawned.translation", "res://docs/benchmarks/density_ladder_130.fixture.translation", "res://docs/benchmarks/density_ladder_130.adaptation.translation", "res://docs/benchmarks/density_ladder_130.adaptation.translation", "res://docs/benchmarks/density_ladder_130.relic.translation", "res://docs/benchmarks/density_ladder_130.median.translation", "res://docs/benchmarks/density_ladder_130.p95.translation", "res://docs/benchmarks/density_ladder_130.p99.translation", "res://docs/benchmarks/density_ladder_130.max.translation", "res://docs/benchmarks/density_ladder_130.frames.translation", "res://docs/benchmarks/density_ladder_130.frames.translation", "res://docs/benchmarks/density_ladder_130.frames.translation", "res://docs/benchmarks/density_ladder_130.sample.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation"]
+
+source_file="res://docs/benchmarks/density_ladder_130.csv"
+dest_files=["res://docs/benchmarks/density_ladder_130.build.translation", "res://docs/benchmarks/density_ladder_130.renderer.translation", "res://docs/benchmarks/density_ladder_130.resolution.translation", "res://docs/benchmarks/density_ladder_130.density.translation", "res://docs/benchmarks/density_ladder_130.spawned.translation", "res://docs/benchmarks/density_ladder_130.fixture.translation", "res://docs/benchmarks/density_ladder_130.adaptation.translation", "res://docs/benchmarks/density_ladder_130.adaptation.translation", "res://docs/benchmarks/density_ladder_130.relic.translation", "res://docs/benchmarks/density_ladder_130.median.translation", "res://docs/benchmarks/density_ladder_130.p95.translation", "res://docs/benchmarks/density_ladder_130.p99.translation", "res://docs/benchmarks/density_ladder_130.max.translation", "res://docs/benchmarks/density_ladder_130.frames.translation", "res://docs/benchmarks/density_ladder_130.frames.translation", "res://docs/benchmarks/density_ladder_130.frames.translation", "res://docs/benchmarks/density_ladder_130.sample.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation", "res://docs/benchmarks/density_ladder_130.subsystem.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

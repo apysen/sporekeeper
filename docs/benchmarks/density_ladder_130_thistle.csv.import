@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dgq2lophx6ruv"
+
+[deps]
+
+files=["res://docs/benchmarks/density_ladder_130_thistle.build.translation", "res://docs/benchmarks/density_ladder_130_thistle.renderer.translation", "res://docs/benchmarks/density_ladder_130_thistle.resolution.translation", "res://docs/benchmarks/density_ladder_130_thistle.density.translation", "res://docs/benchmarks/density_ladder_130_thistle.spawned.translation", "res://docs/benchmarks/density_ladder_130_thistle.fixture.translation", "res://docs/benchmarks/density_ladder_130_thistle.adaptation.translation", "res://docs/benchmarks/density_ladder_130_thistle.adaptation.translation", "res://docs/benchmarks/density_ladder_130_thistle.relic.translation", "res://docs/benchmarks/density_ladder_130_thistle.median.translation", "res://docs/benchmarks/density_ladder_130_thistle.p95.translation", "res://docs/benchmarks/density_ladder_130_thistle.p99.translation", "res://docs/benchmarks/density_ladder_130_thistle.max.translation", "res://docs/benchmarks/density_ladder_130_thistle.frames.translation", "res://docs/benchmarks/density_ladder_130_thistle.frames.translation", "res://docs/benchmarks/density_ladder_130_thistle.frames.translation", "res://docs/benchmarks/density_ladder_130_thistle.sample.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation"]
+
+source_file="res://docs/benchmarks/density_ladder_130_thistle.csv"
+dest_files=["res://docs/benchmarks/density_ladder_130_thistle.build.translation", "res://docs/benchmarks/density_ladder_130_thistle.renderer.translation", "res://docs/benchmarks/density_ladder_130_thistle.resolution.translation", "res://docs/benchmarks/density_ladder_130_thistle.density.translation", "res://docs/benchmarks/density_ladder_130_thistle.spawned.translation", "res://docs/benchmarks/density_ladder_130_thistle.fixture.translation", "res://docs/benchmarks/density_ladder_130_thistle.adaptation.translation", "res://docs/benchmarks/density_ladder_130_thistle.adaptation.translation", "res://docs/benchmarks/density_ladder_130_thistle.relic.translation", "res://docs/benchmarks/density_ladder_130_thistle.median.translation", "res://docs/benchmarks/density_ladder_130_thistle.p95.translation", "res://docs/benchmarks/density_ladder_130_thistle.p99.translation", "res://docs/benchmarks/density_ladder_130_thistle.max.translation", "res://docs/benchmarks/density_ladder_130_thistle.frames.translation", "res://docs/benchmarks/density_ladder_130_thistle.frames.translation", "res://docs/benchmarks/density_ladder_130_thistle.frames.translation", "res://docs/benchmarks/density_ladder_130_thistle.sample.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation", "res://docs/benchmarks/density_ladder_130_thistle.subsystem.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
