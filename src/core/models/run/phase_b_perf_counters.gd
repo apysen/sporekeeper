@@ -107,6 +107,13 @@ const TIMER_BLAST_DAMAGE := &"blast_damage_ms"
 ## Finding a slot for one floating damage number. Cosmetic, and a scan of the whole
 ## pool per damage instance.
 const TIMER_DAMAGE_NUMBER_SPAWN := &"damage_number_spawn_ms"
+## Resolving one enemy's damage, and the death half of it. The guide's first
+## question about the Fruit cascade is whether a single call is slow or whether one
+## blast expands into hundreds of legal calls, and those want opposite fixes, so the
+## counts below matter as much as these do.
+const TIMER_DAMAGE_TOTAL := &"damage_total_ms"
+const TIMER_DAMAGE_DEATH := &"damage_death_ms"
+const TIMER_XP_PICKUP_SPAWN := &"xp_pickup_spawn_ms"
 ## Drawing them, and the string measurement inside that.
 const TIMER_DAMAGE_NUMBER_DRAW := &"damage_number_draw_ms"
 const TIMER_DAMAGE_NUMBER_MEASURE := &"damage_number_measure_ms"
@@ -150,6 +157,18 @@ const COUNT_GENERATED_EVENTS_DROPPED_COSMETIC := &"generated_events_dropped_cosm
 ## Times the id-to-slot map missed and the linear search had to answer instead. A
 ## steady nonzero reading means the map is not being maintained somewhere, which
 ## costs speed but never correctness.
+## How many times damage was resolved, how many of those killed, and how many
+## enemies a blast walked to do it. Dividing a bar by its call count is what
+## separates "each call is slow" from "there are an enormous number of calls".
+const COUNT_DAMAGE_CALLS := &"damage_calls"
+const COUNT_DAMAGE_KILLS := &"damage_kills"
+const COUNT_BLAST_CALLS := &"blast_calls"
+const COUNT_BLAST_ENEMIES_WALKED := &"blast_enemies_walked"
+## Pickup slots stepped over to find a free one. A kill scans the pool, so this is
+## the same shape of defect the session has found six times already -- measured
+## before it is assumed.
+const COUNT_XP_PICKUP_SLOTS_WALKED := &"xp_pickup_slots_walked"
+
 const COUNT_ENEMY_LOOKUP_FALLBACKS := &"enemy_lookup_fallbacks"
 
 const COUNT_COMBAT_DYNAMIC_ALLOCATIONS := &"combat_dynamic_allocations"
@@ -208,6 +227,9 @@ const TIMER_NAMES: Array[StringName] = [
 	TIMER_BLAST_LINE_OF_SIGHT,
 	TIMER_BLAST_DAMAGE,
 	TIMER_DAMAGE_NUMBER_SPAWN,
+	TIMER_DAMAGE_TOTAL,
+	TIMER_DAMAGE_DEATH,
+	TIMER_XP_PICKUP_SPAWN,
 	TIMER_DAMAGE_NUMBER_DRAW,
 	TIMER_DAMAGE_NUMBER_MEASURE,
 	TIMER_COMBAT_DRAW,
@@ -232,6 +254,11 @@ const COUNT_NAMES: Array[StringName] = [
 	COUNT_GENERATED_EVENTS_ENQUEUED,
 	COUNT_GENERATED_EVENTS_PROCESSED,
 	COUNT_GENERATED_EVENTS_DROPPED_COSMETIC,
+	COUNT_DAMAGE_CALLS,
+	COUNT_DAMAGE_KILLS,
+	COUNT_BLAST_CALLS,
+	COUNT_BLAST_ENEMIES_WALKED,
+	COUNT_XP_PICKUP_SLOTS_WALKED,
 	COUNT_ENEMY_LOOKUP_FALLBACKS,
 	COUNT_COMBAT_DYNAMIC_ALLOCATIONS,
 ]

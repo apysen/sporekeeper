@@ -1342,6 +1342,11 @@ func blast_enemies_in_radius(
 	boss_overkill_cap: float = 0.0
 ) -> BlastReport:
 	var report := BlastReport.new()
+	if PhaseBPerfCounters.enabled:
+		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_BLAST_CALLS)
+		PhaseBPerfCounters.count(
+			PhaseBPerfCounters.COUNT_BLAST_ENEMIES_WALKED, _enemies.size()
+		)
 	# Read once for the whole blast rather than per enemy. This loop runs for every
 	# AoE in the game against the whole roster, and even an early-returning counter
 	# call is not free at that rate -- taking the timestamps unconditionally here was
@@ -4617,6 +4622,13 @@ func _damage_enemy(
 ) -> void:
 	if not enemy.active or damage <= 0.0:
 		return
+	# One static read per call, and the timestamp only when it is on. Taking it
+	# unconditionally here is what pushed a pairing over budget earlier in this pass:
+	# this runs once per enemy per blast, many blasts a frame.
+	var measuring := PhaseBPerfCounters.enabled
+	var damage_began := Time.get_ticks_usec() if measuring else 0
+	if measuring:
+		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_CALLS)
 	var applied_damage := minf(damage, enemy.health)
 	# Being hit is what "interrupted" means. An escalating enemy loses everything it
 	# had built up, which is what makes answering one worth doing at all rather than
@@ -4658,7 +4670,14 @@ func _damage_enemy(
 			)
 	enemy.health -= damage
 	if enemy.health > 0.0:
+		if measuring:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_DAMAGE_TOTAL, damage_began
+			)
 		return
+	var death_began := Time.get_ticks_usec() if measuring else 0
+	if measuring:
+		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_KILLS)
 	var role := enemy.role
 	var death_position := enemy.position
 	var xp_value := enemy.xp_value
@@ -4690,19 +4709,44 @@ func _damage_enemy(
 	elif role == EnemyRole.BOSS:
 		boss_defeated.emit()
 	active_enemy_count_changed.emit(_active_enemy_count)
+	if measuring:
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_DEATH, death_began
+		)
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_TOTAL, damage_began
+		)
 
 
 func _spawn_xp_pickup(local_position: Vector2, xp_value: int) -> void:
+	var measuring := PhaseBPerfCounters.enabled
+	var began := Time.get_ticks_usec() if measuring else 0
+	var walked := 0
 	for pickup in _pickups:
+		walked += 1
 		if pickup.active:
 			continue
 		pickup.active = true
 		pickup.position = local_position
 		pickup.xp_value = xp_value
 		pickup.age = 0.0
+		if measuring:
+			PhaseBPerfCounters.count(
+				PhaseBPerfCounters.COUNT_XP_PICKUP_SLOTS_WALKED, walked
+			)
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_XP_PICKUP_SPAWN, began
+			)
 		return
 	# A saturated pickup pool resolves XP immediately rather than losing progression.
 	xp_collected.emit(xp_value)
+	if measuring:
+		PhaseBPerfCounters.count(
+			PhaseBPerfCounters.COUNT_XP_PICKUP_SLOTS_WALKED, walked
+		)
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_XP_PICKUP_SPAWN, began
+		)
 
 
 func _spawn_damage_number(
@@ -4718,13 +4762,10 @@ func _spawn_damage_number(
 	# that a hundred times, which made floating damage numbers -- a cosmetic -- the
 	# single largest cost in the worst fixture.
 	#
-	# Both answers are now maintained rather than searched for. The cursor makes the
-	# free-slot case exact: everything below it is active, so the first inactive slot
-	# at or above it is the lowest one in the pool. The full case takes the front of
-	# the activation order, which is the oldest because every number ages at the same
-	# rate and shares one lifetime. That is what the old scan picked too -- taking
-	# the max-age slot and resetting its age hands the next spawn the following
-	# index, so the scan was already cycling the pool in order.
+	# The free-slot half is maintained rather than searched for: everything below the
+	# cursor is active, so the first inactive slot at or above it is the lowest one in
+	# the pool, which is the slot the old scan returned. The full-pool half is still
+	# the scan -- see the note where it happens for why the fast version was reverted.
 	var selected: DamageNumberState
 	var slot := _damage_number_free_cursor
 	while slot < _damage_numbers.size():
