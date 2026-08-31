@@ -19,7 +19,10 @@ extends SceneTree
 ##   godot --headless --script tests/density_ladder_probe.gd -- --densities=130,200 --fixtures=D
 ##   godot --headless --script tests/density_ladder_probe.gd -- --csv=user://ladder.csv
 
-const SAMPLE_FRAMES := 600
+## Overridable with --frames=, because the churn fixture needs far longer than the
+## others: it is the only one whose enemy count is an outcome rather than a setting,
+## and ten seconds is not enough to see where that count is heading.
+static var SAMPLE_FRAMES := 600
 const STEP := 1.0 / 60.0
 const TARGET_FRAME_MS := 16.67
 
@@ -213,7 +216,9 @@ func _parse_arguments() -> void:
 			if not chosen.is_empty():
 				_fixture_keys = chosen
 		elif argument.begins_with("--frames="):
-			pass
+			var frames := int(argument.trim_prefix("--frames=").strip_edges())
+			if frames > 0:
+				SAMPLE_FRAMES = frames
 		elif argument.begins_with("--csv="):
 			_csv_path = argument.trim_prefix("--csv=").strip_edges()
 
@@ -324,6 +329,9 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 	var worst_frame_index := -1
 	var worst_frame := {}
 
+	## Enemy count sampled through the run, so convergence can be seen rather than
+	## inferred from where the count happened to be when the sample stopped.
+	var density_trace := PackedInt32Array()
 	var phase_run := PackedFloat32Array()
 	var phase_combat := PackedFloat32Array()
 	var phase_relics := PackedFloat32Array()
@@ -381,6 +389,9 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 		# The field runs at its own rate, and the two halves alternate so one frame
 		# never pays for both. Matching the peak density probe keeps the two tables
 		# comparable.
+		if churn and frame_index % 60 == 0:
+			density_trace.append(prototype.combat.get_active_enemy_count())
+
 		phase_began = Time.get_ticks_usec()
 		# One territory operation per frame, alternating, because that is what the
 		# field does when it runs itself. Its tuning is 30Hz simulation and 30Hz
@@ -440,15 +451,58 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 			]
 		)
 	if churn:
-		# Where the crowd stood when the sample ended, which the fixture does not
-		# control: it starts full and the build kills faster than the director
-		# spawns. Deliberately not called a settled value -- ten seconds is not
-		# obviously long enough to converge, and the rungs disagree in a way that
-		# says it has not. It is a direction, not an equilibrium.
+		# The crowd size is an outcome here, not a setting: the fixture starts full
+		# and the build kills faster than the director replaces. A single endpoint
+		# cannot say whether that has levelled off, so the whole trace is reported
+		# and the last quarter of it is compared against the quarter before -- if the
+		# two agree the count has stopped moving, and if they do not it is still
+		# falling and no number from this run is an equilibrium.
+		var trace := ""
+		for count in density_trace:
+			trace += "%d " % count
 		_table_rows.append(
-			"DENSITY_LADDER   ended at %d of %d enemies (started full, not converged)"
-			% [prototype.combat.get_active_enemy_count(), density]
+			"DENSITY_LADDER   enemies each second: %s" % trace.strip_edges()
 		)
+		if density_trace.size() >= 8:
+			var quarter := density_trace.size() / 4
+			var late := 0.0
+			var earlier := 0.0
+			for offset in range(quarter):
+				late += float(density_trace[density_trace.size() - 1 - offset])
+				earlier += float(
+					density_trace[density_trace.size() - 1 - quarter - offset]
+				)
+			late /= float(quarter)
+			earlier /= float(quarter)
+			var drift := late - earlier
+			# Judged against the series' own variability, not a fixed percentage. The
+			# count oscillates by fifteen or more as waves land and are cleared, so a
+			# drift of five is noise here and would be a trend in a steadier signal.
+			# A fixed threshold called a converged run "still moving".
+			var mean := 0.0
+			for count in density_trace:
+				mean += float(count)
+			mean /= float(density_trace.size())
+			var variance := 0.0
+			for count in density_trace:
+				variance += (float(count) - mean) * (float(count) - mean)
+			var deviation := sqrt(variance / float(density_trace.size()))
+			_table_rows.append(
+				(
+					"DENSITY_LADDER   last quarter %.1f vs previous %.1f (drift %+.1f, "
+					+ "sd %.1f) -- %s"
+				) % [
+					late,
+					earlier,
+					drift,
+					deviation,
+					(
+						"levelled off, drift is inside the noise"
+						if absf(drift) < deviation
+						else "still trending, not an equilibrium"
+					),
+				]
+			)
 	_record_worst_frame(fixture_key, worst_frame_index, worst_frame_ms, worst_frame)
 	await process_frame
 
