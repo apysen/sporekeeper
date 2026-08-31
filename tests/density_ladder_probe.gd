@@ -121,9 +121,15 @@ const FIXTURES := {
 	},
 }
 
-## The Campaign's final-invasion spawn interval, which is the fastest the director
-## ever replaces losses. Fixture G refills at this rate and no faster.
+## The Campaign's final-invasion spawn cadence, which is the fastest the director
+## ever replaces losses: a pack of three every 0.14 seconds, about 21 enemies a
+## second. Fixture G refills at this rate and no faster.
+##
+## The pack size matters and was missed at first. The director calls `spawn_pack`,
+## not `spawn_enemy`, so refilling one at a time ran at a third of the real rate and
+## reported a crowd that collapsed further than it should have.
 const CHURN_SPAWN_INTERVAL := 0.14
+const CHURN_PACK_SIZE := 3
 
 const FIXTURE_ORDER := ["A", "B", "C", "D", "E", "F", "G"]
 
@@ -434,11 +440,13 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 			]
 		)
 	if churn:
-		# Where the crowd settled, which the fixture does not control. A build that
-		# kills faster than the director spawns does not sit at the cap, and that is
-		# an answer about density rather than a flaw in the measurement.
+		# Where the crowd stood when the sample ended, which the fixture does not
+		# control: it starts full and the build kills faster than the director
+		# spawns. Deliberately not called a settled value -- ten seconds is not
+		# obviously long enough to converge, and the rungs disagree in a way that
+		# says it has not. It is a direction, not an equilibrium.
 		_table_rows.append(
-			"DENSITY_LADDER   settled at %d of %d enemies (started full)"
+			"DENSITY_LADDER   ended at %d of %d enemies (started full, not converged)"
 			% [prototype.combat.get_active_enemy_count(), density]
 		)
 	_record_worst_frame(fixture_key, worst_frame_index, worst_frame_ms, worst_frame)
@@ -535,13 +543,16 @@ func _refill(
 		and combat.get_active_enemy_count() < density
 	):
 		_churn_budget -= CHURN_SPAWN_INTERVAL
-		var ring := 30.0 + float(index % 7) * 22.0
-		if combat.spawn_enemy(
-			STRESS_ROLES[index % STRESS_ROLES.size()],
-			origin + Vector2.from_angle(float(index) * 2.39996) * ring
-		) < 0:
-			return
-		index += 1
+		for _member in range(CHURN_PACK_SIZE):
+			if combat.get_active_enemy_count() >= density:
+				break
+			var ring := 30.0 + float(index % 7) * 22.0
+			if combat.spawn_enemy(
+				STRESS_ROLES[index % STRESS_ROLES.size()],
+				origin + Vector2.from_angle(float(index) * 2.39996) * ring
+			) < 0:
+				return
+			index += 1
 	# A budget that keeps growing would let one quiet stretch pay for a burst that
 	# the director could never deliver.
 	_churn_budget = minf(_churn_budget, CHURN_SPAWN_INTERVAL)
