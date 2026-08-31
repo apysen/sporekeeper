@@ -523,12 +523,19 @@ class PendingEruptionState:
 ## Point size a damage number renders at. Each number remembers the size it was
 ## spawned with, so varying this per hit -- a larger one for a critical, say -- costs
 ## nothing beyond one extra glyph cache the first time that size is drawn.
-@export_range(8, 48, 1) var damage_number_font_size := 16
-## Point size a critical hit's number renders at. Larger reads as a crit without
-## needing a second colour, which the feedback colour already spends on the damage
-## source. Measured at about 0.13ms per frame for a screenful with a fifth of them
-## critical, against a 3.2ms damage-number draw.
-@export_range(8, 64, 1) var damage_number_critical_font_size := 22
+@export_range(8, 48, 1) var damage_number_font_size := 14
+## Point size a critical hit's number renders at. Both sizes come out of the same
+## baked strip, so a second size is free rather than a second glyph cache.
+@export_range(8, 64, 1) var damage_number_critical_font_size := 26
+## Colour a critical's number is drawn in, replacing the damage source's own.
+##
+## Every source colour in _get_damage_feedback_color sits in the same yellow-green
+## to warm-orange band -- Bloom is already a soft gold and Fruit a soft orange -- so
+## the usual gold critical would read as another source rather than as a critical.
+## This is deliberately hotter and far more saturated than any of them, which is
+## what carries the distinction alongside the larger size. The enemy's hit flash
+## keeps the source colour: only the number changes.
+@export var damage_number_critical_color := Color("ffc21f")
 
 ## Where the baked digit strip lives, and the point size it was baked at. The two
 ## must agree with tools/bake_damage_digit_atlas.gd or the numbers come out the
@@ -4646,7 +4653,7 @@ func _damage_enemy(
 				enemy.position,
 				enemy.radius,
 				applied_damage,
-				enemy.hit_flash_color,
+				damage_number_critical_color if critical else enemy.hit_flash_color,
 				critical
 			)
 	enemy.health -= damage
