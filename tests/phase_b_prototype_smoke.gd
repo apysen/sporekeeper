@@ -228,13 +228,16 @@ func _run() -> void:
 	prototype.player.input_enabled = false
 	prototype._set_simulation_paused(true)
 	prototype.debug_advance_time(prototype.wave_director.wave_duration_seconds)
+	# The arena is empty here, and an empty arena is the case the grace no longer
+	# waits out: clearing a wave is what asks for the next one. That the grace still
+	# runs in full while an enemy is alive is asserted in wave_cadence_probe, which
+	# owns its own fixture rather than inheriting this one.
 	_check(
 		prototype.get_current_wave_number() == 2
-		and prototype.is_wave_grace_period_active()
-		and is_equal_approx(prototype.get_wave_grace_remaining_seconds(), 5.0)
 		and prototype.combat.get_active_enemy_count() == 0
-		and prototype.wave_label.text.contains("WAVE 2 IN 05s"),
-		"each later wave also begins with the five-second reinforcement grace"
+		and not prototype.is_wave_grace_period_active()
+		and is_zero_approx(prototype.get_wave_grace_remaining_seconds()),
+		"a cleared arena ends the wave grace instead of holding the next wave back"
 	)
 
 	prototype.reset_run()

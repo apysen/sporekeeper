@@ -147,6 +147,11 @@ enum DeathSource {
 
 class EnemyState:
 	var active := false
+	## Damage waiting to be shown as one number. Ordinary hits accumulate here and
+	## flush together; a critical never waits, so it is never part of this.
+	var pending_number_damage := 0.0
+	var pending_number_remaining := 0.0
+	var pending_number_color := Color.WHITE
 	var state := EnemyStateKind.INACTIVE
 	var id := 0
 	var role := EnemyRole.HUNTER
@@ -264,6 +269,15 @@ class DamageNumberState:
 	var color := Color.WHITE
 	var age := 0.0
 	var impact_radius := 8.0
+	## Size the text renders at, and the measurement of it. Neither changes once the
+	## number is spawned, so both are worked out there rather than every frame.
+	var font_size := 16
+	var text_size := Vector2.ZERO
+	## Criticals are read differently at every stage of the draw, so the number
+	## remembers what it was rather than the draw inferring it.
+	var critical := false
+	## Per number, because a critical is given longer to be read than chip damage is.
+	var lifetime := 0.7
 
 class RootEruptionState:
 	var active := false
@@ -516,6 +530,81 @@ class PendingEruptionState:
 @export_range(0.1, 2.0, 0.05) var damage_number_lifetime_seconds := 0.70
 ## Upward movement speed of floating damage numbers in pixels per second.
 @export_range(0.0, 160.0, 1.0) var damage_number_rise_speed_pixels_per_second := 42.0
+## Point size a damage number renders at. Each number remembers the size it was
+## spawned with, so varying this per hit -- a larger one for a critical, say -- costs
+## nothing beyond one extra glyph cache the first time that size is drawn.
+@export_range(8, 48, 1) var damage_number_font_size := 14
+## Point size a critical hit's number renders at. Both sizes come out of the same
+## baked strip, so a second size is free rather than a second glyph cache.
+@export_range(8, 64, 1) var damage_number_critical_font_size := 26
+## Colour a critical's number is drawn in, replacing the damage source's own.
+##
+## Every source colour in _get_damage_feedback_color sits in the same yellow-green
+## to warm-orange band -- Bloom is already a soft gold and Fruit a soft orange -- so
+## the usual gold critical would read as another source rather than as a critical.
+## This is deliberately hotter and far more saturated than any of them, which is
+## what carries the distinction alongside the larger size. The enemy's hit flash
+## keeps the source colour: only the number changes.
+@export var damage_number_critical_color := Color("ffc21f")
+## How long ordinary damage on one enemy accumulates before it is shown as a single
+## number. Zero shows every hit separately, as before.
+##
+## A Fruit release lands several overlapping areas on the same crowd, so one enemy
+## can take five or more hits in a frame and each was spawning its own number: a
+## thousand of them a frame competing for a hundred and sixty slots, most overwritten
+## before they were ever drawn. Merging them is both cheaper and, by the usual
+## reading, better feedback -- five small numbers read as chip damage where one total
+## reads as a hit.
+##
+## Criticals are excluded from this deliberately. They are the hit worth reading on
+## its own, they are the only source in the game that can crit, and they are rare
+## enough per frame to cost nothing.
+@export_range(0.0, 0.5, 0.01) var damage_number_merge_seconds := 0.10
+
+## How a critical is made to read as one.
+##
+## Size and colour alone were not enough, and merging made it worse rather than
+## better: chip damage now arrives summed, so an ordinary number routinely shows a
+## larger value than a critical does. Magnitude points the wrong way, which leaves
+## presentation carrying the whole distinction.
+##
+## So the difference is spread across several channels at once, which is what the
+## feedback this imitates actually does -- a critical is not a bigger number, it is
+## a louder moment. The number itself is deliberately the least animated part of it:
+## a number that keeps moving is a number that cannot be read.
+##
+## Longer on screen, so it outlives the chip damage around it.
+@export_range(0.1, 3.0, 0.05) var damage_number_critical_lifetime_seconds := 1.10
+## Rises further, so it separates from the crowd it was born in.
+@export_range(1.0, 3.0, 0.05) var damage_number_critical_rise_multiplier := 1.45
+## How long the arrival punch lasts and how far above final size it starts. It
+## settles quickly on purpose: the pop is the impact, the settled number is the
+## information.
+@export_range(0.0, 0.5, 0.01) var damage_number_pop_seconds := 0.11
+@export_range(1.0, 3.0, 0.05) var damage_number_pop_scale := 1.30
+@export_range(1.0, 4.0, 0.05) var damage_number_critical_pop_scale := 1.95
+## Outline thickness in pixels, drawn as the glyph repeated around itself. Only
+## criticals get one, and it is what actually separates them from a bright
+## battlefield: colour alone loses against Green and Rot.
+@export_range(0.0, 5.0, 0.1) var damage_number_critical_outline := 1.7
+## The impact ring behind a critical, against the ordinary one. Animating what sits
+## behind the number reads as impact without costing legibility on the number.
+@export_range(1.0, 4.0, 0.05) var damage_number_critical_impact_scale := 1.9
+@export_range(0.5, 6.0, 0.1) var damage_number_critical_impact_width := 3.2
+
+## Exact running totals of damage applied and damage shown, for the probe that
+## proves merging never loses any. Off in play: merging is arithmetic, and
+## arithmetic can drop things in ways no frame-time measurement would catch, so the
+## accounting exists rather than the assurance.
+var debug_damage_accounting := false
+var debug_damage_applied_total := 0.0
+var debug_damage_number_total := 0.0
+
+## Where the baked digit strip lives, and the point size it was baked at. The two
+## must agree with tools/bake_damage_digit_atlas.gd or the numbers come out the
+## wrong size.
+const DAMAGE_DIGIT_ATLAS_PATH := "res://assets/ui/damage_digits.png"
+const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
 
 @export_group("Bramble Territory")
 ## Base thorn damage per tick against an enemy that has only just stepped onto Green.
@@ -660,6 +749,12 @@ var _damage_numbers: Array[DamageNumberState] = []
 var _bramble_zones: Array[BrambleZoneState] = []
 var _active_enemy_count := 0
 var _next_enemy_id := 1
+## Enemy id to its slot in `_enemies`. A cache in front of the linear search in
+## `_find_enemy`, never the authority for what is where -- see that function.
+var _enemy_slot_by_id := {}
+## Slot `_get_inactive_enemy` last handed out, so `spawn_enemy` can register the
+## new id without searching the pool for the object it was just given.
+var _last_inactive_enemy_slot := -1
 var _spawn_sequence := 0
 var _cane_remaining := 0.0
 var _cane_damage_multiplier := 1.0
@@ -792,7 +887,23 @@ var _last_explosion_pitch_scale := 1.0
 ## because a sound played.
 var _sfx_random := RandomNumberGenerator.new()
 var _damage_number_sequence := 0
+## Lowest slot in `_damage_numbers` that might be free. Everything below it is
+## active, so the search for a free slot can start here instead of at zero. It is
+## lowered whenever a slot expires, which keeps the invariant true.
+var _damage_number_free_cursor := 0
 var _damage_number_font: Font
+## The ten digits of Beholden Regular on one strip, baked by
+## tools/bake_damage_digit_atlas.gd. Damage numbers are drawn as quads out of this
+## rather than as text, because draw_string re-shapes its string on every call and a
+## screenful of numbers was the largest single cost in the rendered frame. Null if
+## the asset is missing, in which case the text path below still works.
+var _damage_digit_atlas: Texture2D
+## One digit's cell in that strip, the point size it was baked at, and how far the
+## pen moves after each digit. Read from the metrics written beside the texture, so
+## a re-bake at a different size needs no code change.
+var _damage_digit_cell := Vector2.ZERO
+var _damage_digit_bake_size := 64.0
+var _damage_digit_advances := PackedFloat32Array()
 
 
 func _ready() -> void:
@@ -853,6 +964,7 @@ func _ready() -> void:
 	_configure_audio()
 	_configure_navigation()
 	_damage_number_font = ThemeDB.fallback_font
+	_load_damage_digit_atlas()
 	reset_combat()
 
 
@@ -864,7 +976,9 @@ func _process(delta: float) -> void:
 
 func simulate_step(delta: float) -> void:
 	_update_bramble_horde_pressure(delta)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_TOTAL)
 	_update_cane(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_TOTAL)
 	_old_growth_sfx_retrigger_remaining = maxf(
 		0.0,
 		_old_growth_sfx_retrigger_remaining - delta
@@ -877,7 +991,10 @@ func simulate_step(delta: float) -> void:
 	_update_spore_rate_zones(delta)
 	_update_pending_eruptions(delta)
 	_update_root_eruptions(delta)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
 	_update_enemies(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
+	_update_pending_damage_numbers(delta)
 	_update_damage_numbers(delta)
 	_update_projectiles(delta)
 	_update_xp_collect_pitch(delta)
@@ -886,6 +1003,7 @@ func simulate_step(delta: float) -> void:
 
 
 func _draw() -> void:
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
 	var use_crowd_lod := _active_enemy_count >= crowd_visual_lod_enemy_threshold
 	_draw_cane_sweep()
 	for zone in _bramble_zones:
@@ -934,6 +1052,7 @@ func _draw() -> void:
 		if not use_crowd_lod:
 			draw_circle(projectile.position + direction * 3.0, 2.2, Color("efffc9"))
 
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_ENEMY_DRAW)
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
@@ -951,9 +1070,12 @@ func _draw() -> void:
 		elif not _draw_enemy_baked(enemy):
 			_draw_enemy(self, enemy)
 
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_ENEMY_DRAW)
+
 	for damage_number in _damage_numbers:
 		if damage_number.active:
 			_draw_damage_number(damage_number)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
 
 
 func set_temporary_attack_rate_multiplier(multiplier: float, seconds: float) -> void:
@@ -1068,8 +1190,24 @@ func get_enemy_maximum_health(enemy_id: int) -> float:
 
 
 func _find_enemy(enemy_id: int) -> EnemyState:
+	## Every by-id accessor on this class funnels through here, and there are
+	## sixteen of them. As a linear scan that made a single hit resolution -- which
+	## asks about the same enemy eight or ten times -- cost as much as a pass over
+	## the whole crowd, and the Fruit and Thistle hit cascades were both dominated
+	## by it.
+	##
+	## The map is a shortcut, never the authority. A slot is only accepted if it
+	## still holds an active enemy with the id asked for, and anything else falls
+	## through to the scan that was here before, so a stale or missing entry can
+	## make this slower but cannot make it wrong.
+	var slot: int = _enemy_slot_by_id.get(enemy_id, -1)
+	if slot >= 0 and slot < _enemies.size():
+		var mapped := _enemies[slot]
+		if mapped.active and mapped.id == enemy_id:
+			return mapped
 	for enemy in _enemies:
 		if enemy.active and enemy.id == enemy_id:
+			PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_ENEMY_LOOKUP_FALLBACKS)
 			return enemy
 	return null
 
@@ -1082,6 +1220,8 @@ func reset_combat() -> void:
 		enemy.state = EnemyStateKind.INACTIVE
 		enemy.elite_modifier = EliteModifier.NONE
 		enemy.territory_escalation = 1.0
+		enemy.pending_number_damage = 0.0
+		enemy.pending_number_remaining = 0.0
 	for projectile in _projectiles:
 		projectile.active = false
 	for pickup in _pickups:
@@ -1106,6 +1246,8 @@ func reset_combat() -> void:
 	_briar_trap_sequence = 0
 	_fruiting_body_sequence = 0
 	_active_enemy_count = 0
+	_enemy_slot_by_id.clear()
+	_last_inactive_enemy_slot = -1
 	_next_enemy_id = 1
 	_spawn_sequence = 0
 	_cane_remaining = 0.16
@@ -1134,6 +1276,7 @@ func reset_combat() -> void:
 	_xp_collect_pitch_reset_remaining = 0.0
 	_last_xp_collect_pitch_scale = 1.0
 	_damage_number_sequence = 0
+	_damage_number_free_cursor = 0
 	if _cane_audio != null:
 		_cane_audio.stop()
 	if _plant_explosion_audio != null:
@@ -1169,8 +1312,14 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 
 	enemy.active = true
 	enemy.state = EnemyStateKind.ADVANCING
+	# The slot is about to carry a different enemy, so whatever id used to point at
+	# it must stop doing so. Retiring the old key here is what keeps the map bounded
+	# by the pool rather than by everything ever spawned.
+	_enemy_slot_by_id.erase(enemy.id)
 	enemy.id = _next_enemy_id
 	_next_enemy_id += 1
+	if _last_inactive_enemy_slot >= 0:
+		_enemy_slot_by_id[enemy.id] = _last_inactive_enemy_slot
 	enemy.position = local_position
 	enemy.direct_path_clear = false
 	enemy.path_check_remaining = (
@@ -1259,20 +1408,41 @@ func blast_enemies_in_radius(
 	boss_overkill_cap: float = 0.0
 ) -> BlastReport:
 	var report := BlastReport.new()
+	if PhaseBPerfCounters.enabled:
+		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_BLAST_CALLS)
+		PhaseBPerfCounters.count(
+			PhaseBPerfCounters.COUNT_BLAST_ENEMIES_WALKED, _enemies.size()
+		)
+	# Read once for the whole blast rather than per enemy. This loop runs for every
+	# AoE in the game against the whole roster, and even an early-returning counter
+	# call is not free at that rate -- taking the timestamps unconditionally here was
+	# enough on its own to push a pairing over budget.
+	var measuring := PhaseBPerfCounters.enabled
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
 		var distance := enemy.position.distance_to(center)
 		if distance > radius + enemy.radius:
 			continue
-		if not territory_field.is_growth_path_clear(center, enemy.position):
+		var sight_began := Time.get_ticks_usec() if measuring else 0
+		var reachable := territory_field.is_growth_path_clear(center, enemy.position)
+		if measuring:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_BLAST_LINE_OF_SIGHT, sight_began
+			)
+		if not reachable:
 			continue
 		var falloff := clampf(1.0 - distance / maxf(radius, 1.0), 0.0, 1.0)
 		var applied := damage * lerpf(0.48, 1.0, falloff)
 		var health_before := enemy.health
 		var position_before := enemy.position
 		var role := enemy.role
+		var damage_began := Time.get_ticks_usec() if measuring else 0
 		_damage_enemy(enemy, applied, death_source, chain_depth)
+		if measuring:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_BLAST_DAMAGE, damage_began
+			)
 		report.hits += 1
 		if enemy.active:
 			continue
@@ -1322,38 +1492,27 @@ func get_active_enemy_count_by_role(role: int) -> int:
 
 
 func is_enemy_active(enemy_id: int) -> bool:
-	for enemy in _enemies:
-		if enemy.id == enemy_id:
-			return enemy.active
-	return false
+	return _find_enemy(enemy_id) != null
 
 
 func get_enemy_position(enemy_id: int) -> Vector2:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.position
-	return Vector2(-99999.0, -99999.0)
+	var enemy := _find_enemy(enemy_id)
+	return enemy.position if enemy != null else Vector2(-99999.0, -99999.0)
 
 
 func get_enemy_role(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.role
-	return -1
+	var enemy := _find_enemy(enemy_id)
+	return enemy.role if enemy != null else -1
 
 
 func get_enemy_health(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.health
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.health if enemy != null else 0.0
 
 
 func get_enemy_xp_value(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.xp_value
-	return 0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.xp_value if enemy != null else 0
 
 
 func get_last_killed_enemy_id() -> int:
@@ -1361,17 +1520,13 @@ func get_last_killed_enemy_id() -> int:
 
 
 func get_enemy_territory_erosion_scale(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.territory_erosion_scale
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.territory_erosion_scale if enemy != null else 0.0
 
 
 func get_enemy_territory_behavior(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.territory_behavior
-	return PhaseBEnemyProfile.TerritoryBehavior.NONE
+	var enemy := _find_enemy(enemy_id)
+	return enemy.territory_behavior if enemy != null else PhaseBEnemyProfile.TerritoryBehavior.NONE
 
 
 func get_active_projectile_count() -> int:
@@ -1399,10 +1554,8 @@ func get_active_damage_number_count() -> int:
 
 
 func get_enemy_hit_flash_remaining(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.hit_flash_remaining
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.hit_flash_remaining if enemy != null else 0.0
 
 
 func get_cane_sfx_play_count() -> int:
@@ -1478,6 +1631,44 @@ func set_cane_auto_targeting(enabled: bool) -> void:
 	_cane_auto_targets = enabled
 
 
+## How far below the sector's cosine a dot product must sit before the cheap test
+## is allowed to reject a target outright.
+##
+## `angle > threshold` and `dot < cos(threshold)` are the same condition for unit
+## vectors, because cosine decreases monotonically over [0, PI]. Only floating
+## point separates them, so backing the cut off by a margin far larger than the
+## error in a normalized dot product leaves a band around the boundary that is
+## still decided by `angle_to` exactly as before. Nothing inside the sector, or
+## near enough to be arguable, is ever rejected by arithmetic.
+const CANE_SECTOR_DOT_MARGIN := 1.0e-5
+
+## How the densest-target search evaluates each candidate sector.
+##
+## All three produce the same answer for any layout where the tie-breaker is not
+## being asked to separate two candidates that are equal to within its own
+## thresholds. They differ in cost and in how exactly they reproduce the original
+## arithmetic, which is why the slow one stays available to probes forever.
+enum DensestTargetMode {
+	## Every candidate/target pair decided by `angle_to`, as originally written.
+	REFERENCE,
+	## As REFERENCE, but a dot product may reject pairs that are plainly outside the
+	## sector. Bit-identical to REFERENCE: it only skips work whose outcome was
+	## already settled.
+	DOT_PRUNE,
+	## Angles sorted once, then each candidate's contained set found by binary
+	## search and summarised from prefix sums. Mathematically identical to
+	## REFERENCE, but NOT bit-identical: it forms the angular error as a difference
+	## of two `atan2` results rather than one `atan2` of a cross and a dot, and
+	## sums in sorted order rather than pool order. Both are exact to roughly 1e-7,
+	## against a tie-breaker with 1e-4 thresholds.
+	SORTED,
+}
+
+## Which mode ships. Kept as a constant rather than inlined so a regression can be
+## bisected by changing one line.
+const CANE_DENSEST_TARGET_MODE := DensestTargetMode.SORTED
+
+
 func get_densest_target_direction(
 	origin: Vector2,
 	maximum_range: float,
@@ -1487,9 +1678,57 @@ func get_densest_target_direction(
 	## Finds the direction whose fixed-width sector contains the most live,
 	## unobstructed enemies. Testing each target on both sector edges guarantees a
 	## maximal angular window without depending on pool order for the result.
+	return _densest_target_direction(
+		origin,
+		maximum_range,
+		sector_degrees,
+		fallback_direction,
+		CANE_DENSEST_TARGET_MODE
+	)
+
+
+func debug_densest_target_direction_reference(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2 = Vector2.RIGHT
+) -> Vector2:
+	## The original search, every pair decided by `angle_to`. Kept in the shipping
+	## class rather than in the probe so the paths cannot drift apart: they are one
+	## body and one tie-breaker, differing only in how each candidate is evaluated.
+	return _densest_target_direction(
+		origin,
+		maximum_range,
+		sector_degrees,
+		fallback_direction,
+		DensestTargetMode.REFERENCE
+	)
+
+
+func debug_densest_target_direction_mode(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2,
+	mode: DensestTargetMode
+) -> Vector2:
+	## For probes that need to compare one specific mode against the reference.
+	return _densest_target_direction(
+		origin, maximum_range, sector_degrees, fallback_direction, mode
+	)
+
+
+func _densest_target_direction(
+	origin: Vector2,
+	maximum_range: float,
+	sector_degrees: float,
+	fallback_direction: Vector2,
+	mode: DensestTargetMode
+) -> Vector2:
 	var fallback := fallback_direction.normalized()
 	if fallback.length_squared() <= 0.0001:
 		fallback = Vector2.RIGHT
+	var gather_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var target_directions := PackedVector2Array()
 	var target_distances := PackedFloat32Array()
 	if _cane_auto_targets:
@@ -1513,30 +1752,132 @@ func get_densest_target_direction(
 			continue
 		target_directions.append(to_enemy / distance if distance > 0.001 else fallback)
 		target_distances.append(distance)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_CANE_TARGET_GATHER, gather_began
+	)
 	if target_directions.is_empty():
 		return fallback
+	var sweep_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
+	PhaseBPerfCounters.count(
+		PhaseBPerfCounters.COUNT_CANE_TARGETS, target_directions.size()
+	)
 	var half_angle := deg_to_rad(clampf(sector_degrees, 1.0, 359.0) * 0.5)
+	# The angular threshold the loop below tests against, and the dot product that
+	# corresponds to it. A sector wide enough that no angle can fall outside pushes
+	# this under -1, at which point nothing is ever rejected early -- which is the
+	# correct behaviour, not a special case.
+	var angle_threshold := half_angle + 0.0001
+	var rejection_dot := cos(angle_threshold) - CANE_SECTOR_DOT_MARGIN
 	var candidate_directions := PackedVector2Array()
+	# Unit copies, built once, used only by the cheap rejection.
+	#
+	# These entries are not unit vectors. Gathering divides the straight-line offset
+	# by `distance`, and with auto-targeting on `distance` has by then been replaced
+	# with the routed path length, which is longer -- so the "direction" comes out
+	# shorter than one. `angle_to` never noticed, because atan2 of cross over dot is
+	# scale invariant. A raw dot product is not: it returns |a||b|cos(angle), so
+	# against short vectors it reads as a wider angle than the real one and rejects
+	# targets that are actually inside the sector. Normalizing here costs one pass
+	# and keeps the arrays the tie-breaker reads untouched.
+	var target_units := PackedVector2Array()
+	var candidate_units := PackedVector2Array()
 	for direction in target_directions:
 		candidate_directions.append(direction)
 		candidate_directions.append(direction.rotated(-half_angle))
 		candidate_directions.append(direction.rotated(half_angle))
+		var unit := direction.normalized()
+		target_units.append(unit)
+		candidate_units.append(unit)
+		candidate_units.append(unit.rotated(-half_angle))
+		candidate_units.append(unit.rotated(half_angle))
+	# Sorted mode's one-off preparation. Angles are laid out three times -- shifted
+	# down a turn, as measured, and shifted up a turn -- so that a candidate's window
+	# is one contiguous run whatever it straddles, with no wrap-around case to get
+	# wrong. A window is narrower than a full turn (the widest legal sector is just
+	# under 360 degrees), so no target can appear in one twice.
+	var sorted_angles := PackedFloat64Array()
+	var prefix_distance := PackedFloat64Array()
+	var prefix_angle := PackedFloat64Array()
+	if mode == DensestTargetMode.SORTED:
+		var order: Array[int] = []
+		var raw_angles := PackedFloat64Array()
+		for index in range(target_directions.size()):
+			var target_vector := target_directions[index]
+			raw_angles.append(atan2(target_vector.y, target_vector.x))
+			order.append(index)
+		order.sort_custom(
+			func(first: int, second: int) -> bool:
+				return raw_angles[first] < raw_angles[second]
+		)
+		var turn := TAU
+		for copy in range(3):
+			var shift := float(copy - 1) * turn
+			for index in order:
+				sorted_angles.append(raw_angles[index] + shift)
+		prefix_distance.resize(sorted_angles.size() + 1)
+		prefix_angle.resize(sorted_angles.size() + 1)
+		prefix_distance[0] = 0.0
+		prefix_angle[0] = 0.0
+		for index in range(sorted_angles.size()):
+			var source_index: int = order[index % order.size()]
+			prefix_distance[index + 1] = (
+				prefix_distance[index] + float(target_distances[source_index])
+			)
+			prefix_angle[index + 1] = prefix_angle[index] + sorted_angles[index]
+
 	var best_direction := fallback
 	var best_count := -1
 	var best_distance_sum := INF
 	var best_alignment_error := INF
 	var best_facing_difference := INF
-	for candidate in candidate_directions:
+	for candidate_index in range(candidate_directions.size()):
+		var candidate := candidate_directions[candidate_index]
+		var candidate_unit := candidate_units[candidate_index]
 		var contained := 0
 		var distance_sum := 0.0
 		var alignment_error := 0.0
-		for index in range(target_directions.size()):
-			var angular_error := absf(candidate.angle_to(target_directions[index]))
-			if angular_error > half_angle + 0.0001:
-				continue
-			contained += 1
-			distance_sum += target_distances[index]
-			alignment_error += angular_error
+		if mode == DensestTargetMode.SORTED:
+			# The contained set is exactly the targets whose angle lies within the
+			# threshold of this candidate's, which after sorting is one run. Splitting
+			# that run at the candidate's own angle turns the sum of |candidate -
+			# target| into two prefix-sum differences, so a candidate costs three
+			# binary searches instead of a pass over every target.
+			var candidate_angle := atan2(candidate.y, candidate.x)
+			var low := _lower_bound_float(sorted_angles, candidate_angle - angle_threshold)
+			var high := _upper_bound_float(sorted_angles, candidate_angle + angle_threshold)
+			var split := _upper_bound_float(sorted_angles, candidate_angle)
+			split = clampi(split, low, high)
+			contained = high - low
+			distance_sum = prefix_distance[high] - prefix_distance[low]
+			var below := (
+				candidate_angle * float(split - low)
+				- (prefix_angle[split] - prefix_angle[low])
+			)
+			var above := (
+				(prefix_angle[high] - prefix_angle[split])
+				- candidate_angle * float(high - split)
+			)
+			alignment_error = below + above
+		else:
+			for index in range(target_directions.size()):
+				var target := target_directions[index]
+				# Most targets in a crowd are nowhere near any given candidate's
+				# sector, and rejecting those costs a multiply instead of an atan2.
+				# Anything that survives -- inside the sector, or close enough to the
+				# edge to be arguable -- still goes through `angle_to` and the
+				# identical test, and a contained target needs its true angular error
+				# anyway.
+				if (
+					mode == DensestTargetMode.DOT_PRUNE
+					and candidate_unit.dot(target_units[index]) < rejection_dot
+				):
+					continue
+				var angular_error := absf(candidate.angle_to(target))
+				if angular_error > angle_threshold:
+					continue
+				contained += 1
+				distance_sum += target_distances[index]
+				alignment_error += angular_error
 		var facing_difference := absf(fallback.angle_to(candidate))
 		if (
 			contained > best_count
@@ -1561,7 +1902,36 @@ func get_densest_target_direction(
 			best_distance_sum = distance_sum
 			best_alignment_error = alignment_error
 			best_facing_difference = facing_difference
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_CANE_TARGET_SWEEP, sweep_began
+	)
 	return best_direction.normalized()
+
+
+func _lower_bound_float(values: PackedFloat64Array, wanted: float) -> int:
+	## First index whose value is >= wanted.
+	var low := 0
+	var high := values.size()
+	while low < high:
+		var middle := (low + high) / 2
+		if values[middle] < wanted:
+			low = middle + 1
+		else:
+			high = middle
+	return low
+
+
+func _upper_bound_float(values: PackedFloat64Array, wanted: float) -> int:
+	## First index whose value is > wanted.
+	var low := 0
+	var high := values.size()
+	while low < high:
+		var middle := (low + high) / 2
+		if values[middle] <= wanted:
+			low = middle + 1
+		else:
+			high = middle
+	return low
 
 
 func set_heartwood_rank(rank: int) -> void:
@@ -1825,10 +2195,8 @@ func _draw_briar_trap(trap: BriarTrapState) -> void:
 
 
 func get_enemy_movement_speed_multiplier(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.movement_speed_multiplier
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.movement_speed_multiplier if enemy != null else 0.0
 
 
 func set_enemy_scaling(
@@ -1873,12 +2241,27 @@ func debug_kill_all(death_source: int = DeathSource.DEBUG) -> int:
 	return killed
 
 
-func debug_damage_enemy(enemy_id: int, damage: float) -> bool:
+func debug_reset_damage_accounting() -> void:
+	debug_damage_applied_total = 0.0
+	debug_damage_number_total = 0.0
+
+
+func debug_pending_damage_number_total() -> float:
+	## Damage accumulated but not yet flushed. Owed, not lost, so a probe comparing
+	## applied against shown has to count it.
+	var total := 0.0
 	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			_damage_enemy(enemy, damage, DeathSource.DEBUG, 0)
-			return true
-	return false
+		if enemy.active:
+			total += enemy.pending_number_damage
+	return total
+
+
+func debug_damage_enemy(enemy_id: int, damage: float) -> bool:
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null:
+		return false
+	_damage_enemy(enemy, damage, DeathSource.DEBUG, 0)
+	return true
 
 
 func debug_fill_stress(enemy_count: int, projectile_count: int, pickup_count: int) -> void:
@@ -2031,6 +2414,7 @@ func is_vine_driven() -> bool:
 func _update_vine_whip(delta: float) -> void:
 	if vine_whip == null:
 		return
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_VINE_TOTAL)
 	var origin := player.get_arena_position()
 	if not vine_whip.is_built():
 		vine_whip.build(origin, cane_reach_pixels * _cane_reach_multiplier)
@@ -2040,10 +2424,16 @@ func _update_vine_whip(delta: float) -> void:
 	)
 	# Simulated continuously. The rope exists between attacks, which is the whole
 	# point of it being an appendage rather than an attack effect.
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_VINE_ADVANCE)
 	vine_whip.advance(origin, player.get_facing_direction(), delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_ADVANCE)
 	if not _vine_sweep_active:
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_TOTAL)
 		return
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_VINE_HITS)
 	_resolve_vine_hits()
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_HITS)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_VINE_TOTAL)
 	if not vine_whip.is_sweeping():
 		_vine_sweep_active = false
 		cane_sweep_finished.emit(
@@ -2131,12 +2521,14 @@ func _update_cane(delta: float) -> void:
 			reach_multiplier *= 1.15
 	var facing := player.get_facing_direction()
 	if _cane_auto_targets:
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_TARGETING)
 		facing = get_densest_target_direction(
 			player.get_arena_position(),
 			cane_reach_pixels * _cane_reach_multiplier * reach_multiplier,
 			cane_arc_degrees,
 			facing
 		)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_TARGETING)
 	_perform_cane_sweep(
 		facing,
 		_cane_next_left_to_right,
@@ -2187,6 +2579,7 @@ func _perform_cane_sweep(
 	is_bonus: bool,
 	apical_fraction_override: float = -1.0
 ) -> int:
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_PERFORM)
 	if facing.length_squared() <= 0.0001:
 		facing = Vector2.RIGHT
 	facing = facing.normalized()
@@ -2199,6 +2592,7 @@ func _perform_cane_sweep(
 	_cane_visual_left_to_right = left_to_right
 	_cane_visual_reach = reach
 	_cane_visual_path = PackedVector2Array()
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_SWEEP_SIGNAL)
 	cane_sweep_started.emit(
 		origin,
 		facing,
@@ -2207,7 +2601,10 @@ func _perform_cane_sweep(
 		base_damage,
 		is_bonus
 	)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_SWEEP_SIGNAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_CANE_SFX)
 	_play_cane_sfx()
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_SFX)
 	if is_vine_driven():
 		# The rope resolves this sweep. Hits arrive over the driving window rather
 		# than all at once, so cane_sweep_finished is emitted when the stroke ends.
@@ -2232,6 +2629,7 @@ func _perform_cane_sweep(
 		_vine_sweep_origin = origin
 		_vine_sweep_hits = 0
 		_cane_route_cache.clear()
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_PERFORM)
 		return 0
 	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
 	var apical_fraction := clampf(
@@ -2261,7 +2659,18 @@ func _perform_cane_sweep(
 		if _cane_auto_targets:
 			vine_route = _cane_route_cache.get(enemy.id, PackedVector2Array())
 			if vine_route.is_empty():
+				PhaseBPerfCounters.count(
+					PhaseBPerfCounters.COUNT_CANE_ROUTE_CACHE_MISSES
+				)
+				var route_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 				vine_route = territory_field.get_growth_path(origin, enemy.position)
+				PhaseBPerfCounters.timer_add_since(
+					PhaseBPerfCounters.TIMER_CANE_PERFORM_ROUTES, route_began
+				)
+			else:
+				PhaseBPerfCounters.count(
+					PhaseBPerfCounters.COUNT_CANE_ROUTE_CACHE_HITS
+				)
 			if vine_route.is_empty():
 				continue
 			distance = territory_field.get_growth_path_length(vine_route)
@@ -2294,6 +2703,7 @@ func _perform_cane_sweep(
 		)
 	cane_sweep_finished.emit(origin, facing, left_to_right, reach, hit_count, is_bonus)
 	_cane_route_cache.clear()
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_CANE_PERFORM)
 	return hit_count
 
 
@@ -2712,10 +3122,10 @@ func apply_suppression_in_radius(
 
 
 func get_enemy_suppression(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.suppression_share if enemy.suppression_remaining > 0.0 else 0.0
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null:
+		return 0.0
+	return enemy.suppression_share if enemy.suppression_remaining > 0.0 else 0.0
 
 
 func apply_spore_in_radius(center: Vector2, radius: float, spore_gain: float) -> int:
@@ -3101,12 +3511,17 @@ func get_active_enemy_radii() -> PackedFloat32Array:
 	return radii
 
 
-func damage_enemy_by_id(enemy_id: int, damage: float, death_source: int) -> bool:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			_damage_enemy(enemy, damage, death_source, 0)
-			return true
-	return false
+func damage_enemy_by_id(
+	enemy_id: int,
+	damage: float,
+	death_source: int,
+	critical: bool = false
+) -> bool:
+	var enemy := _find_enemy(enemy_id)
+	if enemy == null:
+		return false
+	_damage_enemy(enemy, damage, death_source, 0, critical)
+	return true
 
 
 func get_active_enemy_positions() -> PackedVector2Array:
@@ -3226,10 +3641,8 @@ func set_mass_entanglement_shares(elite_share: float, boss_share: float) -> void
 
 
 func get_enemy_entanglement(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.entanglement
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.entanglement if enemy != null else 0.0
 
 
 func get_cane_damage_multiplier() -> float:
@@ -3453,10 +3866,8 @@ func _try_root_entangled_enemy(enemy: EnemyState) -> void:
 
 
 func get_enemy_root_remaining(enemy_id: int) -> float:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.bramble_root_remaining
-	return 0.0
+	var enemy := _find_enemy(enemy_id)
+	return enemy.bramble_root_remaining if enemy != null else 0.0
 
 
 func _try_erupt_root_network(enemy: EnemyState) -> void:
@@ -3857,12 +4268,15 @@ func _find_colony_core_site(wanted: Vector2) -> Vector2:
 
 
 func _update_damage_numbers(delta: float) -> void:
-	for damage_number in _damage_numbers:
+	for index in range(_damage_numbers.size()):
+		var damage_number := _damage_numbers[index]
 		if not damage_number.active:
 			continue
 		damage_number.age += delta
-		if damage_number.age >= damage_number_lifetime_seconds:
+		if damage_number.age >= damage_number.lifetime:
 			damage_number.active = false
+			# Freeing a slot can only lower where the next free-slot search starts.
+			_damage_number_free_cursor = mini(_damage_number_free_cursor, index)
 			continue
 		damage_number.position += damage_number.velocity * delta
 
@@ -4280,10 +4694,27 @@ func _find_nearest_reachable_index(
 	return -1
 
 
-func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_depth: int) -> void:
+func _damage_enemy(
+	enemy: EnemyState,
+	damage: float,
+	death_source: int,
+	chain_depth: int,
+	critical: bool = false
+) -> void:
 	if not enemy.active or damage <= 0.0:
 		return
+	# One static read per call, and the timestamp only when it is on. Taking it
+	# unconditionally here is what pushed a pairing over budget earlier in this pass:
+	# this runs once per enemy per blast, many blasts a frame.
+	var measuring := PhaseBPerfCounters.enabled
+	var damage_began := Time.get_ticks_usec() if measuring else 0
+	if measuring:
+		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_CALLS)
+		if critical:
+			PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_CRITS)
 	var applied_damage := minf(damage, enemy.health)
+	if debug_damage_accounting:
+		debug_damage_applied_total += applied_damage
 	# Being hit is what "interrupted" means. An escalating enemy loses everything it
 	# had built up, which is what makes answering one worth doing at all rather than
 	# only worth doing eventually.
@@ -4299,25 +4730,41 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 		# What "important" means, decided where the facts are. A hit on an elite or a
 		# boss carries information about a fight the player is actually having; so does
 		# a hit large enough to be an ability landing rather than a tick of damage.
-		var is_important := (
-			enemy.role == EnemyRole.ELITE
-			or enemy.role == EnemyRole.BOSS
-			or enemy.elite_modifier != EliteModifier.NONE
-			or applied_damage >= important_damage_number_threshold
-		)
-		if (
-			display_settings == null
-			or display_settings.should_show_damage_number(is_important)
-		):
-			_spawn_damage_number(
-				enemy.position,
-				enemy.radius,
-				applied_damage,
-				enemy.hit_flash_color
-			)
+		# A critical carries information whether it landed for twenty-four or two
+		# hundred, which is what the Important Only setting says it keeps. Without
+		# this a Thistle crit was filtered out: a thorn hits for 12 and doubles to
+		# exactly 24, one point under the threshold, so the whole Adaptation showed
+		# no numbers at all on ordinary enemies.
+		if critical or damage_number_merge_seconds <= 0.0:
+			# Straight through. A critical is the number worth reading on its own, and
+			# merging it would be the one case where the aggregate's styling became
+			# ambiguous.
+			if _should_show_damage_number(enemy, applied_damage, critical):
+				_spawn_damage_number(
+					enemy.position,
+					enemy.radius,
+					applied_damage,
+					damage_number_critical_color if critical else enemy.hit_flash_color,
+					critical
+				)
+		else:
+			if enemy.pending_number_damage <= 0.0:
+				enemy.pending_number_remaining = damage_number_merge_seconds
+			enemy.pending_number_damage += applied_damage
+			enemy.pending_number_color = enemy.hit_flash_color
 	enemy.health -= damage
 	if enemy.health > 0.0:
+		if measuring:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_DAMAGE_TOTAL, damage_began
+			)
 		return
+	var death_began := Time.get_ticks_usec() if measuring else 0
+	if measuring:
+		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_KILLS)
+	# Whatever was still accumulating dies with the enemy unless it is shown now, and
+	# the killing blow is the one a player most wants to read.
+	_flush_pending_damage_number(enemy)
 	var role := enemy.role
 	var death_position := enemy.position
 	var xp_value := enemy.xp_value
@@ -4349,37 +4796,165 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 	elif role == EnemyRole.BOSS:
 		boss_defeated.emit()
 	active_enemy_count_changed.emit(_active_enemy_count)
+	if measuring:
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_DEATH, death_began
+		)
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_TOTAL, damage_began
+		)
 
 
 func _spawn_xp_pickup(local_position: Vector2, xp_value: int) -> void:
+	var measuring := PhaseBPerfCounters.enabled
+	var began := Time.get_ticks_usec() if measuring else 0
+	var walked := 0
 	for pickup in _pickups:
+		walked += 1
 		if pickup.active:
 			continue
 		pickup.active = true
 		pickup.position = local_position
 		pickup.xp_value = xp_value
 		pickup.age = 0.0
+		if measuring:
+			PhaseBPerfCounters.count(
+				PhaseBPerfCounters.COUNT_XP_PICKUP_SLOTS_WALKED, walked
+			)
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_XP_PICKUP_SPAWN, began
+			)
 		return
 	# A saturated pickup pool resolves XP immediately rather than losing progression.
 	xp_collected.emit(xp_value)
+	if measuring:
+		PhaseBPerfCounters.count(
+			PhaseBPerfCounters.COUNT_XP_PICKUP_SLOTS_WALKED, walked
+		)
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_XP_PICKUP_SPAWN, began
+		)
+
+
+func _damage_number_shadow_offsets(critical: bool) -> PackedVector2Array:
+	## One drop shadow for an ordinary number, a ring of them for a critical. Built
+	## here so the atlas path and the text fallback cannot disagree about what a
+	## critical looks like.
+	if not critical or damage_number_critical_outline <= 0.0:
+		return PackedVector2Array([Vector2(1.5, 1.5)])
+	var width := damage_number_critical_outline
+	var diagonal := width * 0.7071
+	return PackedVector2Array([
+		Vector2(width, 0.0),
+		Vector2(-width, 0.0),
+		Vector2(0.0, width),
+		Vector2(0.0, -width),
+		Vector2(diagonal, diagonal),
+		Vector2(diagonal, -diagonal),
+		Vector2(-diagonal, diagonal),
+		Vector2(-diagonal, -diagonal),
+	])
+
+
+func _should_show_damage_number(
+	enemy: EnemyState,
+	shown_damage: float,
+	critical: bool
+) -> bool:
+	## What "important" means, decided where the facts are. A hit on an elite or a
+	## boss carries information about a fight the player is actually having; so does
+	## one large enough to be an ability landing rather than a tick.
+	##
+	## A critical carries information whether it landed for twenty-four or two
+	## hundred, which is what the Important Only setting says it keeps. Without that a
+	## Thistle crit was filtered out entirely: a thorn hits for 12 and doubles to
+	## exactly 24, one point under the threshold.
+	##
+	## Merged damage is judged on its total rather than on the hits that made it,
+	## which is what gives Important Only its meaning back: a crowd being chipped now
+	## reports once it has been chipped meaningfully, instead of either never or on
+	## every tick.
+	if display_settings == null:
+		return true
+	var is_important := (
+		critical
+		or enemy.role == EnemyRole.ELITE
+		or enemy.role == EnemyRole.BOSS
+		or enemy.elite_modifier != EliteModifier.NONE
+		or shown_damage >= important_damage_number_threshold
+	)
+	return display_settings.should_show_damage_number(is_important)
+
+
+func _flush_pending_damage_number(enemy: EnemyState) -> void:
+	if enemy.pending_number_damage <= 0.0:
+		return
+	var total := enemy.pending_number_damage
+	enemy.pending_number_damage = 0.0
+	enemy.pending_number_remaining = 0.0
+	if _should_show_damage_number(enemy, total, false):
+		_spawn_damage_number(
+			enemy.position, enemy.radius, total, enemy.pending_number_color, false
+		)
+
+
+func _update_pending_damage_numbers(delta: float) -> void:
+	for enemy in _enemies:
+		if not enemy.active or enemy.pending_number_damage <= 0.0:
+			continue
+		enemy.pending_number_remaining -= delta
+		if enemy.pending_number_remaining <= 0.0:
+			_flush_pending_damage_number(enemy)
 
 
 func _spawn_damage_number(
 	local_position: Vector2,
 	enemy_radius: float,
 	damage: float,
-	color: Color
+	color: Color,
+	critical: bool = false
 ) -> void:
+	if debug_damage_accounting:
+		debug_damage_number_total += damage
+	var spawn_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
+	# This used to scan the whole pool for a free slot, and then scan it again for
+	# the oldest when the pool was full. A blast landing on a hundred enemies did
+	# that a hundred times, which made floating damage numbers -- a cosmetic -- the
+	# single largest cost in the worst fixture.
+	#
+	# The free-slot half is maintained rather than searched for: everything below the
+	# cursor is active, so the first inactive slot at or above it is the lowest one in
+	# the pool, which is the slot the old scan returned. The full-pool half is still
+	# the scan -- see the note where it happens for why the fast version was reverted.
 	var selected: DamageNumberState
-	var oldest_age := -1.0
-	for damage_number in _damage_numbers:
-		if not damage_number.active:
-			selected = damage_number
+	var slot := _damage_number_free_cursor
+	while slot < _damage_numbers.size():
+		if not _damage_numbers[slot].active:
 			break
-		if damage_number.age > oldest_age:
-			oldest_age = damage_number.age
-			selected = damage_number
+		slot += 1
+	if slot < _damage_numbers.size():
+		selected = _damage_numbers[slot]
+		_damage_number_free_cursor = slot + 1
+	else:
+		# Pool full. Recycle the oldest, by the original scan.
+		#
+		# A queue of slots in activation order was tried here, on the reasoning that
+		# every number ages at the same rate so activation order is age order. It is
+		# not, under sustained saturation, and damage_number_pool_probe caught it
+		# recycling a different slot than the scan would. Which number survives a
+		# saturated frame is visible, so this stays exact until there is a fast
+		# version that provably agrees.
+		_damage_number_free_cursor = _damage_numbers.size()
+		var oldest_age := -1.0
+		for damage_number in _damage_numbers:
+			if damage_number.age > oldest_age:
+				oldest_age = damage_number.age
+				selected = damage_number
 	if selected == null:
+		if spawn_began > 0:
+			PhaseBPerfCounters.timer_add_since(
+				PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_SPAWN, spawn_began
+			)
 		return
 	var side := -1.0 if _damage_number_sequence % 2 == 0 else 1.0
 	var lateral_speed := 7.0 + float(_damage_number_sequence % 3) * 2.0
@@ -4390,11 +4965,40 @@ func _spawn_damage_number(
 	selected.velocity = Vector2(
 		side * lateral_speed,
 		-damage_number_rise_speed_pixels_per_second
+		* (damage_number_critical_rise_multiplier if critical else 1.0)
 	)
 	selected.text = str(maxi(1, int(round(damage))))
 	selected.color = color
+	selected.critical = critical
+	selected.lifetime = maxf(
+		0.001,
+		damage_number_critical_lifetime_seconds if critical
+		else damage_number_lifetime_seconds
+	)
+	selected.font_size = (
+		damage_number_critical_font_size if critical else damage_number_font_size
+	)
+	# Measured once here. Doing it in _draw re-shaped every number's text on every
+	# frame, which was a third of the whole damage-number draw cost for a string that
+	# cannot change after this point.
+	if _damage_digit_atlas != null:
+		var digit_scale := float(selected.font_size) / _damage_digit_bake_size
+		selected.text_size = Vector2(
+			_damage_digit_text_width(selected.text), _damage_digit_cell.y
+		) * digit_scale
+	else:
+		selected.text_size = _damage_number_font.get_string_size(
+			selected.text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			selected.font_size
+		)
 	selected.age = 0.0
 	selected.impact_radius = enemy_radius
+	if spawn_began > 0:
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_SPAWN, spawn_began
+		)
 	queue_redraw()
 
 
@@ -4436,10 +5040,8 @@ func get_elite_modifier_chance() -> float:
 
 
 func get_enemy_elite_modifier(enemy_id: int) -> int:
-	for enemy in _enemies:
-		if enemy.active and enemy.id == enemy_id:
-			return enemy.elite_modifier
-	return EliteModifier.NONE
+	var enemy := _find_enemy(enemy_id)
+	return enemy.elite_modifier if enemy != null else EliteModifier.NONE
 
 
 func debug_force_elite_modifier(modifier: int) -> void:
@@ -4661,9 +5263,13 @@ func _can_occupy_diamond(local_position: Vector2, radius: float) -> bool:
 
 
 func _get_inactive_enemy() -> EnemyState:
-	for enemy in _enemies:
-		if not enemy.active:
-			return enemy
+	for index in range(_enemies.size()):
+		if not _enemies[index].active:
+			# Remembered so the caller can register the slot without searching for it
+			# again. Valid only until the next call.
+			_last_inactive_enemy_slot = index
+			return _enemies[index]
+	_last_inactive_enemy_slot = -1
 	return null
 
 
@@ -5238,8 +5844,48 @@ func _draw_enemy_state_overlay(canvas: CanvasItem, enemy: EnemyState) -> void:
 		)
 
 
+func _load_damage_digit_atlas() -> void:
+	## Both halves or neither: without the metrics the strip cannot be laid out, and
+	## drawing it wrong is worse than falling back to text.
+	var texture := load(DAMAGE_DIGIT_ATLAS_PATH) as Texture2D
+	if texture == null:
+		return
+	if not FileAccess.file_exists(DAMAGE_DIGIT_METRICS_PATH):
+		return
+	var file := FileAccess.open(DAMAGE_DIGIT_METRICS_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	var metrics: Dictionary = parsed
+	var advances: Array = metrics.get("advances", [])
+	if advances.size() != 10:
+		return
+	_damage_digit_advances = PackedFloat32Array()
+	for advance in advances:
+		_damage_digit_advances.append(float(advance))
+	_damage_digit_bake_size = maxf(1.0, float(metrics.get("bake_font_size", 64.0)))
+	_damage_digit_cell = Vector2(
+		float(metrics.get("cell_width", texture.get_width() / 10.0)),
+		float(metrics.get("cell_height", texture.get_height()))
+	)
+	_damage_digit_atlas = texture
+
+
+func _damage_digit_text_width(text: String) -> float:
+	var width := 0.0
+	for character_index in range(text.length()):
+		var digit := text.unicode_at(character_index) - 48
+		if digit >= 0 and digit <= 9:
+			width += _damage_digit_advances[digit]
+	return width
+
+
 func _draw_damage_number(damage_number: DamageNumberState) -> void:
-	var lifetime := maxf(damage_number_lifetime_seconds, 0.001)
+	var draw_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
+	var lifetime := maxf(damage_number.lifetime, 0.001)
 	var lifetime_progress := clampf(damage_number.age / lifetime, 0.0, 1.0)
 	var text_alpha := 1.0 - clampf((lifetime_progress - 0.48) / 0.52, 0.0, 1.0)
 	var impact_progress := clampf(
@@ -5250,9 +5896,12 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 	if impact_progress < 1.0:
 		var impact_color := damage_number.color
 		impact_color.a = (1.0 - impact_progress) * 0.90
+		var impact_scale := (
+			damage_number_critical_impact_scale if damage_number.critical else 1.0
+		)
 		var impact_radius := lerpf(
 			damage_number.impact_radius * 0.45,
-			damage_number.impact_radius + 7.0,
+			(damage_number.impact_radius + 7.0) * impact_scale,
 			impact_progress
 		)
 		draw_arc(
@@ -5262,36 +5911,99 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 			TAU,
 			16,
 			impact_color,
-			2.0,
+			(
+				damage_number_critical_impact_width if damage_number.critical
+				else 2.0
+			),
 			true
 		)
 
-	var font_size := 16
-	var text_size := _damage_number_font.get_string_size(
-		damage_number.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		font_size
-	)
-	var baseline := damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
+	var font_size := damage_number.font_size
+	var text_size := damage_number.text_size
 	var shadow_color := Color(0.01, 0.018, 0.02, 0.92 * text_alpha)
-	draw_string(
-		_damage_number_font,
-		baseline + Vector2(1.5, 1.5),
-		damage_number.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		font_size,
-		shadow_color
-	)
 	var text_color := damage_number.color
 	text_color.a = text_alpha
-	draw_string(
-		_damage_number_font,
-		baseline,
-		damage_number.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		font_size,
-		text_color
-	)
+	# The arrival punch: starts above final size and settles quickly, so the motion
+	# is over before the number needs to be read.
+	var pop := 1.0
+	if damage_number_pop_seconds > 0.0:
+		var pop_progress := clampf(
+			damage_number.age / damage_number_pop_seconds, 0.0, 1.0
+		)
+		var peak := (
+			damage_number_critical_pop_scale if damage_number.critical
+			else damage_number_pop_scale
+		)
+		var remaining := 1.0 - pop_progress
+		pop = 1.0 + (peak - 1.0) * remaining * remaining
+	if _damage_digit_atlas != null:
+		var digit_scale := float(font_size) * pop / _damage_digit_bake_size
+		var cell := _damage_digit_cell * digit_scale
+		var origin := damage_number.position - Vector2(
+			text_size.x * pop * 0.5, text_size.y * pop * 0.5
+		)
+		# Shadow and glyphs are the same quads out of the same texture, so the whole
+		# layer stays on one texture and batches rather than switching per glyph.
+		#
+		# A critical replaces the single drop shadow with a ring of them, which is an
+		# outline. Colour alone loses against Green and Rot; an outline does not, and
+		# it costs eight more quads on a number that appears under one time in three.
+		var offsets := _damage_number_shadow_offsets(damage_number.critical)
+		for pass_index in range(offsets.size() + 1):
+			var offset := (
+				offsets[pass_index] if pass_index < offsets.size() else Vector2.ZERO
+			)
+			var tint := (
+				shadow_color if pass_index < offsets.size() else text_color
+			)
+			var pen := 0.0
+			for character_index in range(damage_number.text.length()):
+				var digit := damage_number.text.unicode_at(character_index) - 48
+				if digit < 0 or digit > 9:
+					continue
+				var advance := _damage_digit_advances[digit] * digit_scale
+				# The glyph sits centred in its cell, so the cell is centred over the
+				# advance slot rather than aligned to its left edge.
+				draw_texture_rect_region(
+					_damage_digit_atlas,
+					Rect2(
+						origin
+						+ offset
+						+ Vector2(pen + (advance - cell.x) * 0.5, 0.0),
+						cell
+					),
+					Rect2(
+						Vector2(_damage_digit_cell.x * float(digit), 0.0),
+						_damage_digit_cell
+					),
+					tint
+				)
+				pen += advance
+	else:
+		var popped_font_size := int(round(float(font_size) * pop))
+		var baseline := (
+			damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
+		)
+		for offset in _damage_number_shadow_offsets(damage_number.critical):
+			draw_string(
+				_damage_number_font,
+				baseline + offset,
+				damage_number.text,
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1.0,
+				popped_font_size,
+				shadow_color
+			)
+		draw_string(
+			_damage_number_font,
+			baseline,
+			damage_number.text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			popped_font_size,
+			text_color
+		)
+	if draw_began > 0:
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_DRAW, draw_began
+		)

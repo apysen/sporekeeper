@@ -4,6 +4,8 @@ extends Node
 const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
 
 signal wave_began(wave_number: int)
+## The arena was cleared during a wave's opening break, so the break ended early.
+signal grace_skipped(wave_number: int)
 signal elite_arrived
 signal boss_arrived
 signal final_invasion_began
@@ -120,6 +122,10 @@ signal cleanup_began
 
 var elapsed_seconds := 0.0
 var announced_wave_number := 1
+## The wave whose opening break has already been cut short by the arena being
+## cleared. Latched per wave rather than recomputed, because the break must not come
+## back the moment the first replacement enemy appears.
+var _grace_skipped_wave := 0
 var elite_spawned := false
 var boss_spawned := false
 var final_invasion_started := false
@@ -134,17 +140,69 @@ var _grazer_pack_sequence := 0
 var _variant_sequence := 0
 
 
+## The authored values of every field configure_mode overwrites, captured before
+## anything has had a chance to change them.
+##
+## The director is a scene node and outlives a run, so configuring Campaign used to
+## be permanent: it wrote its thirty-minute timings over the exported defaults and
+## the Quick branch returned without putting anything back. Starting a Quick run
+## after a Campaign one therefore ran Quick on Campaign's clock -- a twelve minute
+## mode with its boss at fifteen minutes and its ending at thirty.
+var _authored_mode_values := {}
+
+
+func _capture_authored_mode_values() -> void:
+	if not _authored_mode_values.is_empty():
+		return
+	for field in [
+		"run_duration_seconds",
+		"elite_time_seconds",
+		"boss_time_seconds",
+		"final_invasion_time_seconds",
+		"cleanup_time_seconds",
+		"pressure_ramp_seconds",
+		"tertiary_path_choice_seconds",
+		"early_spawn_interval_seconds",
+		"late_spawn_interval_seconds",
+		"final_spawn_interval_seconds",
+		"late_pack_progress",
+		"final_health_scale",
+		"final_contact_damage_scale",
+		"saboteur_intro_seconds",
+		"corruptor_intro_seconds",
+		"colonizer_intro_seconds",
+		"warden_intro_seconds",
+		"heavy_grazer_intro_seconds",
+		"rusher_intro_seconds",
+		"siege_corruptor_intro_seconds",
+		"elite_modifier_intro_seconds",
+	]:
+		_authored_mode_values[field] = get(field)
+
+
 func configure_mode(mode: int) -> void:
 	# Quick retains the original 12-minute tuning. Campaign stretches the authored
 	# milestones and introduces a gentler XP curve so 30 minutes keeps producing
 	# meaningful adaptation choices while its final pressure still escalates.
+	#
+	# Every field is restored to what was authored before a mode is applied, so
+	# configuring a mode says what that mode is rather than what has changed since
+	# the last one.
+	_capture_authored_mode_values()
+	for field in _authored_mode_values:
+		set(field, _authored_mode_values[field])
 	if mode != RUN_MODE.Id.CAMPAIGN:
 		return
 	run_duration_seconds = 1800.0
 	elite_time_seconds = 375.0
 	boss_time_seconds = 900.0
 	final_invasion_time_seconds = 1500.0
-	cleanup_time_seconds = 1725.0
+	# The last thirty seconds, which is the shape Quick already had: 690 of 720.
+	# At 1725 the cleanup ran for seventy-five seconds and began in wave 29, so the
+	# whole of wave 30 had no reinforcements in it -- the final wave of a thirty
+	# minute run was an empty one. Campaign was meant to stretch Quick's milestones,
+	# not to restructure the ending.
+	cleanup_time_seconds = 1770.0
 	# Pressure builds on its own clock rather than across the whole timeline. A
 	# thirty-minute run should be a bigger run than a twelve-minute one, not a
 	# slower one, so it reaches full pressure around the boss and then holds there
@@ -175,11 +233,15 @@ func configure_mode(mode: int) -> void:
 
 func _ready() -> void:
 	assert(combat != null, "PhaseBWaveDirector requires PhaseBCombatDirector")
+	# Before anything can overwrite them, so a mode switch has an original to
+	# return to.
+	_capture_authored_mode_values()
 
 
 func reset_director() -> void:
 	elapsed_seconds = 0.0
 	announced_wave_number = 1
+	_grace_skipped_wave = 0
 	elite_spawned = false
 	boss_spawned = false
 	final_invasion_started = false
@@ -232,6 +294,11 @@ func get_current_wave_number() -> int:
 func is_grace_period_active() -> bool:
 	if elapsed_seconds >= run_duration_seconds or get_current_wave_number() == 1:
 		return false
+	# A break the player has already earned their way out of. Clearing the arena is
+	# the whole point of a wave, and standing in an empty one waiting for a timer is
+	# the game withholding the next wave from someone who has asked for it.
+	if _grace_skipped_wave == get_current_wave_number():
+		return false
 	var wave_duration := maxf(1.0, wave_duration_seconds)
 	var grace_duration := minf(maxf(0.0, wave_grace_period_seconds), wave_duration)
 	return fmod(elapsed_seconds, wave_duration) < grace_duration
@@ -281,6 +348,28 @@ func _update_timeline_events() -> void:
 	if not cleanup_started and elapsed_seconds >= cleanup_time_seconds:
 		cleanup_started = true
 		cleanup_began.emit()
+	_update_grace_skip()
+
+
+func _update_grace_skip() -> void:
+	## Ends the opening break of a wave as soon as the arena is empty.
+	##
+	## Latched for the wave rather than answered fresh each frame: the moment the
+	## break ends an enemy spawns, and a live check would put the break straight back
+	## on and stall the wave it just released.
+	if cleanup_started or combat == null:
+		return
+	var wave := get_current_wave_number()
+	if _grace_skipped_wave == wave or wave == 1:
+		return
+	var wave_duration := maxf(1.0, wave_duration_seconds)
+	var grace_duration := minf(maxf(0.0, wave_grace_period_seconds), wave_duration)
+	if fmod(elapsed_seconds, wave_duration) >= grace_duration:
+		return
+	if combat.get_active_enemy_count() > 0:
+		return
+	_grace_skipped_wave = wave
+	grace_skipped.emit(wave)
 
 
 func _update_enemy_spawning(delta: float) -> void:

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://b0n52ne3dwoqw"
+
+[deps]
+
+files=["res://docs/benchmarks/density_ladder_160_200_after.build.translation", "res://docs/benchmarks/density_ladder_160_200_after.renderer.translation", "res://docs/benchmarks/density_ladder_160_200_after.resolution.translation", "res://docs/benchmarks/density_ladder_160_200_after.density.translation", "res://docs/benchmarks/density_ladder_160_200_after.spawned.translation", "res://docs/benchmarks/density_ladder_160_200_after.fixture.translation", "res://docs/benchmarks/density_ladder_160_200_after.adaptation.translation", "res://docs/benchmarks/density_ladder_160_200_after.adaptation.translation", "res://docs/benchmarks/density_ladder_160_200_after.relic.translation", "res://docs/benchmarks/density_ladder_160_200_after.median.translation", "res://docs/benchmarks/density_ladder_160_200_after.p95.translation", "res://docs/benchmarks/density_ladder_160_200_after.p99.translation", "res://docs/benchmarks/density_ladder_160_200_after.max.translation", "res://docs/benchmarks/density_ladder_160_200_after.frames.translation", "res://docs/benchmarks/density_ladder_160_200_after.frames.translation", "res://docs/benchmarks/density_ladder_160_200_after.frames.translation", "res://docs/benchmarks/density_ladder_160_200_after.sample.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation"]
+
+source_file="res://docs/benchmarks/density_ladder_160_200_after.csv"
+dest_files=["res://docs/benchmarks/density_ladder_160_200_after.build.translation", "res://docs/benchmarks/density_ladder_160_200_after.renderer.translation", "res://docs/benchmarks/density_ladder_160_200_after.resolution.translation", "res://docs/benchmarks/density_ladder_160_200_after.density.translation", "res://docs/benchmarks/density_ladder_160_200_after.spawned.translation", "res://docs/benchmarks/density_ladder_160_200_after.fixture.translation", "res://docs/benchmarks/density_ladder_160_200_after.adaptation.translation", "res://docs/benchmarks/density_ladder_160_200_after.adaptation.translation", "res://docs/benchmarks/density_ladder_160_200_after.relic.translation", "res://docs/benchmarks/density_ladder_160_200_after.median.translation", "res://docs/benchmarks/density_ladder_160_200_after.p95.translation", "res://docs/benchmarks/density_ladder_160_200_after.p99.translation", "res://docs/benchmarks/density_ladder_160_200_after.max.translation", "res://docs/benchmarks/density_ladder_160_200_after.frames.translation", "res://docs/benchmarks/density_ladder_160_200_after.frames.translation", "res://docs/benchmarks/density_ladder_160_200_after.frames.translation", "res://docs/benchmarks/density_ladder_160_200_after.sample.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation", "res://docs/benchmarks/density_ladder_160_200_after.subsystem.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

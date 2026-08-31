@@ -473,15 +473,44 @@ func advance(delta: float) -> void:
 	_hedge_battery_cooldown = maxf(0.0, _hedge_battery_cooldown - delta)
 	_rootstock_network_cooldown = maxf(0.0, _rootstock_network_cooldown - delta)
 	_update_pending_events(delta)
+	# The two current p99 offenders are split out by name here rather than measured
+	# as one "adaptation director" bar, because Thistle spikes on a volley cadence
+	# and Fruit spikes on territory writes, and one number cannot show both.
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_THISTLE_TOTAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_THISTLE_RELIC_LOGIC)
 	_advance_thistle_relics(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_THISTLE_RELIC_LOGIC)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_THISTLE_TOTAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_TOTAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_RELICS)
 	_advance_fruit_relics(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_RELICS)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_TOTAL)
 	_advance_vine_relics(delta)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_THISTLE_TOTAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_THISTLE_TARGETING)
 	_update_thistles(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_THISTLE_TARGETING)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_THISTLE_PROJECTILE_UPDATE)
 	_update_thorns(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_THISTLE_PROJECTILE_UPDATE)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_THISTLE_TOTAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_TOTAL)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_ADVANCE)
 	_update_fruits(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_ADVANCE)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_SEEDS)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUITSEEDS)
 	_update_fruitseeds(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUITSEEDS)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_SAPLINGS)
 	_update_saplings(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_SAPLINGS)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_SEEDS)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_RELEASE)
 	_update_fruit_release_cadence(delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_RELEASE)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_TOTAL)
 	queue_redraw()
 
 
@@ -872,6 +901,9 @@ func _fire_thistle(
 		targets = _collect_enemy_targets(thistle.position, thistle_range_pixels)
 	if targets.is_empty():
 		return 0
+	# Volley cadence, so a frame's Thistle cost can be read against how many
+	# Thistles actually fired into it rather than against wall time alone.
+	PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_THISTLES_FIRED)
 	var rootstock_rank := _evolution_rank(PhaseBProgression.EvolutionId.ROOTSTOCK)
 	var heavy_primary := false
 	if counts_as_normal_cycle:
@@ -1409,8 +1441,16 @@ func _fire_rootstock_network_salvo() -> void:
 
 func _collect_enemy_targets(origin: Vector2, maximum_distance: float) -> PackedInt32Array:
 	var candidates: Array[Dictionary] = []
-	for enemy_id in combat.get_active_enemy_ids():
-		var position := combat.get_enemy_position(enemy_id)
+	# Read the roster once. Asking combat for a position by id is a scan of the
+	# enemy pool, so doing it per enemy made this quadratic in the crowd -- and this
+	# runs on every Thistle fire and on every mounted head of every Cane sweep, which
+	# is why it showed up in two unrelated bars at once. The candidate list, its
+	# comparator and its ordering are deliberately left exactly as they were.
+	var enemy_ids := combat.get_active_enemy_ids()
+	var enemy_positions := combat.get_active_enemy_positions()
+	for index in range(enemy_ids.size()):
+		var enemy_id := enemy_ids[index]
+		var position := enemy_positions[index]
 		var distance_squared := origin.distance_squared_to(position)
 		if distance_squared > maximum_distance * maximum_distance:
 			continue
@@ -1524,7 +1564,11 @@ func _update_thorns(delta: float) -> void:
 		thorn.position = next
 		if struck_id < 0:
 			continue
+		var resolve_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 		_resolve_thorn_hit(thorn, struck_id)
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_THISTLE_HIT_RESOLUTION, resolve_began
+		)
 
 
 func _find_thorn_segment_hit(
@@ -1535,6 +1579,7 @@ func _find_thorn_segment_hit(
 	enemy_positions: PackedVector2Array,
 	enemy_radii: PackedFloat32Array
 ) -> int:
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var struck := -1
 	var nearest_progress := INF
 	var segment := segment_end - segment_start
@@ -1556,16 +1601,30 @@ func _find_thorn_segment_hit(
 		if progress < nearest_progress:
 			nearest_progress = progress
 			struck = enemy_id
+	# Counted once for the whole scan rather than once per enemy: this is the
+	# O(thorns x enemies) loop the shared spatial grid is meant to replace, and it
+	# is the last place that should pay for its own instrumentation.
+	PhaseBPerfCounters.count(
+		PhaseBPerfCounters.COUNT_THORN_CANDIDATE_CHECKS, enemy_ids.size()
+	)
+	PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_THORN_SEGMENTS_RESOLVED)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_THISTLE_COLLISION, began_usec
+	)
 	return struck
 
 
 func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
+	var lookup_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	if not combat.is_enemy_active(enemy_id):
 		return
 	var hit_position := combat.get_enemy_position(enemy_id)
 	var hit_was_resistant := combat.is_enemy_resistant(enemy_id)
 	var hedge_rank := _evolution_rank(PhaseBProgression.EvolutionId.HEDGE_BATTERY)
 	var was_fully_entangled := combat.get_enemy_entanglement(enemy_id) >= 1.0
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_THISTLE_HIT_LOOKUP, lookup_began
+	)
 	var critical_chance := clampf(
 		thistle_base_critical_chance
 		+ thorn.critical_chance_bonus,
@@ -1576,12 +1635,26 @@ func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
 	var damage := thorn.damage * (thistle_critical_multiplier if critical else 1.0)
 	if hedge_rank >= 2 and was_fully_entangled:
 		damage *= 1.20
+	var cascade_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	_apply_inoculator_hit(thorn, enemy_id, critical, hit_position)
 	_apply_hedge_battery_hit(enemy_id, critical, was_fully_entangled, hit_position)
 	_add_pincushion_stack(enemy_id, thorn)
-	combat.damage_enemy_by_id(enemy_id, damage, PhaseBCombatDirector.DeathSource.THISTLE)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_THISTLE_HIT_CASCADE, cascade_began
+	)
+	var damage_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
+	combat.damage_enemy_by_id(
+		enemy_id, damage, PhaseBCombatDirector.DeathSource.THISTLE, critical
+	)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_THISTLE_HIT_DAMAGE, damage_began
+	)
+	cascade_began = Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	thorn.hit_ids.append(enemy_id)
 	_note_natural_thorn_impact(thorn, enemy_id, hit_position, critical)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_THISTLE_HIT_CASCADE, cascade_began
+	)
 	if not combat.is_enemy_active(enemy_id):
 		# Read on the kill, while the corpse still has its embedded thorns.
 		_burst_pincushion(enemy_id, hit_position)
@@ -1621,12 +1694,16 @@ func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
 
 
 func _find_ricochet_target(origin: Vector2, excluded: PackedInt32Array) -> int:
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var nearest_id := -1
 	var nearest_distance := thistle_range_pixels * thistle_range_pixels
-	for enemy_id in combat.get_active_enemy_ids():
+	var enemy_ids := combat.get_active_enemy_ids()
+	var enemy_positions := combat.get_active_enemy_positions()
+	for index in range(enemy_ids.size()):
+		var enemy_id := enemy_ids[index]
 		if excluded.has(enemy_id):
 			continue
-		var position := combat.get_enemy_position(enemy_id)
+		var position := enemy_positions[index]
 		var distance := origin.distance_squared_to(position)
 		if distance > nearest_distance:
 			continue
@@ -1634,6 +1711,9 @@ func _find_ricochet_target(origin: Vector2, excluded: PackedInt32Array) -> int:
 			continue
 		nearest_distance = distance
 		nearest_id = enemy_id
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_THISTLE_RICOCHET, began_usec
+	)
 	return nearest_id
 
 
@@ -2039,8 +2119,21 @@ func _fire_mounted_head(
 ) -> void:
 	var targets := PackedInt32Array()
 	var half_angle := deg_to_rad(sector_degrees * 0.5)
+	# Same reason as in _collect_enemy_targets: one roster read instead of a pool
+	# scan per surviving candidate. Keyed by id rather than walked, because the
+	# candidate list comes back sorted by distance and no longer lines up with
+	# roster order.
+	var head_enemy_ids := combat.get_active_enemy_ids()
+	var head_enemy_positions := combat.get_active_enemy_positions()
+	var head_positions_by_id := {}
+	for roster_index in range(head_enemy_ids.size()):
+		head_positions_by_id[head_enemy_ids[roster_index]] = (
+			head_enemy_positions[roster_index]
+		)
 	for enemy_id in _collect_enemy_targets(head_position, thistle_range_pixels):
-		var offset := combat.get_enemy_position(enemy_id) - sweep_origin
+		if not head_positions_by_id.has(enemy_id):
+			continue
+		var offset: Vector2 = head_positions_by_id[enemy_id] - sweep_origin
 		if (
 			offset.length_squared() > 0.001
 			and absf(sector_facing.angle_to(offset.normalized())) <= half_angle
@@ -2339,9 +2432,20 @@ func _begin_normal_fruit_release() -> void:
 		status_requested.emit("GOURDVINE — a weighted harvest is armed on the Vine tip.")
 		return
 	var origins := _get_normal_fruit_origins(fruit_count)
+	# Every Fruit in a release launches from one of a handful of origins, and the
+	# aim query is not cheap: it walks the whole enemy roster with a path test per
+	# enemy, then sweeps every candidate sector against every target. Asking it once
+	# per Fruit asked the identical question up to sixteen times about the same
+	# point, on the one frame that could least afford it. The answer depends only on
+	# the origin and on state the loop does not change, so one per origin is the
+	# same answer.
+	var origin_aims := PackedVector2Array()
+	for origin_index in range(origins.size()):
+		origin_aims.append(_get_fruit_aim_direction(origins[origin_index]))
 	for index in range(fruit_count):
-		var origin := origins[index % origins.size()]
-		var aim_direction := _get_fruit_aim_direction(origin)
+		var origin_index := index % origins.size()
+		var origin := origins[origin_index]
+		var aim_direction := origin_aims[origin_index]
 		var grafted := _graft_cuttings >= 4 and (_graft_all_fruit or index == 0)
 		var prize := _graft_prize and index == 0
 		_spawn_fruit(
@@ -2565,11 +2669,15 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 	fruit.windfall_cooldown = maxf(0.0, fruit.windfall_cooldown - delta)
 	fruit.newton_cooldown = maxf(0.0, fruit.newton_cooldown - delta)
 	fruit.burdock_reset_remaining = maxf(0.0, fruit.burdock_reset_remaining - delta)
+	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_BURDOCK)
 	_update_burdock_head(fruit, delta)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_BURDOCK)
 	if fruit.speed <= 0.0:
 		fruit.speed = 0.0
 		fruit.velocity = Vector2.ZERO
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 		_finish_fruit(fruit)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 		return
 	var direction := fruit.velocity.normalized()
 	if direction.length_squared() <= 0.0001:
@@ -2586,15 +2694,26 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 	fruit.velocity = direction * fruit.speed
 	var previous := fruit.position
 	var next := previous + direction * step_distance
-	if (
+	var terrain_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
+	var blocked := (
 		not territory_field.contains_local_point(next)
 		or not territory_field.is_claimable_at_local(next)
 		or not territory_field.is_growth_path_clear(previous, next)
-	):
+	)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_TERRAIN, terrain_began
+	)
+	if blocked:
+		terrain_began = Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 		_resolve_fruit_obstacle_bounce(fruit, previous, next)
+		PhaseBPerfCounters.timer_add_since(
+			PhaseBPerfCounters.TIMER_FRUIT_TERRAIN, terrain_began
+		)
 		if fruit.speed <= 0.0:
 			fruit.velocity = Vector2.ZERO
+			PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 			_finish_fruit(fruit)
+			PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 		var bounce_distance := previous.distance_to(fruit.position)
 		fruit.rotation += bounce_distance / maxf(
 			4.0,
@@ -2611,11 +2730,15 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 	_stamp_fruit_trail_segment(fruit, previous, fruit.position)
 	var enemy_id := _find_fruit_segment_hit(fruit, previous, next)
 	if enemy_id >= 0:
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_HIT_RESOLUTION)
 		_resolve_fruit_enemy_hit(fruit, enemy_id)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_HIT_RESOLUTION)
 	if fruit.speed <= 0.0:
 		fruit.speed = 0.0
 		fruit.velocity = Vector2.ZERO
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 		_finish_fruit(fruit)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 
 
 func _update_fruit_hit_cooldowns(fruit: FruitState, delta: float) -> void:
@@ -2636,15 +2759,26 @@ func _find_fruit_segment_hit(
 	segment_start: Vector2,
 	segment_end: Vector2
 ) -> int:
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var struck := -1
 	var nearest_progress := INF
 	var segment := segment_end - segment_start
 	var segment_length_squared := maxf(0.0001, segment.length_squared())
-	for enemy_id in combat.get_active_enemy_ids():
+	# Every by-id accessor on combat is a scan of the enemy pool, so asking for a
+	# position and a radius per enemy made this loop quadratic in the crowd: a
+	# 16-Fruit release at the cap was walking the pool a quarter of a million times
+	# a frame to find at most sixteen hits. The thorn loop already reads the roster
+	# once for the same reason. These are the same three arrays read at the same
+	# moment as before, paired by index, so the enemy chosen does not change.
+	var enemy_ids := combat.get_active_enemy_ids()
+	var enemy_positions := combat.get_active_enemy_positions()
+	var enemy_radii := combat.get_active_enemy_radii()
+	for index in range(enemy_ids.size()):
+		var enemy_id := enemy_ids[index]
 		if fruit.hit_cooldowns.has(enemy_id):
 			continue
-		var enemy_position := combat.get_enemy_position(enemy_id)
-		var hit_radius := fruit_radius_pixels * fruit.visual_scale + combat.get_enemy_radius(enemy_id)
+		var enemy_position := enemy_positions[index]
+		var hit_radius := fruit_radius_pixels * fruit.visual_scale + enemy_radii[index]
 		var progress := clampf(
 			(enemy_position - segment_start).dot(segment) / segment_length_squared,
 			0.0,
@@ -2656,6 +2790,9 @@ func _find_fruit_segment_hit(
 		if progress < nearest_progress:
 			nearest_progress = progress
 			struck = enemy_id
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_COLLISION, began_usec
+	)
 	return struck
 
 
@@ -2712,8 +2849,12 @@ func _resolve_fruit_enemy_hit(fruit: FruitState, enemy_id: int) -> void:
 		# starts from the very next stamp rather than the next frame.
 		if _has_relic(PhaseBRelicCatalog.Id.BRUISED_FRUIT):
 			fruit.juicy_remaining = bruised_fruit_distance_pixels
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_SALAD)
 		_try_fruit_salad(fruit, enemy_id)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_SALAD)
+		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_NEWTON)
 		_try_newtons_apple(fruit, enemy_id)
+		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_NEWTON)
 		if survived:
 			_try_stem_steering(fruit, enemy_id)
 		else:
@@ -2901,8 +3042,13 @@ func _find_fruit_redirect_target(
 ) -> Vector2:
 	# Prefer somebody this Fruit has not already been through, so a redirect opens
 	# new ground instead of grinding the same body.
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var best := Vector2(-1.0, -1.0)
 	var best_distance := INF
+	# Left as a by-id read on purpose. Hoisting the paired roster here was tried and
+	# was a pessimisation: the lookup is O(1) since the id-to-slot map landed, so the
+	# hoist bought nothing and cost a second array allocation on a search that runs
+	# on every qualifying collision.
 	for candidate_id in combat.get_active_enemy_ids():
 		if candidate_id == exclude_id or fruit.hit_cooldowns.has(candidate_id):
 			continue
@@ -2912,6 +3058,9 @@ func _find_fruit_redirect_target(
 			continue
 		best_distance = distance
 		best = candidate
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_REDIRECT, began_usec
+	)
 	return best
 
 
@@ -3034,6 +3183,9 @@ func _resolve_fruit_obstacle_bounce(
 func _stamp_fruit_trail(fruit: FruitState, position: Vector2) -> void:
 	if not territory_field.contains_local_point(position):
 		return
+	# One point splat per trail step. The count is what says how much a swept
+	# capsule would save: every segment here overlaps its neighbours.
+	PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_FRUIT_TRAIL_SEGMENTS)
 	var area := maxf(0.05, fruit.germination_multiplier)
 	if fruit.juicy_remaining > 0.0:
 		# A bruised Fruit leaks. The terminal foothold is deliberately untouched:
@@ -3070,6 +3222,7 @@ func _stamp_fruit_trail_segment(
 	## Every Fruit owns its own spacing accumulator. Sampling exact points along the
 	## travelled segment prevents a multi-Fruit release from collapsing its territory
 	## into whichever Fruit happened to cross a frame boundary first.
+	var began_usec := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var segment := segment_end - segment_start
 	var segment_length := segment.length()
 	if segment_length <= 0.001:
@@ -3089,6 +3242,9 @@ func _stamp_fruit_trail_segment(
 		)
 	else:
 		fruit.trail_debt = minf(spacing, fruit.trail_debt + segment_length)
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_TRAIL_ENQUEUE, began_usec
+	)
 
 
 func _update_burdock_head(fruit: FruitState, delta: float) -> void:
@@ -3341,6 +3497,7 @@ func _create_fruit_bloom(
 ) -> void:
 	if bloom_director == null or force_share <= 0.0:
 		return
+	var bloom_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var amplification := (
 		root_director.get_network_multiplier_here(position)
 		if root_director != null
@@ -3401,6 +3558,9 @@ func _create_fruit_bloom(
 			overlay.spawn_splatter(position, radius, 0.55, 0.75, globs, 0.70)
 	if play_primary_feedback:
 		combat.play_plant_explosion_sfx()
+	PhaseBPerfCounters.timer_add_since(
+		PhaseBPerfCounters.TIMER_FRUIT_BLOOM, bloom_began
+	)
 
 
 func _spawn_orchard_sapling(position: Vector2) -> bool:
