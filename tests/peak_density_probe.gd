@@ -202,9 +202,14 @@ func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int)
 		overlay.append(_since(began))
 
 		began = Time.get_ticks_usec()
-		if frame_index % 4 == 0:
+		# One territory operation per frame, alternating. The field's tuning is 30Hz
+		# simulation and 30Hz render, so at 60fps both fall due every other frame and
+		# its own _process alternates them, which lands one or the other on every
+		# frame. Stepping one frame in four ran territory at half the rate the game
+		# does, which made every territory-heavy pairing look better here than it is.
+		if frame_index % 2 == 0:
 			prototype.territory_field.step_simulation()
-		elif frame_index % 4 == 2:
+		else:
 			prototype.territory_field.refresh_visuals_now()
 		territory.append(_since(began))
 

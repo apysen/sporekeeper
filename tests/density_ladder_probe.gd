@@ -301,9 +301,9 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 		prototype.relic_director.advance(STEP)
 		prototype.adaptation_director.advance(STEP)
 		prototype.overlay._process(STEP)
-		if _warmup_index % 4 == 0:
+		if _warmup_index % 2 == 0:
 			prototype.territory_field.step_simulation()
-		elif _warmup_index % 4 == 2:
+		else:
 			prototype.territory_field.refresh_visuals_now()
 
 	PhaseBPerfCounters.begin_session()
@@ -339,9 +339,15 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 		# never pays for both. Matching the peak density probe keeps the two tables
 		# comparable.
 		phase_began = Time.get_ticks_usec()
-		if frame_index % 4 == 0:
+		# One territory operation per frame, alternating, because that is what the
+		# field does when it runs itself. Its tuning is 30Hz simulation and 30Hz
+		# render, so at 60fps both come due every other frame and its own _process
+		# alternates them -- which works out to one or the other on every frame.
+		# Stepping one frame in four, as this probe did originally, ran territory at
+		# half the rate the game does and made every territory-heavy number optimistic.
+		if frame_index % 2 == 0:
 			prototype.territory_field.step_simulation()
-		elif frame_index % 4 == 2:
+		else:
 			prototype.territory_field.refresh_visuals_now()
 		phase_territory.append(_ms_since(phase_began))
 

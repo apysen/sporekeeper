@@ -39,6 +39,7 @@ const STRESS_ROLES := [
 ]
 
 var _densities := PackedInt32Array([130, 200])
+var _viewport_rid: RID
 
 
 func _initialize() -> void:
@@ -77,6 +78,12 @@ func _run() -> void:
 	# what the frame actually costs. The draw timers are unaffected either way, but
 	# the frame column is meaningless with it on.
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	# Splitting the frame into render and not-render is the whole point of running
+	# this at all: without it a heavy rendered frame cannot be told apart from a
+	# heavy simulated one. render_timing_support_probe confirms both halves are real
+	# on this project's renderer.
+	_viewport_rid = root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(_viewport_rid, true)
 
 	print(
 		"RENDERED_DENSITY: renderer=%s window=%s vsync=%d"
@@ -89,8 +96,11 @@ func _run() -> void:
 		]
 	)
 	print(
-		"RENDERED_DENSITY %5s %9s %9s %9s %9s %9s %9s"
-		% ["n", "frame p50", "frame p99", "draw p50", "draw p99", "enemy p99", "dmgnum p99"]
+		"RENDERED_DENSITY %5s %9s %9s %8s %8s %8s %8s %7s %8s"
+		% [
+			"n", "frame p50", "frame p99", "rndCPU", "rndGPU", "combat", "enemy",
+			"draws", "prims",
+		]
 	)
 	for density in _densities:
 		await _run_density(prototype, density)
@@ -151,6 +161,10 @@ func _run_density(prototype: PhaseBPrototype, density: int) -> void:
 	var draw_samples := PackedFloat32Array()
 	var enemy_samples := PackedFloat32Array()
 	var damage_number_samples := PackedFloat32Array()
+	var render_cpu_samples := PackedFloat32Array()
+	var render_gpu_samples := PackedFloat32Array()
+	var draw_call_samples := PackedInt32Array()
+	var primitive_samples := PackedInt32Array()
 
 	PhaseBPerfCounters.begin_session()
 	for _frame in range(SAMPLE_FRAMES):
@@ -169,19 +183,65 @@ func _run_density(prototype: PhaseBPrototype, density: int) -> void:
 				PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_DRAW
 			)
 		)
+		render_cpu_samples.append(
+			RenderingServer.viewport_get_measured_render_time_cpu(_viewport_rid)
+		)
+		render_gpu_samples.append(
+			RenderingServer.viewport_get_measured_render_time_gpu(_viewport_rid)
+		)
+		draw_call_samples.append(
+			RenderingServer.viewport_get_render_info(
+				_viewport_rid,
+				RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS,
+				RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME
+			)
+		)
+		primitive_samples.append(
+			RenderingServer.viewport_get_render_info(
+				_viewport_rid,
+				RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS,
+				RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME
+			)
+		)
 	PhaseBPerfCounters.end_session()
 
+	var frame_median := _percentile_of(frame_samples, 0.50)
+	var render_cpu_median := _percentile_of(render_cpu_samples, 0.50)
+	var render_gpu_median := _percentile_of(render_gpu_samples, 0.50)
 	print(
-		"RENDERED_DENSITY %5d %8.3f %8.3f %8.3f %8.3f %8.3f %8.3f" % [
+		"RENDERED_DENSITY %5d %8.3f %8.3f %7.3f %7.3f %7.3f %7.3f %7d %8d" % [
 			combat.get_active_enemy_count(),
-			_percentile_of(frame_samples, 0.50),
+			frame_median,
 			_percentile_of(frame_samples, 0.99),
+			render_cpu_median,
+			render_gpu_median,
 			_percentile_of(draw_samples, 0.50),
-			_percentile_of(draw_samples, 0.99),
-			_percentile_of(enemy_samples, 0.99),
-			_percentile_of(damage_number_samples, 0.99),
+			_percentile_of(enemy_samples, 0.50),
+			_median_int(draw_call_samples),
+			_median_int(primitive_samples),
 		]
 	)
+	# The part of the frame that is not the renderer and not the combat director's
+	# own drawing. If this dominates, a rendering optimisation cannot reach it.
+	print(
+		"RENDERED_DENSITY       of which render %.3fms (%.0f%%), not-render %.3fms (%.0f%%)"
+		% [
+			render_cpu_median + render_gpu_median,
+			100.0 * (render_cpu_median + render_gpu_median) / maxf(0.001, frame_median),
+			frame_median - render_cpu_median - render_gpu_median,
+			100.0
+			* (frame_median - render_cpu_median - render_gpu_median)
+			/ maxf(0.001, frame_median),
+		]
+	)
+
+
+func _median_int(samples: PackedInt32Array) -> int:
+	if samples.is_empty():
+		return 0
+	var sorted := samples.duplicate()
+	sorted.sort()
+	return sorted[sorted.size() / 2]
 
 
 func _percentile_of(samples: PackedFloat32Array, fraction: float) -> float:
