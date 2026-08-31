@@ -3,6 +3,10 @@ extends Node2D
 
 const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
 
+## The screen the pause menu leaves a run for. Loaded by path rather than preloaded:
+## the home screen loads this scene in turn, and preloading both ways is a cycle.
+const HOME_SCENE := "res://scenes/menu/home_screen.tscn"
+
 ## Placeholder reel faces. Each stands for one Path, plus the Clover wild and the Bust.
 const SYMBOL_SEED := preload("res://assets/art/slots/symbols/symbol_seed.svg")
 const SYMBOL_FLOWER := preload("res://assets/art/slots/symbols/symbol_flower.svg")
@@ -271,6 +275,8 @@ enum ChoiceKind {
 @export var pause_panel: Control
 ## Opens the alphabetized mechanics reference.
 @export var pause_glossary_button: Button
+## Leaves the run and returns to the home screen, without closing the game.
+@export var pause_main_menu_button: Button
 ## Button that exits the running game application.
 @export var pause_quit_button: Button
 
@@ -409,6 +415,10 @@ var _base_natural_spread_rate := 0.0
 var _base_maturity_resistance_bonus := 0.0
 var _base_pressure_advection := 0.0
 var _base_small_fragment_decay := 0.0
+## Campaign runs without the Clover machine. The run already asks for enough
+## attention without a side game to gamble on, so Campaign hides the cabinet and
+## advances none of it; Quick still keeps the whole machine.
+var _clover_enabled := true
 var _pause_menu_open := false
 var _pause_settings_open := false
 var _glossary_button: Button
@@ -421,6 +431,7 @@ var _music_bus_index := -1
 @onready var _path_one_label: Label = %Path1Label
 @onready var _path_two_label: Label = %Path2Label
 @onready var _support_path_label: Label = %SupportPathLabel
+@onready var _upgrade_section: Control = %UpgradeSection
 @onready var _evolution_tree_label: Label = %EvolutionTreeLabel
 @onready var _path_one_emblem: Label = %Path1EmblemLabel
 @onready var _path_two_emblem: Label = %Path2EmblemLabel
@@ -433,6 +444,7 @@ var _music_bus_index := -1
 
 func _ready() -> void:
 	var run_mode := RUN_MODE.get_selected()
+	_clover_enabled = run_mode != RUN_MODE.Id.CAMPAIGN
 	wave_director.configure_mode(run_mode)
 	progression.configure_mode(run_mode)
 	PhaseBNinePatchButtonBorder.install_under(self)
@@ -510,6 +522,7 @@ func _ready() -> void:
 		pause_music_volume_value,
 		pause_fullscreen_button,
 		pause_glossary_button,
+		pause_main_menu_button,
 		pause_quit_button,
 	]
 	# Before a single frame runs, and so before anything below overwrites a control:
@@ -578,7 +591,7 @@ func _ready() -> void:
 	# the panel would do if its children ignored the mouse, but the slider and the lever
 	# grab take input, and hovering either of those would otherwise read as leaving.
 	for hover_region in [slot_panel, wager_slider, lever_grab]:
-		if hover_region == null:
+		if hover_region == null or not _clover_enabled:
 			continue
 		hover_region.mouse_entered.connect(_on_slot_hover_changed.bind(true))
 		hover_region.mouse_exited.connect(_on_slot_hover_changed.bind(false))
@@ -616,6 +629,7 @@ func _ready() -> void:
 	if pause_settings_back_button != null:
 		pause_settings_back_button.pressed.connect(_show_pause_settings.bind(false))
 	pause_glossary_button.pressed.connect(_open_glossary)
+	pause_main_menu_button.pressed.connect(_return_to_main_menu)
 	pause_quit_button.pressed.connect(_quit_from_pause_menu)
 	_build_mechanics_help()
 	_configure_ambient_music()
@@ -624,6 +638,7 @@ func _ready() -> void:
 
 	overlay.show_annotations = false
 	_capture_reel_rest_positions()
+	_apply_clover_presence()
 	reset_run()
 	_refresh_dev_controls()
 
@@ -730,6 +745,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _report_wager_debug() -> void:
+	if not _clover_enabled:
+		_set_status("Campaign runs without the Clover machine.")
+		return
 	# Everything the guide asks a wager debug to show, measured on the region the
 	# machine would actually stake if the lever moved now.
 	var seed_position := player.get_arena_position()
@@ -767,6 +785,9 @@ func _report_wager_debug() -> void:
 
 
 func _report_odds_debug() -> void:
+	if not _clover_enabled:
+		_set_status("Campaign runs without the Clover machine.")
+		return
 	var stake := slot_machine.get_stake()
 	var odds := clover_odds.get_effective_odds(stake)
 	var report := (
@@ -826,13 +847,14 @@ func advance_run(delta: float) -> void:
 		territory_field.get_mature_player_percent(),
 		1.0
 	)
-	slot_machine.advance(delta)
-	slot_machine.advance_preview(delta, player.get_arena_position())
-	clover_jackpots.advance(delta)
-	all_in_grace.advance(delta)
-	_advance_all_in_countdown()
-	_advance_lever(delta)
-	_advance_reels(delta)
+	if _clover_enabled:
+		slot_machine.advance(delta)
+		slot_machine.advance_preview(delta, player.get_arena_position())
+		clover_jackpots.advance(delta)
+		all_in_grace.advance(delta)
+		_advance_all_in_countdown()
+		_advance_lever(delta)
+		_advance_reels(delta)
 
 	wave_director.advance(delta)
 	# Path milestones share the panel with relic rewards and land on the same wave
@@ -1264,6 +1286,8 @@ func _on_lever_input(event: InputEvent) -> void:
 
 
 func _pull_lever() -> void:
+	if not _clover_enabled:
+		return
 	if not slot_machine.try_spin(player.get_arena_position()):
 		if not slot_machine.is_buy_in_met():
 			_set_status(
@@ -1474,6 +1498,8 @@ func _on_wager_preview_changed(cells: PackedInt32Array) -> void:
 
 
 func _on_wager_changed(value: float) -> void:
+	if not _clover_enabled:
+		return
 	slot_machine.set_stake(int(round(value)))
 	if slot_machine.is_preview_visible():
 		# The region grows or shrinks through the organism as the notch moves, so the
@@ -1484,6 +1510,8 @@ func _on_wager_changed(value: float) -> void:
 
 
 func _update_slot_controls() -> void:
+	if not _clover_enabled:
+		return
 	if not is_node_ready():
 		return
 	var stake_name := CloverSlot.get_stake_name(slot_machine.get_stake()).to_upper()
@@ -1873,6 +1901,8 @@ func _on_all_in_grace_failed() -> void:
 
 
 func _advance_all_in_countdown() -> void:
+	if not _clover_enabled:
+		return
 	if all_in_label == null:
 		return
 	# Written whether or not the grace is running, and only then shown or hidden: a
@@ -2125,6 +2155,22 @@ func _tooltip_body(value: String, title: String) -> String:
 	return body
 
 
+func _apply_clover_presence() -> void:
+	# Quick keeps the machine exactly as the scene authored it.
+	if _clover_enabled:
+		return
+	# The cabinet goes, and the Adaptation rows move up into the space it held rather
+	# than leaving a hole in the middle of the panel. Where they move to is read off
+	# the cabinet itself, so the two stay in step whenever the scene moves either one.
+	if slot_panel != null:
+		slot_panel.visible = false
+		if _upgrade_section != null:
+			_upgrade_section.position.y = slot_panel.position.y
+	if all_in_label != null:
+		all_in_label.visible = false
+	wager_layer.clear_wager()
+
+
 func _open_glossary() -> void:
 	pause_panel.visible = false
 	pause_settings_panel.visible = false
@@ -2212,6 +2258,12 @@ func _close_pause_menu() -> void:
 	_pause_menu_open = false
 	pause_overlay.visible = false
 	_refresh_simulation_pause()
+
+
+func _return_to_main_menu() -> void:
+	# The run is abandoned rather than saved: the home screen starts a fresh one.
+	_close_pause_menu()
+	get_tree().change_scene_to_file.call_deferred(HOME_SCENE)
 
 
 func _quit_from_pause_menu() -> void:

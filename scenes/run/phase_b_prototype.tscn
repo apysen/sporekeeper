@@ -210,7 +210,7 @@ region = Rect2(138, 0, 627, 624)
 atlas = ExtResource("26_slot_lever_down")
 region = Rect2(138, 0, 627, 624)
 
-[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_main_menu_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -288,6 +288,7 @@ pause_settings_panel = NodePath("Interface/PauseOverlay/PauseSettingsPanel")
 pause_settings_back_button = NodePath("Interface/PauseOverlay/PauseSettingsPanel/BackButton")
 pause_panel = NodePath("Interface/PauseOverlay/PausePanel")
 pause_glossary_button = NodePath("Interface/PauseOverlay/PausePanel/GlossaryButton")
+pause_main_menu_button = NodePath("Interface/PauseOverlay/PausePanel/MainMenuButton")
 pause_quit_button = NodePath("Interface/PauseOverlay/PausePanel/QuitButton")
 debug_help_label = NodePath("Interface/PauseOverlay/DebugHelp")
 display_settings = NodePath("GameplayComponents/DisplaySettings")
@@ -327,12 +328,6 @@ bloom_director = NodePath("../../Paths/BloomDirector")
 pruning_director = NodePath("../../Paths/PruningDirector")
 adaptation_director = NodePath("../../Paths/AdaptationDirector")
 metabolism = NodePath("../Metabolism")
-offer_spore_path = false
-offer_bloom_path = false
-offer_bramble_path = false
-offer_root_path = false
-offer_pruning_path = false
-offer_fruit_path = false
 
 [node name="Evolutions" type="Node" parent="GameplayComponents" unique_id=1946342541 node_paths=PackedStringArray("progression")]
 script = ExtResource("28_evolutions")
@@ -767,6 +762,7 @@ territory_field = NodePath("../TerritoryField")
 layer = 8
 
 [node name="SidePanel" type="Panel" parent="Interface" unique_id=451346811]
+z_index = 21
 offset_left = 1004.0
 offset_top = 24.0
 offset_right = 1256.0
@@ -1085,6 +1081,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="UpgradeSection" type="Control" parent="Interface/SidePanel" unique_id=1622654853]
+unique_name_in_owner = true
 anchors_preset = 0
 offset_left = 14.0
 offset_top = 446.0
@@ -1486,6 +1483,7 @@ level_offset_scale = 0.45
 slot_texture_style = ExtResource("35_slot_style")
 
 [node name="UpgradeTray" type="Panel" parent="Interface" unique_id=1622654852]
+z_index = 21
 offset_left = 24.0
 offset_top = 651.0
 offset_right = 984.0
@@ -1707,6 +1705,7 @@ grow_vertical = 2
 color = Color(0.003, 0.008, 0.011, 0.82)
 
 [node name="DebugHelp" type="Label" parent="Interface/PauseOverlay" unique_id=2105709273]
+z_index = 2
 layout_mode = 0
 offset_left = 831.0
 offset_top = 238.0
@@ -1722,6 +1721,7 @@ F9 BOSS    F10 RELIC"
 horizontal_alignment = 1
 
 [node name="PausePanel" type="Panel" parent="Interface/PauseOverlay" unique_id=349622250]
+z_index = 2
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -1729,9 +1729,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -231.0
-offset_top = -280.0
+offset_top = -309.0
 offset_right = 231.0
-offset_bottom = 280.0
+offset_bottom = 309.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = ExtResource("30_panel_style")
@@ -1892,12 +1892,24 @@ theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
 text = "GLOSSARY"
 
-[node name="QuitButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=651669992]
+[node name="MainMenuButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=651669993]
 layout_mode = 0
 offset_left = 40.0
 offset_top = 472.0
 offset_right = 420.0
 offset_bottom = 520.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "MAIN MENU"
+
+[node name="QuitButton" type="Button" parent="Interface/PauseOverlay/PausePanel" unique_id=651669992]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 530.0
+offset_right = 420.0
+offset_bottom = 578.0
 theme_override_colors/font_color = Color(0.643, 0.373, 0.424, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
@@ -1906,6 +1918,7 @@ text = "QUIT TO DESKTOP"
 
 [node name="PauseSettingsPanel" type="Panel" parent="Interface/PauseOverlay" unique_id=349622251]
 visible = false
+z_index = 2
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
