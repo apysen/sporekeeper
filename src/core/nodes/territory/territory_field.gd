@@ -3089,6 +3089,23 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 		mini(minimum_y, source_y),
 		maxi(maximum_y, source_y)
 	)
+	# Read once for the whole stamp. Every one of these is a property lookup on a
+	# RefCounted or a Resource, none of them can change while the loop runs, and the
+	# loop runs per cell: a busy frame was doing a quarter of a million of them for
+	# values it already had. The ownership threshold is pulled out for the same
+	# reason -- comparing it inline costs a local read where _owner_from_control cost
+	# a call plus a property lookup, twice per cell.
+	var radius_cells := command.radius_cells
+	var command_mass := command.mass
+	var impact_break := command.impact_break
+	var hostile_conversion := command.hostile_conversion_factor
+	var maturity_reinforcement := command.maturity_reinforcement
+	var pressure_cells := command.pressure_cells
+	var maturity_resistance_bonus := tuning.maturity_resistance_bonus
+	var obstruction_falloff := tuning.obstruction_falloff_per_cell
+	var max_pressure := tuning.max_pressure_cells
+	var ownership_threshold := tuning.ownership_threshold
+	var measuring := PhaseBPerfCounters.enabled
 
 	for y in range(minimum_y, maximum_y + 1):
 		for x in range(minimum_x, maximum_x + 1):
@@ -3101,7 +3118,7 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 					offset.dot(travel) / smear,
 					offset.dot(across)
 				).length()
-			if distance > command.radius_cells:
+			if distance > radius_cells:
 				continue
 			var index := y * _width + x
 			if _claimable_mask[index] == 0:
@@ -3109,22 +3126,18 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 			var transmission := 1.0
 			if not open_ground:
 				transmission = _claimable_line_transmission(
-					source_x,
-					source_y,
-					x,
-					y,
-					tuning.obstruction_falloff_per_cell
+					source_x, source_y, x, y, obstruction_falloff
 				)
 				if transmission <= 0.0:
 					continue
-			var normalized_falloff := 1.0 - distance / command.radius_cells
+			var normalized_falloff := 1.0 - distance / radius_cells
 			var falloff := (
 				normalized_falloff * normalized_falloff * (3.0 - 2.0 * normalized_falloff)
 			) * transmission
 			var old_control := _control[index]
-			var mass_delta := command.mass * falloff
+			var mass_delta := command_mass * falloff
 			if old_control < 0.0:
-				if command.impact_break > 0.0:
+				if impact_break > 0.0:
 					# Something arriving with momentum does mechanical work on the
 					# ground it hits: it breaks the established material up and
 					# displaces it, whatever that material had matured into. The dent
@@ -3134,13 +3147,13 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 					# Flatter than the growth profile on purpose: an impact dents its
 					# whole contact patch rather than tapering the way material
 					# spreading outward from a centre does.
-					var kinetic := command.impact_break * sqrt(falloff)
+					var kinetic := impact_break * sqrt(falloff)
 					_maturity[index] = maxf(0.0, _maturity[index] - kinetic)
 					old_control = minf(0.0, old_control + kinetic)
 					_control[index] = old_control
-				var resistance := 1.0 + _maturity[index] * tuning.maturity_resistance_bonus
-				mass_delta *= command.hostile_conversion_factor / resistance
-			if PhaseBPerfCounters.enabled:
+				var resistance := 1.0 + _maturity[index] * maturity_resistance_bonus
+				mass_delta *= hostile_conversion / resistance
+			if measuring:
 				# Touched counts every write the batch performs; the mask separates
 				# out the first write to each cell. The gap between them is the
 				# duplicate work a coalesced batch would not have to do.
@@ -3154,11 +3167,22 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 					PhaseBPerfCounters.count(
 						PhaseBPerfCounters.COUNT_TERRITORY_DUPLICATE_CELL_WRITES
 					)
-			_control[index] = clampf(old_control + mass_delta, -1.0, 1.0)
-			if _owner_from_control(old_control) != _owner_from_control(_control[index]):
+			var new_control := clampf(old_control + mass_delta, -1.0, 1.0)
+			_control[index] = new_control
+			var old_owner := 0
+			if old_control > ownership_threshold:
+				old_owner = 1
+			elif old_control < -ownership_threshold:
+				old_owner = -1
+			var new_owner := 0
+			if new_control > ownership_threshold:
+				new_owner = 1
+			elif new_control < -ownership_threshold:
+				new_owner = -1
+			if old_owner != new_owner:
 				# Ground that just changed hands has nothing rooted in it yet.
 				_maturity[index] = 0.0
-			elif command.maturity_reinforcement > 0.0 and _control[index] > 0.0:
+			elif maturity_reinforcement > 0.0 and new_control > 0.0:
 				# Landing on ground the run already holds thickens it. The material
 				# settles onto established growth and becomes part of it, so the cell
 				# ends up better rooted than it was — the opposite of what happens
@@ -3168,24 +3192,23 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 				# roots, and that case is the branch above. Applying it here too was
 				# a bug: a Bloom landing on its own mature territory stripped it.
 				_maturity[index] = minf(
-					1.0,
-					_maturity[index] + command.maturity_reinforcement * falloff
+					1.0, _maturity[index] + maturity_reinforcement * falloff
 				)
-			if distance > 0.001 and command.pressure_cells > 0.0:
+			if distance > 0.001 and pressure_cells > 0.0:
 				# Thrown material shoves the ground the way it was going. A splat with
 				# no direction still radiates, which is what a drip does.
 				var direction := offset / distance
 				if travel != Vector2.ZERO:
 					direction = (travel * 0.75 + direction * 0.25).normalized()
 				_pressure_x[index] = clampf(
-					_pressure_x[index] + direction.x * command.pressure_cells * falloff,
-					-tuning.max_pressure_cells,
-					tuning.max_pressure_cells
+					_pressure_x[index] + direction.x * pressure_cells * falloff,
+					-max_pressure,
+					max_pressure
 				)
 				_pressure_y[index] = clampf(
-					_pressure_y[index] + direction.y * command.pressure_cells * falloff,
-					-tuning.max_pressure_cells,
-					tuning.max_pressure_cells
+					_pressure_y[index] + direction.y * pressure_cells * falloff,
+					-max_pressure,
+					max_pressure
 				)
 
 
@@ -3210,12 +3233,24 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 		mini(minimum_y, source_y),
 		maxi(maximum_y, source_y)
 	)
+	# Hoisted for the same reason as the growth stamp: none of these can change while
+	# the loop runs, and the loop runs per cell.
+	var cell_position := command.cell_position
+	var radius_cells := command.radius_cells
+	var command_mass := command.mass
+	var hostile_conversion := command.hostile_conversion_factor
+	var pressure_cells := command.pressure_cells
+	var maturity_resistance_bonus := tuning.maturity_resistance_bonus
+	var obstruction_falloff := tuning.obstruction_falloff_per_cell
+	var max_pressure := tuning.max_pressure_cells
+	var ownership_threshold := tuning.ownership_threshold
+	var measuring := PhaseBPerfCounters.enabled
 
 	for y in range(minimum_y, maximum_y + 1):
 		for x in range(minimum_x, maximum_x + 1):
-			var offset := Vector2(float(x), float(y)) - command.cell_position
+			var offset := Vector2(float(x), float(y)) - cell_position
 			var distance := offset.length()
-			if distance > command.radius_cells:
+			if distance > radius_cells:
 				continue
 			var index := y * _width + x
 			if _claimable_mask[index] == 0:
@@ -3223,11 +3258,7 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 			var transmission := 1.0
 			if not open_ground:
 				transmission = _claimable_line_transmission(
-					source_x,
-					source_y,
-					x,
-					y,
-					tuning.obstruction_falloff_per_cell
+					source_x, source_y, x, y, obstruction_falloff
 				)
 				if transmission <= 0.0:
 					continue
@@ -3249,16 +3280,16 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 			if support <= 0.0:
 				continue
 			var support_scale := clampf(support / support_reference, 0.0, 1.0)
-			var normalized_falloff := 1.0 - distance / command.radius_cells
+			var normalized_falloff := 1.0 - distance / radius_cells
 			var falloff := (
 				normalized_falloff * normalized_falloff * (3.0 - 2.0 * normalized_falloff)
 			) * transmission
 			var old_control := _control[index]
-			var mass_delta := command.mass * falloff * support_scale
+			var mass_delta := command_mass * falloff * support_scale
 			if old_control < 0.0:
-				var resistance := 1.0 + _maturity[index] * tuning.maturity_resistance_bonus
-				mass_delta *= command.hostile_conversion_factor / resistance
-			if PhaseBPerfCounters.enabled:
+				var resistance := 1.0 + _maturity[index] * maturity_resistance_bonus
+				mass_delta *= hostile_conversion / resistance
+			if measuring:
 				# Touched counts every write the batch performs; the mask separates
 				# out the first write to each cell. The gap between them is the
 				# duplicate work a coalesced batch would not have to do.
@@ -3272,10 +3303,21 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 					PhaseBPerfCounters.count(
 						PhaseBPerfCounters.COUNT_TERRITORY_DUPLICATE_CELL_WRITES
 					)
-			_control[index] = clampf(old_control + mass_delta, -1.0, 1.0)
-			if _owner_from_control(old_control) != _owner_from_control(_control[index]):
+			var new_control := clampf(old_control + mass_delta, -1.0, 1.0)
+			_control[index] = new_control
+			var old_owner := 0
+			if old_control > ownership_threshold:
+				old_owner = 1
+			elif old_control < -ownership_threshold:
+				old_owner = -1
+			var new_owner := 0
+			if new_control > ownership_threshold:
+				new_owner = 1
+			elif new_control < -ownership_threshold:
+				new_owner = -1
+			if old_owner != new_owner:
 				_maturity[index] = 0.0
-			if distance > 0.001 and command.pressure_cells > 0.0:
+			if distance > 0.001 and pressure_cells > 0.0:
 				var direction := offset / distance
 				var impulse := command.pressure_cells * falloff * support_scale
 				_pressure_x[index] = clampf(
