@@ -530,6 +530,12 @@ class PendingEruptionState:
 ## critical, against a 3.2ms damage-number draw.
 @export_range(8, 64, 1) var damage_number_critical_font_size := 22
 
+## Where the baked digit strip lives, and the point size it was baked at. The two
+## must agree with tools/bake_damage_digit_atlas.gd or the numbers come out the
+## wrong size.
+const DAMAGE_DIGIT_ATLAS_PATH := "res://assets/ui/damage_digits.png"
+const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
+
 @export_group("Bramble Territory")
 ## Base thorn damage per tick against an enemy that has only just stepped onto Green.
 ## Thorn damage is deliberately a fixed, modest chip effect with no upgrade line
@@ -816,6 +822,18 @@ var _damage_number_sequence := 0
 ## lowered whenever a slot expires, which keeps the invariant true.
 var _damage_number_free_cursor := 0
 var _damage_number_font: Font
+## The ten digits of Beholden Regular on one strip, baked by
+## tools/bake_damage_digit_atlas.gd. Damage numbers are drawn as quads out of this
+## rather than as text, because draw_string re-shapes its string on every call and a
+## screenful of numbers was the largest single cost in the rendered frame. Null if
+## the asset is missing, in which case the text path below still works.
+var _damage_digit_atlas: Texture2D
+## One digit's cell in that strip, the point size it was baked at, and how far the
+## pen moves after each digit. Read from the metrics written beside the texture, so
+## a re-bake at a different size needs no code change.
+var _damage_digit_cell := Vector2.ZERO
+var _damage_digit_bake_size := 64.0
+var _damage_digit_advances := PackedFloat32Array()
 
 
 func _ready() -> void:
@@ -876,6 +894,7 @@ func _ready() -> void:
 	_configure_audio()
 	_configure_navigation()
 	_damage_number_font = ThemeDB.fallback_font
+	_load_damage_digit_atlas()
 	reset_combat()
 
 
@@ -4747,12 +4766,18 @@ func _spawn_damage_number(
 	# Measured once here. Doing it in _draw re-shaped every number's text on every
 	# frame, which was a third of the whole damage-number draw cost for a string that
 	# cannot change after this point.
-	selected.text_size = _damage_number_font.get_string_size(
-		selected.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		selected.font_size
-	)
+	if _damage_digit_atlas != null:
+		var digit_scale := float(selected.font_size) / _damage_digit_bake_size
+		selected.text_size = Vector2(
+			_damage_digit_text_width(selected.text), _damage_digit_cell.y
+		) * digit_scale
+	else:
+		selected.text_size = _damage_number_font.get_string_size(
+			selected.text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			selected.font_size
+		)
 	selected.age = 0.0
 	selected.impact_radius = enemy_radius
 	if spawn_began > 0:
@@ -5604,6 +5629,45 @@ func _draw_enemy_state_overlay(canvas: CanvasItem, enemy: EnemyState) -> void:
 		)
 
 
+func _load_damage_digit_atlas() -> void:
+	## Both halves or neither: without the metrics the strip cannot be laid out, and
+	## drawing it wrong is worse than falling back to text.
+	var texture := load(DAMAGE_DIGIT_ATLAS_PATH) as Texture2D
+	if texture == null:
+		return
+	if not FileAccess.file_exists(DAMAGE_DIGIT_METRICS_PATH):
+		return
+	var file := FileAccess.open(DAMAGE_DIGIT_METRICS_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	var metrics: Dictionary = parsed
+	var advances: Array = metrics.get("advances", [])
+	if advances.size() != 10:
+		return
+	_damage_digit_advances = PackedFloat32Array()
+	for advance in advances:
+		_damage_digit_advances.append(float(advance))
+	_damage_digit_bake_size = maxf(1.0, float(metrics.get("bake_font_size", 64.0)))
+	_damage_digit_cell = Vector2(
+		float(metrics.get("cell_width", texture.get_width() / 10.0)),
+		float(metrics.get("cell_height", texture.get_height()))
+	)
+	_damage_digit_atlas = texture
+
+
+func _damage_digit_text_width(text: String) -> float:
+	var width := 0.0
+	for character_index in range(text.length()):
+		var digit := text.unicode_at(character_index) - 48
+		if digit >= 0 and digit <= 9:
+			width += _damage_digit_advances[digit]
+	return width
+
+
 func _draw_damage_number(damage_number: DamageNumberState) -> void:
 	var draw_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var lifetime := maxf(damage_number_lifetime_seconds, 0.001)
@@ -5635,28 +5699,63 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 
 	var font_size := damage_number.font_size
 	var text_size := damage_number.text_size
-	var baseline := damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
 	var shadow_color := Color(0.01, 0.018, 0.02, 0.92 * text_alpha)
-	draw_string(
-		_damage_number_font,
-		baseline + Vector2(1.5, 1.5),
-		damage_number.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		font_size,
-		shadow_color
-	)
 	var text_color := damage_number.color
 	text_color.a = text_alpha
-	draw_string(
-		_damage_number_font,
-		baseline,
-		damage_number.text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		font_size,
-		text_color
-	)
+	if _damage_digit_atlas != null:
+		var digit_scale := float(font_size) / _damage_digit_bake_size
+		var cell := _damage_digit_cell * digit_scale
+		var origin := damage_number.position - Vector2(text_size.x * 0.5, text_size.y * 0.5)
+		# Shadow and glyphs are the same quads out of the same texture, so the whole
+		# layer stays on one texture and batches rather than switching per glyph.
+		for pass_index in range(2):
+			var offset := Vector2(1.5, 1.5) if pass_index == 0 else Vector2.ZERO
+			var tint := shadow_color if pass_index == 0 else text_color
+			var pen := 0.0
+			for character_index in range(damage_number.text.length()):
+				var digit := damage_number.text.unicode_at(character_index) - 48
+				if digit < 0 or digit > 9:
+					continue
+				var advance := _damage_digit_advances[digit] * digit_scale
+				# The glyph sits centred in its cell, so the cell is centred over the
+				# advance slot rather than aligned to its left edge.
+				draw_texture_rect_region(
+					_damage_digit_atlas,
+					Rect2(
+						origin
+						+ offset
+						+ Vector2(pen + (advance - cell.x) * 0.5, 0.0),
+						cell
+					),
+					Rect2(
+						Vector2(_damage_digit_cell.x * float(digit), 0.0),
+						_damage_digit_cell
+					),
+					tint
+				)
+				pen += advance
+	else:
+		var baseline := (
+			damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
+		)
+		draw_string(
+			_damage_number_font,
+			baseline + Vector2(1.5, 1.5),
+			damage_number.text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			font_size,
+			shadow_color
+		)
+		draw_string(
+			_damage_number_font,
+			baseline,
+			damage_number.text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			font_size,
+			text_color
+		)
 	if draw_began > 0:
 		PhaseBPerfCounters.timer_add_since(
 			PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_DRAW, draw_began
