@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://c6l3h2buynor1"
+
+[deps]
+
+files=["res://docs/benchmarks/density_ladder_final_0831.build.translation", "res://docs/benchmarks/density_ladder_final_0831.renderer.translation", "res://docs/benchmarks/density_ladder_final_0831.resolution.translation", "res://docs/benchmarks/density_ladder_final_0831.density.translation", "res://docs/benchmarks/density_ladder_final_0831.spawned.translation", "res://docs/benchmarks/density_ladder_final_0831.fixture.translation", "res://docs/benchmarks/density_ladder_final_0831.adaptation.translation", "res://docs/benchmarks/density_ladder_final_0831.adaptation.translation", "res://docs/benchmarks/density_ladder_final_0831.relic.translation", "res://docs/benchmarks/density_ladder_final_0831.median.translation", "res://docs/benchmarks/density_ladder_final_0831.p95.translation", "res://docs/benchmarks/density_ladder_final_0831.p99.translation", "res://docs/benchmarks/density_ladder_final_0831.max.translation", "res://docs/benchmarks/density_ladder_final_0831.frames.translation", "res://docs/benchmarks/density_ladder_final_0831.frames.translation", "res://docs/benchmarks/density_ladder_final_0831.frames.translation", "res://docs/benchmarks/density_ladder_final_0831.sample.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation"]
+
+source_file="res://docs/benchmarks/density_ladder_final_0831.csv"
+dest_files=["res://docs/benchmarks/density_ladder_final_0831.build.translation", "res://docs/benchmarks/density_ladder_final_0831.renderer.translation", "res://docs/benchmarks/density_ladder_final_0831.resolution.translation", "res://docs/benchmarks/density_ladder_final_0831.density.translation", "res://docs/benchmarks/density_ladder_final_0831.spawned.translation", "res://docs/benchmarks/density_ladder_final_0831.fixture.translation", "res://docs/benchmarks/density_ladder_final_0831.adaptation.translation", "res://docs/benchmarks/density_ladder_final_0831.adaptation.translation", "res://docs/benchmarks/density_ladder_final_0831.relic.translation", "res://docs/benchmarks/density_ladder_final_0831.median.translation", "res://docs/benchmarks/density_ladder_final_0831.p95.translation", "res://docs/benchmarks/density_ladder_final_0831.p99.translation", "res://docs/benchmarks/density_ladder_final_0831.max.translation", "res://docs/benchmarks/density_ladder_final_0831.frames.translation", "res://docs/benchmarks/density_ladder_final_0831.frames.translation", "res://docs/benchmarks/density_ladder_final_0831.frames.translation", "res://docs/benchmarks/density_ladder_final_0831.sample.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation", "res://docs/benchmarks/density_ladder_final_0831.subsystem.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

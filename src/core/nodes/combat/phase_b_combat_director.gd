@@ -145,6 +145,30 @@ enum DeathSource {
 	FRUIT,
 }
 
+class DamageNumberLayer:
+	extends Node2D
+
+	## Damage numbers drawn above the walls rather than under them.
+	##
+	## The combat director sits at z_index 3 and the arena's obstacle layer at 10, so
+	## everything the director draws is painted over by basalt -- including the
+	## numbers, which were disappearing behind the very walls a fight is fought
+	## around. Raising the director would take the enemies and projectiles up with
+	## them and stop the walls occluding anything at all, so only the numbers move.
+	##
+	## A child of the director, so it inherits the same transform and the positions
+	## need no adjustment, with an absolute z index that ignores the parent's.
+	var director: PhaseBCombatDirector
+
+	func _process(_delta: float) -> void:
+		# Numbers rise and fade every frame, so this always has something to redo.
+		queue_redraw()
+
+	func _draw() -> void:
+		if director != null:
+			director.draw_damage_numbers(self)
+
+
 class EnemyState:
 	var active := false
 	## Damage waiting to be shown as one number. Ordinary hits accumulate here and
@@ -560,6 +584,10 @@ class PendingEruptionState:
 ## its own, they are the only source in the game that can crit, and they are rare
 ## enough per frame to cost nothing.
 @export_range(0.0, 0.5, 0.01) var damage_number_merge_seconds := 0.10
+## Where the damage numbers sit in the draw order. Absolute, not relative to this
+## node. The arena's obstacle layer is 10 and the pause overlay is 20, so 11 puts
+## the numbers over the walls without putting them over the menus.
+@export_range(0, 19, 1) var damage_number_z_index := 11
 
 ## How a critical is made to read as one.
 ##
@@ -892,6 +920,9 @@ var _damage_number_sequence := 0
 ## lowered whenever a slot expires, which keeps the invariant true.
 var _damage_number_free_cursor := 0
 var _damage_number_font: Font
+## Draws the damage numbers on its own layer above the arena walls. See
+## DamageNumberLayer for why they cannot simply be drawn with everything else.
+var _damage_number_layer: DamageNumberLayer
 ## The ten digits of Beholden Regular on one strip, baked by
 ## tools/bake_damage_digit_atlas.gd. Damage numbers are drawn as quads out of this
 ## rather than as text, because draw_string re-shapes its string on every call and a
@@ -964,6 +995,11 @@ func _ready() -> void:
 	_configure_audio()
 	_configure_navigation()
 	_damage_number_font = ThemeDB.fallback_font
+	_damage_number_layer = DamageNumberLayer.new()
+	_damage_number_layer.director = self
+	_damage_number_layer.z_as_relative = false
+	_damage_number_layer.z_index = damage_number_z_index
+	add_child(_damage_number_layer)
 	_load_damage_digit_atlas()
 	reset_combat()
 
@@ -1071,11 +1107,14 @@ func _draw() -> void:
 			_draw_enemy(self, enemy)
 
 	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_ENEMY_DRAW)
+	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
 
+
+func draw_damage_numbers(canvas: CanvasItem) -> void:
+	## Called by the layer above the walls rather than from this node's own _draw.
 	for damage_number in _damage_numbers:
 		if damage_number.active:
-			_draw_damage_number(damage_number)
-	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
+			_draw_damage_number(canvas, damage_number)
 
 
 func set_temporary_attack_rate_multiplier(multiplier: float, seconds: float) -> void:
@@ -5883,7 +5922,7 @@ func _damage_digit_text_width(text: String) -> float:
 	return width
 
 
-func _draw_damage_number(damage_number: DamageNumberState) -> void:
+func _draw_damage_number(canvas: CanvasItem, damage_number: DamageNumberState) -> void:
 	var draw_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	var lifetime := maxf(damage_number.lifetime, 0.001)
 	var lifetime_progress := clampf(damage_number.age / lifetime, 0.0, 1.0)
@@ -5904,7 +5943,7 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 			(damage_number.impact_radius + 7.0) * impact_scale,
 			impact_progress
 		)
-		draw_arc(
+		canvas.draw_arc(
 			damage_number.impact_position,
 			impact_radius,
 			0.0,
@@ -5964,7 +6003,7 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 				var advance := _damage_digit_advances[digit] * digit_scale
 				# The glyph sits centred in its cell, so the cell is centred over the
 				# advance slot rather than aligned to its left edge.
-				draw_texture_rect_region(
+				canvas.draw_texture_rect_region(
 					_damage_digit_atlas,
 					Rect2(
 						origin
@@ -5985,7 +6024,7 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 			damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
 		)
 		for offset in _damage_number_shadow_offsets(damage_number.critical):
-			draw_string(
+			canvas.draw_string(
 				_damage_number_font,
 				baseline + offset,
 				damage_number.text,
@@ -5994,7 +6033,7 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 				popped_font_size,
 				shadow_color
 			)
-		draw_string(
+		canvas.draw_string(
 			_damage_number_font,
 			baseline,
 			damage_number.text,
