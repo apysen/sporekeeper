@@ -1643,7 +1643,9 @@ func _resolve_thorn_hit(thorn: ThornState, enemy_id: int) -> void:
 		PhaseBPerfCounters.TIMER_THISTLE_HIT_CASCADE, cascade_began
 	)
 	var damage_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
-	combat.damage_enemy_by_id(enemy_id, damage, PhaseBCombatDirector.DeathSource.THISTLE)
+	combat.damage_enemy_by_id(
+		enemy_id, damage, PhaseBCombatDirector.DeathSource.THISTLE, critical
+	)
 	PhaseBPerfCounters.timer_add_since(
 		PhaseBPerfCounters.TIMER_THISTLE_HIT_DAMAGE, damage_began
 	)

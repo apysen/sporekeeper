@@ -524,6 +524,11 @@ class PendingEruptionState:
 ## spawned with, so varying this per hit -- a larger one for a critical, say -- costs
 ## nothing beyond one extra glyph cache the first time that size is drawn.
 @export_range(8, 48, 1) var damage_number_font_size := 16
+## Point size a critical hit's number renders at. Larger reads as a crit without
+## needing a second colour, which the feedback colour already spends on the damage
+## source. Measured at about 0.13ms per frame for a screenful with a fifth of them
+## critical, against a 3.2ms damage-number draw.
+@export_range(8, 64, 1) var damage_number_critical_font_size := 22
 
 @export_group("Bramble Territory")
 ## Base thorn damage per tick against an enemy that has only just stepped onto Green.
@@ -3394,11 +3399,16 @@ func get_active_enemy_radii() -> PackedFloat32Array:
 	return radii
 
 
-func damage_enemy_by_id(enemy_id: int, damage: float, death_source: int) -> bool:
+func damage_enemy_by_id(
+	enemy_id: int,
+	damage: float,
+	death_source: int,
+	critical: bool = false
+) -> bool:
 	var enemy := _find_enemy(enemy_id)
 	if enemy == null:
 		return false
-	_damage_enemy(enemy, damage, death_source, 0)
+	_damage_enemy(enemy, damage, death_source, 0, critical)
 	return true
 
 
@@ -4572,7 +4582,13 @@ func _find_nearest_reachable_index(
 	return -1
 
 
-func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_depth: int) -> void:
+func _damage_enemy(
+	enemy: EnemyState,
+	damage: float,
+	death_source: int,
+	chain_depth: int,
+	critical: bool = false
+) -> void:
 	if not enemy.active or damage <= 0.0:
 		return
 	var applied_damage := minf(damage, enemy.health)
@@ -4591,8 +4607,14 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 		# What "important" means, decided where the facts are. A hit on an elite or a
 		# boss carries information about a fight the player is actually having; so does
 		# a hit large enough to be an ability landing rather than a tick of damage.
+		# A critical carries information whether it landed for twenty-four or two
+		# hundred, which is what the Important Only setting says it keeps. Without
+		# this a Thistle crit was filtered out: a thorn hits for 12 and doubles to
+		# exactly 24, one point under the threshold, so the whole Adaptation showed
+		# no numbers at all on ordinary enemies.
 		var is_important := (
-			enemy.role == EnemyRole.ELITE
+			critical
+			or enemy.role == EnemyRole.ELITE
 			or enemy.role == EnemyRole.BOSS
 			or enemy.elite_modifier != EliteModifier.NONE
 			or applied_damage >= important_damage_number_threshold
@@ -4605,7 +4627,8 @@ func _damage_enemy(enemy: EnemyState, damage: float, death_source: int, chain_de
 				enemy.position,
 				enemy.radius,
 				applied_damage,
-				enemy.hit_flash_color
+				enemy.hit_flash_color,
+				critical
 			)
 	enemy.health -= damage
 	if enemy.health > 0.0:
@@ -4660,7 +4683,8 @@ func _spawn_damage_number(
 	local_position: Vector2,
 	enemy_radius: float,
 	damage: float,
-	color: Color
+	color: Color,
+	critical: bool = false
 ) -> void:
 	var spawn_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	# This used to scan the whole pool for a free slot, and then scan it again for
@@ -4717,7 +4741,9 @@ func _spawn_damage_number(
 	)
 	selected.text = str(maxi(1, int(round(damage))))
 	selected.color = color
-	selected.font_size = damage_number_font_size
+	selected.font_size = (
+		damage_number_critical_font_size if critical else damage_number_font_size
+	)
 	# Measured once here. Doing it in _draw re-shaped every number's text on every
 	# frame, which was a third of the whole damage-number draw cost for a string that
 	# cannot change after this point.
