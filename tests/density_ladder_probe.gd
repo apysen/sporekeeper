@@ -64,8 +64,24 @@ const SECONDARY_RELIC_COUNT := 4
 ##   E  Thistle volleys against high-frequency Vine collision
 ##   F  the Root projection win, kept permanently so Territory work cannot
 ##      quietly undo it
+##   G  the same torture as D, but with a crowd that actually dies
 ##
 ## `paths` of [-1, -1] means an undrafted run: no Adaptation, no relics.
+##
+## Fixtures A to F hold density by making the crowd unkillable, which keeps the
+## enemy count flat for the whole sample and is why their numbers are comparable.
+## It also means they never run a death: no XP pickup, no volatile detonation, no
+## overgrown burst, no kill signals, and -- the one that matters most -- no Seeds,
+## since a Seed is paid for in kills and a Seed is a territory stamp. That is half
+## of `_damage_enemy` and a whole gameplay loop, and none of it had been measured.
+##
+## G lets the crowd die and replaces it at the Campaign's own spawn interval rather
+## than instantly. Refilling to full every frame was tried first and produced about
+## 174 spawns a second against the Campaign's eight, which measured a crowd being
+## annihilated and instantly resurrected -- a scenario the wave director cannot
+## produce. Held to the real rate, density finds its own level, and where it settles
+## is itself a result: a build that kills faster than the director spawns does not
+## sit at the cap.
 const FIXTURES := {
 	"A": {
 		"name": "generic_saturation",
@@ -97,9 +113,21 @@ const FIXTURES := {
 		"paths": [PhaseBProgression.PathId.ROOT, PhaseBProgression.PathId.FRUIT],
 		"relics": true,
 	},
+	"G": {
+		"name": "thistle_fruit_churn",
+		"paths": [PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.FRUIT],
+		"relics": true,
+		"churn": true,
+	},
 }
 
-const FIXTURE_ORDER := ["A", "B", "C", "D", "E", "F"]
+## The Campaign's final-invasion spawn interval, which is the fastest the director
+## ever replaces losses. Fixture G refills at this rate and no faster.
+const CHURN_SPAWN_INTERVAL := 0.14
+
+const FIXTURE_ORDER := ["A", "B", "C", "D", "E", "F", "G"]
+
+var _churn_budget := 0.0
 
 var _densities := DEFAULT_DENSITIES
 var _fixture_keys: Array[String] = []
@@ -259,13 +287,15 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 			"DENSITY_LADDER: fixture %s wanted %d enemies, placed %d"
 			% [fixture_key, density, spawned]
 		)
-	# Unkillable, so the crowd holds at the rung for the whole sample instead of
-	# thinning into an easier frame partway through.
-	for enemy in prototype.combat._enemies:
-		if not enemy.active:
-			continue
-		enemy.maximum_health = 1000000000.0
-		enemy.health = enemy.maximum_health
+	var churn := bool(fixture.get("churn", false))
+	if not churn:
+		# Unkillable, so the crowd holds at the rung for the whole sample instead of
+		# thinning into an easier frame partway through.
+		for enemy in prototype.combat._enemies:
+			if not enemy.active:
+				continue
+			enemy.maximum_health = 1000000000.0
+			enemy.health = enemy.maximum_health
 	var holds_vine := (
 		first_path == PhaseBProgression.PathId.VINE
 		or second_path == PhaseBProgression.PathId.VINE
@@ -295,7 +325,10 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 	var phase_overlay := PackedFloat32Array()
 	var phase_territory := PackedFloat32Array()
 
+	_churn_budget = 0.0
 	for _warmup_index in range(WARMUP_FRAMES):
+		if churn:
+			_refill(prototype, density, origin, STEP)
 		prototype.advance_run(STEP)
 		prototype.combat.simulate_step(STEP)
 		prototype.relic_director.advance(STEP)
@@ -309,6 +342,10 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 	PhaseBPerfCounters.begin_session()
 	for frame_index in range(SAMPLE_FRAMES):
 		PhaseBPerfCounters.reset_frame()
+		if churn:
+			# Replacing losses before the frame runs, at the director's own rate. The
+			# spawns land outside the measured phases below.
+			_refill(prototype, density, origin, STEP)
 		var frame_began := Time.get_ticks_usec()
 
 		# The five top-level phases, timed here rather than in the game, because the
@@ -396,6 +433,14 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 				phase[0], _median(phase_samples), _p99(phase_samples)
 			]
 		)
+	if churn:
+		# Where the crowd settled, which the fixture does not control. A build that
+		# kills faster than the director spawns does not sit at the cap, and that is
+		# an answer about density rather than a flaw in the measurement.
+		_table_rows.append(
+			"DENSITY_LADDER   settled at %d of %d enemies (started full)"
+			% [prototype.combat.get_active_enemy_count(), density]
+		)
 	_record_worst_frame(fixture_key, worst_frame_index, worst_frame_ms, worst_frame)
 	await process_frame
 
@@ -477,6 +522,29 @@ func _record(
 			median, p95, p99, maximum, over_16, over_25, over_33,
 			String(counter), 0.0, 0.0, int(counter_totals[counter])
 		)
+
+
+func _refill(
+	prototype: PhaseBPrototype, density: int, origin: Vector2, delta: float
+) -> void:
+	var combat := prototype.combat
+	_churn_budget += delta
+	var index := combat.get_active_enemy_count()
+	while (
+		_churn_budget >= CHURN_SPAWN_INTERVAL
+		and combat.get_active_enemy_count() < density
+	):
+		_churn_budget -= CHURN_SPAWN_INTERVAL
+		var ring := 30.0 + float(index % 7) * 22.0
+		if combat.spawn_enemy(
+			STRESS_ROLES[index % STRESS_ROLES.size()],
+			origin + Vector2.from_angle(float(index) * 2.39996) * ring
+		) < 0:
+			return
+		index += 1
+	# A budget that keeps growing would let one quiet stretch pay for a burst that
+	# the director could never deliver.
+	_churn_budget = minf(_churn_budget, CHURN_SPAWN_INTERVAL)
 
 
 func _record_worst_frame(
