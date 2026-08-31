@@ -162,6 +162,9 @@ const COUNT_GENERATED_EVENTS_DROPPED_COSMETIC := &"generated_events_dropped_cosm
 ## separates "each call is slow" from "there are an enormous number of calls".
 const COUNT_DAMAGE_CALLS := &"damage_calls"
 const COUNT_DAMAGE_KILLS := &"damage_kills"
+## How many of those were criticals. A critical only reads as one if it is the
+## exception, so the rate is a presentation fact as much as a balance one.
+const COUNT_DAMAGE_CRITS := &"damage_crits"
 const COUNT_BLAST_CALLS := &"blast_calls"
 const COUNT_BLAST_ENEMIES_WALKED := &"blast_enemies_walked"
 ## Pickup slots stepped over to find a free one. A kill scans the pool, so this is
@@ -256,6 +259,7 @@ const COUNT_NAMES: Array[StringName] = [
 	COUNT_GENERATED_EVENTS_DROPPED_COSMETIC,
 	COUNT_DAMAGE_CALLS,
 	COUNT_DAMAGE_KILLS,
+	COUNT_DAMAGE_CRITS,
 	COUNT_BLAST_CALLS,
 	COUNT_BLAST_ENEMIES_WALKED,
 	COUNT_XP_PICKUP_SLOTS_WALKED,

@@ -273,6 +273,11 @@ class DamageNumberState:
 	## number is spawned, so both are worked out there rather than every frame.
 	var font_size := 16
 	var text_size := Vector2.ZERO
+	## Criticals are read differently at every stage of the draw, so the number
+	## remembers what it was rather than the draw inferring it.
+	var critical := false
+	## Per number, because a critical is given longer to be read than chip damage is.
+	var lifetime := 0.7
 
 class RootEruptionState:
 	var active := false
@@ -555,6 +560,37 @@ class PendingEruptionState:
 ## its own, they are the only source in the game that can crit, and they are rare
 ## enough per frame to cost nothing.
 @export_range(0.0, 0.5, 0.01) var damage_number_merge_seconds := 0.10
+
+## How a critical is made to read as one.
+##
+## Size and colour alone were not enough, and merging made it worse rather than
+## better: chip damage now arrives summed, so an ordinary number routinely shows a
+## larger value than a critical does. Magnitude points the wrong way, which leaves
+## presentation carrying the whole distinction.
+##
+## So the difference is spread across several channels at once, which is what the
+## feedback this imitates actually does -- a critical is not a bigger number, it is
+## a louder moment. The number itself is deliberately the least animated part of it:
+## a number that keeps moving is a number that cannot be read.
+##
+## Longer on screen, so it outlives the chip damage around it.
+@export_range(0.1, 3.0, 0.05) var damage_number_critical_lifetime_seconds := 1.10
+## Rises further, so it separates from the crowd it was born in.
+@export_range(1.0, 3.0, 0.05) var damage_number_critical_rise_multiplier := 1.45
+## How long the arrival punch lasts and how far above final size it starts. It
+## settles quickly on purpose: the pop is the impact, the settled number is the
+## information.
+@export_range(0.0, 0.5, 0.01) var damage_number_pop_seconds := 0.11
+@export_range(1.0, 3.0, 0.05) var damage_number_pop_scale := 1.30
+@export_range(1.0, 4.0, 0.05) var damage_number_critical_pop_scale := 1.95
+## Outline thickness in pixels, drawn as the glyph repeated around itself. Only
+## criticals get one, and it is what actually separates them from a bright
+## battlefield: colour alone loses against Green and Rot.
+@export_range(0.0, 5.0, 0.1) var damage_number_critical_outline := 1.7
+## The impact ring behind a critical, against the ordinary one. Animating what sits
+## behind the number reads as impact without costing legibility on the number.
+@export_range(1.0, 4.0, 0.05) var damage_number_critical_impact_scale := 1.9
+@export_range(0.5, 6.0, 0.1) var damage_number_critical_impact_width := 3.2
 
 ## Exact running totals of damage applied and damage shown, for the probe that
 ## proves merging never loses any. Off in play: merging is arithmetic, and
@@ -4237,7 +4273,7 @@ func _update_damage_numbers(delta: float) -> void:
 		if not damage_number.active:
 			continue
 		damage_number.age += delta
-		if damage_number.age >= damage_number_lifetime_seconds:
+		if damage_number.age >= damage_number.lifetime:
 			damage_number.active = false
 			# Freeing a slot can only lower where the next free-slot search starts.
 			_damage_number_free_cursor = mini(_damage_number_free_cursor, index)
@@ -4674,6 +4710,8 @@ func _damage_enemy(
 	var damage_began := Time.get_ticks_usec() if measuring else 0
 	if measuring:
 		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_CALLS)
+		if critical:
+			PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_CRITS)
 	var applied_damage := minf(damage, enemy.health)
 	if debug_damage_accounting:
 		debug_damage_applied_total += applied_damage
@@ -4798,6 +4836,26 @@ func _spawn_xp_pickup(local_position: Vector2, xp_value: int) -> void:
 		)
 
 
+func _damage_number_shadow_offsets(critical: bool) -> PackedVector2Array:
+	## One drop shadow for an ordinary number, a ring of them for a critical. Built
+	## here so the atlas path and the text fallback cannot disagree about what a
+	## critical looks like.
+	if not critical or damage_number_critical_outline <= 0.0:
+		return PackedVector2Array([Vector2(1.5, 1.5)])
+	var width := damage_number_critical_outline
+	var diagonal := width * 0.7071
+	return PackedVector2Array([
+		Vector2(width, 0.0),
+		Vector2(-width, 0.0),
+		Vector2(0.0, width),
+		Vector2(0.0, -width),
+		Vector2(diagonal, diagonal),
+		Vector2(diagonal, -diagonal),
+		Vector2(-diagonal, diagonal),
+		Vector2(-diagonal, -diagonal),
+	])
+
+
 func _should_show_damage_number(
 	enemy: EnemyState,
 	shown_damage: float,
@@ -4907,9 +4965,16 @@ func _spawn_damage_number(
 	selected.velocity = Vector2(
 		side * lateral_speed,
 		-damage_number_rise_speed_pixels_per_second
+		* (damage_number_critical_rise_multiplier if critical else 1.0)
 	)
 	selected.text = str(maxi(1, int(round(damage))))
 	selected.color = color
+	selected.critical = critical
+	selected.lifetime = maxf(
+		0.001,
+		damage_number_critical_lifetime_seconds if critical
+		else damage_number_lifetime_seconds
+	)
 	selected.font_size = (
 		damage_number_critical_font_size if critical else damage_number_font_size
 	)
@@ -5820,7 +5885,7 @@ func _damage_digit_text_width(text: String) -> float:
 
 func _draw_damage_number(damage_number: DamageNumberState) -> void:
 	var draw_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
-	var lifetime := maxf(damage_number_lifetime_seconds, 0.001)
+	var lifetime := maxf(damage_number.lifetime, 0.001)
 	var lifetime_progress := clampf(damage_number.age / lifetime, 0.0, 1.0)
 	var text_alpha := 1.0 - clampf((lifetime_progress - 0.48) / 0.52, 0.0, 1.0)
 	var impact_progress := clampf(
@@ -5831,9 +5896,12 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 	if impact_progress < 1.0:
 		var impact_color := damage_number.color
 		impact_color.a = (1.0 - impact_progress) * 0.90
+		var impact_scale := (
+			damage_number_critical_impact_scale if damage_number.critical else 1.0
+		)
 		var impact_radius := lerpf(
 			damage_number.impact_radius * 0.45,
-			damage_number.impact_radius + 7.0,
+			(damage_number.impact_radius + 7.0) * impact_scale,
 			impact_progress
 		)
 		draw_arc(
@@ -5843,7 +5911,10 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 			TAU,
 			16,
 			impact_color,
-			2.0,
+			(
+				damage_number_critical_impact_width if damage_number.critical
+				else 2.0
+			),
 			true
 		)
 
@@ -5852,15 +5923,39 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 	var shadow_color := Color(0.01, 0.018, 0.02, 0.92 * text_alpha)
 	var text_color := damage_number.color
 	text_color.a = text_alpha
+	# The arrival punch: starts above final size and settles quickly, so the motion
+	# is over before the number needs to be read.
+	var pop := 1.0
+	if damage_number_pop_seconds > 0.0:
+		var pop_progress := clampf(
+			damage_number.age / damage_number_pop_seconds, 0.0, 1.0
+		)
+		var peak := (
+			damage_number_critical_pop_scale if damage_number.critical
+			else damage_number_pop_scale
+		)
+		var remaining := 1.0 - pop_progress
+		pop = 1.0 + (peak - 1.0) * remaining * remaining
 	if _damage_digit_atlas != null:
-		var digit_scale := float(font_size) / _damage_digit_bake_size
+		var digit_scale := float(font_size) * pop / _damage_digit_bake_size
 		var cell := _damage_digit_cell * digit_scale
-		var origin := damage_number.position - Vector2(text_size.x * 0.5, text_size.y * 0.5)
+		var origin := damage_number.position - Vector2(
+			text_size.x * pop * 0.5, text_size.y * pop * 0.5
+		)
 		# Shadow and glyphs are the same quads out of the same texture, so the whole
 		# layer stays on one texture and batches rather than switching per glyph.
-		for pass_index in range(2):
-			var offset := Vector2(1.5, 1.5) if pass_index == 0 else Vector2.ZERO
-			var tint := shadow_color if pass_index == 0 else text_color
+		#
+		# A critical replaces the single drop shadow with a ring of them, which is an
+		# outline. Colour alone loses against Green and Rot; an outline does not, and
+		# it costs eight more quads on a number that appears under one time in three.
+		var offsets := _damage_number_shadow_offsets(damage_number.critical)
+		for pass_index in range(offsets.size() + 1):
+			var offset := (
+				offsets[pass_index] if pass_index < offsets.size() else Vector2.ZERO
+			)
+			var tint := (
+				shadow_color if pass_index < offsets.size() else text_color
+			)
 			var pen := 0.0
 			for character_index in range(damage_number.text.length()):
 				var digit := damage_number.text.unicode_at(character_index) - 48
@@ -5885,25 +5980,27 @@ func _draw_damage_number(damage_number: DamageNumberState) -> void:
 				)
 				pen += advance
 	else:
+		var popped_font_size := int(round(float(font_size) * pop))
 		var baseline := (
 			damage_number.position + Vector2(-text_size.x * 0.5, text_size.y * 0.35)
 		)
-		draw_string(
-			_damage_number_font,
-			baseline + Vector2(1.5, 1.5),
-			damage_number.text,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1.0,
-			font_size,
-			shadow_color
-		)
+		for offset in _damage_number_shadow_offsets(damage_number.critical):
+			draw_string(
+				_damage_number_font,
+				baseline + offset,
+				damage_number.text,
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1.0,
+				popped_font_size,
+				shadow_color
+			)
 		draw_string(
 			_damage_number_font,
 			baseline,
 			damage_number.text,
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1.0,
-			font_size,
+			popped_font_size,
 			text_color
 		)
 	if draw_began > 0:

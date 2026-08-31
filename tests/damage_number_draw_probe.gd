@@ -63,7 +63,6 @@ func _measure_pass(
 	critical_share: float
 ) -> void:
 	combat.reset_combat()
-	var base_size: int = combat.damage_number_font_size
 	var draw_samples := PackedFloat32Array()
 	var measure_samples := PackedFloat32Array()
 	var frame_samples := PackedFloat32Array()
@@ -81,9 +80,11 @@ func _measure_pass(
 			if not damage_number.active:
 				deficit += 1
 		for _refill in range(deficit):
-			combat.damage_number_font_size = (
-				base_size + 8 if random.randf() < critical_share else base_size
-			)
+			# Spawned as an actual critical rather than merely at the critical's point
+			# size. The size is the cheap half of the difference; the outline it also
+			# draws is eight more quads per glyph, and that is the half worth
+			# measuring.
+			var critical := random.randf() < critical_share
 			combat._spawn_damage_number(
 				Vector2(
 					random.randf_range(60.0, 840.0),
@@ -91,7 +92,11 @@ func _measure_pass(
 				),
 				random.randf_range(4.0, 20.0),
 				random.randf_range(1.0, 99999.0),
-				Color(random.randf(), random.randf(), random.randf())
+				(
+					combat.damage_number_critical_color if critical
+					else Color(random.randf(), random.randf(), random.randf())
+				),
+				critical
 			)
 		combat.queue_redraw()
 		var began := Time.get_ticks_usec()
@@ -108,7 +113,6 @@ func _measure_pass(
 			)
 		)
 	PhaseBPerfCounters.end_session()
-	combat.damage_number_font_size = base_size
 
 	var active := 0
 	for damage_number in combat._damage_numbers:
