@@ -147,6 +147,11 @@ enum DeathSource {
 
 class EnemyState:
 	var active := false
+	## Damage waiting to be shown as one number. Ordinary hits accumulate here and
+	## flush together; a critical never waits, so it is never part of this.
+	var pending_number_damage := 0.0
+	var pending_number_remaining := 0.0
+	var pending_number_color := Color.WHITE
 	var state := EnemyStateKind.INACTIVE
 	var id := 0
 	var role := EnemyRole.HUNTER
@@ -536,6 +541,28 @@ class PendingEruptionState:
 ## what carries the distinction alongside the larger size. The enemy's hit flash
 ## keeps the source colour: only the number changes.
 @export var damage_number_critical_color := Color("ffc21f")
+## How long ordinary damage on one enemy accumulates before it is shown as a single
+## number. Zero shows every hit separately, as before.
+##
+## A Fruit release lands several overlapping areas on the same crowd, so one enemy
+## can take five or more hits in a frame and each was spawning its own number: a
+## thousand of them a frame competing for a hundred and sixty slots, most overwritten
+## before they were ever drawn. Merging them is both cheaper and, by the usual
+## reading, better feedback -- five small numbers read as chip damage where one total
+## reads as a hit.
+##
+## Criticals are excluded from this deliberately. They are the hit worth reading on
+## its own, they are the only source in the game that can crit, and they are rare
+## enough per frame to cost nothing.
+@export_range(0.0, 0.5, 0.01) var damage_number_merge_seconds := 0.10
+
+## Exact running totals of damage applied and damage shown, for the probe that
+## proves merging never loses any. Off in play: merging is arithmetic, and
+## arithmetic can drop things in ways no frame-time measurement would catch, so the
+## accounting exists rather than the assurance.
+var debug_damage_accounting := false
+var debug_damage_applied_total := 0.0
+var debug_damage_number_total := 0.0
 
 ## Where the baked digit strip lives, and the point size it was baked at. The two
 ## must agree with tools/bake_damage_digit_atlas.gd or the numbers come out the
@@ -931,6 +958,7 @@ func simulate_step(delta: float) -> void:
 	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
 	_update_enemies(delta)
 	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
+	_update_pending_damage_numbers(delta)
 	_update_damage_numbers(delta)
 	_update_projectiles(delta)
 	_update_xp_collect_pitch(delta)
@@ -1156,6 +1184,8 @@ func reset_combat() -> void:
 		enemy.state = EnemyStateKind.INACTIVE
 		enemy.elite_modifier = EliteModifier.NONE
 		enemy.territory_escalation = 1.0
+		enemy.pending_number_damage = 0.0
+		enemy.pending_number_remaining = 0.0
 	for projectile in _projectiles:
 		projectile.active = false
 	for pickup in _pickups:
@@ -2173,6 +2203,21 @@ func debug_kill_all(death_source: int = DeathSource.DEBUG) -> int:
 		_damage_enemy(enemy, enemy.health + 1.0, death_source, 0)
 		killed += 1
 	return killed
+
+
+func debug_reset_damage_accounting() -> void:
+	debug_damage_applied_total = 0.0
+	debug_damage_number_total = 0.0
+
+
+func debug_pending_damage_number_total() -> float:
+	## Damage accumulated but not yet flushed. Owed, not lost, so a probe comparing
+	## applied against shown has to count it.
+	var total := 0.0
+	for enemy in _enemies:
+		if enemy.active:
+			total += enemy.pending_number_damage
+	return total
 
 
 func debug_damage_enemy(enemy_id: int, damage: float) -> bool:
@@ -4630,6 +4675,8 @@ func _damage_enemy(
 	if measuring:
 		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_CALLS)
 	var applied_damage := minf(damage, enemy.health)
+	if debug_damage_accounting:
+		debug_damage_applied_total += applied_damage
 	# Being hit is what "interrupted" means. An escalating enemy loses everything it
 	# had built up, which is what makes answering one worth doing at all rather than
 	# only worth doing eventually.
@@ -4650,24 +4697,23 @@ func _damage_enemy(
 		# this a Thistle crit was filtered out: a thorn hits for 12 and doubles to
 		# exactly 24, one point under the threshold, so the whole Adaptation showed
 		# no numbers at all on ordinary enemies.
-		var is_important := (
-			critical
-			or enemy.role == EnemyRole.ELITE
-			or enemy.role == EnemyRole.BOSS
-			or enemy.elite_modifier != EliteModifier.NONE
-			or applied_damage >= important_damage_number_threshold
-		)
-		if (
-			display_settings == null
-			or display_settings.should_show_damage_number(is_important)
-		):
-			_spawn_damage_number(
-				enemy.position,
-				enemy.radius,
-				applied_damage,
-				damage_number_critical_color if critical else enemy.hit_flash_color,
-				critical
-			)
+		if critical or damage_number_merge_seconds <= 0.0:
+			# Straight through. A critical is the number worth reading on its own, and
+			# merging it would be the one case where the aggregate's styling became
+			# ambiguous.
+			if _should_show_damage_number(enemy, applied_damage, critical):
+				_spawn_damage_number(
+					enemy.position,
+					enemy.radius,
+					applied_damage,
+					damage_number_critical_color if critical else enemy.hit_flash_color,
+					critical
+				)
+		else:
+			if enemy.pending_number_damage <= 0.0:
+				enemy.pending_number_remaining = damage_number_merge_seconds
+			enemy.pending_number_damage += applied_damage
+			enemy.pending_number_color = enemy.hit_flash_color
 	enemy.health -= damage
 	if enemy.health > 0.0:
 		if measuring:
@@ -4678,6 +4724,9 @@ func _damage_enemy(
 	var death_began := Time.get_ticks_usec() if measuring else 0
 	if measuring:
 		PhaseBPerfCounters.count(PhaseBPerfCounters.COUNT_DAMAGE_KILLS)
+	# Whatever was still accumulating dies with the enemy unless it is shown now, and
+	# the killing blow is the one a player most wants to read.
+	_flush_pending_damage_number(enemy)
 	var role := enemy.role
 	var death_position := enemy.position
 	var xp_value := enemy.xp_value
@@ -4749,6 +4798,57 @@ func _spawn_xp_pickup(local_position: Vector2, xp_value: int) -> void:
 		)
 
 
+func _should_show_damage_number(
+	enemy: EnemyState,
+	shown_damage: float,
+	critical: bool
+) -> bool:
+	## What "important" means, decided where the facts are. A hit on an elite or a
+	## boss carries information about a fight the player is actually having; so does
+	## one large enough to be an ability landing rather than a tick.
+	##
+	## A critical carries information whether it landed for twenty-four or two
+	## hundred, which is what the Important Only setting says it keeps. Without that a
+	## Thistle crit was filtered out entirely: a thorn hits for 12 and doubles to
+	## exactly 24, one point under the threshold.
+	##
+	## Merged damage is judged on its total rather than on the hits that made it,
+	## which is what gives Important Only its meaning back: a crowd being chipped now
+	## reports once it has been chipped meaningfully, instead of either never or on
+	## every tick.
+	if display_settings == null:
+		return true
+	var is_important := (
+		critical
+		or enemy.role == EnemyRole.ELITE
+		or enemy.role == EnemyRole.BOSS
+		or enemy.elite_modifier != EliteModifier.NONE
+		or shown_damage >= important_damage_number_threshold
+	)
+	return display_settings.should_show_damage_number(is_important)
+
+
+func _flush_pending_damage_number(enemy: EnemyState) -> void:
+	if enemy.pending_number_damage <= 0.0:
+		return
+	var total := enemy.pending_number_damage
+	enemy.pending_number_damage = 0.0
+	enemy.pending_number_remaining = 0.0
+	if _should_show_damage_number(enemy, total, false):
+		_spawn_damage_number(
+			enemy.position, enemy.radius, total, enemy.pending_number_color, false
+		)
+
+
+func _update_pending_damage_numbers(delta: float) -> void:
+	for enemy in _enemies:
+		if not enemy.active or enemy.pending_number_damage <= 0.0:
+			continue
+		enemy.pending_number_remaining -= delta
+		if enemy.pending_number_remaining <= 0.0:
+			_flush_pending_damage_number(enemy)
+
+
 func _spawn_damage_number(
 	local_position: Vector2,
 	enemy_radius: float,
@@ -4756,6 +4856,8 @@ func _spawn_damage_number(
 	color: Color,
 	critical: bool = false
 ) -> void:
+	if debug_damage_accounting:
+		debug_damage_number_total += damage
 	var spawn_began := Time.get_ticks_usec() if PhaseBPerfCounters.enabled else 0
 	# This used to scan the whole pool for a free slot, and then scan it again for
 	# the oldest when the pool was full. A blast landing on a hundred enemies did
