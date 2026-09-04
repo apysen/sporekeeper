@@ -21,7 +21,6 @@ extends Node
 @export_range(0.0, 2.0, 0.01) var maturation_per_level := 0.22
 
 @export_group("Lateral Roots")
-## Additive multiplier on Biomass from Mature Green per Biomass Yield rank.
 ## Root Network reach one Lateral Roots rank projects out of Mature Green, in
 ## pixels. At rank 5 a point 60 px from Mature ground receives half the support.
 @export_range(0.0, 200.0, 1.0) var lateral_reach_per_level := 24.0
@@ -165,9 +164,9 @@ func get_cohesion_multiplier() -> float:
 
 
 func get_network_bonus_at(local_position: Vector2) -> float:
-	# Root Potency where the effect is actually happening. Annual Rings and a
-	# Seedbed node both deepen the ecosystem locally rather than globally, so the
-	# mechanics that ride Root ask about the ground they are standing on.
+	# Root Potency where the effect is actually happening. Annual Rings deepens the
+	# ecosystem locally rather than globally, so mechanics that ride Root ask about
+	# the ground they are standing on.
 	var bonus := get_network_bonus()
 	if relic_director != null:
 		bonus += relic_director.get_root_potency_bonus_at(local_position)
@@ -178,7 +177,7 @@ func get_network_multiplier_at(local_position: Vector2, ground_maturity: float) 
 	# The whole Root Network rule in one place: amplification where the effect is
 	# happening, scaled by the age of the ground under it. Every consumer was
 	# writing this same expression by hand and reading the global bonus while
-	# doing it, which is how Annual Rings and Seedbed came to amplify nothing.
+	# doing it, which is how local Annual Rings bonuses came to amplify nothing.
 	return 1.0 + get_network_bonus_at(local_position) * clampf(
 		get_projected_maturity_at(local_position, ground_maturity), 0.0, 1.0
 	)

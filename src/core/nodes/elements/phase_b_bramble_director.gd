@@ -101,13 +101,14 @@ var _briarball_charge := 0
 ## Movement-speed reduction applied to a fully Entangled enemy before upgrades.
 @export_range(0.0, 0.9, 0.01) var base_slow_fraction := 0.15
 ## Additional fully-Entangled movement-speed reduction granted by each rank.
-@export_range(0.0, 0.25, 0.01) var slow_per_level := 0.06
+## Three ranks reach +15 percentage points, on top of the base 15%.
+@export_range(0.0, 0.25, 0.01) var slow_per_level := 0.05
 ## Additive multiplier on Entanglement applied by Bramble effects per rank.
-@export_range(0.0, 1.0, 0.01) var entanglement_potency_per_level := 0.15
+@export_range(0.0, 1.0, 0.01) var entanglement_potency_per_level := 0.10
 
 @export_group("Ensnare Rate")
 ## Additive Entanglement build rate granted by each Ensnare Rate rank.
-@export_range(0.0, 2.0, 0.01) var ensnare_per_level := 0.26
+@export_range(0.0, 2.0, 0.01) var ensnare_per_level := 0.10
 
 @export_group("Grasping Roots")
 ## Seconds a fully Entangled enemy is rooted whenever Bramble is selected.

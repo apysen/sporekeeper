@@ -322,12 +322,9 @@ func clear_active_evolution() -> void:
 
 
 func is_evolution_path(path_id: int) -> bool:
-	# Only the first two paths make the pairing. The support path never joins it,
-	# so no second Evolution and no three-way pairing can ever form.
-	return (
-		path_id == progression.primary_path
-		or path_id == progression.secondary_path
-	)
+	# Only the Core pair makes the pairing. A Branch never joins it, so no second
+	# Evolution and no three-way pairing can ever form.
+	return progression.is_core_adaptation(path_id)
 
 
 static func get_evolution_upgrade_id(evolution_id: int) -> int:
@@ -413,70 +410,64 @@ func get_active_evolution_rank() -> int:
 	return progression.get_upgrade_level(upgrade_id)
 
 
+## The Evolution matrix, as one symmetric table.
+##
+## Twenty-eight unordered pairs of eight Adaptations. Held as data rather than as a
+## chain of conditionals so the pairing can be asked about before it is owned --
+## the second Core's chooser needs to name the Evolution it would produce -- and so
+## the symmetry is a property of the lookup instead of something twenty-eight
+## hand-written lines have to remember.
+const PAIR_EVOLUTIONS := {
+	0 * 8 + 1: PhaseBProgression.EvolutionId.SUPER_BLOOM,
+	0 * 8 + 2: PhaseBProgression.EvolutionId.BRIAR_PODS,
+	0 * 8 + 3: PhaseBProgression.EvolutionId.SEED_BANK,
+	0 * 8 + 4: PhaseBProgression.EvolutionId.PIONEER,
+	0 * 8 + 5: PhaseBProgression.EvolutionId.INOCULATOR,
+	0 * 8 + 6: PhaseBProgression.EvolutionId.MYCELIAL_VINE,
+	0 * 8 + 7: PhaseBProgression.EvolutionId.ROT,
+	1 * 8 + 2: PhaseBProgression.EvolutionId.THORNBURST,
+	1 * 8 + 3: PhaseBProgression.EvolutionId.FLOWERING_SEASON,
+	1 * 8 + 4: PhaseBProgression.EvolutionId.REBOUND,
+	1 * 8 + 5: PhaseBProgression.EvolutionId.BURSTBLOOM,
+	1 * 8 + 6: PhaseBProgression.EvolutionId.WISTERIA,
+	1 * 8 + 7: PhaseBProgression.EvolutionId.OVERRIPE,
+	2 * 8 + 3: PhaseBProgression.EvolutionId.OLD_GROWTH,
+	2 * 8 + 4: PhaseBProgression.EvolutionId.DEADFALL,
+	2 * 8 + 5: PhaseBProgression.EvolutionId.HEDGE_BATTERY,
+	2 * 8 + 6: PhaseBProgression.EvolutionId.BRIAR_CANE,
+	2 * 8 + 7: PhaseBProgression.EvolutionId.DURIAN,
+	3 * 8 + 4: PhaseBProgression.EvolutionId.COPPICING,
+	3 * 8 + 5: PhaseBProgression.EvolutionId.ROOTSTOCK,
+	3 * 8 + 6: PhaseBProgression.EvolutionId.HEARTWOOD,
+	3 * 8 + 7: PhaseBProgression.EvolutionId.ORCHARD,
+	4 * 8 + 5: PhaseBProgression.EvolutionId.DEADHEADING,
+	4 * 8 + 6: PhaseBProgression.EvolutionId.ESPALIER,
+	4 * 8 + 7: PhaseBProgression.EvolutionId.GRAFT,
+	5 * 8 + 6: PhaseBProgression.EvolutionId.THORNWHIP,
+	5 * 8 + 7: PhaseBProgression.EvolutionId.BURDOCK,
+	6 * 8 + 7: PhaseBProgression.EvolutionId.GOURDVINE,
+}
+
+
+static func get_pair_evolution_for(first_path: int, second_path: int) -> int:
+	## What an unordered Core pair becomes. Order never matters: Spore then Root and
+	## Root then Spore are the same run and the same Seed Bank.
+	if first_path == second_path:
+		return PhaseBProgression.EvolutionId.NONE
+	# Keyed on the sorted pair, packed into one integer, so both orders of the same
+	# two Adaptations resolve to the same entry by construction.
+	var key := mini(first_path, second_path) * 8 + maxi(first_path, second_path)
+	return PAIR_EVOLUTIONS.get(key, PhaseBProgression.EvolutionId.NONE)
+
+
 func get_pair_evolution_id() -> int:
-	# A claimed pairing is frozen: the support path chosen afterwards must never
-	# re-roll which Evolution the run holds.
+	# A claimed pairing is frozen: nothing acquired afterwards -- no Branch, no
+	# relic, no generated event -- may re-roll which Evolution the run holds.
 	if evolution_status == PhaseBProgression.EvolutionStatus.EVOLVED:
 		return active_evolution
 	if not progression.has_primary_path() or not progression.has_secondary_path():
 		return PhaseBProgression.EvolutionId.NONE
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.BLOOM):
-		return PhaseBProgression.EvolutionId.SUPER_BLOOM
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.BRAMBLE):
-		return PhaseBProgression.EvolutionId.BRIAR_PODS
-	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.BRAMBLE):
-		return PhaseBProgression.EvolutionId.THORNBURST
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.ROOT):
-		return PhaseBProgression.EvolutionId.SEED_BANK
-	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.ROOT):
-		return PhaseBProgression.EvolutionId.FLOWERING_SEASON
-	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.ROOT):
-		return PhaseBProgression.EvolutionId.OLD_GROWTH
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
-		return PhaseBProgression.EvolutionId.PIONEER
-	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
-		return PhaseBProgression.EvolutionId.REBOUND
-	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
-		return PhaseBProgression.EvolutionId.DEADFALL
-	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.PRUNING):
-		return PhaseBProgression.EvolutionId.COPPICING
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
-		return PhaseBProgression.EvolutionId.INOCULATOR
-	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
-		return PhaseBProgression.EvolutionId.BURSTBLOOM
-	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
-		return PhaseBProgression.EvolutionId.HEDGE_BATTERY
-	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
-		return PhaseBProgression.EvolutionId.ROOTSTOCK
-	if is_evolution_path(PhaseBProgression.PathId.PRUNING) and is_evolution_path(PhaseBProgression.PathId.THISTLE):
-		return PhaseBProgression.EvolutionId.DEADHEADING
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.VINE):
-		return PhaseBProgression.EvolutionId.MYCELIAL_VINE
-	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.VINE):
-		return PhaseBProgression.EvolutionId.WISTERIA
-	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.VINE):
-		return PhaseBProgression.EvolutionId.BRIAR_CANE
-	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.VINE):
-		return PhaseBProgression.EvolutionId.HEARTWOOD
-	if is_evolution_path(PhaseBProgression.PathId.PRUNING) and is_evolution_path(PhaseBProgression.PathId.VINE):
-		return PhaseBProgression.EvolutionId.ESPALIER
-	if is_evolution_path(PhaseBProgression.PathId.SPORE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.ROT
-	if is_evolution_path(PhaseBProgression.PathId.BLOOM) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.OVERRIPE
-	if is_evolution_path(PhaseBProgression.PathId.BRAMBLE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.DURIAN
-	if is_evolution_path(PhaseBProgression.PathId.ROOT) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.ORCHARD
-	if is_evolution_path(PhaseBProgression.PathId.PRUNING) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.GRAFT
-	if is_evolution_path(PhaseBProgression.PathId.THISTLE) and is_evolution_path(PhaseBProgression.PathId.VINE):
-		return PhaseBProgression.EvolutionId.THORNWHIP
-	if is_evolution_path(PhaseBProgression.PathId.THISTLE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.BURDOCK
-	if is_evolution_path(PhaseBProgression.PathId.VINE) and is_evolution_path(PhaseBProgression.PathId.FRUIT):
-		return PhaseBProgression.EvolutionId.GOURDVINE
-	return PhaseBProgression.EvolutionId.NONE
+	return get_pair_evolution_for(progression.primary_path, progression.secondary_path)
 
 
 func has_active_evolution(evolution_id: int) -> bool:

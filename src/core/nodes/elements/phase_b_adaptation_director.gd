@@ -18,6 +18,8 @@ const FRUIT_TEXTURES: Array[Texture2D] = [
 ]
 const FRUITSEED_TEXTURE: Texture2D = preload("res://assets/art/seed/fruitseed.png")
 const INVALID_POSITION := Vector2(-99999.0, -99999.0)
+## What a lone Thistle keeps when it has to answer its own network event.
+const SOLO_NETWORK_SHARE := 0.65
 
 enum PendingKind {
 	THISTLE_VOLLEY,
@@ -42,6 +44,14 @@ class ThistleState:
 	var bloom_charge_remaining := 0.0
 	var sequence := 0
 	var burdock_temporary := false
+	## A real thistle catches on whatever walks through it. While carried the turret
+	## rides Grandma, keeps firing from her position, and answers to no supporting
+	## Green: it is on her coat, not in the ground.
+	var carried := false
+	var carry_remaining := 0.0
+	## Time before this turret is willing to catch on Grandma again. Without it she
+	## would simply stand on the thing and never put it down.
+	var stick_cooldown_remaining := 0.0
 
 
 ## What fired a thorn. Only NATURAL advances a network counter; every relic-made
@@ -205,7 +215,25 @@ class PendingEvent:
 ## Center-to-center room reserved by every active Thistle. The flower head and its
 ## longest spikes occupy a 24 px diameter, so 28 px leaves a small readable gap.
 @export_range(20.0, 80.0, 1.0) var thistle_minimum_spacing_pixels := 28.0
-@export_range(0.1, 10.0, 0.1) var thistle_replant_seconds := 0.8
+## How long the ground stays bare after a turret collapses before a replacement
+## grows -- whether Grandma worked it loose over bare dirt or an enemy took the
+## Green out from under it. This is what makes losing the Thistle a real loss
+## rather than a half-second stutter.
+@export_range(0.1, 30.0, 0.1) var thistle_replant_seconds := 5.0
+
+@export_group("Thistle Carry")
+## How close Grandma has to pass for the Thistle to catch on her.
+@export_range(2.0, 80.0, 1.0) var thistle_stick_radius_pixels := 15.0
+## Base time a caught Thistle rides Grandma before it works loose and drops.
+@export_range(0.5, 15.0, 0.05) var thistle_carry_seconds := 3.0
+## Base wait before a dropped Thistle will catch on her again. Together with the
+## carry time this sets the share of the fight the turret spends mobile.
+@export_range(0.5, 60.0, 0.1) var thistle_stick_cooldown_seconds := 7.0
+## The four Thistle lines used to buy turret slots. With the network capped at one
+## turret they buy carry instead: every started line lengthens the ride and
+## shortens the wait between rides.
+@export_range(0.0, 3.0, 0.05) var thistle_carry_seconds_per_line := 0.25
+@export_range(0.0, 3.0, 0.05) var thistle_stick_cooldown_per_line := 0.55
 
 @export_group("Fruit Base")
 ## Direct damage on each enemy collision.
@@ -264,6 +292,10 @@ class PendingEvent:
 @export_range(1, 40, 1) var crown_cycle_interval := 12
 @export_range(0.0, 1.0, 0.01) var crown_damage_share := 0.55
 @export_range(0.1, 30.0, 0.1) var crown_cooldown_seconds := 7.0
+## Crown pays the whole network at once, so a network of one would be a single
+## ordinary volley. Alone, the Thistle fires this many staggered volleys instead.
+@export_range(1, 8, 1) var crown_solo_volleys := 3
+@export_range(0.02, 1.0, 0.01) var crown_solo_interval := 0.14
 ## Rosette: how long after a permanent Thistle finishes growing it fires its
 ## opening volley, and what that volley is worth.
 @export_range(0.0, 3.0, 0.01) var rosette_delay_seconds := 0.25
@@ -377,6 +409,9 @@ var _fruit_terminal_count := 0
 var _rot_terminal_count := 0
 var _orchard_terminal_count := 0
 var _thistle_sequence := 0
+## Bare ground left behind by a collapsed turret, so a replacement cannot appear
+## in the same breath as the loss.
+var _thistle_replant_remaining := 0.0
 var _fruit_sequence := 0
 var _network_cycle_count := 0
 var _rootstock_heavy_count := 0
@@ -538,6 +573,7 @@ func reset_adaptations() -> void:
 	_rot_terminal_count = 0
 	_orchard_terminal_count = 0
 	_thistle_sequence = 0
+	_thistle_replant_remaining = 0.0
 	_fruit_sequence = 0
 	_network_cycle_count = 0
 	_rootstock_heavy_count = 0
@@ -629,13 +665,54 @@ func _refresh_vine_modifiers() -> void:
 	combat.set_vine_enabled(vine_active)
 
 
+const THISTLE_LINE_IDS: Array[int] = [
+	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
+	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE,
+	PhaseBProgression.UpgradeId.THISTLE_BURR,
+	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT,
+]
+
+
 func _effective_upgrade(upgrade_id: int, origin: Vector2) -> int:
 	var effective := _upgrade(upgrade_id)
+	# Thistle takes its Root amplification in authored form instead of as virtual
+	# ranks: one more thorn, one more ricochet, and Potency's own multiplier on the
+	# two lines that are a rate rather than a count. See _thistle_root_step.
+	if THISTLE_LINE_IDS.has(upgrade_id):
+		return effective
 	# Potency deepens a line the build has started; it never invents an unowned line
 	# from Root alone or from a temporary casino loan.
 	if progression.get_owned_upgrade_level(upgrade_id) <= 0:
 		return effective
 	return effective + _root_potency_ranks_at(origin)
+
+
+## Whether Root Potency is amplifying a Thistle line resolving at this point. Same
+## rule as the generic path: Mature player ground under the effect, Root in the run,
+## and a line the build has actually started -- Root deepens what is being built and
+## never invents an unowned line out of Root alone.
+func _thistle_root_amplifies(upgrade_id: int, origin: Vector2) -> bool:
+	return (
+		progression.get_owned_upgrade_level(upgrade_id) > 0
+		and root_director != null
+		and root_director.has_path()
+		and territory_field.is_mature_player_territory_at_local(origin)
+	)
+
+
+## Clustering and Burr are counts, so Potency pays them in whole units: one more
+## thorn in the volley, one more ricochet on the thorn.
+func _thistle_root_step(upgrade_id: int, origin: Vector2) -> int:
+	return 1 if _thistle_root_amplifies(upgrade_id, origin) else 0
+
+
+## Dehiscence and Needlepoint are rates, so Potency pays them with its own
+## amplification -- the same 1 + bonus every other Root consumer reads, scaled by
+## how Mature the ground under the turret actually is.
+func _thistle_root_scale(upgrade_id: int, origin: Vector2) -> float:
+	if not _thistle_root_amplifies(upgrade_id, origin):
+		return 1.0
+	return maxf(1.0, root_director.get_network_multiplier_here(origin))
 
 
 func _root_potency_ranks_at(origin: Vector2) -> int:
@@ -733,6 +810,9 @@ func _update_thistles(delta: float) -> void:
 			thorn.active = false
 		return
 	var rootstock_rank := _evolution_rank(PhaseBProgression.EvolutionId.ROOTSTOCK)
+	var player_position := player.get_arena_position()
+	var stick_radius_squared := thistle_stick_radius_pixels * thistle_stick_radius_pixels
+	_thistle_replant_remaining = maxf(0.0, _thistle_replant_remaining - delta)
 	for thistle in _thistles:
 		if not thistle.active:
 			continue
@@ -741,19 +821,25 @@ func _update_thistles(delta: float) -> void:
 			if thistle.temporary_remaining <= 0.0:
 				thistle.active = false
 				continue
-		var supported := territory_field.is_owned_at_local(thistle.position)
-		if supported:
+		thistle.stick_cooldown_remaining = maxf(
+			0.0, thistle.stick_cooldown_remaining - delta
+		)
+		if thistle.carried:
+			# Riding Grandma. Support is deliberately not evaluated: the turret is on
+			# her coat, not in the ground, so it fires happily over bare dirt.
+			thistle.position = player_position
 			thistle.unsupported_remaining = -1.0
-		elif rootstock_rank >= 1:
-			if thistle.unsupported_remaining < 0.0:
-				thistle.unsupported_remaining = 3.0
-			else:
-				thistle.unsupported_remaining -= delta
-			if thistle.unsupported_remaining <= 0.0:
-				_collapse_thistle(thistle, true)
+			thistle.carry_remaining -= delta
+			if thistle.carry_remaining <= 0.0:
+				_drop_thistle(thistle)
 				continue
-		else:
-			_collapse_thistle(thistle, true)
+		elif (
+			thistle.permanent
+			and thistle.stick_cooldown_remaining <= 0.0
+			and player_position.distance_squared_to(thistle.position) <= stick_radius_squared
+		):
+			_stick_thistle_to_player(thistle, player_position)
+		elif not _resolve_thistle_support(thistle, delta, rootstock_rank):
 			continue
 		thistle.bloom_charge_remaining = maxf(0.0, thistle.bloom_charge_remaining - delta)
 		thistle.attack_remaining -= delta
@@ -764,7 +850,71 @@ func _update_thistles(delta: float) -> void:
 	_ensure_permanent_thistles()
 
 
+## Whether a planted turret still has the Green under it. Collapses it and answers
+## false when it does not.
+func _resolve_thistle_support(
+	thistle: ThistleState,
+	delta: float,
+	rootstock_rank: int
+) -> bool:
+	if territory_field.is_owned_at_local(thistle.position):
+		thistle.unsupported_remaining = -1.0
+		return true
+	if rootstock_rank >= 1:
+		if thistle.unsupported_remaining < 0.0:
+			thistle.unsupported_remaining = 3.0
+		else:
+			thistle.unsupported_remaining -= delta
+		if thistle.unsupported_remaining > 0.0:
+			return true
+	_collapse_thistle(thistle, true)
+	return false
+
+
+func _stick_thistle_to_player(thistle: ThistleState, player_position: Vector2) -> void:
+	thistle.carried = true
+	thistle.carry_remaining = get_thistle_carry_seconds()
+	thistle.position = player_position
+	thistle.unsupported_remaining = -1.0
+	# A band tightening around a body is exactly what a burr on a coat is.
+	overlay.spawn_relic_cue(
+		TerritoryPrototypeOverlay.RelicCue.BAND,
+		player_position,
+		18.0,
+		Color("b98fd4"),
+		Vector2.UP
+	)
+
+
+func _drop_thistle(thistle: ThistleState) -> void:
+	thistle.carried = false
+	thistle.carry_remaining = 0.0
+	thistle.stick_cooldown_remaining = get_thistle_stick_cooldown_seconds()
+	var site := player.get_arena_position()
+	# Carrying the turret somewhere useful is the decision the Adaptation is built
+	# on, so working it loose over bare dirt has to actually cost the turret.
+	var cell := (
+		_find_unoccupied_thistle_cell(site, thistle.sequence)
+		if territory_field.is_owned_at_local(site)
+		else -1
+	)
+	if cell < 0:
+		status_requested.emit("THISTLE — worked loose off the Green, and withered.")
+		_collapse_thistle(thistle, true)
+		return
+	thistle.position = territory_field.get_cell_local_position(cell)
+	thistle.unsupported_remaining = -1.0
+	thistle.collapse_volley_fired = false
+	thistle.attack_remaining = minf(thistle.attack_remaining, 0.12)
+	if thistle.permanent and _has_relic(PhaseBRelicCatalog.Id.ROSETTE):
+		# A turret that has just taken root is a newly grown one however it got
+		# there, so Rosette now pays out on every drop rather than once a run.
+		_rosette_queue.append([thistle.sequence, rosette_delay_seconds])
+
+
 func _ensure_permanent_thistles() -> void:
+	if _thistle_replant_remaining > 0.0:
+		return
 	var wanted := _get_thistle_capacity()
 	var active_permanent := 0
 	for thistle in _thistles:
@@ -777,6 +927,14 @@ func _ensure_permanent_thistles() -> void:
 
 
 func _get_thistle_capacity() -> int:
+	# One turret, always. Thistle is no longer a field of free stationary damage you
+	# grow and forget; it is a single thing you have to walk over and carry.
+	return 1
+
+
+func _count_started_thistle_lines() -> int:
+	# Owned ranks only. A Clover jackpot lends every Thistle line its ceiling for a
+	# few seconds, and carry earned on the strength of that loan would outlast it.
 	var started := 0
 	for upgrade_id in [
 		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
@@ -784,9 +942,23 @@ func _get_thistle_capacity() -> int:
 		PhaseBProgression.UpgradeId.THISTLE_BURR,
 		PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT,
 	]:
-		if _upgrade(upgrade_id) > 0:
+		if progression.get_owned_upgrade_level(upgrade_id) > 0:
 			started += 1
-	return clampi(maxi(2, 1 + started), 2, 5)
+	return started
+
+
+func get_thistle_carry_seconds() -> float:
+	return thistle_carry_seconds + thistle_carry_seconds_per_line * float(
+		_count_started_thistle_lines()
+	)
+
+
+func get_thistle_stick_cooldown_seconds() -> float:
+	return maxf(
+		0.5,
+		thistle_stick_cooldown_seconds
+		- thistle_stick_cooldown_per_line * float(_count_started_thistle_lines())
+	)
 
 
 func _plant_thistle(
@@ -824,6 +996,9 @@ func _plant_thistle(
 	thistle.bloom_charge_remaining = 0.0
 	thistle.sequence = _thistle_sequence
 	thistle.burdock_temporary = burdock_temporary
+	thistle.carried = false
+	thistle.carry_remaining = 0.0
+	thistle.stick_cooldown_remaining = get_thistle_stick_cooldown_seconds()
 	if permanent and _has_relic(PhaseBRelicCatalog.Id.ROSETTE):
 		# Temporary Evolution turrets are explicitly excluded; a permanent
 		# replacement grown after a collapse is not.
@@ -831,7 +1006,7 @@ func _plant_thistle(
 	return true
 
 
-func _find_unoccupied_thistle_cell(wanted: Vector2) -> int:
+func _find_unoccupied_thistle_cell(wanted: Vector2, exclude_sequence: int = -1) -> int:
 	var best_cell := -1
 	var best_distance_squared := INF
 	var minimum_spacing_squared := (
@@ -846,6 +1021,7 @@ func _find_unoccupied_thistle_cell(wanted: Vector2) -> int:
 		for planted in _thistles:
 			if (
 				planted.active
+				and planted.sequence != exclude_sequence
 				and planted.position.distance_squared_to(position) < minimum_spacing_squared
 			):
 				occupied = true
@@ -868,13 +1044,20 @@ func _collapse_thistle(thistle: ThistleState, support_loss: bool) -> void:
 		thistle.collapse_volley_fired = true
 		_fire_thistle(thistle, 1.5, 0, false)
 	thistle.active = false
+	thistle.carried = false
+	thistle.carry_remaining = 0.0
+	if thistle.permanent:
+		_thistle_replant_remaining = maxf(_thistle_replant_remaining, thistle_replant_seconds)
 
 
 func _get_thistle_attack_interval(origin: Vector2) -> float:
 	var speed_bonus := 0.15 * float(_effective_upgrade(
 		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, origin
 	))
-	return thistle_attack_interval / maxf(0.05, 1.0 + speed_bonus)
+	var rate := (1.0 + speed_bonus) * _thistle_root_scale(
+		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, origin
+	)
+	return thistle_attack_interval / maxf(0.05, rate)
 
 
 func _fire_thistle(
@@ -886,8 +1069,14 @@ func _fire_thistle(
 ) -> int:
 	if not thistle.active:
 		return 0
-	var projectile_count := 1 + _effective_upgrade(
-		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, thistle.position
+	var projectile_count := (
+		1
+		+ _effective_upgrade(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, thistle.position
+		)
+		+ _thistle_root_step(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, thistle.position
+		)
 	)
 	var targets := PackedInt32Array()
 	if forced_target_id >= 0 and combat.is_enemy_active(forced_target_id):
@@ -1000,6 +1189,18 @@ func _fire_thistle(
 	):
 		_crown_cooldown = crown_cooldown_seconds
 		_fire_all_thistles(crown_damage_share, 0, false)
+		if get_active_thistle_count() <= 1:
+			for volley in range(1, crown_solo_volleys):
+				_queue_pending_event(
+					PendingKind.THISTLE_VOLLEY,
+					crown_solo_interval * float(volley),
+					thistle.position,
+					Vector2.RIGHT,
+					true,
+					crown_damage_share,
+					0,
+					0
+				)
 	if heavy_primary and fired > 0:
 		_rootstock_heavy_count += 1
 		if (
@@ -1213,8 +1414,9 @@ func _count_active_forked_thorns() -> int:
 
 
 func _find_other_thistle(exclude_sequence: int, near: Vector2) -> ThistleState:
-	# The nearest turret that is not the one responsible for the event. The relics
-	# in this pool are about the network answering, so answering yourself is not it.
+	# The nearest turret that is not the one responsible for the event. Callers go
+	# through _find_network_responder, which falls back to the source turret when
+	# the network really is one Thistle.
 	var best: ThistleState = null
 	var best_distance := INF
 	for thistle in _thistles:
@@ -1225,6 +1427,20 @@ func _find_other_thistle(exclude_sequence: int, near: Vector2) -> ThistleState:
 			best_distance = distance
 			best = thistle
 	return best
+
+
+## With the network capped at one turret, "another Thistle" usually has nobody to
+## call on, and three relics in this pool would read as dead text. The sole Thistle
+## answers itself instead, at a reduced share: a real network — Burdock's temporary
+## heads, a Deadheading pair — still answers harder, it is just no longer required.
+func _find_network_responder(exclude_sequence: int, near: Vector2) -> ThistleState:
+	var other := _find_other_thistle(exclude_sequence, near)
+	if other != null:
+		return other
+	var alone := _find_thistle_by_sequence(exclude_sequence)
+	if alone != null and alone.active:
+		return alone
+	return null
 
 
 func _note_natural_thorn_impact(
@@ -1252,9 +1468,12 @@ func _note_natural_thorn_impact(
 func _fire_thorn_relay(thorn: ThornState, hit_position: Vector2) -> void:
 	if _relay_cooldown > 0.0 or thorn_relay_per_second <= 0.0:
 		return
-	var responder := _find_other_thistle(thorn.source_thistle_sequence, hit_position)
+	var responder := _find_network_responder(thorn.source_thistle_sequence, hit_position)
 	if responder == null:
 		return
+	var relay_share := thorn_relay_damage_share
+	if responder.sequence == thorn.source_thistle_sequence:
+		relay_share *= SOLO_NETWORK_SHARE
 	_relay_cooldown = 1.0 / thorn_relay_per_second
 	# A very fast network ping between the impact and the turret that answers it.
 	overlay.spawn_relic_cue(
@@ -1271,7 +1490,7 @@ func _fire_thorn_relay(thorn: ThornState, hit_position: Vector2) -> void:
 	_spawn_thorn(
 		responder.position,
 		targets[0],
-		thorn_relay_damage_share,
+		relay_share,
 		0,
 		false,
 		false,
@@ -1381,20 +1600,24 @@ func _burst_pincushion(enemy_id: int, hit_position: Vector2) -> void:
 
 
 func _answer_thorn(thorn: ThornState, hit_position: Vector2) -> void:
-	## A natural volley that kills makes a different turret answer. Only natural
-	## volleys start it, and it can never answer itself.
+	## A natural volley that kills makes a turret answer. Only natural volleys start
+	## it, and it prefers a different turret — see _find_network_responder for what
+	## happens when the sole Thistle is the only one there is.
 	if not _has_relic(PhaseBRelicCatalog.Id.ANSWERING_THORN):
 		return
 	if thorn.source_tag != ThornSource.NATURAL or _answering_cooldown > 0.0:
 		return
-	var responder := _find_other_thistle(thorn.source_thistle_sequence, hit_position)
+	var responder := _find_network_responder(thorn.source_thistle_sequence, hit_position)
 	if responder == null:
-		# No valid responder: the trigger is consumed on a shorter cooldown rather
-		# than being held open until a second turret happens to exist.
+		# No turret left standing at all: the trigger is consumed on a shorter
+		# cooldown rather than being held open until one grows back.
 		_answering_cooldown = answering_thorn_cooldown_seconds * 0.44
 		return
+	var answering_share := answering_thorn_damage_share
+	if responder.sequence == thorn.source_thistle_sequence:
+		answering_share *= SOLO_NETWORK_SHARE
 	_answering_cooldown = answering_thorn_cooldown_seconds
-	_fire_thistle(responder, answering_thorn_damage_share, 0, false)
+	_fire_thistle(responder, answering_share, 0, false)
 
 
 func _fire_all_thistles(
@@ -1507,7 +1730,7 @@ func _spawn_thorn(
 	)
 	var effective_burr := _effective_upgrade(
 		PhaseBProgression.UpgradeId.THISTLE_BURR, origin
-	)
+	) + _thistle_root_step(PhaseBProgression.UpgradeId.THISTLE_BURR, origin)
 	thorn.ricochets_remaining = (
 		effective_burr + maxi(0, extra_ricochets)
 		if ricochet_cap_override < 0
@@ -1519,9 +1742,11 @@ func _spawn_thorn(
 	thorn.pierce_remaining = maxi(0, extra_pierce)
 	thorn.pierces_normal_only = pierces_normal_only
 	thorn.critical_chance_bonus = maxf(0.0, critical_chance_bonus) + (
-		0.10 * float(_effective_upgrade(
+		0.10
+		* float(_effective_upgrade(
 			PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, origin
 		))
+		* _thistle_root_scale(PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, origin)
 		if inherit_needlepoint
 		else 0.0
 	)
@@ -1804,20 +2029,33 @@ func _fire_nearest_other_thistle(enemy_id: int, source_sequence: int) -> void:
 	var target_position := combat.get_enemy_position(enemy_id)
 	var nearest: ThistleState
 	var nearest_distance := INF
+	var nearest_is_source := false
 	for thistle in _thistles:
-		if not thistle.active or thistle.sequence == source_sequence:
+		if not thistle.active:
 			continue
 		var distance := thistle.position.distance_squared_to(target_position)
 		if distance > thistle_range_pixels * thistle_range_pixels:
 			continue
 		if not territory_field.is_growth_path_clear(thistle.position, target_position):
 			continue
-		if distance >= nearest_distance:
+		var is_source := thistle.sequence == source_sequence
+		# A second turret always wins the tie: the source only answers when it is
+		# the whole network, and then at the reduced solo share.
+		if nearest != null and not nearest_is_source and is_source:
+			continue
+		if nearest != null and nearest_is_source == is_source and distance >= nearest_distance:
 			continue
 		nearest_distance = distance
+		nearest_is_source = is_source
 		nearest = thistle
 	if nearest != null:
-		_fire_thistle(nearest, 1.0, 0, false, enemy_id)
+		_fire_thistle(
+			nearest,
+			SOLO_NETWORK_SHARE if nearest_is_source else 1.0,
+			0,
+			false,
+			enemy_id
+		)
 
 
 func _on_cane_sweep_started(
@@ -2141,8 +2379,14 @@ func _fire_mounted_head(
 			targets.append(enemy_id)
 	if targets.is_empty():
 		return
-	var projectile_count := 1 + _effective_upgrade(
-		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, head_position
+	var projectile_count := (
+		1
+		+ _effective_upgrade(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, head_position
+		)
+		+ _thistle_root_step(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, head_position
+		)
 	)
 	for index in range(projectile_count):
 		_spawn_thorn(
@@ -3271,7 +3515,13 @@ func _fire_burdock_volley(fruit: FruitState, empowered_final: bool) -> int:
 		return 0
 	var inherit_upgrades := rank >= 2
 	var projectile_count := (
-		1 + _effective_upgrade(PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, fruit.position)
+		1
+		+ _effective_upgrade(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, fruit.position
+		)
+		+ _thistle_root_step(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, fruit.position
+		)
 		if inherit_upgrades
 		else 1
 	)
@@ -3771,6 +4021,11 @@ func _draw_thistle(thistle: ThistleState) -> void:
 		alpha *= clampf(thistle.unsupported_remaining / 3.0, 0.25, 1.0)
 	var stalk_color := Color(0.24, 0.62, 0.31, alpha)
 	var head_color := Color(0.58, 0.32, 0.72, alpha)
+	if thistle.carried:
+		# Snagged on the coat: no stalk in the ground, and the head sits high on
+		# Grandma's shoulder so it reads as carried rather than as stood on.
+		_draw_carried_thistle(thistle, head_color)
+		return
 	draw_line(thistle.position + Vector2(0.0, 11.0), thistle.position, stalk_color, 3.2, true)
 	draw_circle(thistle.position, 7.5, head_color)
 	for spike in range(10):
@@ -3782,6 +4037,18 @@ func _draw_thistle(thistle: ThistleState) -> void:
 			2.0,
 			true
 		)
+
+
+func _draw_carried_thistle(thistle: ThistleState, head_color: Color) -> void:
+	var anchor := thistle.position + Vector2(0.0, -13.0)
+	# The last stretch of the ride shakes as the burr works itself loose.
+	var loosening := clampf(1.0 - thistle.carry_remaining / 0.6, 0.0, 1.0)
+	if loosening > 0.0:
+		anchor.x += sin(float(Time.get_ticks_msec()) * 0.045) * 2.0 * loosening
+	draw_circle(anchor, 6.0, head_color)
+	for spike in range(10):
+		var direction := Vector2.from_angle(TAU * float(spike) / 10.0)
+		draw_line(anchor + direction * 4.0, anchor + direction * 9.5, head_color, 1.7, true)
 
 
 func _draw_thorn(thorn: ThornState) -> void:

@@ -46,6 +46,7 @@ const ENTRIES := {
 	"SEED": "A planted growth source that creates Green when it germinates.",
 	"SUPPRESSION": "A temporary Bloom condition that reduces how much territory damage affected enemies deal.",
 	"TERRITORY": "The living field contested by Green, hostile growth, and neutral ground. Territory percentage is a core survival objective.",
+	"THISTLE": "A plant path that grows a single turret on Green, and never more than one. Walk Grandma through it and the Thistle catches on her, firing from her side for a few seconds before it works loose and takes root wherever she is standing. Let it work loose off Green and it withers. Starting a Thistle line lengthens the carry and shortens the wait before it will catch again.",
 	"THORNBURST": "A Bloom and Bramble evolution that turns prepared Bramble territory into a burst of thorn damage and traps.",
 }
 

@@ -5,15 +5,22 @@ const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
 
 signal wave_began(wave_number: int)
 ## The arena was cleared during a wave's opening break, so the break ended early.
+## Quick keeps this; Campaign breaks are authored pauses and never end early.
 signal grace_skipped(wave_number: int)
 signal elite_arrived
 signal boss_arrived
 signal final_invasion_began
 signal cleanup_began
+## A Campaign wave whose completion opens one of the ten authored relic rewards.
+signal wave_relic_earned(wave_number: int)
 
 @export_group("Collaborators")
 ## Combat component that receives scaled enemy spawn requests from this director.
 @export var combat: PhaseBCombatDirector
+## Territory component the Campaign's perimeter topology scores its sectors from.
+@export var territory_field: TerritoryField
+## Player component whose arena position the topology treats as the thing defended.
+@export var player: PhaseBPlayer
 
 @export_group("Run Timeline")
 ## Total run length in seconds; reaching this time completes the survival objective.
@@ -31,12 +38,11 @@ signal cleanup_began
 ## questions -- how fast the run gets hard, and when the last wave arrives -- and
 ## tying them together is what made a longer run a slower one rather than a bigger
 ## one. Zero falls back to the invasion time, which is the behaviour Quick wants.
+##
+## Campaign no longer reads this at all: its pressure is authored per wave.
 @export_range(0.0, 1800.0, 1.0) var pressure_ramp_seconds := 0.0
 ## Elapsed run time in seconds when reinforcements stop and cleanup begins.
 @export_range(30.0, 1800.0, 1.0) var cleanup_time_seconds := 690.0
-## Earliest elapsed run time at which an evolved run is offered its support path.
-## A run that evolves later than this is offered the path as soon as it evolves.
-@export_range(0.0, 1800.0, 1.0) var tertiary_path_choice_seconds := 480.0
 
 @export_group("Wave Cadence")
 ## Length of each numbered pressure wave in seconds.
@@ -52,8 +58,19 @@ signal cleanup_began
 ## Fixed seconds between reinforcement packs during the final invasion.
 @export_range(0.03, 2.0, 0.01) var final_spawn_interval_seconds := 0.12
 
+@export_group("Campaign Scheduler")
+## Reinforcement packs one frame may request. A hitch must not be paid back as a
+## burst the player never saw coming, so catch-up is bounded rather than unlimited.
+@export_range(1, 8, 1) var maximum_packs_per_frame := 2
+## Intervals of scheduling debt retained across a hitch before the rest is dropped.
+@export_range(1.0, 10.0, 0.5) var maximum_spawn_debt_intervals := 3.0
+## Active actors above which ordinary reinforcements stop being requested, leaving
+## the remainder of the hard cap reserved for the Elite, the Boss, and Colony Cores.
+@export_range(10, 300, 1) var regular_reinforcement_cap := 124
+
 @export_group("Per-Wave Scaling")
 ## Additive territory-erosion multiplier gained by newly spawned enemies each wave.
+## Quick only: Campaign authors territory strength as its own curve.
 @export_range(0.0, 1.0, 0.01) var territory_erosion_growth_per_wave := 0.10
 ## Proportional XP reward increase gained by newly spawned enemies each wave.
 @export_range(0.0, 1.0, 0.01) var xp_reward_growth_per_wave := 0.10
@@ -63,6 +80,10 @@ signal cleanup_began
 @export_range(1.0, 5.0, 0.05) var final_health_scale := 2.15
 ## Enemy contact-damage multiplier reached at 100% final-invasion pressure.
 @export_range(1.0, 5.0, 0.05) var final_contact_damage_scale := 1.60
+## Campaign XP multiplier reached at Wave 25. Deliberately far below the health
+## curve: more durable enemies already reduce the kill rate, so matching the two
+## would make dense late waves fund themselves.
+@export_range(1.0, 6.0, 0.05) var campaign_final_xp_multiplier := 2.20
 
 @export_group("Enemy Mix")
 ## Reinforcement-pack cycle outside a surge; every Nth regular pack leads with a Grazer.
@@ -118,6 +139,8 @@ signal cleanup_began
 ## design note ties this to the run's own progression rather than the clock, and
 ## the clock is the honest approximation of it: by here a run has a pairing, a
 ## build, and something for a rule change to be a change to.
+##
+## Quick only. Campaign gates rule changes on its authored per-wave stages.
 @export_range(0.0, 1800.0, 1.0) var elite_modifier_intro_seconds := 300.0
 
 var elapsed_seconds := 0.0
@@ -138,6 +161,29 @@ var _grazer_pack_sequence := 0
 ## alternate deterministically instead of being rolled. A run should not be able to
 ## get eight Heavy Grazers in a row because the dice said so.
 var _variant_sequence := 0
+
+## Whether this run is the authored 25-wave Campaign rather than Quick's ramp.
+var _campaign_mode := false
+var _wave_specs: Array[CampaignWaveSpec] = []
+var _role_scaling_profiles := {}
+var _topology := PhaseBSpawnTopology.new()
+var _run_seed := 0
+## Scheduling debt in seconds, so pack timing is what the clock says rather than
+## what the frame rate allowed.
+var _spawn_debt_seconds := 0.0
+## Index into the current wave's pack-size pattern; reset at every wave boundary.
+var _pattern_index := 0
+## The current wave's shuffled leader deck and how far through it the wave is.
+var _leader_deck := PackedInt32Array()
+var _leader_cursor := 0
+var _leader_cycle := 0
+var _deck_wave := 0
+## Requests the Campaign issued and how many of them became live enemies. Both are
+## telemetry: a wave that requests three hundred packs into a full cap is a
+## different wave from one that requested eighty and spawned all of them.
+var _packs_requested := 0
+var _packs_rejected := 0
+var _enemies_spawned := 0
 
 
 ## The authored values of every field configure_mode overwrites, captured before
@@ -161,7 +207,8 @@ func _capture_authored_mode_values() -> void:
 		"final_invasion_time_seconds",
 		"cleanup_time_seconds",
 		"pressure_ramp_seconds",
-		"tertiary_path_choice_seconds",
+		"wave_duration_seconds",
+		"wave_grace_period_seconds",
 		"early_spawn_interval_seconds",
 		"late_spawn_interval_seconds",
 		"final_spawn_interval_seconds",
@@ -181,9 +228,9 @@ func _capture_authored_mode_values() -> void:
 
 
 func configure_mode(mode: int) -> void:
-	# Quick retains the original 12-minute tuning. Campaign stretches the authored
-	# milestones and introduces a gentler XP curve so 30 minutes keeps producing
-	# meaningful adaptation choices while its final pressure still escalates.
+	# Quick retains the original 12-minute tuning. Campaign is the authored 25-wave,
+	# 25-minute structure: fixed per-wave scaling, an authored composition table, and
+	# milestones on waves rather than on a stopwatch.
 	#
 	# Every field is restored to what was authored before a mode is applied, so
 	# configuring a mode says what that mode is rather than what has changed since
@@ -191,44 +238,45 @@ func configure_mode(mode: int) -> void:
 	_capture_authored_mode_values()
 	for field in _authored_mode_values:
 		set(field, _authored_mode_values[field])
-	if mode != RUN_MODE.Id.CAMPAIGN:
+	_campaign_mode = mode == RUN_MODE.Id.CAMPAIGN
+	if not _campaign_mode:
+		_wave_specs.clear()
 		return
-	run_duration_seconds = 1800.0
-	elite_time_seconds = 375.0
-	boss_time_seconds = 900.0
-	final_invasion_time_seconds = 1500.0
-	# The last thirty seconds, which is the shape Quick already had: 690 of 720.
-	# At 1725 the cleanup ran for seventy-five seconds and began in wave 29, so the
-	# whole of wave 30 had no reinforcements in it -- the final wave of a thirty
-	# minute run was an empty one. Campaign was meant to stretch Quick's milestones,
-	# not to restructure the ending.
-	cleanup_time_seconds = 1770.0
-	# Pressure builds on its own clock rather than across the whole timeline. A
-	# thirty-minute run should be a bigger run than a twelve-minute one, not a
-	# slower one, so it reaches full pressure around the boss and then holds there
-	# until the invasion rather than creeping toward it for twenty-five minutes.
-	pressure_ramp_seconds = 900.0
-	tertiary_path_choice_seconds = 1200.0
-	# The opening was slower than Quick's, not faster: a longer run was reading as
-	# an emptier one. Campaign now opens denser than Quick and doubles its packs
-	# before the boss instead of at the fifteen-minute mark.
-	early_spawn_interval_seconds = 0.95
-	late_spawn_interval_seconds = 0.38
-	final_spawn_interval_seconds = 0.14
-	late_pack_progress = 0.45
-	final_health_scale = 3.0
-	final_contact_damage_scale = 2.0
-	# Role introductions follow the pressure ramp rather than the whole timeline.
-	# Stretched across thirty minutes, the specialists that make a wave feel
-	# different arrived long after the wave that needed them.
-	saboteur_intro_seconds = 115.0
-	corruptor_intro_seconds = 270.0
-	colonizer_intro_seconds = 430.0
-	warden_intro_seconds = 630.0
-	heavy_grazer_intro_seconds = 495.0
-	rusher_intro_seconds = 450.0
-	siege_corruptor_intro_seconds = 630.0
-	elite_modifier_intro_seconds = 450.0
+	_wave_specs = PhaseBCampaignWaves.build_wave_specs()
+	_role_scaling_profiles = PhaseBCampaignWaves.build_role_scaling_profiles()
+	run_duration_seconds = PhaseBCampaignWaves.CAMPAIGN_DURATION_SECONDS
+	wave_duration_seconds = PhaseBCampaignWaves.WAVE_DURATION_SECONDS
+	# Both milestones are wave events now. The seconds are kept in step with the
+	# wave table so anything still reading the clock reads the same moment.
+	elite_time_seconds = (
+		float(PhaseBCampaignWaves.ELITE_WAVE - 1) * PhaseBCampaignWaves.WAVE_DURATION_SECONDS
+		+ PhaseBCampaignWaves.ELITE_SPAWN_SECOND
+	)
+	boss_time_seconds = (
+		float(PhaseBCampaignWaves.BOSS_WAVE - 1) * PhaseBCampaignWaves.WAVE_DURATION_SECONDS
+		+ PhaseBCampaignWaves.BOSS_SPAWN_SECOND
+	)
+	# The final wave is a wave, not a separate invasion phase bolted after one. It
+	# announces itself at its own boundary and stops reinforcing at 24:45.
+	final_invasion_time_seconds = (
+		float(PhaseBCampaignWaves.WAVE_COUNT - 1) * PhaseBCampaignWaves.WAVE_DURATION_SECONDS
+	)
+	cleanup_time_seconds = PhaseBCampaignWaves.FINAL_REINFORCEMENT_CUTOFF_SECONDS
+	# Campaign breaks are authored per wave and never end early, so the shared
+	# grace field is only the Quick behaviour and Campaign reads its spec instead.
+	wave_grace_period_seconds = 0.0
+
+
+func set_run_seed(seed_value: int) -> void:
+	## Every deterministic Campaign draw hangs off this: the leader decks and the
+	## sector the perimeter rotation starts from. Set before the run begins so a
+	## seed replays a Campaign exactly.
+	_run_seed = seed_value
+	_topology.configure(
+		territory_field.tuning.arena_size if territory_field != null else Vector2(1280.0, 720.0),
+		absi(seed_value) % PhaseBSpawnTopology.SECTOR_COUNT
+	)
+	_deck_wave = 0
 
 
 func _ready() -> void:
@@ -250,6 +298,16 @@ func reset_director() -> void:
 	_spawn_pack_sequence = 0
 	_grazer_pack_sequence = 0
 	_variant_sequence = 0
+	_spawn_debt_seconds = 0.0
+	_pattern_index = 0
+	_leader_deck = PackedInt32Array()
+	_leader_cursor = 0
+	_leader_cycle = 0
+	_deck_wave = 0
+	_packs_requested = 0
+	_packs_rejected = 0
+	_enemies_spawned = 0
+	set_run_seed(_run_seed if _run_seed != 0 else (randi() | 1))
 	_apply_enemy_spawn_scaling()
 	combat.set_elite_modifier_pressure(0.0)
 
@@ -259,6 +317,10 @@ func advance(delta: float) -> void:
 		return
 	elapsed_seconds = minf(run_duration_seconds, elapsed_seconds + delta)
 	_update_timeline_events()
+	if _campaign_mode:
+		_advance_campaign_topology(delta)
+		_update_campaign_spawning(delta)
+		return
 	_update_enemy_spawning(delta)
 
 
@@ -281,6 +343,10 @@ func debug_spawn_boss() -> bool:
 	return true
 
 
+func is_campaign_mode() -> bool:
+	return _campaign_mode
+
+
 func get_current_wave_number() -> int:
 	var wave_duration := maxf(1.0, wave_duration_seconds)
 	var maximum_wave := maxi(1, ceili(run_duration_seconds / wave_duration))
@@ -291,30 +357,52 @@ func get_current_wave_number() -> int:
 	)
 
 
+func get_wave_spec(wave_number: int) -> CampaignWaveSpec:
+	## The authored configuration of one Campaign wave, or null outside Campaign.
+	if _wave_specs.is_empty():
+		return null
+	return _wave_specs[clampi(wave_number, 1, _wave_specs.size()) - 1]
+
+
+func get_current_wave_spec() -> CampaignWaveSpec:
+	return get_wave_spec(get_current_wave_number())
+
+
+func get_wave_display_name(wave_number: int) -> String:
+	var spec := get_wave_spec(wave_number)
+	return String(spec.display_name) if spec != null else ""
+
+
+func get_seconds_into_wave() -> float:
+	return fmod(elapsed_seconds, maxf(1.0, wave_duration_seconds))
+
+
 func is_grace_period_active() -> bool:
 	if elapsed_seconds >= run_duration_seconds or get_current_wave_number() == 1:
 		return false
-	# A break the player has already earned their way out of. Clearing the arena is
-	# the whole point of a wave, and standing in an empty one waiting for a timer is
-	# the game withholding the next wave from someone who has asked for it.
-	if _grace_skipped_wave == get_current_wave_number():
+	var break_seconds := _get_opening_break_seconds()
+	if break_seconds <= 0.0:
 		return false
-	var wave_duration := maxf(1.0, wave_duration_seconds)
-	var grace_duration := minf(maxf(0.0, wave_grace_period_seconds), wave_duration)
-	return fmod(elapsed_seconds, wave_duration) < grace_duration
+	# Campaign's opening break is an authored pause and is deliberately never cut
+	# short: ending it early is what let clear speed change how many reinforcements
+	# a wave actually scheduled.
+	if not _campaign_mode and _grace_skipped_wave == get_current_wave_number():
+		return false
+	return get_seconds_into_wave() < break_seconds
 
 
 func get_grace_remaining_seconds() -> float:
 	if not is_grace_period_active():
 		return 0.0
-	return maxf(
-		0.0,
-		wave_grace_period_seconds
-		- fmod(elapsed_seconds, maxf(1.0, wave_duration_seconds))
-	)
+	return maxf(0.0, _get_opening_break_seconds() - get_seconds_into_wave())
 
 
 func is_grazer_surge_wave() -> bool:
+	if _campaign_mode:
+		# Campaign says what a wave is about in its authored composition table
+		# rather than by a repeating cycle.
+		var spec := get_current_wave_spec()
+		return spec != null and spec.display_name == &"Grazer Surge"
 	if grazer_surge_wave_cycle <= 0 or cleanup_started:
 		return false
 	return get_current_wave_number() % grazer_surge_wave_cycle == 0
@@ -324,6 +412,36 @@ func is_complete() -> bool:
 	return elapsed_seconds >= run_duration_seconds
 
 
+func get_packs_requested() -> int:
+	return _packs_requested
+
+
+func get_packs_rejected_at_cap() -> int:
+	return _packs_rejected
+
+
+func get_enemies_spawned() -> int:
+	return _enemies_spawned
+
+
+func get_spawn_topology() -> PhaseBSpawnTopology:
+	return _topology
+
+
+func report_sector_pressure(local_position: Vector2, amount: float) -> void:
+	## Damage taken or Green lost, so the topology knows which side is actually
+	## under pressure rather than only which side is crowded.
+	if _campaign_mode:
+		_topology.report_pressure(local_position, amount)
+
+
+func _get_opening_break_seconds() -> float:
+	if _campaign_mode:
+		var spec := get_current_wave_spec()
+		return spec.opening_break_seconds if spec != null else 0.0
+	return minf(maxf(0.0, wave_grace_period_seconds), maxf(1.0, wave_duration_seconds))
+
+
 func _update_timeline_events() -> void:
 	_apply_enemy_spawn_scaling()
 	# Waves are read off the clock rather than counted, so the crossing is
@@ -331,7 +449,40 @@ func _update_timeline_events() -> void:
 	var wave_number := get_current_wave_number()
 	while announced_wave_number < wave_number:
 		announced_wave_number += 1
+		_on_wave_boundary_crossed(announced_wave_number)
 		wave_began.emit(announced_wave_number)
+	if _campaign_mode:
+		_update_campaign_milestones()
+	else:
+		_update_quick_milestones()
+	if not final_invasion_started and elapsed_seconds >= final_invasion_time_seconds:
+		final_invasion_started = true
+		_spawn_remaining = 0.0
+		final_invasion_began.emit()
+	if not cleanup_started and elapsed_seconds >= cleanup_time_seconds:
+		cleanup_started = true
+		cleanup_began.emit()
+	if not _campaign_mode:
+		_update_grace_skip()
+
+
+func _on_wave_boundary_crossed(wave_number: int) -> void:
+	# The pattern index and the leader deck both reset here, which is what makes a
+	# wave's requested density a property of the wave rather than of when the
+	# previous one happened to end.
+	_pattern_index = 0
+	_spawn_debt_seconds = 0.0
+	_leader_deck = PackedInt32Array()
+	_leader_cursor = 0
+	_leader_cycle = 0
+	if not _campaign_mode:
+		return
+	var previous := get_wave_spec(wave_number - 1)
+	if previous != null and previous.grants_wave_relic:
+		wave_relic_earned.emit(wave_number - 1)
+
+
+func _update_quick_milestones() -> void:
 	var milestone_spawn_allowed := not is_grace_period_active()
 	if not elite_spawned and elapsed_seconds >= elite_time_seconds and milestone_spawn_allowed:
 		if combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.ELITE) != -1:
@@ -341,14 +492,57 @@ func _update_timeline_events() -> void:
 		if combat.spawn_enemy(PhaseBCombatDirector.EnemyRole.BOSS) != -1:
 			boss_spawned = true
 			boss_arrived.emit()
-	if not final_invasion_started and elapsed_seconds >= final_invasion_time_seconds:
-		final_invasion_started = true
-		_spawn_remaining = 0.0
-		final_invasion_began.emit()
-	if not cleanup_started and elapsed_seconds >= cleanup_time_seconds:
-		cleanup_started = true
-		cleanup_began.emit()
-	_update_grace_skip()
+
+
+func _update_campaign_milestones() -> void:
+	## Milestone actors are priority events: they own a reserved slot and keep
+	## retrying until their entrance is valid, because the wave they define cannot
+	## be silently skipped by a full arena.
+	var spec := get_current_wave_spec()
+	if spec == null:
+		return
+	var wave_number := get_current_wave_number()
+	var second := get_seconds_into_wave()
+	if (
+		not elite_spawned
+		and spec.elite_spawn_second >= 0.0
+		and second >= spec.elite_spawn_second
+	):
+		if _spawn_milestone(PhaseBCombatDirector.EnemyRole.ELITE):
+			elite_spawned = true
+			elite_arrived.emit()
+	if (
+		not boss_spawned
+		and spec.boss_spawn_second >= 0.0
+		and second >= spec.boss_spawn_second
+	):
+		if _spawn_milestone(PhaseBCombatDirector.EnemyRole.BOSS):
+			boss_spawned = true
+			boss_arrived.emit()
+	# A milestone whose wave has passed is still owed. Retrying it here is what
+	# turns a rejected entrance into a delay rather than into a lost reward.
+	if not elite_spawned and wave_number > PhaseBCampaignWaves.ELITE_WAVE:
+		if _spawn_milestone(PhaseBCombatDirector.EnemyRole.ELITE):
+			elite_spawned = true
+			elite_arrived.emit()
+	if not boss_spawned and wave_number > PhaseBCampaignWaves.BOSS_WAVE:
+		if _spawn_milestone(PhaseBCombatDirector.EnemyRole.BOSS):
+			boss_spawned = true
+			boss_arrived.emit()
+
+
+func _spawn_milestone(role: int) -> bool:
+	# Scaling is applied for the milestone's own wave first, so an Elite delayed
+	# into Wave 8 still fights as the Wave 6 Elite it was authored as.
+	var milestone_wave := (
+		PhaseBCampaignWaves.ELITE_WAVE
+		if role == PhaseBCombatDirector.EnemyRole.ELITE
+		else PhaseBCampaignWaves.BOSS_WAVE
+	)
+	_apply_wave_scaling(get_wave_spec(milestone_wave))
+	var spawned := combat.spawn_enemy(role) != -1
+	_apply_enemy_spawn_scaling()
+	return spawned
 
 
 func _update_grace_skip() -> void:
@@ -362,14 +556,138 @@ func _update_grace_skip() -> void:
 	var wave := get_current_wave_number()
 	if _grace_skipped_wave == wave or wave == 1:
 		return
-	var wave_duration := maxf(1.0, wave_duration_seconds)
-	var grace_duration := minf(maxf(0.0, wave_grace_period_seconds), wave_duration)
-	if fmod(elapsed_seconds, wave_duration) >= grace_duration:
+	if get_seconds_into_wave() >= _get_opening_break_seconds():
 		return
 	if combat.get_active_enemy_count() > 0:
 		return
 	_grace_skipped_wave = wave
 	grace_skipped.emit(wave)
+
+
+func _advance_campaign_topology(delta: float) -> void:
+	if territory_field == null:
+		return
+	_topology.advance(
+		delta,
+		territory_field,
+		combat.get_active_enemy_positions(),
+		player.get_arena_position() if player != null else territory_field.tuning.arena_size * 0.5
+	)
+
+
+func _update_campaign_spawning(delta: float) -> void:
+	## A bounded debt scheduler rather than at most one pack per frame.
+	##
+	## The old timing tied requested density to the frame rate: a 30 fps machine
+	## could not issue the packs a 0.28-second interval asks for, so the same wave
+	## was a different wave on different hardware. Debt accumulates in seconds and
+	## is spent in whole intervals, with the catch-up bounded so a hitch produces a
+	## slightly late wave rather than a sudden wall.
+	if cleanup_started or is_grace_period_active():
+		return
+	var spec := get_current_wave_spec()
+	if spec == null:
+		return
+	var interval := _get_campaign_pack_interval(spec)
+	_spawn_debt_seconds += delta
+	var packs_this_frame := 0
+	while (
+		_spawn_debt_seconds >= interval
+		and packs_this_frame < maximum_packs_per_frame
+	):
+		_spawn_debt_seconds -= interval
+		_request_campaign_pack(spec)
+		packs_this_frame += 1
+	_spawn_debt_seconds = minf(
+		_spawn_debt_seconds,
+		interval * maximum_spawn_debt_intervals
+	)
+
+
+func _get_campaign_pack_interval(spec: CampaignWaveSpec) -> float:
+	# The final wave tightens once the invasion is under way rather than arriving
+	# at its closing rate, so the last minute has a shape of its own.
+	if (
+		spec.wave_index == PhaseBCampaignWaves.WAVE_COUNT
+		and get_seconds_into_wave() >= PhaseBCampaignWaves.FINAL_WAVE_LATE_INTERVAL_SECOND
+	):
+		return PhaseBCampaignWaves.FINAL_WAVE_LATE_INTERVAL
+	return maxf(0.05, spec.pack_interval_seconds)
+
+
+func _request_campaign_pack(spec: CampaignWaveSpec) -> void:
+	## One scheduled request. A rejected ordinary request is recorded and discarded
+	## rather than retried: retrying against a full cap turns the moment the arena
+	## clears into a burst nobody asked for.
+	_packs_requested += 1
+	if combat.get_active_enemy_count() >= regular_reinforcement_cap:
+		_packs_rejected += 1
+		return
+	var leader := _draw_leader_role(spec)
+	var pack_size := _next_pack_size(spec)
+	var sector := _topology.select_sector(
+		spec.spawn_topology,
+		leader,
+		leader == PhaseBCampaignWaves.ROLE_RUSHER,
+		PhaseBCampaignWaves.is_specialist_role(leader)
+	)
+	for index in range(pack_size):
+		if combat.get_active_enemy_count() >= regular_reinforcement_cap:
+			_packs_rejected += 1
+			return
+		var role := (
+			leader
+			if index == 0
+			else PhaseBCampaignWaves.get_follower_role(leader, index, spec.wave_index)
+		)
+		var point := _topology.get_spawn_point(
+			sector,
+			_get_spawn_margin(role)
+		)
+		if combat.spawn_enemy_near(role, point) != -1:
+			_enemies_spawned += 1
+
+
+func _get_spawn_margin(role: int) -> float:
+	# The Rusher's whole role is arriving before the player has finished reacting,
+	# so it is kept further out than the rest rather than allowed to appear closer.
+	return 34.0 if role == PhaseBCampaignWaves.ROLE_RUSHER else 26.0
+
+
+func _next_pack_size(spec: CampaignWaveSpec) -> int:
+	var pattern := PhaseBCampaignWaves.get_pack_pattern(spec.pack_pattern)
+	if pattern.is_empty():
+		return 1
+	var size := int(pattern[_pattern_index % pattern.size()])
+	_pattern_index += 1
+	return size
+
+
+func _draw_leader_role(spec: CampaignWaveSpec) -> int:
+	if _deck_wave != spec.wave_index or _leader_deck.is_empty():
+		_deck_wave = spec.wave_index
+		_leader_cycle = 0
+		_leader_cursor = 0
+		_leader_deck = PhaseBCampaignWaves.shuffle_deck(
+			PhaseBCampaignWaves.build_leader_deck(spec),
+			_run_seed,
+			spec.wave_index,
+			_leader_cycle
+		)
+	if _leader_cursor >= _leader_deck.size():
+		# The same authored deck again, reshuffled, so the proportions hold across
+		# a long wave without its second half repeating the order of its first.
+		_leader_cycle += 1
+		_leader_cursor = 0
+		_leader_deck = PhaseBCampaignWaves.shuffle_deck(
+			PhaseBCampaignWaves.build_leader_deck(spec),
+			_run_seed,
+			spec.wave_index,
+			_leader_cycle
+		)
+	var role := _leader_deck[_leader_cursor]
+	_leader_cursor += 1
+	return role
 
 
 func _update_enemy_spawning(delta: float) -> void:
@@ -468,6 +786,9 @@ func get_escalation_progress() -> float:
 	# How far the run is into its escalation stage, which is what decides how often
 	# the rules change. Zero until the run is far enough in to have a build worth
 	# changing the rules of, then climbing to one at the final invasion.
+	if _campaign_mode:
+		var spec := get_current_wave_spec()
+		return spec.modifier_chance if spec != null else 0.0
 	if elapsed_seconds < elite_modifier_intro_seconds:
 		return 0.0
 	var span := maxf(1.0, final_invasion_time_seconds - elite_modifier_intro_seconds)
@@ -475,6 +796,9 @@ func get_escalation_progress() -> float:
 
 
 func _apply_enemy_spawn_scaling() -> void:
+	if _campaign_mode:
+		_apply_wave_scaling(get_current_wave_spec())
+		return
 	var progress := _pressure_progress()
 	var wave_number := get_current_wave_number()
 	var wave_index := wave_number - 1
@@ -486,6 +810,41 @@ func _apply_enemy_spawn_scaling() -> void:
 		wave_number,
 		xp_reward_growth_per_wave,
 		xp_minimum_bonus_per_wave
+	)
+
+
+func _apply_wave_scaling(spec: CampaignWaveSpec) -> void:
+	## Every enemy spawned during a wave is built from that wave's fixed numbers.
+	##
+	## Fixed per wave rather than read from continuous run time on purpose: a wave
+	## is the unit the player, the telemetry and a deterministic test all reason
+	## about, and an enemy whose health depends on the second it spawned in cannot
+	## be reasoned about by any of them.
+	if spec == null:
+		return
+	combat.set_campaign_wave_scaling(
+		spec.wave_index,
+		spec.hp_multiplier,
+		spec.contact_damage_multiplier,
+		spec.movement_speed_multiplier,
+		spec.territory_strength_multiplier,
+		spec.territory_action_speed_multiplier,
+		spec.cc_resistance,
+		_get_campaign_xp_multiplier(spec.wave_index),
+		_role_scaling_profiles
+	)
+	combat.set_modifier_stage(
+		spec.modifier_chance,
+		PhaseBCampaignWaves.get_stage_modifiers(spec.modifier_pool_stage),
+		spec.wave_index
+	)
+
+
+func _get_campaign_xp_multiplier(wave_number: int) -> float:
+	return lerpf(
+		1.0,
+		campaign_final_xp_multiplier,
+		PhaseBCampaignWaves.get_wave_progress(wave_number)
 	)
 
 

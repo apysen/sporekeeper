@@ -47,10 +47,11 @@ longer adds draft clutter or consumes an upgrade slot.
   hits every unobstructed enemy in the sector once. It is an area attack and creates
   no projectile.
 - **Base damage:** **24** to every enemy hit.
-- **Vine exception:** selecting Vine turns the stroke green and replaces facing aim
-  with deterministic auto-targeting. It chooses the in-reach, unobstructed 90°
-  sector containing the most enemies; ties prefer the nearer/tighter cluster and
-  then the direction closest to facing.
+- **Vine exception:** selecting Vine replaces the instant sector resolver with a
+  persistent simulated rope and replaces facing aim with deterministic
+  auto-targeting. It chooses the in-reach, unobstructed 90° driving sector containing
+  the most enemies; ties prefer the nearer/tighter cluster and then the direction
+  closest to facing. Damage follows actual rope-segment contact during the stroke.
 
 ## Base damage at a glance
 
@@ -66,7 +67,7 @@ status, spread territory, or gain damage through an Evolution/relic.
 | **Root** | 0 direct damage; locally amplifies compatible effects from Mature Green |
 | **Pruning** | 26 per ring-contact bite and 26 per launched Cutting |
 | **Thistle** | 12 per thorn; each impact rolls its own 2× critical chance |
-| **Vine** | Uses Cane's 24 base damage; Lignification/Apical Dominance scale that sweep |
+| **Vine** | Uses Cane's 24 base damage; its persistent rope deals that damage on segment contact during a stroke |
 | **Fruit** | 36 per collision and up to 10 from the terminal burst |
 
 ---
@@ -193,14 +194,17 @@ when they occur on mature ground.
 | Line | Per rank | At rank 5 |
 |---|---|---|
 | **Maturation Speed** | +22% territory maturation rate | +110% |
-| **Biomass Yield** | +20% Biomass from Mature Green | +100% |
+| **Lateral Roots** | +24 px Root Network reach projected from Mature Green | +120 px |
 | **Mature Strength** | +16% Mature resistance, +0.008 control/s regrowth | +80%, +0.04/s |
 | **Root Potency** | +22% Root Network amplification from Mature ground | +110% |
 
 Root Potency is the one line that scales other paths rather than itself. Every
 consumer asks `root_director.get_network_multiplier_at(position, maturity)`, so the
-amplification is read where the effect happens and is scaled by the age of the ground
-under it — fresh Green gets nothing at any rank.
+amplification is read where the effect happens. Normally it is scaled by the age of
+the ground under that effect. Lateral Roots can instead project support from nearby
+Green at least 90% Mature: each rank adds 24 px of reach, and support falls off with
+distance. It does not paint or mature territory; it only lets an established colony
+amplify compatible effects beyond its own cells.
 
 | Amplified | Path | Site |
 |---|---|---|
@@ -230,8 +234,8 @@ it that ground is freshly cut and would read almost no maturity.
 
 The line carries a `base_network_bonus` of 0.30 that applies at rank 0, so owning Root
 at all is worth +30% on fully Mature ground before any Potency rank is bought, rising
-to +140% at rank 5. Two relics, Annual Rings and Seedbed, add further Root Potency
-locally inside their own regions, on top of the run-wide bonus.
+to +140% at rank 5. Annual Rings adds further Root Potency locally inside its tracked
+regions, on top of the run-wide bonus.
 
 ### Pruning
 
@@ -241,7 +245,10 @@ Base behavior: while the player stands on owned Green, the ring harvests a tight
 patch beneath them and converts the removed ground into Cuttings. Cuttings gather
 into an orbiting ring of up to **16**, deal contact damage, and are launched as the
 ring cycles. Holding the ring builds Charge for **8 seconds**; releasing it pays out
-a stronger launch, but harvesting continuously drains the ecosystem. In the
+a stronger launch, but harvesting continuously drains the ecosystem. A ring at **full
+Charge pulses** — a hoop of light standing just outside the ring, with a halo on each
+spike, beating about twice a second. That is the release cue: Charge is otherwise drawn
+as a gradient, and a gradient has no visible ceiling. In the
 playable scene the base harvest drain is **15 cells/second** and its hold escalation
 is **5 cells/second²** (script defaults are 9 and 0.8). Pruning stops at its safety
 floor and lets the cut ground reclaim after release.
@@ -256,16 +263,39 @@ falloff. A normal Cutting pierces **2 enemies**.
 | **Cutting Edge** | +30% ring and Cutting damage | +150% |
 | **Charge** | +22% Charge rate and launch payout | +110% |
 
+**Root Potency** reaches all four lines, measured two different ways because the ring
+is a point and a harvest is a patch. Cutting Yield and Cutting Edge read
+`get_harvest_root_multiplier` — the Mature share of the ground the cut actually took.
+Harvest Rate and Charge read `get_ring_root_multiplier`, the Network where Grandma is
+standing. Note that amplifying Harvest Rate raises spikes faster **and burns the Green
+faster**, which is the same trade the line itself is priced on; the
+`maximum_upkeep_cells_per_second` cap is what bounds it.
+
 ### Thistle
 
 > Supported Green grows stationary damage turrets that track and fire on enemies.
 
-Base behavior: selecting Thistle maintains **2 permanent turrets** on owned Green.
-Each attacks every **1.10s**, targets unobstructed enemies within **240 px**, and
-fires a **460 px/s** thorn with a **1.15s** lifetime. Losing the supporting Green
-destroys the turret immediately unless ROOTSTOCK supplies its three-second grace.
-Turrets consume no Green. Starting a distinct Thistle line raises the permanent cap:
-two started lines allow 3 turrets, three allow 4, and all four allow the maximum 5.
+Base behavior: selecting Thistle maintains **exactly one permanent turret** on owned
+Green, and never more. It attacks every **1.10s**, targets unobstructed enemies within
+**240 px**, and fires a **460 px/s** thorn with a **1.15s** lifetime. Losing the
+supporting Green destroys the turret immediately unless ROOTSTOCK supplies its
+three-second grace. However the turret is lost — an enemy taking the Green out from
+under it, or Grandma dropping it on bare ground — the plot then stays empty for
+**5s** before a replacement grows.
+Turrets consume no Green.
+
+**Carrying.** A real thistle catches on whatever walks through it. Walk Grandma within
+**15 px** of the turret and it sticks to her for **3s**, riding along and firing from
+wherever she is, ignoring supporting Green for as long as it is on her coat. Then it
+works loose and takes root where she is standing — which is the point: the turret no
+longer holds one plot for the whole run. Two rules keep it from being a free mobile
+turret. It will not catch again for **7s** after a drop, and if it works loose while
+she is **off supporting Green it simply withers**, costing the full 5s replant delay.
+Carrying it somewhere useful is a decision, and dropping it badly costs you the turret.
+
+Starting a distinct Thistle line no longer raises a turret cap; it buys carry instead.
+Each started line adds **+0.25s** to the ride and takes **−0.55s** off the wait between
+rides, so all four lines carry for 4s on a 4.8s cooldown.
 
 Base damage: **12 per thorn**. Base critical chance is 0%; Needlepoint adds chance
 and every impact—including each Burr ricochet—rolls independently for **2× damage**.
@@ -280,19 +310,37 @@ Ricochets deal full damage and cannot revisit an enemy in the same chain.
 
 Clustering distributes its projectiles across distinct available targets before
 wrapping. Dehiscence divides the base interval by `1 + 0.15 × rank`; it is not a
-flat subtraction. Root Potency samples the maturity under the firing turret and
-multiplies thorn damage there.
+flat subtraction.
+
+**Root Potency.** Thistle does not take Root amplification as virtual ranks the way
+Vine and Fruit do, and it does not multiply thorn damage at all. Each line takes it in
+the shape that line is about, sampled where the turret is standing and only on Mature
+player ground, and only for a line the run has actually started:
+
+| Line | What Root Potency adds |
+|---|---|
+| **Clustering** | **+1 thorn** in the volley |
+| **Burr** | **+1 ricochet** on every thorn |
+| **Dehiscence** | attack rate multiplied by Root's own amplification (**+25%/rank** over a +30% base, scaled by ground maturity) |
+| **Needlepoint** | critical chance multiplied by that same amplification |
+
+Counts get whole units because half a thorn is not a thing; rates get the multiplier
+because that is what Root's amplification already is everywhere else. A turret on
+fresh Green gets none of it.
 
 ### Vine
 
-> Cane grows into a long, green, high-damage directional lash.
+> Cane grows into a persistent, simulated green lash.
 
 Base behavior: Vine modifies the universal Cane rather than spawning a second
-weapon. It keeps Cane's **0.72s** cadence, **92 px** reach, fixed **90° sector**, and
-hit-every-enemy-once resolution. Vine strokes automatically aim at the targetable
-sector containing the most enemies instead of requiring the player to face it.
-Range and basalt line-of-sight are part of that decision. The visible shaft, tip,
-and sector telegraph are green.
+weapon. It keeps Cane's **0.72s** cadence, **92 px** reach, and automatic 90° driving
+arc, but replaces Cane's instant damage sector with one persistent simulated rope.
+Each stroke automatically aims at the targetable sector containing the most enemies
+instead of requiring the player to face it. Range and basalt line-of-sight are part
+of that decision. During the stroke, damage follows the rope's moving segments:
+only enemies the physical Vine contacts are hit, and each can be hit at most once
+per sweep. The Vine remains visible between attacks and bends around basalt rather
+than appearing only as a temporary shaft and sector telegraph.
 
 Base damage: **24 per enemy**, inherited from Cane. The normal Apical zone is the
 outermost **25%** of current reach. Root Potency multiplies Vine damage when the
@@ -583,7 +631,7 @@ damage, the added blast deals up to **14** at 35% Force or **20** at 50% Force.
 | 2 | **Pinned Target** — fully Entangled enemies take +20% Thistle damage |
 | 3 | **Barbed Precision** — critical hits apply another 8% Entanglement |
 | 4 | **Suppressive Thorns II** — base application becomes 8%, or 16% on Green |
-| 5 | **Crossfire** — the first Thistle hit on a fully Entangled enemy each second commands the nearest other Thistle to fire a bonus volley at it |
+| 5 | **Crossfire** — the first Thistle hit on a fully Entangled enemy each second commands the nearest other Thistle to fire a bonus volley at it, or the firing Thistle itself at 65% when it stands alone |
 
 Rank-2 ordinary thorn damage is **14.4** against a fully Entangled target before
 critical/Root modifiers.
@@ -611,7 +659,7 @@ Potency. The rank-5 counter is network-wide, not per turret.
 | 2 | **Charged Cutback** — that volley inherits 35% of the current Pruning Charge damage bonus |
 | 3 | **Sharp Regrowth** — Cutback volleys gain +1 Pierce |
 | 4 | **Double Cutback** — a full-Charge release repeats after 0.4s at 60% damage |
-| 5 | **Deadhead Flush** — a full-Charge release grows 2 temporary Thistles for 5s outside the normal five-turret cap |
+| 5 | **Deadhead Flush** — a full-Charge release grows 2 temporary Thistles for 5s outside the one-turret permanent cap |
 
 Every projectile starts from the normal **12-damage** Thistle thorn and inherits
 Clustering, Burr, Needlepoint, and Root Potency as applicable.
@@ -820,8 +868,8 @@ The pairings fall into three rough families:
   DEADHEADING, THORNWHIP, BURDOCK. Thistle contributes repeated 12-damage projectiles
   while its partner changes payload, timing, support, or mobility.
 - **Directional lashes** — MYCELIAL VINE, WISTERIA, BRIAR CANE, HEARTWOOD, ESPALIER,
-  GOURDVINE. These preserve Vine's automatic dense-sector 90° sweep while adding
-  statuses or explicitly bounded bonus packets.
+  GOURDVINE. These preserve Vine's automatic dense-sector targeting and simulated
+  90° rope stroke while adding statuses or explicitly bounded bonus packets.
 - **Kinetic territory** — ROT, OVERRIPE, DURIAN, ORCHARD, GRAFT. Fruit keeps its
   velocity/trail/terminal loop; the pairing changes what collisions and terminal
   bursts carry.

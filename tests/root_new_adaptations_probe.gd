@@ -1,10 +1,9 @@
 extends SceneTree
 
+## Thistle is deliberately absent: its four lines take Root amplification in
+## authored form rather than as virtual ranks, and _test_thistle_outputs checks
+## that shape instead.
 const ADAPTATION_UPGRADES := [
-	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
-	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE,
-	PhaseBProgression.UpgradeId.THISTLE_BURR,
-	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT,
 	PhaseBProgression.UpgradeId.VINE_ELONGATION,
 	PhaseBProgression.UpgradeId.VINE_LIGNIFICATION,
 	PhaseBProgression.UpgradeId.VINE_TURGOR,
@@ -13,6 +12,13 @@ const ADAPTATION_UPGRADES := [
 	PhaseBProgression.UpgradeId.FRUIT_RIPENING,
 	PhaseBProgression.UpgradeId.FRUIT_MOMENTUM,
 	PhaseBProgression.UpgradeId.FRUIT_GERMINATION,
+]
+
+const THISTLE_UPGRADES := [
+	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
+	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE,
+	PhaseBProgression.UpgradeId.THISTLE_BURR,
+	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT,
 ]
 
 var _failures := 0
@@ -48,6 +54,13 @@ func _run() -> void:
 			prototype.adaptation_director._effective_upgrade(upgrade_id, origin) == 6,
 			"owned %s receives five Potency ranks" % PhaseBProgression.get_upgrade_name(upgrade_id)
 		)
+	for upgrade_id in THISTLE_UPGRADES:
+		_check(
+			prototype.adaptation_director._effective_upgrade(upgrade_id, origin) == 1,
+			"owned %s takes no virtual Potency ranks" % PhaseBProgression.get_upgrade_name(
+				upgrade_id
+			)
+		)
 	_test_thistle_outputs(prototype, origin)
 	_test_vine_outputs(prototype)
 	_test_fruit_outputs(prototype, origin)
@@ -72,7 +85,7 @@ func _configure_owned_build(prototype: PhaseBPrototype) -> void:
 	)
 	progression.debug_select_tertiary_path(PhaseBProgression.PathId.VINE)
 	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
-	for upgrade_id in ADAPTATION_UPGRADES:
+	for upgrade_id in ADAPTATION_UPGRADES + THISTLE_UPGRADES:
 		progression._upgrade_levels[upgrade_id] = 1
 	prototype._apply_progression_modifiers()
 	prototype.adaptation_director.reset_adaptations()
@@ -80,22 +93,30 @@ func _configure_owned_build(prototype: PhaseBPrototype) -> void:
 
 
 func _test_thistle_outputs(prototype: PhaseBPrototype, origin: Vector2) -> void:
+	## Thistle's four lines each take Root Potency in the shape that line is about:
+	## Clustering and Burr are counts and get one whole unit, Dehiscence and
+	## Needlepoint are rates and get Potency's own amplification.
 	var adaptations := prototype.adaptation_director
+	var amplification := prototype.root_director.get_network_multiplier_here(origin)
+	_check(amplification > 1.0, "Mature ground under the turret is amplifying at all")
 	var enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.BOSS,
 		origin + Vector2(48.0, 0.0)
 	)
 	adaptations._spawn_thorn(origin, enemy_id, 1.0, 0, false, false, 0.0)
 	var thorn = adaptations._thorns[0]
-	_check(thorn.ricochets_remaining == 6, "Burr rank 1 plus Potency rank 5 gives 6 ricochets")
-	_check(is_equal_approx(thorn.critical_chance_bonus, 0.60), "Needlepoint uses 6 effective ranks")
+	_check(thorn.ricochets_remaining == 2, "Burr rank 1 plus Potency gives one more ricochet")
+	_check(
+		is_equal_approx(thorn.critical_chance_bonus, 0.10 * amplification),
+		"Needlepoint critical chance is scaled by Potency's amplification"
+	)
 	_check(is_equal_approx(thorn.damage, adaptations.thistle_damage), "Root no longer adds blanket Thistle damage")
 	_check(
 		is_equal_approx(
 			adaptations._get_thistle_attack_interval(origin),
-			adaptations.thistle_attack_interval / 1.90
+			adaptations.thistle_attack_interval / (1.15 * amplification)
 		),
-		"Dehiscence uses 6 effective ranks"
+		"Dehiscence attack speed is scaled by Potency's amplification"
 	)
 	for candidate in adaptations._thorns:
 		candidate.active = false
@@ -103,7 +124,26 @@ func _test_thistle_outputs(prototype: PhaseBPrototype, origin: Vector2) -> void:
 	thistle.active = true
 	thistle.position = origin
 	adaptations._fire_thistle(thistle)
-	_check(adaptations.get_active_thorn_count() == 7, "Clustering produces base 1 plus 6 projectiles")
+	_check(
+		adaptations.get_active_thorn_count() == 3,
+		"Clustering rank 1 plus Potency fires base 1 plus 2 thorns"
+	)
+
+	# Off Mature ground none of it applies: Root deepens the ground it has aged, and
+	# a turret standing on fresh Green is a plain turret.
+	var bare := origin + Vector2(400.0, 400.0)
+	_check(
+		adaptations._thistle_root_step(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, bare
+		) == 0
+		and is_equal_approx(
+			adaptations._thistle_root_scale(
+				PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, bare
+			),
+			1.0
+		),
+		"Potency amplifies nothing for a Thistle standing off Mature ground"
+	)
 
 
 func _test_vine_outputs(prototype: PhaseBPrototype) -> void:

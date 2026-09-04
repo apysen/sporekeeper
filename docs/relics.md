@@ -68,20 +68,27 @@ These percentages are rolled **per offered relic slot**, not once for the entire
 
 With three offered relics, a 1.5% Legendary slot chance produces roughly a **4.4% chance** that a pre-Evolution offer contains at least one Legendary. It should therefore be possible and memorable without becoming expected.
 
-### Campaign relic acquisition target
+### Campaign relic acquisition
 
-Campaign should normally award enough relics for a real interaction engine to form without allowing the player to collect most of the relevant pool.
+Campaign authors **12 relic opportunities** in a completed run:
 
-Initial target:
+- one after every third wave: Waves **3, 6, 9, 12, 15, 18, 21, 24, 27, and 30**,
+- one for defeating the run's Elite,
+- one for defeating the Boss.
 
-- **10 to 14 relics per completed Campaign run**
-- target average: approximately **12**
-- this count includes Plant and Adaptation relics
-- this count does not include Adaptation upgrades or Evolution ranks
+Each opportunity offers up to three distinct unowned eligible relics and the player
+takes one. Campaign grants **2 relic-offer rerolls**, tracked separately from upgrade
+rerolls. If another upgrade, Evolution, support, or relic choice already occupies the
+choice panel, the reward is queued until that choice resolves.
 
-The goal is for late Campaign builds to contain several interacting relics while still leaving substantial unseen combinations for future runs.
+If every eligible relic is already owned, the opportunity pays **24 Biomass** instead
+(`8 base Biomass × 3`). Therefore 12 is the authored opportunity count; the number of
+relics actually acquired can be lower if the eligible pool is exhausted. Relics do
+not count as Adaptation upgrades or Evolution ranks.
 
-Quick-mode relic count remains a separate balance target and should be tuned from its shorter run length rather than forced to match Campaign proportionally.
+Quick mode uses the same every-third-wave rule across its 12 waves, plus its Elite
+and Boss, for **6 authored relic opportunities**: Waves 3, 6, 9, and 12, then one
+opportunity from each milestone enemy.
 
 ### Generated-event ownership rule
 
@@ -99,12 +106,9 @@ Unless a relic explicitly says otherwise:
 
 ## Numeric implementation standard
 
-Every relic in this document includes explicit implementation notes.
-
-Two labels are used:
-
-- **Current implementation:** preserve these values unless playtesting specifically justifies changing them.
-- **Initial tuning target:** use these exact values for the first implementation, then balance from telemetry and playtests.
+Every relic in the current 72-relic catalog is implemented. Numeric sections marked
+**Current implementation** describe the live authored values and should be preserved
+unless playtesting specifically justifies changing them.
 
 For all future relics added to this document, specify at minimum when relevant:
 
@@ -135,7 +139,7 @@ Plant relics are shared by all Plant builds. Their purpose is to connect systems
 
 Traveling far enough across Green automatically sprays a fan of Green ahead of Grandma.
 
-#### Initial tuning target
+#### Current implementation
 
 - Required movement on owned Green: **240 px**
 - Movement counter pauses while Grandma is off Green and resumes when she returns.
@@ -168,11 +172,11 @@ Traveling far enough across Green automatically sprays a fan of Green ahead of G
 
 Enemies remember part of the Green they personally destroy. Killing them releases that stored value around the corpse.
 
-#### Initial tuning target
+#### Current implementation
 
-- Store **65%** of the Green Growth Mass or control-equivalent personally erased by that enemy.
+- Store **40%** of the Green Growth Mass or control-equivalent personally erased by that enemy.
 - Stored amount persists until the enemy dies.
-- Maximum stored amount per enemy: **1.25× baseline Seed Growth Mass**
+- Maximum stored amount per enemy: **0.60× baseline Seed Growth Mass**
 - Minimum stored amount required to erupt: **0.15× baseline Seed Growth Mass**
 - Death eruption radius: **95 px**
 - Restore **100% of the stored Mulch reserve** on death.
@@ -197,7 +201,7 @@ Enemies remember part of the Green they personally destroy. Killing them release
 
 The Green beneath Grandma snaps shut and blasts nearby enemies away.
 
-#### Initial tuning target
+#### Current implementation
 
 - Trigger radius: **120 px**
 - Knockback strength: **0.55× rank-0 Bloom Force**
@@ -227,7 +231,7 @@ The Green beneath Grandma snaps shut and blasts nearby enemies away.
 
 Deaths on Green build visible compost piles. Enough corpse value causes the pile to erupt into damage and highly developed Green.
 
-#### Initial tuning target
+#### Current implementation
 
 - Normal enemy death: **+1 Compost**
 - Elite death: **+2 Compost**
@@ -262,7 +266,7 @@ Deaths on Green build visible compost piles. Enough corpse value causes the pile
 
 A marked enemy's corpse erupts into a temporary carnivorous plant that bites nearby enemies once.
 
-#### Initial tuning target
+#### Current implementation
 
 - Required cumulative active Green-consumption time: **2.25s**
 - Consumption time does not need to be continuous.
@@ -297,7 +301,7 @@ A marked enemy's corpse erupts into a temporary carnivorous plant that bites nea
 
 The other primary Adaptation immediately performs one reduced core event.
 
-#### Initial tuning target
+#### Current implementation
 
 - Global cooldown: **18s**
 - Echo delay after the source event: **0.25s**
@@ -337,7 +341,7 @@ Use these event definitions unless an Adaptation's final implementation explicit
 
 Creating enough new Green primes the next eligible Adaptation event to repeat at reduced strength.
 
-#### Initial tuning target
+#### Current implementation
 
 - Green creation required per charge: **2.5× baseline Seed Growth Mass**
 - Count only newly created owned Green, not control recovery on already-owned Green.
@@ -376,7 +380,7 @@ For integer counts:
 
 Triggered relic effects have a chance to repeat once at reduced strength.
 
-#### Initial tuning target
+#### Current implementation
 
 - Repeat chance per eligible relic activation: **20%**
 - Repeat delay: **0.20s**
@@ -471,7 +475,7 @@ The first close pass advances that Seed's germination.
 
 The Seed bursts into three smaller Seedlings that scatter nearby.
 
-#### Initial tuning target
+#### Current implementation
 
 - Seedlings spawned: **3**
 - Scatter distance: random **80 to 130 px**
@@ -552,7 +556,7 @@ Nearby Seeds gain germination progress.
 
 A group of Seeds is launched toward distant non-Green territory.
 
-#### Initial tuning target
+#### Current implementation
 
 - Trigger threshold: **5 germinations**
 - Seeds launched per trigger: **3**
@@ -590,7 +594,7 @@ Because Windborne creates 3 Seeds per 5 germinations, Windborne-only reproductio
 
 The death may plant a new Seed at the corpse.
 
-#### Initial tuning target
+#### Current implementation
 
 - Recent Seed-Green eligibility window: **4.0s** after germination
 - Proc chance per qualifying enemy death: **30%**
@@ -620,7 +624,7 @@ The death may plant a new Seed at the corpse.
 
 Up to six active Seeds germinate one after another in a visible cascade.
 
-#### Initial tuning target
+#### Current implementation
 
 - Natural germinations required: **10**
 - Maximum Seeds forced per cascade: **6**
@@ -714,7 +718,7 @@ Bloom charges longer but gains substantially more power during the extended wind
 
 The failed bud immediately releases a smaller emergency Bloom.
 
-#### Initial tuning target
+#### Current implementation
 
 - Emergency detonation delay: **0.05s**
 - Damage multiplier: **0.50×**
@@ -755,7 +759,7 @@ Invalid:
 
 Each qualifying kill can fling one damaging petal toward an enemy outside the original Bloom radius.
 
-#### Initial tuning target
+#### Current implementation
 
 - Petals created per Bloom kill: **1**
 - Maximum petals per Bloom event: **6**
@@ -788,7 +792,7 @@ Each qualifying kill can fling one damaging petal toward an enemy outside the or
 
 A smaller Child Bloom is planted near the edge of the first blast toward enemies the first Bloom missed.
 
-#### Initial tuning target
+#### Current implementation
 
 - Kill requirement: **4 enemies**
 - Child Blooms per qualifying parent: **1**
@@ -832,7 +836,7 @@ Not eligible:
 
 Excess Bloom damage fills an Overkill meter. A full meter causes the next qualifying Bloom to detonate a second time.
 
-#### Initial tuning target
+#### Current implementation
 
 - Overkill damage required: **200**
 - Excess contribution per normal enemy: capped at **60**
@@ -954,7 +958,7 @@ The first successful natural Bloom each wave blooms twice more from the same loc
 
 A Child Bloom appears beyond the original blast toward the next enemy concentration. Successful Child Blooms continue flowering across the battlefield.
 
-#### Initial tuning target
+#### Current implementation
 
 ##### Starting a chain
 
@@ -1039,7 +1043,7 @@ Unless a relic says otherwise, Bramble relics use the enemy's actual current Ent
 
 Both enemies gain additional Entanglement.
 
-#### Initial tuning target
+#### Current implementation
 
 - Post-Repulsion collision window: **0.40s**
 - Enemy-to-enemy collision distance: **30 px**
@@ -1068,7 +1072,7 @@ Both enemies gain additional Entanglement.
 
 A thorn launches from the damaged Green toward another nearby enemy.
 
-#### Initial tuning target
+#### Current implementation
 
 - Thorns created per qualifying Repulsion: **1**
 - Target acquisition range: **180 px**
@@ -1099,7 +1103,7 @@ A thorn launches from the damaged Green toward another nearby enemy.
 
 The enemy carries burrs with it and can spread Entanglement by touching other enemies.
 
-#### Initial tuning target
+#### Current implementation
 
 - Minimum Entanglement required when leaving Green: **50%**
 - Burr duration: **3.0s**
@@ -1156,7 +1160,7 @@ Nearby enemies gain Entanglement.
 
 Its remains become a temporary trap that snares the next enemy that approaches.
 
-#### Initial tuning target
+#### Current implementation
 
 - Required Entanglement at death: **90%**
 - Knot lifetime: **7.0s**
@@ -1215,7 +1219,7 @@ Dense enemy groups standing in Green cause local Bramble behavior to accelerate 
 
 Their accumulated thorns combine into a rolling Briarball that crashes through enemies.
 
-#### Initial tuning target
+#### Current implementation
 
 - Qualifying deaths required: **4**
 - Required Entanglement at death: **90%**
@@ -1400,7 +1404,7 @@ Selection priority:
 
 The stored root pulse discharges into the younger territory and rapidly establishes it.
 
-#### Initial tuning target
+#### Current implementation
 
 - Required continuous time on Green at **≥90% maturity:** **2.5s**
 - Maximum stored charges: **1**
@@ -1427,7 +1431,7 @@ The stored root pulse discharges into the younger territory and rapidly establis
 
 Surviving roots around the wound throw out replacement shoots.
 
-#### Initial tuning target
+#### Current implementation
 
 - Trigger threshold: enemy-caused destruction of **24 Mature owned cells within 1.0s**
 - Local trigger grouping radius: **110 px**
@@ -1459,7 +1463,7 @@ Do not trigger from Pruning sacrifice, Clover wagers, player-authored territory 
 
 The network sends a feeding pulse toward younger connected Green.
 
-#### Initial tuning target
+#### Current implementation
 
 - Eligible amplified events required: **4**
 - Source territory requirement: **≥90% maturity**
@@ -1529,7 +1533,7 @@ When the supporting region is lost:
 
 The graft point releases a maturation surge and temporarily links the two sides for one Adaptation echo.
 
-#### Initial tuning target
+#### Current implementation
 
 A reconnection qualifies when:
 
@@ -1608,7 +1612,7 @@ When Annual Rings begins tracking a new region:
 
 The colony grows a visible root runner back toward the main organism.
 
-#### Initial tuning target
+#### Current implementation
 
 - Minimum isolated colony size: **24 owned cells**
 - Minimum average colony maturity: **70%**
@@ -1742,7 +1746,7 @@ Held-ring kills contribute free Charge without consuming additional Green.
 
 The first obstacle collision redirects the Cutting toward a nearby enemy instead of immediately spending it.
 
-#### Initial tuning target
+#### Current implementation
 
 - Ricochets per qualifying Cutting: **1**
 - Target acquisition range from collision: **180 px**
@@ -1771,7 +1775,7 @@ The first obstacle collision redirects the Cutting toward a nearby enemy instead
 
 Returning to the wound causes one local reclamation pulse.
 
-#### Initial tuning target
+#### Current implementation
 
 - Eligibility window after release: **8.0s**
 - Uses per Pruning release: **1**
@@ -1801,7 +1805,7 @@ Returning to the wound causes one local reclamation pulse.
 
 Excess harvesting stores Brush bundles that release as a delayed bonus Cutting volley.
 
-#### Initial tuning target
+#### Current implementation
 
 - Brush accumulation begins at **50% Charge**
 - Additional harvested cells required per Brush bundle: **24**
@@ -1831,7 +1835,7 @@ Excess harvesting stores Brush bundles that release as a delayed bonus Cutting v
 
 The territory cut during that hold remains temporarily hazardous to enemies.
 
-#### Initial tuning target
+#### Current implementation
 
 - Stubble duration: **5.0s**
 - Affected area: Pruned Ground created by the most recent qualifying release
@@ -1920,7 +1924,7 @@ After the released ring reaches maximum expansion, it contracts back toward Gran
 
 The corpse erupts into new Cuttings that seek additional enemies. Generation-1 child kills may create one final generation.
 
-#### Initial tuning target
+#### Current implementation
 
 ### Generation 1
 
@@ -2050,13 +2054,13 @@ Recommended source tags:
 
 ### Rosette
 
-**Player-facing description:** A newly grown permanent Thistle immediately fires a 60%-damage opening volley.
+**Player-facing description:** Every time your Thistle takes root, including each time you set a carried one down, it immediately fires a 60%-damage opening volley.
 
-**Trigger:** A permanent Thistle finishes growing or is replaced after its previous support is lost.
+**Trigger:** A permanent Thistle finishes growing, is replaced after its previous support is lost, or works loose from Grandma and takes root again.
 
 The newly established turret immediately fires one reduced opening volley.
 
-#### Initial tuning target
+#### Current implementation
 
 - Opening delay after placement: **0.25s**
 - Damage multiplier: **60%**
@@ -2068,6 +2072,7 @@ The newly established turret immediately fires one reduced opening volley.
 - Rosette does **not** advance Crown of Thorns.
 - Temporary Evolution-created Thistles do **not** trigger Rosette.
 - Permanent replacement Thistles **do** trigger Rosette.
+- A carried Thistle dropped back onto supporting Green **does** trigger Rosette. With the network capped at one turret this is Rosette's main payout, and the stick cooldown is what bounds it.
 
 #### Implementation notes
 
@@ -2080,19 +2085,20 @@ The newly established turret immediately fires one reduced opening volley.
 
 ### Thorn Relay
 
-**Player-facing description:** Every 8 natural thorn hits makes another Thistle fire a 65%-damage bonus thorn.
+**Player-facing description:** Every 8 natural thorn hits, your Thistle answers with a bonus thorn at 42% damage, or 65% if a second Thistle is standing to answer instead.
 
 **Trigger:** Enough natural thorn impacts occur across the Thistle network.
 
-A different Thistle immediately fires one bonus thorn.
+A different Thistle immediately fires one bonus thorn. With the permanent network capped at one turret there is usually no different Thistle, so the source turret answers itself at a reduced share rather than the relic reading as dead text.
 
-#### Initial tuning target
+#### Current implementation
 
 - Natural thorn impacts required: **8**
 - Counter scope: network-wide
 - Bonus thorns per activation: **1**
 - Bonus thorn damage multiplier: **65%**
-- Responding turret: nearest active Thistle other than the turret responsible for impact #8
+- Responding turret: nearest active Thistle other than the turret responsible for impact #8; the source turret itself when it is the only one standing
+- Solo-network damage share: **65%** of the listed multiplier
 - If the responding turret has no current target, acquire one using ordinary Thistle targeting.
 - Needlepoint: inherited normally
 - Maximum Burr ricochets: **1**
@@ -2125,13 +2131,13 @@ Impacts that do not advance Thorn Relay:
 
 ### Pincushion
 
-**Player-facing description:** Hit an enemy with 5 Thistle thorns before it dies to launch 3 embedded thorns from its corpse.
+**Player-facing description:** Hit an enemy with 5 thorns before it dies to launch 3 embedded thorns from its corpse.
 
 **Trigger:** An enemy absorbs enough natural Thistle projectile impacts and then dies.
 
 Embedded thorns burst from the corpse toward nearby enemies.
 
-#### Initial tuning target
+#### Current implementation
 
 - Embedded-thorn threshold: **5**
 - Natural Thistle impact: **+1 embedded thorn**
@@ -2174,7 +2180,7 @@ Non-qualifying impacts:
 
 ### Seedhead
 
-**Player-facing description:** A Thistle that loses its supporting Green fires one final volley at 150% damage before collapsing.
+**Player-facing description:** Your Thistle fires one final volley at 150% damage as it collapses, including when you drop it off the Green.
 
 **Trigger:** A Thistle loses the Green supporting it and is about to collapse.
 
@@ -2183,7 +2189,7 @@ The dying turret fires one final empowered volley.
 #### Current implementation
 
 - Final-volley damage multiplier: **1.50×**
-- Rank-0 thorn reference damage: **18**
+- Rank-0 thorn reference damage: **12**; the 1.50× final volley therefore deals **18** before other modifiers
 - Inherits current Clustering projectile count
 - Inherits current Burr ricochets
 - Inherits current Needlepoint critical chance
@@ -2203,17 +2209,18 @@ The dying turret fires one final empowered volley.
 
 ### Answering Thorn
 
-**Player-facing description:** When a natural Thistle volley gets a kill, another Thistle answers with a 50%-damage volley. 2.25s cooldown.
+**Player-facing description:** When a natural volley gets a kill, your Thistle answers with another volley at 33% damage, or 50% if a second Thistle answers instead. 2.25s cooldown.
 
 **Trigger:** A natural Thistle volley kills at least one enemy.
 
-The nearest different Thistle answers with one reduced volley.
+The nearest different Thistle answers with one reduced volley. With the permanent network capped at one turret, the killing turret answers itself at a reduced share instead.
 
-#### Initial tuning target
+#### Current implementation
 
 - Trigger requirement: natural volley scores **at least 1 kill**
 - Answer delay: **0.18s**
-- Responding turret: nearest different active permanent Thistle with a valid target
+- Responding turret: nearest different active permanent Thistle with a valid target; the killing turret itself when it is the only one standing
+- Solo-network damage share: **65%** of the listed multiplier
 - Answering volley damage multiplier: **50%**
 - Projectile count: current Clustering count
 - Needlepoint: inherited normally
@@ -2237,7 +2244,7 @@ The nearest different Thistle answers with one reduced volley.
 
 ### Phyllotaxis
 
-**Player-facing description:** Every 5th natural firing cycle from a Thistle adds 5 spiral thorns at 55% damage.
+**Player-facing description:** Every 5th natural firing cycle from your Thistle adds 5 spiral thorns at 55% damage.
 
 Every fifth natural firing cycle from an individual Thistle adds a spiral packet of bonus thorns.
 
@@ -2271,7 +2278,7 @@ Every fifth natural firing cycle from an individual Thistle adds a spiral packet
 
 The triggering thorn impact branches into several new thorns aimed at enemies the original projectile has not yet hit.
 
-#### Initial tuning target
+#### Current implementation
 
 - Natural thorn impacts required: **12**
 - Counter scope: network-wide
@@ -2308,11 +2315,11 @@ Forking Pattern branches:
 
 ### Crown of Thorns
 
-**Player-facing description:** Every 12 natural network firing cycles, every active Thistle fires together at 55% damage. 7s cooldown.
+**Player-facing description:** Every 12 natural firing cycles, your Thistle fires 3 volleys in quick succession at 55% damage, or every standing Thistle fires together once if there is more than one. 7s cooldown.
 
 **Trigger:** Enough normal permanent-Thistle firing cycles occur across the network.
 
-Every active Thistle immediately fires a synchronized reduced volley.
+Every active Thistle immediately fires a synchronized reduced volley. A network of one has nothing to synchronize with, so the sole Thistle fires the volley three times in quick succession instead of once.
 
 #### Current implementation
 
@@ -2320,6 +2327,7 @@ Every active Thistle immediately fires a synchronized reduced volley.
 - Every active Thistle fires
 - Bonus-volley damage multiplier: **55%**
 - Shared cooldown: **7.0s**
+- Solo network (1 active Thistle): **3** volleys spaced **0.14s** apart, each at the same 55%
 - Temporary Thistles participate in the synchronized volley.
 - Temporary Thistles do **not** advance the 12-cycle counter.
 - Crown bonus volleys do not advance the counter.
@@ -2469,7 +2477,7 @@ The authored sweep remains the control target:
 
 The physical Vine is allowed to distort this shape.
 
-#### Initial tuning target
+#### Current implementation
 
 - Soft visual overshoot allowance: approximately **15 degrees** beyond either authored endpoint
 - Typical visible total footprint in open terrain: approximately **90 to 120 degrees**
@@ -2520,7 +2528,7 @@ If allocation pressure becomes measurable, replace temporary Dictionaries used p
 
 Use the current gameplay reach to determine physical Vine length.
 
-#### Initial tuning target
+#### Current implementation
 
 - Target segment rest length: **12 px**
 - Point count:
@@ -2552,7 +2560,7 @@ velocity = (point - previous_point) * damping
 next_point = point + velocity + guide_acceleration * delta²
 ```
 
-#### Initial tuning target
+#### Current implementation
 
 Passive-state damping:
 - **0.92**
@@ -2962,7 +2970,7 @@ Recommended source tags:
 
 The Vine tip snaps farther beyond its normal endpoint and strikes enemies outside the original sweep.
 
-#### Initial tuning target
+#### Current implementation
 
 - Apical hits required: **1**
 - Maximum Whiplash activations per natural sweep: **1**
@@ -3000,7 +3008,7 @@ Whiplash may:
 
 The corpse sprouts a temporary Runner that lashes one nearby enemy.
 
-#### Initial tuning target
+#### Current implementation
 
 - Maximum Runner spawns per natural sweep: **1**
 - Spawn position: first qualifying Vine-killed enemy's corpse
@@ -3033,7 +3041,7 @@ The corpse sprouts a temporary Runner that lashes one nearby enemy.
 
 The wrapped section of the Vine cinches tight and damages the bent segment again.
 
-#### Initial tuning target
+#### Current implementation
 
 - Required obstacle bends: **at least 1**
 - Required enemy hit after first bend: **at least 1**
@@ -3091,7 +3099,7 @@ The next opposite-direction natural sweep occurs sooner.
 
 The target becomes Girdled. The next Vine hit constricts it for bonus damage.
 
-#### Initial tuning target
+#### Current implementation
 
 - Consecutive natural Apical hits required on the same target: **2**
 - Maximum allowed time between qualifying natural sweeps: **2.5s**
@@ -3218,7 +3226,7 @@ Twining repeats do not:
 
 The Vine enters a brief cascade of rapid alternating bonus sweeps.
 
-#### Initial tuning target
+#### Current implementation
 
 ### Trigger
 
@@ -3394,7 +3402,7 @@ The first enemy collision does not reduce Fruit momentum.
 
 The Fruit curves toward another nearby enemy while preserving its current speed.
 
-#### Initial tuning target
+#### Current implementation
 
 - Maximum steering events per Fruit: **2**
 - Trigger: qualifying natural Fruit enemy collision
@@ -3425,7 +3433,7 @@ The Fruit curves toward another nearby enemy while preserving its current speed.
 
 The Fruit becomes Juicy and paints a temporarily wider, denser Green trail.
 
-#### Initial tuning target
+#### Current implementation
 
 - Juicy travel distance after qualifying collision: **72 px**
 - Green trail area multiplier while Juicy: **1.75×**
@@ -3487,7 +3495,7 @@ The bounce preserves substantially more momentum and empowers the next enemy col
 
 The second hit bursts the target in juice.
 
-#### Initial tuning target
+#### Current implementation
 
 - Mark duration after first Fruit hit: **1.25s**
 - Mark stores:
@@ -3564,7 +3572,7 @@ Dropped Seed may still activate unrelated generic damage, kill, or territory sys
 
 The Fruit regains speed and curves toward another enemy.
 
-#### Initial tuning target
+#### Current implementation
 
 - Trigger: direct natural Fruit collision kill
 - Speed restored: **22% of that Fruit's current initial launch speed**
@@ -3599,6 +3607,8 @@ Windfall does not trigger from:
 **Player-facing description:** Each Fruit can launch up to 3 enemies into nearby enemies. A launched enemy deals damage on impact and can knock that victim into one final target.
 
 Newton's Apple should look like enemies are becoming physical projectiles, but it must use a bounded, performance-safe implementation rather than unrestricted rigid-body crowd physics.
+
+#### Current implementation
 
 #### Chain starters
 

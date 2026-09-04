@@ -40,6 +40,22 @@ enum ChoiceKind {
 	RELIC,
 }
 
+## One queue for every full-screen choice, in the order the design fixes.
+##
+## A wave can turn over while a draft is already open, an Elite can die inside a
+## relic wave, and a milestone's Adaptation offer can arrive alongside two other
+## panels. Queuing them means nothing is dropped and nothing opens on top of
+## anything else, in the order the design fixes.
+enum QueuedReward {
+	## The Adaptation offer goes first so the relic that follows can already roll
+	## from the pool the new Adaptation just opened. A relic offered a moment
+	## earlier would be drawn from a smaller catalogue for no reason the player
+	## could see.
+	BRANCH_DRAFT,
+	MILESTONE_RELIC,
+	WAVE_RELIC,
+}
+
 @export_group("Gameplay Components")
 ## Authoritative territory simulation used for ownership, maturity, and run-loss checks.
 @export var territory_field: TerritoryField
@@ -132,6 +148,36 @@ enum ChoiceKind {
 ## Waves between scheduled relic rewards; every Nth wave puts one on the table.
 ## Zero turns the schedule off and leaves relics to the elite and the boss.
 @export_range(0, 12, 1) var relic_reward_wave_cycle := 3
+## Share of Grandma's maximum health restored by a Compost Cache, which is what a
+## relic reward becomes once every eligible relic is already held.
+@export_range(0.0, 1.0, 0.01) var compost_cache_heal_fraction := 0.20
+## Fresh Green a Compost Cache lays down, as a multiple of a baseline Seed's growth
+## mass. Deliberately below one: it repairs a frontier rather than replacing one.
+@export_range(0.0, 4.0, 0.05) var compost_cache_growth_mass_scale := 0.75
+
+@export_group("Damage Feedback")
+## Full-screen tint that answers being hit without asking the player to look away
+## from the fight to read a bar. Optional: without it the run plays exactly as it
+## did, minus the flash.
+@export var damage_vignette: Control
+## Seconds the red flash takes to fade out completely.
+@export_range(0.05, 1.5, 0.01) var damage_vignette_seconds := 0.28
+## Peak opacity of the flash for a hit costing the whole scaling share below.
+## Well under one on purpose: this reports a hit, it does not obscure the arena
+## the player has to keep reading through it.
+@export_range(0.0, 1.0, 0.01) var damage_vignette_maximum_alpha := 0.42
+## Opacity a hit of any size is worth, before the share of maximum health it cost
+## is added on top.
+@export_range(0.0, 1.0, 0.01) var damage_vignette_minimum_alpha := 0.16
+## Share of maximum health a hit must cost to reach the peak opacity, and to earn
+## the freeze frame below.
+@export_range(0.01, 1.0, 0.01) var heavy_damage_health_fraction := 0.12
+## Seconds the whole simulation stops for on a heavy hit.
+##
+## Tiny by design. Long enough that the hit lands with weight, short enough that it
+## reads as impact rather than as the game stuttering -- past about a twentieth of a
+## second a freeze stops being juice and starts being a frame drop.
+@export_range(0.0, 0.25, 0.005) var heavy_damage_freeze_seconds := 0.04
 
 @export_group("Interface Wiring")
 ## Audio player that starts and loops the authored ambient forest theme.
@@ -335,7 +381,9 @@ FULLY DEVELOPED"
 @export var volume_unavailable_text := "UNAVAILABLE"
 @export var choice_header_upgrade := "ROOT MEMORY"
 @export var choice_header_relic := "ELITE RELIC"
-@export var choice_header_support_path := "SUPPORT PLANT PATH"
+## Heading on the milestone offer of lines from Adaptations the run has not
+## entered, so the panel says what it is rather than looking like a level-up.
+@export var choice_header_branch_draft := "NEW ADAPTATION"
 @export_multiline var choice_evolution_template := "{name}   EVOLUTION
 {detail}"
 @export_multiline var choice_upgrade_template := (
@@ -374,6 +422,16 @@ var _choice_kind := ChoiceKind.NONE
 var _choice_ids := PackedInt32Array()
 var _zero_territory_remaining := 0.0
 var _owed_wave_relics := 0
+## Rewards earned but not yet presented, drained in QueuedReward order whenever the
+## screen is clear. Saved as run state so closing one panel can never skip another.
+var _reward_queue: Array[int] = []
+## Seconds of red screen flash left, and the opacity it started at.
+var _damage_vignette_remaining := 0.0
+var _damage_vignette_alpha := 0.0
+## Seconds the simulation is held still for on a heavy hit. Counted down on real
+## time rather than on simulated time, because the whole point is that simulated
+## time is what has stopped.
+var _hit_freeze_remaining := 0.0
 var _banner_remaining := 0.0
 ## Whether the run is currently choosing where to put a release, and which action is
 ## waiting on the answer. The run keeps running while it is: the doc treats a release
@@ -440,6 +498,11 @@ var _music_bus_index := -1
 @onready var _path_two_emblem_icon: TextureRect = %Path2EmblemIcon
 @onready var _support_path_emblem_icon: TextureRect = %SupportEmblemIcon
 @onready var _support_path_emblem_lock: TextureRect = %SupportEmblemLock
+@onready var _branch_two_upgrade_slots: PhaseBUpgradeSlots = %Branch2Slots
+@onready var _branch_two_label: Label = %Branch2Label
+@onready var _branch_two_emblem: Label = %Branch2EmblemLabel
+@onready var _branch_two_emblem_icon: TextureRect = %Branch2EmblemIcon
+@onready var _branch_two_emblem_lock: TextureRect = %Branch2EmblemLock
 
 
 func _ready() -> void:
@@ -553,11 +616,13 @@ func _ready() -> void:
 	_base_small_fragment_decay = territory_field.tuning.small_fragment_decay_per_second
 
 	player.health_changed.connect(_on_health_changed)
+	player.damage_taken.connect(_on_player_damage_taken)
 	player.died.connect(_on_player_died)
 	combat.xp_collected.connect(progression.add_xp)
 	combat.elite_defeated.connect(_on_elite_defeated)
 	combat.boss_defeated.connect(_on_boss_defeated)
 	wave_director.wave_began.connect(_on_wave_began)
+	wave_director.wave_relic_earned.connect(_on_wave_relic_earned)
 	wave_director.elite_arrived.connect(_on_elite_arrived)
 	wave_director.boss_arrived.connect(_on_boss_arrived)
 	wave_director.final_invasion_began.connect(_on_final_invasion_began)
@@ -608,6 +673,10 @@ func _ready() -> void:
 	progression.relics_changed.connect(_apply_progression_modifiers)
 	progression.evolution_changed.connect(_on_evolution_changed)
 	progression.xp_changed.connect(_on_xp_changed)
+	progression.adaptation_mastered.connect(_on_adaptation_mastered)
+	progression.core_pair_locked.connect(_on_core_pair_locked)
+	progression.compost_cache_granted.connect(_on_compost_cache_granted)
+	progression.garden_completed.connect(_on_garden_completed)
 	territory_field.metrics_changed.connect(_on_territory_metrics_changed)
 
 	for index in range(choice_buttons.size()):
@@ -646,11 +715,13 @@ func _process(delta: float) -> void:
 	# The focus runs on its own clock outside the run, because the whole point of the
 	# cinematic is that the run is not running while it plays.
 	_advance_pair_focus(delta)
+	_advance_damage_feedback(delta)
 	if (
 		_run_state == RunState.RUNNING
 		and _choice_kind == ChoiceKind.NONE
 		and not _pause_menu_open
 		and not is_pair_cinematic_active()
+		and _hit_freeze_remaining <= 0.0
 	):
 		advance_run(delta)
 	# Rebuilt every frame rather than on the HUD's tenth-of-a-second clock: the shield
@@ -857,10 +928,11 @@ func advance_run(delta: float) -> void:
 		_advance_reels(delta)
 
 	wave_director.advance(delta)
-	# Path milestones share the panel with relic rewards and land on the same wave
-	# boundaries, so the path choice is asked first and the relic waits its turn.
-	_request_due_support_choice()
+	# Adaptation choosers share the panel with relic rewards and land on the same
+	# wave boundaries, so both go through one queue in the design's fixed order
+	# rather than racing each other for the screen.
 	_grant_owed_wave_relic()
+	_drain_reward_queue()
 	if _choice_kind != ChoiceKind.NONE:
 		return
 	metabolism.advance(delta)
@@ -899,6 +971,11 @@ func reset_run() -> void:
 	_pause_menu_open = false
 	_zero_territory_remaining = zero_territory_grace_seconds
 	_owed_wave_relics = 0
+	_reward_queue.clear()
+	_damage_vignette_remaining = 0.0
+	_damage_vignette_alpha = 0.0
+	_hit_freeze_remaining = 0.0
+	_update_damage_vignette()
 	_hud_accumulator = 999.0
 	choice_panel.visible = false
 	result_panel.visible = false
@@ -932,6 +1009,10 @@ func reset_run() -> void:
 	relic_director.reset_director()
 	player.reset_player()
 	combat.reset_combat()
+	# One seed for the whole run. The Campaign's leader decks and its opening
+	# perimeter sector come out of the same number the drafting does, so replaying a
+	# seed replays the waves as well as the upgrades.
+	wave_director.set_run_seed(progression.run_seed)
 	wave_director.reset_director()
 	spore_director.reset_director()
 	bloom_director.reset_director()
@@ -949,8 +1030,8 @@ func debug_advance_time(seconds: float) -> void:
 	if _run_state != RunState.RUNNING:
 		return
 	wave_director.debug_advance_time(seconds)
-	_request_due_support_choice()
 	_grant_owed_wave_relic()
+	_drain_reward_queue()
 	_set_status("Debug: timeline advanced to %s." % _format_time(get_elapsed_seconds()))
 	_update_hud()
 
@@ -995,16 +1076,54 @@ func _update_territory_failure(delta: float) -> void:
 
 
 func _on_wave_began(wave_number: int) -> void:
-	if relic_reward_wave_cycle <= 0 or wave_number % relic_reward_wave_cycle != 0:
+	if wave_director.is_campaign_mode():
+		# Campaign authors its ten relic opportunities on the wave table and
+		# announces each one through the director; Quick keeps its repeating cycle.
+		var spec := wave_director.get_wave_spec(wave_number)
+		if spec != null:
+			_set_status("WAVE %d — %s" % [wave_number, String(spec.display_name)])
+	elif relic_reward_wave_cycle > 0 and wave_number % relic_reward_wave_cycle == 0:
+		_owed_wave_relics += 1
+	_grant_owed_wave_relic()
+	_drain_reward_queue()
+
+
+func _on_wave_relic_earned(_wave_number: int) -> void:
+	_queue_reward(QueuedReward.WAVE_RELIC)
+	_drain_reward_queue()
+
+
+func _queue_reward(reward: int) -> void:
+	_reward_queue.append(reward)
+	# Sorted rather than appended blind: the queue's order is the design's, so a
+	# milestone relic that arrives after a Branch reward is still presented first.
+	_reward_queue.sort()
+
+
+func _drain_reward_queue() -> void:
+	## Opens the next owed panel, if the screen is clear and the run is live. One
+	## panel at a time, and the queue survives whatever closes the current one.
+	if _run_state != RunState.RUNNING:
 		return
-	_owed_wave_relics += 1
+	if _choice_kind != ChoiceKind.NONE or progression.has_pending_upgrade_choice():
+		return
+	if progression.has_pending_relic_choice():
+		return
+	while not _reward_queue.is_empty():
+		var reward: int = _reward_queue[0]
+		_reward_queue.remove_at(0)
+		match reward:
+			QueuedReward.BRANCH_DRAFT:
+				if progression.request_branch_upgrade_choice():
+					return
+			QueuedReward.MILESTONE_RELIC, QueuedReward.WAVE_RELIC:
+				if progression.request_relic_choice():
+					return
 
 
 func _grant_owed_wave_relic() -> void:
-	# A wave can turn over while a draft or a path choice is already on the table,
-	# so the reward waits for the panel to clear instead of being dropped. An
-	# offer that finds nothing left to give pays out as Biomass inside
-	# Progression, which still settles the debt.
+	# A wave can turn over while a draft is already on the table, so the reward
+	# waits for the panel to clear instead of being dropped.
 	if _owed_wave_relics <= 0 or _run_state != RunState.RUNNING:
 		return
 	if _choice_kind != ChoiceKind.NONE or progression.has_pending_relic_choice():
@@ -1016,6 +1135,55 @@ func _grant_owed_wave_relic() -> void:
 		)
 
 
+
+func _on_adaptation_mastered(path_id: int) -> void:
+	_set_status("%s MASTERED — all its upgrades have reached rank 3." % (
+		PhaseBProgression.get_path_name(path_id).to_upper()
+	))
+
+
+func _on_core_pair_locked(core_a: int, core_b: int, evolution_id: int) -> void:
+	_set_status("%s + %s — this run's Evolution is %s." % [
+		PhaseBProgression.get_path_name(core_a),
+		PhaseBProgression.get_path_name(core_b),
+		PhaseBEvolutions.get_evolution_name(evolution_id),
+	])
+
+
+func _on_garden_completed() -> void:
+	_set_status("GARDEN COMPLETE — every rank this run can hold has been grown.")
+
+
+func _on_compost_cache_granted() -> void:
+	## What an exhausted relic pool pays out instead of a currency the run has no
+	## remaining use for: health, and a patch of Fresh Green put back on the
+	## frontier. A reward event rather than a Seed germination, so nothing that
+	## counts Seeds counts this.
+	player.heal(player.maximum_health * compost_cache_heal_fraction)
+	territory_field.queue_seed_growth(
+		_find_compost_cache_site(),
+		compost_cache_growth_mass_scale
+	)
+	_set_status("COMPOST CACHE — no relic remains, so the frontier is fed instead.")
+
+
+func _find_compost_cache_site() -> Vector2:
+	# The nearest valid owned frontier point, or Grandma herself when the run holds
+	# no frontier the cache could be laid on.
+	var origin := player.get_arena_position()
+	var nearest := origin
+	var nearest_distance := INF
+	for index in range(territory_field.get_cell_count()):
+		if not territory_field.is_owned_cell(index):
+			continue
+		var position := territory_field.get_cell_local_position(index)
+		var distance := position.distance_squared_to(origin)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = position
+	return nearest
+
+
 func _on_elite_arrived() -> void:
 	_set_status("ELITE ROOTBREAKER — defeat it to choose a relic.")
 
@@ -1025,7 +1193,13 @@ func _on_boss_arrived() -> void:
 
 
 func _on_final_invasion_began() -> void:
-	_set_status("FINAL INVASION — hold the frontier for two more minutes.")
+	# Campaign's final invasion is Wave 25 itself rather than a phase bolted after
+	# the waves, so it announces a minute rather than two.
+	_set_status(
+		"FINAL INVASION — hold the frontier for one more minute."
+		if wave_director.is_campaign_mode()
+		else "FINAL INVASION — hold the frontier for two more minutes."
+	)
 
 
 func _on_cleanup_began() -> void:
@@ -1033,15 +1207,26 @@ func _on_cleanup_began() -> void:
 
 
 func _on_elite_defeated() -> void:
-	if not progression.request_relic_choice():
-		_set_status("Elite defeated; its surplus converted into Biomass.")
+	# The Elite is the run's first build check, and its reward is both a relic and
+	# the first Branch: breadth arrives once the Core pair has been tested.
+	_queue_reward(QueuedReward.MILESTONE_RELIC)
+	# The Elite is the run's first build check, and beating it earns room for a
+	# third Adaptation. The room, not the Adaptation: what grows in it is still
+	# drafted, the same way the Core pair was.
+	if progression.unlock_branch_slot():
+		_queue_reward(QueuedReward.BRANCH_DRAFT)
+		_set_status("ROOTBREAKER FELLED — a relic, and room for a new Adaptation.")
+	_drain_reward_queue()
 
 
 func _on_boss_defeated() -> void:
-	if progression.request_relic_choice():
-		_set_status("BOSS DEFEATED — claim a relic from its remains.")
+	_queue_reward(QueuedReward.MILESTONE_RELIC)
+	if progression.unlock_branch_slot():
+		_queue_reward(QueuedReward.BRANCH_DRAFT)
+		_set_status("THE BURROWER FALLS — a relic, and room for your last Adaptation.")
 	else:
-		_set_status("Boss defeated; the frontier absorbs its remaining Biomass.")
+		_set_status("BOSS DEFEATED — claim a relic from its remains.")
+	_drain_reward_queue()
 
 func _on_upgrade_choice_requested(options: PackedInt32Array) -> void:
 	_show_choice(ChoiceKind.UPGRADE, options)
@@ -1098,9 +1283,11 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 	_update_reroll_button()
 	match kind:
 		ChoiceKind.UPGRADE:
+			# The milestone offer is a draft like any other; only its heading says
+			# that the lines on it belong to Adaptations the run has not entered.
 			choice_header.text = (
-				choice_header_support_path
-				if progression.is_pending_support_upgrade_choice()
+				choice_header_branch_draft
+				if progression.is_pending_branch_upgrade_choice()
 				else choice_header_upgrade
 			)
 		ChoiceKind.RELIC:
@@ -1172,43 +1359,31 @@ func _choose_displayed_option(index: int) -> void:
 				PhaseBEvolutions.get_evolution_name(progression.active_evolution),
 			])
 	elif prior_kind == ChoiceKind.UPGRADE:
+		# Taking a line of an Adaptation the run has not entered is what enters it,
+		# so the status says which slot the choice just filled.
 		var committed_path := progression.get_upgrade_committed_path(selected_id)
-		var commits_primary := not progression.has_primary_path()
-		var commits_secondary := progression.has_primary_path() and not progression.has_secondary_path()
+		var slot_kind := progression.get_next_slot_kind()
 		if progression.choose_upgrade(selected_id):
 			if committed_path == PhaseBProgression.UNSELECTED_PATH:
 				_set_status(
 					"Upgrade rooted: %s." % PhaseBProgression.get_upgrade_name(selected_id)
 				)
 			else:
-				_set_status("Upgrade rooted: %s. Your %s path is now %s." % [
+				_set_status("Upgrade rooted: %s. Your %s Adaptation is now %s." % [
 					PhaseBProgression.get_upgrade_name(selected_id),
 					(
-						"primary"
-						if commits_primary
-						else ("secondary" if commits_secondary else "support")
+						"Core"
+						if slot_kind == PhaseBProgression.SlotKind.CORE
+						else "Branch"
 					),
 					PhaseBProgression.get_path_name(committed_path),
 				])
 	elif prior_kind == ChoiceKind.RELIC:
 		if progression.choose_relic(selected_id):
 			_set_status("Relic claimed: %s." % PhaseBProgression.get_relic_name(selected_id))
-	_request_due_support_choice()
 	_grant_owed_wave_relic()
+	_drain_reward_queue()
 	_refresh_simulation_pause()
-
-
-func _request_due_support_choice() -> void:
-	# The pairing Paths are never offered as Paths. A run commits an Adaptation by
-	# drafting one of its upgrade lines, so the only scheduled choice left is the
-	# evolved run's support Path -- and that one is a draft of real upgrade lines too.
-	if _choice_kind != ChoiceKind.NONE or _run_state != RunState.RUNNING:
-		return
-	if (
-		progression.is_tertiary_path_available()
-		and get_elapsed_seconds() >= wave_director.tertiary_path_choice_seconds
-	):
-		progression.request_tertiary_upgrade_choice()
 
 
 func _cycle_setting(option_id: int) -> void:
@@ -2025,6 +2200,58 @@ func _on_health_changed(current: float, maximum: float) -> void:
 	})
 
 
+func _on_player_damage_taken(amount: float) -> void:
+	# Where the run is actually being hurt, which is part of where the next pack
+	# should come from. A crowded sector is not the same as a dangerous one.
+	wave_director.report_sector_pressure(player.get_arena_position(), amount)
+	# Three answers to one hit, each aimed at a different failure to notice it: the
+	# number says how much, the screen says at all, and the freeze says it mattered.
+	combat.spawn_player_damage_number(player.get_arena_position(), amount)
+	var severity := clampf(
+		amount / maxf(1.0, player.maximum_health * heavy_damage_health_fraction),
+		0.0,
+		1.0
+	)
+	_damage_vignette_alpha = lerpf(
+		damage_vignette_minimum_alpha,
+		damage_vignette_maximum_alpha,
+		severity
+	)
+	_damage_vignette_remaining = damage_vignette_seconds
+	if severity >= 1.0:
+		# Only a heavy hit freezes. A micro-freeze on every chip of contact damage
+		# would read as the game running badly rather than as anything landing.
+		_hit_freeze_remaining = heavy_damage_freeze_seconds
+		_refresh_simulation_pause()
+	_update_damage_vignette()
+
+
+func _advance_damage_feedback(delta: float) -> void:
+	## Runs on real time, outside the run's own clock, so the flash still fades and
+	## the freeze still ends while the simulation is held still.
+	if _hit_freeze_remaining > 0.0:
+		_hit_freeze_remaining = maxf(0.0, _hit_freeze_remaining - delta)
+		if _hit_freeze_remaining <= 0.0:
+			_refresh_simulation_pause()
+	if _damage_vignette_remaining <= 0.0:
+		return
+	_damage_vignette_remaining = maxf(0.0, _damage_vignette_remaining - delta)
+	_update_damage_vignette()
+
+
+func _update_damage_vignette() -> void:
+	if damage_vignette == null:
+		return
+	var fade := (
+		_damage_vignette_remaining / maxf(0.001, damage_vignette_seconds)
+	)
+	# Squared rather than linear: a hit should read as a sharp strike that decays,
+	# not as a red pane sliding evenly off the screen.
+	var alpha := _damage_vignette_alpha * fade * fade
+	damage_vignette.visible = alpha > 0.001
+	damage_vignette.modulate.a = alpha
+
+
 func _on_player_died() -> void:
 	_finish_run(false, "The Gardener fell beneath the hostile swarm.")
 
@@ -2123,7 +2350,14 @@ func _build_mechanics_help() -> void:
 	_glossary_button = pause_glossary_button
 	for reward_button in choice_buttons:
 		reward_button.mouse_entered.connect(_on_reward_hovered.bind(reward_button))
-	for row in [relic_slots, upgrade_slots, _secondary_upgrade_slots, _evolution_upgrade_slot, _support_upgrade_slots]:
+	for row in [
+		relic_slots,
+		upgrade_slots,
+		_secondary_upgrade_slots,
+		_evolution_upgrade_slot,
+		_support_upgrade_slots,
+		_branch_two_upgrade_slots,
+	]:
 		if row == null:
 			continue
 		row.slot_hovered.connect(_on_hud_slot_hovered.bind(row))
@@ -2158,7 +2392,14 @@ func _tooltip_body(value: String, title: String) -> String:
 func _apply_clover_presence() -> void:
 	# Quick keeps the machine exactly as the scene authored it.
 	if _clover_enabled:
+		# All but the Adaptation heading, which the cabinet sits on top of. The four
+		# rows under it are self-describing -- each names its own Adaptation -- so the
+		# word is what gives way rather than the panel being re-laid out around it.
+		if slots_label != null:
+			slots_label.visible = false
 		return
+	if slots_label != null:
+		slots_label.visible = true
 	# The cabinet goes, and the Adaptation rows move up into the space it held rather
 	# than leaving a hole in the middle of the panel. Where they move to is read off
 	# the cabinet itself, so the two stay in step whenever the scene moves either one.
@@ -2437,6 +2678,10 @@ func _refresh_simulation_pause() -> void:
 		_pause_menu_open
 		or _choice_kind != ChoiceKind.NONE
 		or _run_state != RunState.RUNNING
+		# The hit freeze stops everything, including the components that step
+		# themselves. A freeze that only paused half the simulation would be enemies
+		# sliding through a stationary player rather than a moment of impact.
+		or _hit_freeze_remaining > 0.0
 	)
 
 
@@ -2487,6 +2732,8 @@ func _update_hud() -> void:
 	if is_wave_grace_period_active():
 		_authored.write_variant(wave_label, wave_grace_template, wave_values)
 	else:
+		# The number and nothing else. Campaign waves still carry a display name in
+		# the wave tables; it is simply not written onto this line.
 		_authored.write(wave_label, wave_values)
 	_authored.write_variant(clock_label, clock_template, clock_values)
 	# Its own node, so it can be placed and seen in the editor rather than being
@@ -2524,9 +2771,15 @@ func _update_hud() -> void:
 	# from the slots beneath it rather than from this line.
 	_advance_all_in_countdown()
 	_update_relic_slots()
+	# Ranks bought against ranks the roster can hold, which is what the four rows
+	# beneath the heading are actually a picture of.
 	_authored.write(slots_label, {
-		"filled": progression.get_slotted_upgrades().size(),
-		"total": progression.get_upgrade_slot_count(),
+		"filled": _get_owned_ordinary_rank_total(),
+		"total": (
+			progression.get_owned_adaptation_count()
+			* PhaseBProgression.LINES_PER_ADAPTATION
+			* progression.maximum_upgrade_level
+		),
 	})
 	_update_upgrade_slots()
 
@@ -2599,20 +2852,30 @@ func _get_initials(source: String) -> String:
 	return "--"
 
 
+func _get_owned_ordinary_rank_total() -> int:
+	var total := 0
+	for path_id in progression.get_owned_adaptations():
+		for upgrade_id in progression.get_adaptation_line_ids(path_id):
+			total += progression.get_owned_upgrade_level(upgrade_id)
+	return total
+
+
 func _update_upgrade_slots() -> void:
+	## Five rows: two Cores, the Evolution that joins them, then two Branches.
+	##
+	## Every owned Adaptation shows all four of its lines with their rank pips, so
+	## the panel reads as what the run has grown rather than as a list of slots it
+	## has consumed. Nothing is ever locked out here now: an empty pip is a line the
+	## player has not bought yet, never one they can no longer reach.
 	if upgrade_slots == null:
 		return
-	var has_line_space := (
-		progression.get_slotted_upgrades().size() < progression.get_upgrade_slot_count()
-	)
 	_update_path_upgrade_row(
 		upgrade_slots,
 		_path_one_label,
 		_path_one_emblem,
 		_path_one_emblem_icon,
 		progression.primary_path,
-		"PATH 1",
-		has_line_space
+		"CORE 1"
 	)
 	_update_path_upgrade_row(
 		_secondary_upgrade_slots,
@@ -2620,11 +2883,72 @@ func _update_upgrade_slots() -> void:
 		_path_two_emblem,
 		_path_two_emblem_icon,
 		progression.secondary_path,
-		"PATH 2",
-		has_line_space
+		"CORE 2"
 	)
 	_update_evolution_tree_slot()
-	_update_support_upgrade_row(has_line_space)
+	_update_branch_upgrade_row(
+		_support_upgrade_slots,
+		_support_path_label,
+		_support_path_emblem,
+		_support_path_emblem_icon,
+		_support_path_emblem_lock,
+		0,
+		"BRANCH 1"
+	)
+	if _branch_two_upgrade_slots != null:
+		_update_branch_upgrade_row(
+			_branch_two_upgrade_slots,
+			_branch_two_label,
+			_branch_two_emblem,
+			_branch_two_emblem_icon,
+			_branch_two_emblem_lock,
+			1,
+			"BRANCH 2"
+		)
+
+
+func _update_branch_upgrade_row(
+	row: PhaseBUpgradeSlots,
+	path_label: Label,
+	emblem: Label,
+	emblem_icon: TextureRect,
+	emblem_lock: TextureRect,
+	branch_index: int,
+	fallback_label: String
+) -> void:
+	# A Branch slot the run has not reached yet shows a lock and says what unlocks
+	# it, so the roster's shape is legible from the first minute.
+	var owned := branch_index < progression.branch_adaptations.size()
+	var path_id := (
+		progression.branch_adaptations[branch_index]
+		if owned
+		else PhaseBProgression.UNSELECTED_PATH
+	)
+	if emblem_lock != null:
+		emblem_lock.visible = not owned
+	_update_path_upgrade_row(
+		row,
+		path_label,
+		emblem,
+		emblem_icon,
+		path_id,
+		fallback_label
+	)
+	if not owned:
+		emblem.visible = false
+		emblem_icon.visible = false
+		for index in range(row.get_slot_count()):
+			_set_locked_tree_slot(
+				row,
+				index,
+				(
+					"Branch Adaptation %d.\nDefeat the %s to choose it."
+					% [
+						branch_index + 1,
+						"Elite Rootbreaker" if branch_index == 0 else "Burrower Boss",
+					]
+				)
+			)
 
 
 func _update_path_upgrade_row(
@@ -2633,8 +2957,7 @@ func _update_path_upgrade_row(
 	emblem: Label,
 	emblem_icon: TextureRect,
 	path_id: int,
-	fallback_label: String,
-	has_line_space: bool
+	fallback_label: String
 ) -> void:
 	row.slot_count = 4
 	var selected := path_id != PhaseBProgression.UNSELECTED_PATH
@@ -2644,37 +2967,51 @@ func _update_path_upgrade_row(
 		else fallback_label
 	)
 	var accent := _get_path_hud_color(path_id) if selected else Color("596052")
+	if selected and progression.is_adaptation_mastered(path_id):
+		# The mastered row is brightened rather than given permanent extra space:
+		# mastery is completion, and completion should read at a glance without the
+		# panel growing a new element the moment it happens.
+		accent = accent.lightened(0.28)
 	_set_path_emblem(emblem, emblem_icon, path_id, selected, accent)
 	var path_upgrades := _get_path_upgrade_ids(path_id) if selected else PackedInt32Array()
 	for index in range(4):
 		if not selected or index >= path_upgrades.size():
-			_set_locked_tree_slot(row, index, "Choose this Path to reveal its upgrade lines.")
+			_set_locked_tree_slot(
+				row,
+				index,
+				"Acquire this Adaptation to reveal its upgrade lines."
+			)
 			continue
 		var upgrade_id := path_upgrades[index]
 		var level := progression.get_owned_upgrade_level(upgrade_id)
+		var maximum := progression.get_upgrade_maximum_level(upgrade_id)
 		if level > 0:
 			row.set_slot(
 				index,
 				_get_upgrade_abbreviation(upgrade_id),
-				"%d" % level,
+				# Rank against its own ceiling, so a line at 2 of 3 is never mistaken
+				# for a line at 2 of 5 the run has barely started.
+				"%d/%d" % [level, maximum],
 				_build_upgrade_tooltip(upgrade_id),
 				PhaseBUpgradeSlots.SlotState.FILLED,
 				accent
 			)
-		elif has_line_space:
+		else:
+			# Every line of an owned Adaptation is always available. There is no
+			# locked ordinary line any more, so this row never shows one.
+			# No rank line on an unbought slot: the marker is centred in the slot on
+			# its own, and a second line under it would push the marker off centre.
+			# The ceiling is named in the tooltip instead.
 			row.set_slot(
 				index,
 				row.empty_marker,
 				"",
-				"%s\nAvailable on an upgrade draft." % PhaseBProgression.get_upgrade_name(upgrade_id),
+				"%s\nAvailable on an upgrade draft. Reaches rank %d." % [
+					PhaseBProgression.get_upgrade_name(upgrade_id),
+					maximum,
+				],
 				PhaseBUpgradeSlots.SlotState.EMPTY,
 				accent
-			)
-		else:
-			_set_locked_tree_slot(
-				row,
-				index,
-				"%s\nAll current growth-line slots are occupied." % PhaseBProgression.get_upgrade_name(upgrade_id)
 			)
 
 
@@ -2688,7 +3025,12 @@ func _update_evolution_tree_slot() -> void:
 			_evolution_upgrade_slot.set_slot(
 				0,
 				_get_initials(evolution_name),
-				"%d" % progression.get_evolution_upgrade_level(),
+				# Against its own five-rank ceiling, the same way every ordinary line
+				# now reads against three.
+				"%d/%d" % [
+					progression.get_evolution_upgrade_level(),
+					progression.get_upgrade_maximum_level(upgrade_id),
+				],
 				_build_upgrade_tooltip(upgrade_id),
 				PhaseBUpgradeSlots.SlotState.FILLED,
 				Color("d4a94f")
@@ -2710,54 +3052,9 @@ func _update_evolution_tree_slot() -> void:
 			_set_locked_tree_slot(
 				_evolution_upgrade_slot,
 				0,
-				"Evolution is locked until one line from each selected Path reaches maximum rank."
+				"Evolution unlocks once two lines in each Core Adaptation reach rank 3."
 			)
 
-
-func _update_support_upgrade_row(has_line_space: bool) -> void:
-	var evolved := progression.evolution_status == PhaseBProgression.EvolutionStatus.EVOLVED
-	_support_path_emblem.visible = false
-	_support_path_emblem_icon.visible = false
-	_support_path_emblem_lock.visible = not evolved
-	if not evolved:
-		_update_path_upgrade_row(
-			_support_upgrade_slots,
-			_support_path_label,
-			_support_path_emblem,
-			_support_path_emblem_icon,
-			PhaseBProgression.UNSELECTED_PATH,
-			"SUPPORT PATH",
-			false
-		)
-		_support_path_emblem.visible = false
-		_support_path_emblem_icon.visible = false
-		return
-	if not progression.has_tertiary_path():
-		_support_path_label.text = "CHOOSE SUPPORT"
-		_support_path_emblem.visible = true
-		_support_path_emblem_icon.visible = false
-		_support_path_emblem.text = "+"
-		_support_path_emblem.modulate = Color("d4a94f")
-		_support_upgrade_slots.slot_count = 4
-		for index in range(4):
-			_support_upgrade_slots.set_slot(
-				index,
-				_support_upgrade_slots.empty_marker,
-				"",
-				"Claim a support Path to reveal this upgrade line.",
-				PhaseBUpgradeSlots.SlotState.EMPTY,
-				Color("d4a94f")
-			)
-		return
-	_update_path_upgrade_row(
-		_support_upgrade_slots,
-		_support_path_label,
-		_support_path_emblem,
-		_support_path_emblem_icon,
-		progression.tertiary_path,
-		"SUPPORT PATH",
-		has_line_space
-	)
 
 
 func _set_path_emblem(
@@ -3006,9 +3303,18 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 				* pruning_director.get_pruning_cutting_damage_multiplier(),
 			]
 		PhaseBProgression.UpgradeId.PRUNING_CHARGE:
+			# Read from the exports rather than through get_charge_seconds, which now
+			# folds in the Root Network where Grandma is standing. This is the plain
+			# row; the Network's contribution is reported on its own row beneath it.
 			return "full Charge in %.1fs, +%d%% launch damage" % [
-				pruning_director.get_charge_seconds(),
-				roundi(pruning_director.get_launch_charge_damage_bonus() * 100.0),
+				pruning_director.charge_seconds / maxf(
+					0.05, pruning_director.get_pruning_charge_multiplier()
+				),
+				roundi(
+					pruning_director.launch_charge_damage_bonus
+					* pruning_director.get_pruning_charge_multiplier()
+					* 100.0
+				),
 			]
 		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING:
 			return "%d thorns per normal turret firing event" % (
@@ -3155,12 +3461,55 @@ func _get_root_potency_effect(upgrade_id: int) -> String:
 					* pruning_director.get_pruning_cutting_damage_multiplier()
 					* multiplier
 			)
-		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, \
-		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, \
-		PhaseBProgression.UpgradeId.THISTLE_BURR, \
+		PhaseBProgression.UpgradeId.PRUNING_HARVEST_RATE:
+			return "%.1f cells per second held, and the spikes to match" % (
+				pruning_director.upkeep_cells_per_second
+				* pruning_director.get_pruning_harvest_rate_multiplier()
+				* multiplier
+			)
+		PhaseBProgression.UpgradeId.PRUNING_CUTTING_YIELD:
+			return "%.2f Cuttings per cell harvested" % (
+				pruning_director.cuttings_per_cell
+				* pruning_director.get_pruning_cutting_yield_multiplier()
+				* multiplier
+			)
+		PhaseBProgression.UpgradeId.PRUNING_CHARGE:
+			return "full Charge in %.1fs, +%d%% launch damage" % [
+				pruning_director.charge_seconds / maxf(
+					0.05,
+					pruning_director.get_pruning_charge_multiplier() * multiplier
+				),
+				roundi(
+					pruning_director.launch_charge_damage_bonus
+					* pruning_director.get_pruning_charge_multiplier()
+					* multiplier
+					* 100.0
+				),
+			]
+		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING:
+			# Root deepens a line the run has started rather than inventing one, so an
+			# unbought line has no Network row to show.
+			if progression.get_owned_upgrade_level(upgrade_id) <= 0:
+				return ""
+			return "%d thorns per firing event out of Mature ground" % (
+				2 + progression.get_upgrade_level(upgrade_id)
+			)
+		PhaseBProgression.UpgradeId.THISTLE_BURR:
+			if progression.get_owned_upgrade_level(upgrade_id) <= 0:
+				return ""
+			return "%d full-damage ricochets per thorn out of Mature ground" % (
+				1 + progression.get_upgrade_level(upgrade_id)
+			)
+		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE:
+			var rooted_rate := (
+				1.0 + 0.15 * float(progression.get_upgrade_level(upgrade_id))
+			) * multiplier
+			return "one firing event every %.3fs" % (
+				adaptation_director.thistle_attack_interval / maxf(0.05, rooted_rate)
+			)
 		PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT:
-			return "%.1f damage per ordinary thorn" % (
-				adaptation_director.thistle_damage * multiplier
+			return "%d%% critical chance per impact" % roundi(
+				10.0 * float(progression.get_upgrade_level(upgrade_id)) * multiplier
 			)
 		PhaseBProgression.UpgradeId.VINE_ELONGATION, \
 		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION, \
@@ -3188,7 +3537,7 @@ func _get_root_potency_effect(upgrade_id: int) -> String:
 				adaptation_director.fruit_terminal_explosion_damage * rooted_ripening * multiplier,
 			]
 		PhaseBProgression.UpgradeId.ROOT_POTENCY:
-			return "Seeds, Blooms, thorns, and Cuttings out of Mature ground"
+			return "Seeds, Blooms, Cuttings, thorns, and Fruit out of Mature ground"
 	return ""
 
 

@@ -4,12 +4,13 @@ extends SceneTree
 ##
 ## Two things this checks, both of which were true of Quick and not of Campaign.
 ##
-## Campaign's cleanup began at 1725 seconds, which is inside wave 29, so the whole
-## of wave 30 -- the final wave of a thirty minute run -- had no spawning in it at
-## all. Quick has never had that problem: its cleanup is the last thirty seconds of
-## the run, so its final wave is a wave.
+## Campaign is 25 waves of one minute, and its reinforcements stop at 24:45, so its
+## final wave is a wave: three quarters of it spawns and the last fifteen seconds
+## are fought. Quick has never had that problem either: its cleanup is the last
+## thirty seconds of the run.
 ##
-## And a wave opens with a grace period. Standing in a cleared arena waiting for it
+## And a Quick wave opens with a grace period. Standing in a cleared arena waiting
+## for it
 ## to elapse is the game withholding the next wave from a player who has already
 ## earned it, so an empty arena now ends the break early.
 ##
@@ -45,7 +46,12 @@ func _run() -> void:
 	prototype.player.maximum_health = 1000000000.0
 	prototype.player.reset_player()
 
-	_check_final_wave_spawns(prototype, PhaseBRunMode.Id.CAMPAIGN, 30, 1800.0)
+	_check_final_wave_spawns(
+		prototype,
+		PhaseBRunMode.Id.CAMPAIGN,
+		PhaseBCampaignWaves.WAVE_COUNT,
+		PhaseBCampaignWaves.CAMPAIGN_DURATION_SECONDS
+	)
 	# Deliberately after Campaign. The director outlives a run, so this is also the
 	# case where Quick used to inherit Campaign's thirty-minute clock.
 	_check_final_wave_spawns(prototype, PhaseBRunMode.Id.QUICK, 12, 720.0)

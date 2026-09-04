@@ -319,6 +319,13 @@ func _run() -> void:
 	prototype.reset_run()
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
+	# A run opens on the Adaptation chooser, and a modal choice is not something
+	# Escape may pause over. Answer it first, then the pause menu is reachable.
+	_seed_run_adaptations(
+		prototype,
+		PhaseBProgression.PathId.SPORE,
+		PhaseBProgression.PathId.ROOT
+	)
 	var pause_elapsed_before := prototype.get_elapsed_seconds()
 	var escape_event := InputEventKey.new()
 	escape_event.keycode = KEY_ESCAPE
@@ -960,107 +967,133 @@ func _run() -> void:
 	prototype.overlay.clear_effects()
 	prototype.combat.reset_combat()
 
+	# A run opens on nothing but a Cane. The first upgrade arrives the way it always
+	# has -- a few kills into wave one -- and taking a line is what enters its
+	# Adaptation. No screen of bare Adaptations is ever presented.
 	prototype.reset_run()
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
+	_check(
+		prototype._choice_kind == PhaseBPrototype.ChoiceKind.NONE
+		and not prototype.choice_panel.visible
+		and prototype.progression.get_owned_adaptation_count() == 0
+		and not prototype.territory_field.simulation_paused,
+		"a run begins playing immediately rather than on an Adaptation choice"
+	)
 	prototype.progression._upgrade_offer_cursor = (
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 	)
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
-	var pre_path_upgrade_options := prototype.progression.get_pending_upgrade_options()
+	var pre_path_options := prototype.progression.get_pending_upgrade_options()
 	var pre_path_lines: Array[int] = []
 	var pre_path_paths: Array[int] = []
-	for option_id in pre_path_upgrade_options:
+	for option_id in pre_path_options:
 		if not pre_path_lines.has(option_id):
 			pre_path_lines.append(option_id)
 		var option_path := prototype.progression._get_upgrade_path(option_id)
 		if not pre_path_paths.has(option_path):
 			pre_path_paths.append(option_path)
 	_check(
-		pre_path_upgrade_options.size() == 3
+		prototype._choice_kind == PhaseBPrototype.ChoiceKind.UPGRADE
+		and pre_path_options.size() == 3
 		and pre_path_lines.size() == 3
-		and pre_path_paths.size() >= 2
-		and pre_path_upgrade_options.has(
-			PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
-		),
-		"the opening draft offers three distinct lines spread across every path"
+		and pre_path_paths.size() >= 2,
+		"the first level-up offers three distinct lines spread across the whole roster"
 	)
-
-	var committing_option := PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
-	var committing_index := pre_path_upgrade_options.find(committing_option)
-	var committed_path_preview := prototype.progression.get_upgrade_committed_path(
+	var committing_option := pre_path_options[0]
+	var committing_path := prototype.progression._get_upgrade_path(committing_option)
+	var committed_preview := prototype.progression.get_upgrade_committed_path(
 		committing_option
 	)
-	prototype._choose_displayed_option(committing_index)
-	_check(
-		committed_path_preview == PhaseBProgression.PathId.BRAMBLE
-		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE
-		and prototype.progression.has_path(PhaseBProgression.PathId.BRAMBLE)
-		and prototype.territory_field.is_bramble_enabled()
-		and not prototype.progression.has_secondary_path(),
-		"taking a path line before the milestone commits that path as the primary"
-	)
-	# A bare Path is never a reward. There is no timed milestone that hands the
-	# player a screen of Adaptations to pick between: the only way into a Path is to
-	# draft one of its upgrade lines, so running the clock past where those
-	# milestones used to sit must raise no choice at all.
-	prototype.debug_advance_time(600.0)
-	prototype.debug_advance_time(600.0)
-	_check(
-		prototype._choice_kind == PhaseBPrototype.ChoiceKind.RELIC
-		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE
-		and not prototype.progression.has_secondary_path(),
-		"no elapsed-time milestone ever offers bare Paths as a reward"
-	)
-
-	prototype.reset_run()
-	prototype.set_process(false)
-	prototype.player.input_enabled = false
-	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.BLOOM_FREQUENCY)
-	var auto_primary := prototype.progression.primary_path
-	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT)
-	_check(
-		auto_primary == PhaseBProgression.PathId.BLOOM
-		and prototype.progression.primary_path == PhaseBProgression.PathId.BLOOM
-		and prototype.progression.secondary_path == PhaseBProgression.PathId.BRAMBLE
-		and prototype.territory_field.is_bramble_enabled(),
-		"a second uncommitted path line fills the secondary slot without waiting for its milestone"
-	)
-	prototype.debug_advance_time(600.0)
-	_check(
-		prototype._choice_kind == PhaseBPrototype.ChoiceKind.RELIC
-		and prototype.progression.has_secondary_path(),
-		"a fully committed run is never interrupted by a Path screen either"
-	)
-
-	prototype.reset_run()
-	prototype.set_process(false)
-	prototype.player.input_enabled = false
-	# Cane has no draft lines. Every opening growth line therefore belongs to a Path
-	# and taking it commits the corresponding primary slot immediately.
-	prototype.progression._upgrade_offer_cursor = PhaseBProgression.UpgradeId.THISTLE_CLUSTERING
-	prototype.progression.add_xp(prototype.progression.get_required_xp())
-	var opening_path_options := prototype.progression.get_pending_upgrade_options()
-	var every_opening_line_has_a_path := true
-	for opening_option in opening_path_options:
-		every_opening_line_has_a_path = (
-			every_opening_line_has_a_path
-			and prototype.progression._get_upgrade_path(opening_option)
-			!= PhaseBProgression.UNSELECTED_PATH
-		)
-	var opening_line := opening_path_options[0]
-	var opening_path := prototype.progression._get_upgrade_path(opening_line)
 	prototype._choose_displayed_option(0)
 	_check(
-		every_opening_line_has_a_path
-		and prototype.progression.primary_path == opening_path,
-		"Cane adds no universal draft clutter and the opening line commits its Path"
+		committed_preview == committing_path
+		and prototype.progression.primary_path == committing_path
+		and prototype.progression.owns_adaptation(committing_path)
+		and prototype.progression.get_owned_upgrade_level(committing_option) == 1,
+		"taking a line commits its Adaptation as Core 1"
+	)
+	# Owning it opens all four of its lines at rank 0, capped at three.
+	var owned_lines := prototype.progression.get_adaptation_line_ids(committing_path)
+	var all_lines_open := owned_lines.size() == PhaseBProgression.LINES_PER_ADAPTATION
+	for line_id in owned_lines:
+		all_lines_open = (
+			all_lines_open
+			and prototype.progression._is_upgrade_draftable(line_id)
+			and prototype.progression.get_upgrade_maximum_level(line_id) == 3
+		)
+	_check(
+		all_lines_open,
+		"entering an Adaptation opens all four of its rank-3 lines at once"
+	)
+	# A second uncommitted line fills Core 2 and freezes the Evolution, with no
+	# milestone and no timer involved.
+	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.ROOT_MATURATION)
+	_check(
+		prototype.progression.secondary_path == PhaseBProgression.PathId.ROOT
+		and prototype.progression.get_pair_evolution_id() != PhaseBProgression.EvolutionId.NONE
+		and not prototype.progression.has_branch_slot_open(),
+		"a second uncommitted line locks the Core pair, and no Branch slot exists yet"
+	)
+	# With both Cores committed and no Branch earned, drafts narrow to what is owned.
+	var narrowed := prototype.progression.get_ordinary_candidate_lines()
+	var narrowed_to_owned := not narrowed.is_empty()
+	for option_id in narrowed:
+		narrowed_to_owned = (
+			narrowed_to_owned
+			and prototype.progression.owns_adaptation(
+				prototype.progression._get_upgrade_path(option_id)
+			)
+		)
+	_check(
+		narrowed_to_owned,
+		"drafts narrow to the owned Adaptations once no slot is open"
+	)
+	# Running the clock out never offers an Adaptation: the room for a Branch is
+	# earned from the Elite and the Boss, not from a timer.
+	prototype.debug_advance_time(600.0)
+	prototype.debug_advance_time(600.0)
+	_check(
+		prototype.progression.get_owned_adaptation_count() == 2
+		and prototype.progression.unlocked_branch_slots == 0,
+		"no elapsed-time milestone ever opens a Branch slot"
+	)
+	# Beating the Elite does, and what fills it is drafted like everything else.
+	prototype.progression._pending_upgrade_options.clear()
+	prototype.progression._pending_relic_options.clear()
+	prototype._choice_kind = PhaseBPrototype.ChoiceKind.NONE
+	prototype.choice_panel.visible = false
+	prototype._on_elite_defeated()
+	var branch_draft_offered := false
+	var branch_draft_is_unowned := true
+	if prototype.progression.is_pending_branch_upgrade_choice():
+		branch_draft_offered = true
+		for option_id in prototype.progression.get_pending_upgrade_options():
+			branch_draft_is_unowned = (
+				branch_draft_is_unowned
+				and not prototype.progression.owns_adaptation(
+					prototype.progression._get_upgrade_path(option_id)
+				)
+			)
+	_check(
+		prototype.progression.unlocked_branch_slots == 1
+		and prototype.progression.has_branch_slot_open(),
+		"defeating the Elite earns room for a third Adaptation"
+	)
+	_check(
+		branch_draft_offered and branch_draft_is_unowned,
+		"the Elite's Adaptation reward is a draft of unowned lines, never a Path screen"
 	)
 
 	prototype.reset_run()
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	var authored_rerolls := prototype.progression.rerolls_per_run
+	_seed_run_adaptations(
+		prototype,
+		PhaseBProgression.PathId.SPORE,
+		PhaseBProgression.PathId.ROOT
+	)
 	_check(
 		prototype.progression.rerolls_remaining == authored_rerolls
 		and authored_rerolls > 0,
@@ -1098,6 +1131,11 @@ func _run() -> void:
 	for _fresh_run in range(12):
 		prototype.reset_run()
 		rolled_seeds[prototype.progression.run_seed] = true
+		_seed_run_adaptations(
+			prototype,
+			PhaseBProgression.PathId.SPORE,
+			PhaseBProgression.PathId.ROOT
+		)
 		prototype.progression.add_xp(prototype.progression.get_required_xp())
 		var opening := ""
 		for option_id in prototype.progression.get_pending_upgrade_options():
@@ -1109,6 +1147,11 @@ func _run() -> void:
 	for _replay in range(3):
 		prototype.reset_run()
 		prototype.progression.set_run_seed(0x5EED1234)
+		_seed_run_adaptations(
+			prototype,
+			PhaseBProgression.PathId.SPORE,
+			PhaseBProgression.PathId.ROOT
+		)
 		prototype.progression.add_xp(prototype.progression.get_required_xp())
 		var replayed := ""
 		for option_id in prototype.progression.get_pending_upgrade_options():
@@ -1123,6 +1166,11 @@ func _run() -> void:
 	)
 	prototype.progression.authored_run_seed = pinned_seed
 	prototype.reset_run()
+	_seed_run_adaptations(
+		prototype,
+		PhaseBProgression.PathId.SPORE,
+		PhaseBProgression.PathId.ROOT
+	)
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
 
 
@@ -1193,22 +1241,43 @@ func _run() -> void:
 
 	prototype.progression.reset_progression()
 	prototype.progression.offer_bramble_path = false
-	var switched_off_line_draftable := prototype.progression._is_upgrade_draftable(
-		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
+	var switched_off_offered := prototype.progression.get_acquirable_adaptations().has(
+		PhaseBProgression.PathId.BRAMBLE
 	)
-	var other_path_line_still_draftable := prototype.progression._is_upgrade_draftable(
-		PhaseBProgression.UpgradeId.SEED_PRODUCTION
+	var other_path_still_offered := prototype.progression.get_acquirable_adaptations().has(
+		PhaseBProgression.PathId.SPORE
 	)
 	prototype.progression.offer_bramble_path = true
 	prototype.progression.reset_progression()
 	_check(
-		not switched_off_line_draftable
-		and other_path_line_still_draftable
+		not switched_off_offered
+		and other_path_still_offered
+		and prototype.progression.get_acquirable_adaptations().has(
+			PhaseBProgression.PathId.BRAMBLE
+		),
+		"a path switched off in the inspector is never enterable"
+	)
+	# One Core committed and one slot still open: the unowned lines stay on the
+	# table, because taking one is how the second Core is entered.
+	prototype.progression.reset_progression()
+	prototype.progression.acquire_adaptation(PhaseBProgression.PathId.SPORE)
+	var open_slot_keeps_unowned := prototype.progression._is_upgrade_draftable(
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
+	)
+	# Both Cores committed and no Branch earned: nothing is open, so the draft
+	# narrows to what the run holds.
+	prototype.progression.acquire_adaptation(PhaseBProgression.PathId.ROOT)
+	_check(
+		open_slot_keeps_unowned
 		and prototype.progression._is_upgrade_draftable(
+			PhaseBProgression.UpgradeId.SEED_PRODUCTION
+		)
+		and not prototype.progression._is_upgrade_draftable(
 			PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
 		),
-		"a path switched off in the inspector leaves every draft"
+		"unowned lines stay draftable while a slot is open and vanish once none is"
 	)
+	prototype.progression.reset_progression()
 	prototype.reset_run()
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
@@ -1573,103 +1642,118 @@ func _run() -> void:
 		"Mature ground never erupts for a run that has not evolved Old Growth"
 	)
 
-	# The Evolution consolidates the pairing into one slot and frees a third.
+	# Four Adaptations, three ranks each, one Evolution from the Core pair alone.
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
 		PhaseBProgression.PathId.SPORE,
 		PhaseBProgression.PathId.ROOT
 	)
-	var slots_before_evolution := prototype.progression.get_upgrade_slot_count()
-	var tertiary_before_evolution := prototype.progression.is_tertiary_path_available()
-	prototype.progression.debug_complete_evolution_requirements()
+	var ready_before_investment := prototype.progression.evolution_status
+	# One mastered line in each Core is deliberately not enough.
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.GROWTH_MASS] = 3
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_MATURATION] = 3
+	prototype.progression._update_evolution_readiness()
+	var ready_with_one_each := prototype.progression.evolution_status
+	# Two in one Core and one in the other is not enough either.
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.SPORULATION] = 3
+	prototype.progression._update_evolution_readiness()
+	var ready_with_lopsided := prototype.progression.evolution_status
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 3
+	prototype.progression._update_evolution_readiness()
+	_check(
+		ready_before_investment == PhaseBProgression.EvolutionStatus.NOT_READY
+		and ready_with_one_each == PhaseBProgression.EvolutionStatus.NOT_READY
+		and ready_with_lopsided == PhaseBProgression.EvolutionStatus.NOT_READY
+		and prototype.progression.evolution_status == PhaseBProgression.EvolutionStatus.READY,
+		"Evolution needs two mastered lines in each Core, not one and not two in one"
+	)
 	prototype.progression.grant_evolution_if_ready()
-	var evolution_before_support := prototype.progression.active_evolution
-	var evolution_line := PhaseBEvolutions.get_evolution_upgrade_id(evolution_before_support)
-	prototype.progression._upgrade_offer_cursor = PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
-	var offered_support := prototype.progression.request_tertiary_upgrade_choice()
-	var support_options := prototype.progression.get_pending_upgrade_options()
-	var support_excludes_pairing := true
-	for support_upgrade_id in support_options:
-		var offered_path := prototype.progression._get_upgrade_path(support_upgrade_id)
-		support_excludes_pairing = (
-			support_excludes_pairing
-			and offered_path != PhaseBProgression.PathId.SPORE
-			and offered_path != PhaseBProgression.PathId.ROOT
-		)
+	var claimed_evolution := prototype.progression.active_evolution
+	var evolution_line := PhaseBEvolutions.get_evolution_upgrade_id(claimed_evolution)
 	_check(
-		not tertiary_before_evolution
-		and prototype.progression.is_tertiary_path_available()
+		claimed_evolution == PhaseBProgression.EvolutionId.SEED_BANK
 		and prototype.progression.get_owned_upgrade_level(evolution_line) == 1
-		and offered_support
-		and prototype.progression.is_pending_support_upgrade_choice()
-		and support_options.size() == 3
-		and support_excludes_pairing,
-		"claiming Evolution grants rank 1 and offers real upgrades from unused support paths"
+		and prototype.progression.get_upgrade_maximum_level(evolution_line) == 5
+		and prototype.progression.get_upgrade_maximum_level(
+			PhaseBProgression.UpgradeId.GROWTH_MASS
+		) == 3,
+		"claiming Evolution grants rank 1 of a five-rank line while ordinary lines stop at three"
 	)
-	var support_upgrade := PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
-	var committed_support := prototype.progression.choose_upgrade(support_upgrade)
+
+	# Branches are complete Adaptations that never touch the Evolution. A Branch
+	# cannot be entered before its milestone has opened room for it.
+	var branch_before_milestone := prototype.progression.acquire_adaptation(
+		PhaseBProgression.PathId.BRAMBLE
+	)
+	prototype.progression.unlock_branch_slot()
+	var branch_one := prototype.progression.acquire_adaptation(
+		PhaseBProgression.PathId.BRAMBLE
+	)
+	prototype.progression.unlock_branch_slot()
+	var branch_two := prototype.progression.acquire_adaptation(
+		PhaseBProgression.PathId.THISTLE
+	)
+	var fifth_refused := not prototype.progression.acquire_adaptation(
+		PhaseBProgression.PathId.BLOOM
+	)
 	_check(
-		committed_support
-		and prototype.progression.tertiary_path == PhaseBProgression.PathId.BRAMBLE
-		and prototype.progression.has_path(PhaseBProgression.PathId.BRAMBLE)
-		and prototype.progression.get_owned_upgrade_level(support_upgrade) == 1
+		not branch_before_milestone
+		and branch_one
+		and branch_two
+		and fifth_refused
+		and prototype.progression.get_owned_adaptation_count() == 4
+		and prototype.progression.is_branch_adaptation(PhaseBProgression.PathId.BRAMBLE)
 		and not prototype.progression.is_evolution_path(PhaseBProgression.PathId.BRAMBLE)
-		and prototype.progression.active_evolution == evolution_before_support
-		and prototype.progression.get_pair_evolution_id() == evolution_before_support
-		and not prototype.progression.is_tertiary_path_available(),
-		"choosing a rank-1 upgrade commits its Path as Support"
+		and prototype.progression.get_pair_evolution_id() == claimed_evolution,
+		"a Branch waits for its milestone, then completes the roster without re-rolling the Evolution"
 	)
+	# A mastered Branch line must not satisfy the Core gate either.
+	for branch_line in prototype.progression.get_adaptation_line_ids(
+		PhaseBProgression.PathId.BRAMBLE
+	):
+		prototype.progression._upgrade_levels[branch_line] = 3
 	_check(
-		slots_before_evolution == 8
-		and prototype.progression.get_upgrade_slot_count() == 13
-		and prototype.progression.evolution_bonus_upgrade_slots == 5,
-		"evolving expands eight paired-path lines into all 13 Adaptation positions"
+		prototype.progression.is_adaptation_mastered(PhaseBProgression.PathId.BRAMBLE)
+		and prototype.progression.get_mastered_line_count(
+			PhaseBProgression.PathId.SPORE
+		) == 2,
+		"a mastered Branch counts toward its own mastery and never toward the Core gate"
 	)
-	var support_line_draftable := prototype.progression._is_upgrade_draftable(
-		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
-	)
-	var unused_line_draftable := prototype.progression._is_upgrade_draftable(
-		PhaseBProgression.UpgradeId.BLOOM_FORCE
-	)
+
+	# Every relic pool the roster owns, and only those.
+	var eligible_pools := prototype.progression.get_eligible_relic_pool_ids()
 	_check(
-		support_line_draftable and not unused_line_draftable,
-		"drafts narrow to the support path once it is chosen"
+		eligible_pools.size() == 5
+		and eligible_pools.has(PhaseBRelicCatalog.Pool.PLANT)
+		and eligible_pools.has(PhaseBRelicCatalog.Pool.THISTLE)
+		and not eligible_pools.has(PhaseBRelicCatalog.Pool.BLOOM)
+		and prototype.progression.get_relic_run_state()
+		== PhaseBRelicCatalog.RunState.FULL_ROSTER,
+		"a full roster opens Plant plus four Adaptation relic pools and the deepest rarity table"
 	)
-	var thirteen_line_build := PackedInt32Array([
-		PhaseBProgression.UpgradeId.SEED_PRODUCTION,
-		PhaseBProgression.UpgradeId.GROWTH_MASS,
-		PhaseBProgression.UpgradeId.SPORULATION,
-		PhaseBProgression.UpgradeId.FRUITING_BODIES,
-		PhaseBProgression.UpgradeId.ROOT_MATURATION,
-		PhaseBProgression.UpgradeId.ROOT_LATERAL_ROOTS,
-		PhaseBProgression.UpgradeId.ROOT_MATURE_STRENGTH,
-		PhaseBProgression.UpgradeId.ROOT_POTENCY,
-		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT,
-		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE,
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS,
-		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION,
-		PhaseBEvolutions.get_evolution_upgrade_id(evolution_before_support),
-	])
-	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
-		prototype.progression._upgrade_levels[upgrade_id] = 0
-	for index in range(thirteen_line_build.size() - 1):
-		var upgrade_id := thirteen_line_build[index]
-		prototype.progression._upgrade_levels[upgrade_id] = (
-			prototype.progression.get_upgrade_maximum_level(upgrade_id)
-		)
-	var thirteenth_line := thirteen_line_build[thirteen_line_build.size() - 1]
-	prototype.progression._upgrade_offer_cursor = thirteenth_line
-	var offered_thirteenth_line := prototype.progression._roll_upgrade_options()
-	var thirteenth_line_is_present := (
-		prototype.progression.get_pending_upgrade_options().has(thirteenth_line)
-	)
-	var committed_thirteenth_line := prototype.progression.choose_upgrade(thirteenth_line)
+
+	# Every ordinary offer is drawn from the unrestricted pool: no Adaptation holds a
+	# guaranteed slot, and a mastered one drops out of the draw entirely.
+	for thistle_line in prototype.progression.get_adaptation_line_ids(
+		PhaseBProgression.PathId.THISTLE
+	):
+		prototype.progression._upgrade_levels[thistle_line] = 3
+	var mastered_offered := false
+	for _screen in range(12):
+		prototype.progression._pending_upgrade_options.clear()
+		if not prototype.progression._roll_upgrade_options():
+			continue
+		for option_id in prototype.progression.get_pending_upgrade_options():
+			if option_id < 0:
+				continue
+			if (
+				prototype.progression._get_upgrade_path(option_id)
+				== PhaseBProgression.PathId.THISTLE
+			):
+				mastered_offered = true
 	_check(
-		offered_thirteenth_line
-		and thirteenth_line_is_present
-		and committed_thirteenth_line
-		and prototype.progression.get_slotted_upgrades().size() == 13,
-		"the draft backend accepts a thirteenth distinct Adaptation line"
+		not mastered_offered,
+		"a mastered Adaptation stops appearing in ordinary offers"
 	)
 
 	# Base Cane follows facing; Vine deliberately replaces that input with the
@@ -2974,6 +3058,7 @@ func _run() -> void:
 		"the harvest has no cooldown: it runs while you stand on Green and not otherwise"
 	)
 
+
 	# A cycle takes the youngest ground it can find before it touches the oldest.
 	prototype.territory_field.reset_field()
 	_grow_test_ecosystem(prototype)
@@ -3674,30 +3759,29 @@ func _run() -> void:
 	)
 	prototype.combat.reset_combat()
 	# Bramble is entered the only way any Adaptation is: by drafting one of its
-	# upgrade lines out of an ordinary level-up.
-	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT)
+	# upgrade lines out of an ordinary level-up. The frontier arms the moment it is.
+	_acquire_adaptation(prototype, PhaseBProgression.PathId.BRAMBLE)
 	_check(
-		prototype.progression.has_path(PhaseBProgression.PathId.BRAMBLE)
+		prototype.progression.owns_adaptation(PhaseBProgression.PathId.BRAMBLE)
 		and prototype.territory_field.is_bramble_enabled(),
-		"choosing Bramble immediately arms the authoritative Green frontier"
+		"drafting a Bramble line immediately arms the authoritative Green frontier"
 	)
 
-	prototype.progression._upgrade_offer_cursor = (
-		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT
-	)
-	prototype.progression.add_xp(prototype.progression.get_required_xp())
-	var bramble_upgrade_options := prototype.progression.get_pending_upgrade_options()
+	# Its other three lines are open at rank 0 straight away, and with the second
+	# Core slot still free the rest of the roster stays on the table beside them.
+	prototype.progression._pending_upgrade_options.clear()
+	var bramble_upgrade_options := prototype.progression.get_ordinary_candidate_lines()
 	var open_slot_draft_paths: Array[int] = []
 	for option_id in bramble_upgrade_options:
 		var upgrade_path := prototype.progression._get_upgrade_path(option_id)
 		if not open_slot_draft_paths.has(upgrade_path):
 			open_slot_draft_paths.append(upgrade_path)
 	_check(
-		bramble_upgrade_options.has(PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT)
-		and open_slot_draft_paths.size() >= 2,
-		"drafts expose Bramble's lines and keep offering other paths while a slot is open"
+		bramble_upgrade_options.has(PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE)
+		and bramble_upgrade_options.has(PhaseBProgression.UpgradeId.BRAMBLE_REPULSION)
+		and open_slot_draft_paths.has(PhaseBProgression.PathId.BLOOM),
+		"drafts expose Bramble's remaining lines and keep the roster open for Core 2"
 	)
-	prototype._choose_displayed_option(0)
 
 	prototype.territory_field.debug_establish_bramble()
 	var frontier_position := _find_player_frontier(prototype.territory_field)
@@ -4431,13 +4515,15 @@ func _run() -> void:
 
 	prototype._apply_progression_modifiers()
 
-	# The pairing closes the same way it opened: a second Adaptation arrives as an
-	# upgrade line, never as a Path handed over on its own.
-	_take_offered_upgrade(prototype, PhaseBProgression.UpgradeId.SEED_PRODUCTION)
+	# The pairing closes the same way it opened: a second uncommitted line is
+	# drafted, and taking it freezes the run's Evolution.
+	_acquire_adaptation(prototype, PhaseBProgression.PathId.SPORE)
 	_check(
 		prototype.progression.secondary_path == PhaseBProgression.PathId.SPORE
-		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE,
-		"drafting a second uncommitted line locks the run pairing without a Path screen"
+		and prototype.progression.primary_path == PhaseBProgression.PathId.BRAMBLE
+		and prototype.progression.get_pair_evolution_id()
+		== PhaseBProgression.EvolutionId.BRIAR_PODS,
+		"acquiring the second Core locks the run pairing and its Evolution"
 	)
 
 	prototype.progression._upgrade_offer_cursor = (
@@ -4610,6 +4696,11 @@ func _run() -> void:
 	prototype.reset_run()
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
+	_seed_run_adaptations(
+		prototype,
+		PhaseBProgression.PathId.SPORE,
+		PhaseBProgression.PathId.ROOT
+	)
 	var offered_level := prototype.progression.current_level
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
 	_check(
@@ -4628,22 +4719,29 @@ func _run() -> void:
 	)
 
 	prototype.progression.reset_progression()
+	prototype.progression.acquire_adaptation(PhaseBProgression.PathId.THISTLE)
 	var final_level_upgrade := PhaseBProgression.UpgradeId.THISTLE_CLUSTERING
 	prototype.progression._upgrade_levels[final_level_upgrade] = (
 		prototype.progression.maximum_upgrade_level - 1
 	)
-	# The draft is drawn at random now, so the line under test is put on the cursor:
-	# whatever else the seed offers, the line the cursor stands on is always offered.
-	prototype.progression._upgrade_offer_cursor = final_level_upgrade
+	# Thistle is the run's only Adaptation and its other three lines are mastered, so
+	# the line under test is the only ordinary candidate the screen can draw.
+	for other_line in prototype.progression.get_adaptation_line_ids(
+		PhaseBProgression.PathId.THISTLE
+	):
+		if other_line != final_level_upgrade:
+			prototype.progression._upgrade_levels[other_line] = (
+				prototype.progression.get_upgrade_maximum_level(other_line)
+			)
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
 	var final_level_offer_index := prototype.progression.get_pending_upgrade_options().find(
 		final_level_upgrade
 	)
 	_check(
 		final_level_offer_index >= 0
-		and prototype.choice_buttons[final_level_offer_index].text.contains("LEVEL 4 → 5")
-		and not prototype.choice_buttons[final_level_offer_index].text.contains("5/5"),
-		"a final-rank draft clearly says level 4 to 5 instead of presenting itself as already 5/5"
+		and prototype.choice_buttons[final_level_offer_index].text.contains("LEVEL 2 → 3")
+		and not prototype.choice_buttons[final_level_offer_index].text.contains("3/3"),
+		"a final-rank draft says level 2 to 3 instead of presenting itself as already 3/3"
 	)
 	prototype._choose_displayed_option(final_level_offer_index)
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
@@ -5149,9 +5247,12 @@ func _run() -> void:
 	for thorn in adaptations._thorns:
 		if thorn.active:
 			jackpot_thorns += 1
+	# The jackpot lends Thistle its firing numbers, not extra turrets. The network is
+	# one Thistle, so a loan that expires in ten seconds cannot leave a second
+	# permanent turret standing behind it.
 	var thistle_jackpot_fired := (
 		jackpots.is_active(PhaseBProgression.PathId.THISTLE)
-		and adaptations.get_active_thistle_count() == 5
+		and adaptations.get_active_thistle_count() == 1
 		and jackpot_thorns > 0
 	)
 
@@ -5187,9 +5288,11 @@ func _run() -> void:
 				jackpot_fruit_at_start_speed
 				and is_equal_approx(fruit.speed, adaptations.fruit_speed_pixels_per_second)
 			)
+	# Four Fruit, which is Fruit Set's rank-3 maximum: the jackpot runs the
+	# Adaptation at its real ceiling, and that ceiling is three ranks now.
 	var fruit_jackpot_fired := (
 		jackpots.is_active(PhaseBProgression.PathId.FRUIT)
-		and adaptations.get_active_fruit_count() == 6
+		and adaptations.get_active_fruit_count() == 4
 		and jackpot_fruit_at_start_speed
 	)
 	_check(
@@ -5483,6 +5586,11 @@ func _run() -> void:
 	# paused every time two reels agreed would be a game that pauses constantly.
 	var machine_focus := prototype.slot_machine
 	prototype.reset_run()
+	_seed_run_adaptations(
+		prototype,
+		PhaseBProgression.PathId.SPORE,
+		PhaseBProgression.PathId.ROOT
+	)
 	machine_focus.reset_machine()
 	var cinematic_before := prototype.is_pair_cinematic_active()
 	prototype._on_pair_tease_started(CloverSlot.Symbol.BLOOM, true)
@@ -5773,8 +5881,9 @@ func _run() -> void:
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()
 
-	# The growth-line tree keeps each Path's four authored lines together, with a
-	# separate Evolution node and a locked support row beneath it.
+	# The Adaptation tree keeps each owned Adaptation's four authored lines together,
+	# with the Evolution between the two Cores and the unearned Branch rows locked
+	# beneath it.
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
 		PhaseBProgression.PathId.BRAMBLE,
@@ -5798,17 +5907,21 @@ func _run() -> void:
 		and prototype._secondary_upgrade_slots.get_slot_count() == 4
 		and prototype._evolution_upgrade_slot.get_slot_count() == 1
 		and prototype._support_upgrade_slots.get_slot_count() == 4
+		and prototype._branch_two_upgrade_slots.get_slot_count() == 4
+		# Every row is named plainly; nothing marks one Adaptation over another.
 		and prototype._path_one_label.text == "BRAMBLE"
 		and prototype._path_two_label.text == "ROOT"
-		and prototype._support_path_label.text == "SUPPORT PATH"
+		and prototype._support_path_label.text == "BRANCH 1"
+		and prototype._branch_two_label.text == "BRANCH 2"
 		and prototype._support_path_emblem_lock.visible
+		and prototype._branch_two_emblem_lock.visible
 		and not prototype._support_path_emblem.visible
 		and filled_tooltip.contains("Entanglement")
-		and filled_tooltip.contains("3/5")
+		and filled_tooltip.contains("3/3")
 		and filled_tooltip.contains("up to %d%% slow" % expected_slow)
 		and empty_tooltip.contains("Available on an upgrade draft")
-		and locked_tooltip.contains("Evolution is locked"),
-		"the upgrade tree groups four lines per Path and locks Evolution and support"
+		and locked_tooltip.contains("two lines in each Core"),
+		"the Adaptation tree groups four lines per Adaptation and locks both Branches"
 	)
 
 	# A slot has to survive the HUD refreshing under it. The rows re-assert their
@@ -5850,13 +5963,16 @@ func _run() -> void:
 		and prototype._evolution_upgrade_slot.is_slot_locked_icon_visible(0)
 		and prototype._support_upgrade_slots.is_slot_locked_icon_visible(0)
 		and prototype._evolution_upgrade_slot.get_slot_level_text(0).is_empty()
+		# A bought line reads against its own ceiling, so 2 of 3 is never mistaken
+		# for a barely-started five-rank line. An unbought one keeps only its marker.
 		and slot_row.get_slot_level_text(2).is_empty()
-		and slot_row.get_slot_level_text(0) == "3",
-		"filled lines show ranks while locked Evolution and support slots show icons"
+		and slot_row.get_slot_level_text(0) == "3/3",
+		"a bought line shows its rank against a rank-3 ceiling and an empty one its marker"
 	)
 
-	# Upgrade order remains stable, and evolving opens the support row while filling
-	# the central Evolution node.
+	# Upgrade order remains stable, and claiming the Evolution fills the central node
+	# without touching either Branch row: Branches come from the Elite and the Boss,
+	# never from evolving.
 	var slotted_before := prototype.progression.get_slotted_upgrades()
 	prototype.progression._upgrade_levels[
 		PhaseBProgression.UpgradeId.ROOT_POTENCY
@@ -5866,16 +5982,15 @@ func _run() -> void:
 	prototype.progression.grant_evolution_if_ready()
 	prototype._apply_progression_modifiers()
 	prototype._update_hud()
-	var unlocked_tooltip := prototype._support_upgrade_slots.get_slot_tooltip(0)
+	var branch_tooltip := prototype._support_upgrade_slots.get_slot_tooltip(0)
 	_check(
 		slotted_after.size() == slotted_before.size() + 1
 		and slotted_after[0] == slotted_before[0]
 		and slotted_after[1] == slotted_before[1]
-		and prototype._evolution_upgrade_slot.get_slot_level_text(0) == "1"
-		and not prototype._support_path_emblem_lock.visible
-		and prototype._support_path_emblem.visible
-		and unlocked_tooltip.contains("Claim a support Path"),
-		"a line keeps its slot while Evolution opens the support row"
+		and prototype._evolution_upgrade_slot.get_slot_level_text(0) == "1/5"
+		and prototype._support_path_emblem_lock.visible
+		and branch_tooltip.contains("Elite Rootbreaker"),
+		"a line keeps its slot, and evolving never opens a Branch row"
 	)
 
 	# The tree's silhouette is stable: locked nodes unlock in place rather than
@@ -7738,10 +7853,16 @@ func _run() -> void:
 	# paid out by the run loop once no other choice holds the panel.
 	var relic_cycle := prototype.relic_reward_wave_cycle
 	prototype._owed_wave_relics = 0
+	# A panel held open, so the debt is observed rather than immediately settled:
+	# what is being checked is which crossings owe a relic, not how fast the run
+	# loop pays one out.
+	var held_choice_kind := prototype._choice_kind
+	prototype._choice_kind = PhaseBPrototype.ChoiceKind.RELIC
 	prototype._on_wave_began(relic_cycle + 1)
 	var off_cycle_owed := prototype._owed_wave_relics
 	prototype._on_wave_began(relic_cycle * 2)
 	var on_cycle_owed := prototype._owed_wave_relics
+	prototype._choice_kind = held_choice_kind
 	prototype._owed_wave_relics = 0
 	_check(
 		relic_cycle > 0 and off_cycle_owed == 0 and on_cycle_owed == 1,
@@ -7840,15 +7961,24 @@ func _run() -> void:
 	prototype._choose_displayed_option(0)
 
 	prototype.combat.reset_combat()
+	# The relic fixtures above have been handing this run relics all along, and an
+	# exhausted pool pays a Compost Cache instead of opening a panel. The reward
+	# under test is the relic, so the pool is restocked first.
+	prototype.progression._owned_relics.fill(0)
 	var boss_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.BOSS,
 		Vector2(760.0, 330.0)
 	)
 	prototype.combat.debug_damage_enemy(boss_id, 100000.0)
+	# The Boss opens the last Branch position, so its Adaptation offer comes first
+	# and the relic follows once that choice is made -- by which time the new
+	# Adaptation's relic pool is already eligible.
+	if prototype.progression.is_pending_branch_upgrade_choice():
+		prototype._choose_displayed_option(0)
 	_check(
 		prototype.choice_panel.visible
 		and prototype.choice_header.text == "ELITE RELIC",
-		"defeating the boss now pays out a relic instead of gating the evolution"
+		"defeating the boss pays out a relic once its Adaptation offer is answered"
 	)
 	prototype._choose_displayed_option(0)
 
@@ -8211,6 +8341,8 @@ func _run() -> void:
 	# The killing blow can hand the player a level, and a pending draft holds the
 	# run open until it is taken; victory lands on the far side of that choice.
 	for _final_frame in range(8):
+		# Any open panel is answered, not just a draft: victory lands on the far side
+		# of every choice the run is still holding out for.
 		if prototype.choice_panel.visible:
 			prototype._choose_displayed_option(0)
 		prototype.advance_run(1.0 / 60.0)
@@ -8380,11 +8512,41 @@ func _find_player_frontier(field: TerritoryField) -> Vector2:
 	return field.cell_to_local(Vector2(cells[0]))
 
 
+func _acquire_adaptation(prototype: PhaseBPrototype, path_id: int) -> void:
+	## Enters one Adaptation the way a run does: by drafting one of its lines. The
+	## fixture forces the offer onto the line it wants rather than waiting for the
+	## seed to deal it, but the commitment itself goes through choose_upgrade.
+	if prototype.progression.owns_adaptation(path_id):
+		return
+	var lines := prototype.progression.get_adaptation_line_ids(path_id)
+	if lines.is_empty():
+		return
+	prototype.progression._pending_upgrade_options = PackedInt32Array([lines[0]])
+	prototype.progression.choose_upgrade(lines[0])
+
+
+func _seed_run_adaptations(
+	prototype: PhaseBPrototype,
+	first_core: int,
+	second_core: int
+) -> void:
+	## A Core pair committed, so a fixture that is about to draft has an owned build
+	## to draft into.
+	prototype.progression.debug_select_paths(first_core, second_core)
+
+
 func _take_offered_upgrade(prototype: PhaseBPrototype, upgrade_id: int) -> void:
-	prototype.progression._upgrade_offer_cursor = upgrade_id
+	## Spends a level on one named line. The draft is weighted rather than walked
+	## from a cursor, so a fixture that needs a specific line puts it on the screen
+	## instead of re-rolling seeds until it appears; the commitment itself still goes
+	## through the run's own selection path.
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
-	var options := prototype.progression.get_pending_upgrade_options()
-	prototype._choose_displayed_option(maxi(0, options.find(upgrade_id)))
+	if not prototype.progression.get_pending_upgrade_options().has(upgrade_id):
+		prototype.progression._pending_upgrade_options = PackedInt32Array([upgrade_id])
+		prototype._choice_ids = PackedInt32Array([upgrade_id])
+	prototype._choose_displayed_option(
+		maxi(0, prototype._choice_ids.find(upgrade_id))
+	)
 
 
 func _spawn_bramble_contact_enemy(

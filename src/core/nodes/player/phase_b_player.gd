@@ -19,6 +19,18 @@ signal died
 @export_range(10.0, 500.0, 1.0) var maximum_health := 100.0
 ## Seconds of damage immunity granted after a successful enemy hit.
 @export_range(0.0, 2.0, 0.05) var damage_invulnerability_seconds := 0.50
+## Seconds the whole body is drawn pure white after a hit.
+##
+## The point is location, not decoration. By the late waves the Gardener is a small
+## shape inside a hundred bodies, splatter, thorns and a whip, and the moment they
+## are hit is exactly the moment they need to know where they are standing. Pure
+## white because every other thing on the field is green, gold or red.
+@export_range(0.0, 1.0, 0.01) var damage_flash_seconds := 0.15
+## How much of its colour the body keeps at the dimmest point of the i-frame blink
+## that follows the flash. Above zero so the Gardener never disappears.
+@export_range(0.0, 1.0, 0.05) var invulnerability_blink_floor := 0.45
+## Blinks per second while the remaining invincibility frames run.
+@export_range(0.0, 30.0, 0.5) var invulnerability_blink_hz := 9.0
 
 @export_group("Movement")
 ## Movement speed in arena pixels per second at full directional input.
@@ -43,6 +55,10 @@ var _damage_absorption_remaining := 0.0
 var _invulnerability_remaining := 0.0
 var _facing := Vector2.RIGHT
 var _damage_flash_remaining := 0.0
+## Seconds since the current invincibility window opened, which is what the blink
+## is a function of. Kept separate from the countdown so the blink phase does not
+## depend on how long the window happens to be.
+var _invulnerability_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -54,6 +70,7 @@ func _physics_process(delta: float) -> void:
 	if simulation_paused:
 		return
 	_invulnerability_remaining = maxf(0.0, _invulnerability_remaining - delta)
+	_invulnerability_elapsed += delta
 	_damage_flash_remaining = maxf(0.0, _damage_flash_remaining - delta)
 	_damage_absorption_remaining = maxf(0.0, _damage_absorption_remaining - delta)
 
@@ -73,8 +90,15 @@ func _physics_process(delta: float) -> void:
 
 
 func _draw() -> void:
+	# Two stages, because they answer two questions. The white flash says "you were
+	# hit, and this is where you are"; the blink that follows says "you still cannot
+	# be hit again", which is a different and quieter piece of information.
 	var flash := _damage_flash_remaining > 0.0
-	var body_color := Color("fff0df") if flash else Color("d8ffe5")
+	var body_color := Color.WHITE if flash else Color("d8ffe5")
+	var body_alpha := 1.0
+	if not flash and _invulnerability_remaining > 0.0:
+		var blink := 0.5 + 0.5 * sin(_invulnerability_elapsed * TAU * invulnerability_blink_hz)
+		body_alpha = lerpf(invulnerability_blink_floor, 1.0, blink)
 	# Drawn first, underneath the body, so the highlight reads as the Gardener being
 	# picked out of the battlefield rather than as another effect sitting on top of
 	# them. Off by default is deliberately not the default choice: by the time the
@@ -104,22 +128,27 @@ func _draw() -> void:
 				highlight_width,
 				true
 			)
-	draw_circle(Vector2.ZERO, body_radius_pixels + 3.0, Color(0.01, 0.03, 0.025, 0.92))
-	draw_circle(Vector2.ZERO, body_radius_pixels, body_color)
+	draw_circle(Vector2.ZERO, body_radius_pixels + 3.0, Color(0.01, 0.03, 0.025, 0.92 * body_alpha))
+	draw_circle(Vector2.ZERO, body_radius_pixels, Color(body_color, body_alpha))
 	var leaf := PackedVector2Array([
 		_facing * 14.0,
 		_facing.rotated(2.25) * 9.0,
 		_facing.rotated(PI) * 5.0,
 		_facing.rotated(-2.25) * 9.0,
 	])
-	draw_colored_polygon(leaf, Color("48d778"))
-	draw_polyline(leaf, Color("9dffc1"), 1.5, true)
-	draw_circle(_facing * 3.0, 2.2, Color("163526"))
+	# The leaf and the eye flash with the body rather than staying green on top of
+	# it. A silhouette that is only half white reads as a lighting change; one that
+	# is entirely white reads as a hit.
+	draw_colored_polygon(leaf, Color(Color.WHITE if flash else Color("48d778"), body_alpha))
+	draw_polyline(leaf, Color(Color.WHITE if flash else Color("9dffc1"), body_alpha), 1.5, true)
+	if not flash:
+		draw_circle(_facing * 3.0, 2.2, Color(Color("163526"), body_alpha))
 
 
 func reset_player() -> void:
 	_health = maximum_health
 	_invulnerability_remaining = 0.0
+	_invulnerability_elapsed = 0.0
 	_damage_flash_remaining = 0.0
 	_speed_multiplier = 1.0
 	_damage_absorption_remaining = 0.0
@@ -172,7 +201,8 @@ func apply_damage(amount: float) -> bool:
 		_damage_absorption_remaining = _damage_absorption_cooldown
 	_health = maxf(0.0, _health - amount)
 	_invulnerability_remaining = damage_invulnerability_seconds
-	_damage_flash_remaining = 0.16
+	_invulnerability_elapsed = 0.0
+	_damage_flash_remaining = damage_flash_seconds
 	health_changed.emit(_health, maximum_health)
 	damage_taken.emit(amount)
 	if _health <= 0.0:

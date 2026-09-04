@@ -47,7 +47,8 @@ enum RunState {
 	SINGLE_ADAPTATION,
 	TWO_PRE_EVOLUTION,
 	POST_EVOLUTION,
-	SUPPORT_LATE,
+	## Every Core and Branch slot filled: five eligible pools, forty relics.
+	FULL_ROSTER,
 }
 
 enum Id {
@@ -105,7 +106,8 @@ enum Id {
 	GREEN_MANURE,
 	RETURN_STROKE,
 	WATERSPROUTS,
-	# Thistle. A distributed turret network passes firing events around.
+	# Thistle. One turret, so the pool is about what a single Thistle can be made to
+	# do twice: answer itself, fire again, and pay out every time it takes root.
 	ROSETTE,
 	THORN_RELAY,
 	PINCUSHION,
@@ -311,7 +313,7 @@ static func get_relic_description(relic_id: int) -> String:
 		Id.MAN_EATER:
 			return "Enemies that graze on Green too long become marked. Kill one to sprout a carnivorous plant that bites nearby enemies."
 		Id.GRAFTING_TAPE:
-			return "Every 18s, an action from one primary Adaptation makes the other answer with its core event at 75% strength."
+			return "Every 18s, an action from one Core Adaptation makes the other Core answer with its own event at 75% strength. Branches are never linked."
 		Id.MIRACLE_GRO:
 			return "Create enough new Green to prime your next eligible Adaptation event to repeat at 60% strength."
 		Id.HYBRID_VIGOR:
@@ -397,21 +399,21 @@ static func get_relic_description(relic_id: int) -> String:
 		Id.WATERSPROUTS:
 			return "Kills from natural released Cuttings sprout 2 seeking Cuttings. Those children can branch one final time."
 		Id.ROSETTE:
-			return "A newly grown permanent Thistle immediately fires a 60%-damage opening volley."
+			return "Every time your Thistle takes root, including each time you set a carried one down, it immediately fires a 60%-damage opening volley."
 		Id.THORN_RELAY:
-			return "Every 8 natural thorn hits makes another Thistle fire a 65%-damage bonus thorn."
+			return "Every 8 natural thorn hits, your Thistle answers with a bonus thorn at 42% damage, or 65% if a second Thistle is standing to answer instead."
 		Id.PINCUSHION:
-			return "Hit an enemy with 5 Thistle thorns before it dies to launch 3 embedded thorns from its corpse."
+			return "Hit an enemy with 5 thorns before it dies to launch 3 embedded thorns from its corpse."
 		Id.SEEDHEAD:
-			return "A Thistle that loses its supporting Green fires one final volley at 150% damage before collapsing."
+			return "Your Thistle fires one final volley at 150% damage as it collapses, including when you drop it off the Green."
 		Id.ANSWERING_THORN:
-			return "When a natural Thistle volley gets a kill, another Thistle answers with a 50%-damage volley. 2.25s cooldown."
+			return "When a natural volley gets a kill, your Thistle answers with another volley at 33% damage, or 50% if a second Thistle answers instead. 2.25s cooldown."
 		Id.PHYLLOTAXIS:
-			return "Every 5th natural firing cycle from a Thistle adds 5 spiral thorns at 55% damage."
+			return "Every 5th natural firing cycle from your Thistle adds 5 spiral thorns at 55% damage."
 		Id.FORKING_PATTERN:
 			return "Every 12 natural thorn impacts makes the triggering hit split into 3 seeking thorns, or 4 if it crits."
 		Id.CROWN_OF_THORNS:
-			return "Every 12 natural network firing cycles, every active Thistle fires together at 55% damage. 7s cooldown."
+			return "Every 12 natural firing cycles, your Thistle fires 3 volleys in quick succession at 55% damage, or every standing Thistle fires together once if there is more than one. 7s cooldown."
 		Id.WHIPLASH:
 			return "Land an Apical hit to snap the Vine 70 px past its tip for 40% follow-up damage."
 		Id.RUNNER:
@@ -620,7 +622,7 @@ static func get_rarity_odds(run_state: int) -> PackedFloat32Array:
 			return PackedFloat32Array([0.64, 0.27, 0.075, 0.015])
 		RunState.POST_EVOLUTION:
 			return PackedFloat32Array([0.57, 0.28, 0.12, 0.03])
-		RunState.SUPPORT_LATE:
+		RunState.FULL_ROSTER:
 			return PackedFloat32Array([0.50, 0.29, 0.17, 0.04])
 	return PackedFloat32Array([0.72, 0.24, 0.03, 0.01])
 

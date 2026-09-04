@@ -206,6 +206,18 @@ class Cutting:
 ## than the ordinary falloff, because the whole point of the burst is that it goes
 ## all the way through a crowd rather than stopping in the front rank.
 @export_range(0.05, 1.0, 0.01) var launch_pierce_falloff := 0.88
+## The ready tell. Charge is otherwise drawn as a gradient -- longer spikes, brighter
+## tint, a faster turn -- and a gradient has no ceiling the eye can find: a ring at
+## 90% looks like a ring at 100%, so the player either releases early or holds a full
+## ring for nothing. The pulse is a state change rather than more of the same signal.
+@export_range(0.0, 8.0, 0.05) var full_charge_pulse_hz := 2.2
+## How far the pulse dips between beats. At 0 the tell is a steady glow.
+@export_range(0.0, 1.0, 0.01) var full_charge_pulse_depth := 0.60
+@export var full_charge_pulse_color := Color("ffe98a")
+## Arena pixels the pulsing hoop stands outside the ring, and the halo radius drawn
+## on each spike.
+@export_range(0.0, 40.0, 0.5) var full_charge_hoop_offset_pixels := 5.0
+@export_range(0.0, 40.0, 0.5) var full_charge_halo_pixels := 6.5
 
 @export_group("Vegetative Propagation")
 
@@ -290,6 +302,12 @@ var _cutting_debt := 0.0
 var _replacement_remaining := 0.0
 var _last_cycle_cells := 0
 var _charge := 0.0
+## Seconds the ring has been sitting at full Charge, which is the pulse's own clock.
+## It starts at zero on the frame the ring fills so the first beat is its brightest.
+var _full_charge_pulse := 0.0
+## Whether the ring was already full last tick, so the frame it fills can be held at
+## the top of the beat instead of starting one frame in.
+var _was_fully_charged := false
 var _orbit_angle := 0.0
 var _orbit_sequence := 0
 var _hit_cooldowns := {}
@@ -361,6 +379,8 @@ func reset_director() -> void:
 	_replacement_remaining = 0.0
 	_last_cycle_cells = 0
 	_charge = 0.0
+	_full_charge_pulse = 0.0
+	_was_fully_charged = false
 	_orbit_angle = 0.0
 	_orbit_sequence = 0
 	_hit_cooldowns.clear()
@@ -382,6 +402,7 @@ func advance(delta: float) -> void:
 	_advance_callus(delta)
 	_advance_stubble(delta)
 	_advance_ring(delta)
+	_advance_full_charge_pulse(delta)
 	_advance_cuttings(delta)
 	_advance_pioneer(delta)
 	_advance_compression(delta)
@@ -400,6 +421,37 @@ func get_last_cycle_cells() -> int:
 
 func get_charge() -> float:
 	return _charge
+
+
+func is_fully_charged() -> bool:
+	## A standing ring with nothing left to gain by holding it. Both halves matter:
+	## Charge alone with no spikes up is not something to act on.
+	return _charge >= 1.0 and get_orbit_count() > 0
+
+
+func _advance_full_charge_pulse(delta: float) -> void:
+	if not is_fully_charged():
+		_full_charge_pulse = 0.0
+		_was_fully_charged = false
+		return
+	if not _was_fully_charged:
+		# The frame the ring fills is the top of the first beat rather than one frame
+		# into it. Accumulating on this frame would show the player the tell already
+		# a little way down from its brightest, which is the one moment it must not.
+		_was_fully_charged = true
+		_full_charge_pulse = 0.0
+		return
+	_full_charge_pulse += delta
+
+
+## 1.0 at the top of a beat, dipping to 1 - depth between them. Cosine rather than
+## sine so the clock starting at zero puts the first beat at its brightest, on the
+## frame the player needs to notice.
+func _get_full_charge_pulse() -> float:
+	if not is_fully_charged():
+		return 0.0
+	var beat := 0.5 + 0.5 * cos(_full_charge_pulse * TAU * full_charge_pulse_hz)
+	return 1.0 - full_charge_pulse_depth * (1.0 - beat)
 
 func is_holding() -> bool:
 	return _holding
@@ -434,9 +486,13 @@ func get_upkeep_cells_per_second() -> float:
 	# firing. Charge alone caps after a few seconds, which left a single patch of
 	# Green able to feed a ring indefinitely; this is what gives every hold an end.
 	rate += upkeep_escalation_per_second * _hold_seconds
+	# Root cuts deeper into old wood. This raises spikes faster and burns the Green
+	# faster with it, which is the same trade Harvest Rate itself is priced on -- the
+	# cap above is what keeps it from running away.
 	return (
 		minf(maximum_upkeep_cells_per_second, rate)
 		* get_pruning_harvest_rate_multiplier()
+		* get_ring_root_multiplier()
 	)
 
 func get_hold_seconds() -> float:
@@ -449,10 +505,17 @@ func get_rings_released() -> int:
 	return _rings_released
 
 func get_charge_seconds() -> float:
-	return charge_seconds / maxf(0.05, get_pruning_charge_multiplier())
+	return charge_seconds / maxf(
+		0.05,
+		get_pruning_charge_multiplier() * get_ring_root_multiplier()
+	)
 
 func get_launch_charge_damage_bonus() -> float:
-	return launch_charge_damage_bonus * get_pruning_charge_multiplier()
+	return (
+		launch_charge_damage_bonus
+		* get_pruning_charge_multiplier()
+		* get_ring_root_multiplier()
+	)
 
 func is_player_on_green() -> bool:
 	return (
@@ -755,7 +818,9 @@ func _harvest(wanted_cells: int) -> int:
 				roundi(float(harvest.mature_cell_count) * mature_yield
 					* evolutions.stool_regrowth_second_share)
 			)
-	cuttings *= get_pruning_cutting_yield_multiplier()
+	# Older wood yields more spikes out of the same cut, measured on the Mature share
+	# of the patch that was actually taken rather than on a single point.
+	cuttings *= get_pruning_cutting_yield_multiplier() * get_harvest_root_multiplier(harvest)
 	_cutting_debt += cuttings
 	# A ring with room fills as fast as the harvest pays for it; a full one takes
 	# exactly one replacement per shed rather than dumping whatever has banked.
@@ -1043,6 +1108,18 @@ func _raise_cuttings(harvest: TerritoryField.PruneHarvest, wanted: int) -> int:
 		raised += 1
 	_cuttings_launched += raised
 	return raised
+
+func get_ring_root_multiplier() -> float:
+	# Root where the ring is standing. The harvest multiplier below measures a patch,
+	# which is right for something cut out of the ground; the ring's own rates --
+	# how fast it eats, how fast it charges -- happen at Grandma's feet, so they read
+	# the ground she is on the way every other point effect in the game does.
+	if root_director == null:
+		return 1.0
+	return root_director.get_network_multiplier_here(
+		combat.player.get_arena_position()
+	)
+
 
 func get_harvest_root_multiplier(harvest: TerritoryField.PruneHarvest) -> float:
 	# How old the cut was, as the share of it that came out of Mature ground. Every
@@ -1536,6 +1613,22 @@ func _draw_thicket() -> void:
 		var slack := centre.direction_to(midpoint) * 3.0
 		draw_line(here, midpoint - slack, tint, 1.6, true)
 		draw_line(midpoint - slack, next, tint, 1.6, true)
+	# The ready tell: a hoop of light standing just outside the ring, beating on its
+	# own clock. Drawn over the woven runners rather than tinted into them, because
+	# the whole point is that it is not more of the Charge gradient.
+	var pulse := _get_full_charge_pulse()
+	if pulse > 0.0:
+		var glow := full_charge_pulse_color
+		draw_arc(
+			centre,
+			radius + full_charge_hoop_offset_pixels,
+			0.0,
+			TAU,
+			48,
+			Color(glow.r, glow.g, glow.b, glow.a * 0.85 * pulse),
+			2.4 * pulse,
+			true
+		)
 	# Cut litter turning over the enclosed ground, so the interior reads as swept
 	# rather than as empty space inside a circle.
 	var litter := Color(0.74, 0.86, 0.48, 0.34 + 0.28 * _charge)
@@ -1665,6 +1758,14 @@ func _draw() -> void:
 				true
 			)
 			draw_circle(cutting.position, 1.8 + 0.8 * _charge, loaded)
+			var spike_pulse := _get_full_charge_pulse()
+			if spike_pulse > 0.0:
+				var halo := full_charge_pulse_color
+				draw_circle(
+					cutting.position,
+					full_charge_halo_pixels * spike_pulse,
+					Color(halo.r, halo.g, halo.b, halo.a * 0.32 * spike_pulse)
+				)
 			continue
 		var direction := cutting.velocity.normalized()
 		draw_line(

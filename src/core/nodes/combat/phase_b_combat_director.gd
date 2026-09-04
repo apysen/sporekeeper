@@ -207,6 +207,11 @@ class EnemyState:
 	var xp_value := 1
 	var spawn_wave_number := 1
 	var territory_erosion_scale := 1.0
+	## Share of an incoming root duration, shove distance or slow this body ignores,
+	## resolved once at spawn from the wave's curve and this role's own resistance.
+	## Stored on the body rather than read live so an enemy fights at the wave it
+	## entered in, which is the same rule its health and damage already follow.
+	var cc_resistance := 0.0
 	var target_priority_multiplier := 1.0
 	var use_boss_navigation := false
 	var direct_path_clear := false
@@ -570,6 +575,13 @@ class PendingEruptionState:
 ## what carries the distinction alongside the larger size. The enemy's hit flash
 ## keeps the source colour: only the number changes.
 @export var damage_number_critical_color := Color("ffc21f")
+## Colour of a number for damage Grandma took. Deliberately a hue nothing the
+## player deals ever uses: the one number that matters to survival has to be
+## findable inside a screenful of numbers that do not.
+@export var player_damage_number_color := Color("c46bff")
+## Vertical offset the player's own damage number rises from, in place of the
+## enemy radius an ordinary number is spaced off.
+@export_range(0.0, 64.0, 1.0) var player_damage_number_offset_pixels := 16.0
 ## How long ordinary damage on one enemy accumulates before it is shown as a single
 ## number. Zero shows every hit separately, as before.
 ##
@@ -729,6 +741,14 @@ const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
 ## Seconds a Briar Heart waits between its own detonations.
 @export_range(0.05, 3.0, 0.05) var briar_heart_recharge_seconds := 0.55
 
+@export_group("Experience Pickups")
+## How close Grandma has to be before a dropped orb starts homing on her. Halved
+## from its original 165 px: walking the field is meant to be part of collecting.
+@export_range(20.0, 400.0, 1.0) var xp_attraction_radius_pixels := 82.0
+## An orb this old homes in regardless of distance, so nothing is ever stranded.
+## This is the real ceiling on how much a smaller radius can cost a run.
+@export_range(1.0, 60.0, 0.5) var xp_giveup_seconds := 11.0
+
 @export_group("Object Pools")
 ## Enemy-state objects preallocated when this node enters the scene tree.
 @export_range(20, 400, 1) var enemy_pool_size := 160
@@ -739,6 +759,16 @@ const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
 @export_range(20, 400, 1) var pickup_pool_size := 180
 ## Spawn limit for simultaneously active enemies; keep at or below the enemy pool size.
 @export_range(10, 300, 1) var maximum_active_enemies := 130
+
+@export_group("Spawn Fairness")
+## Closest an ordinary reinforcement may enter to Grandma.
+@export_range(0.0, 600.0, 5.0) var normal_spawn_exclusion_pixels := 220.0
+## Closest a Rusher may enter. Larger than the ordinary exclusion because the role
+## exists to test reaction, and reaction needs the distance to happen in.
+@export_range(0.0, 600.0, 5.0) var rusher_spawn_exclusion_pixels := 280.0
+## Colony Cores allowed while a milestone actor is alive, so the Elite or the Boss
+## always has a slot inside the hard cap to enter through.
+@export_range(0, 12, 1) var milestone_reserved_colony_cores := 4
 
 @export_group("Rendering Performance")
 ## Above this population, cosmetic battlefield detail is reduced while role colours,
@@ -878,6 +908,17 @@ var _enemy_territory_erosion_scale := 1.0
 var _enemy_spawn_wave_number := 1
 var _enemy_xp_growth_per_wave := 0.10
 var _enemy_xp_minimum_bonus_per_wave := 1
+## Campaign scaling. Quick leaves all of this at its neutral value and keeps
+## driving health, damage and erosion through set_enemy_scaling; the Campaign hands
+## over one authored wave at a time through set_campaign_wave_scaling.
+var _campaign_scaling_active := false
+var _enemy_movement_scale := 1.0
+var _enemy_action_speed_scale := 1.0
+var _enemy_cc_resistance := 0.0
+var _enemy_xp_multiplier := 1.0
+## Role id to EnemyRoleScalingProfile, so a Rusher takes half the movement curve
+## and a Grazer's bite cadence is never touched.
+var _role_scaling_profiles := {}
 var _navigation_width := 0
 var _navigation_height := 0
 var _navigation_cell_count := 0
@@ -886,6 +927,19 @@ var _navigation_small_target_index := -1
 var _elite_modifier_chance := 0.0
 ## A modifier pinned for the next eligible spawn, for tests and debug keys.
 var _forced_elite_modifier := EliteModifier.NONE
+## Which rule changes this wave may hand out. Empty means the Quick behaviour of
+## drawing from every authored modifier.
+var _modifier_pool := PackedInt32Array()
+## The Campaign wave modifier eligibility is judged against; zero outside Campaign.
+var _modifier_wave_number := 0
+## Wave 18 is the modifier showcase: its first eligible spawns are steered to
+## demonstrate three different rule changes before the roll goes back to chance.
+## Tutorial shaping for one wave, deliberately not a permanent bias.
+const MODIFIER_SHOWCASE_WAVE := 18
+const MODIFIER_SHOWCASE_SPAWNS := 6
+const MODIFIER_SHOWCASE_TYPES := 3
+var _showcase_modifiers := PackedInt32Array()
+var _showcase_eligible_spawns := 0
 var _navigation_boss_target_index := -1
 var _navigation_catalyst_target_index := -1
 var _navigation_catalyst_target_position := Vector2(-99999.0, -99999.0)
@@ -1254,6 +1308,15 @@ func _find_enemy(enemy_id: int) -> EnemyState:
 func reset_combat() -> void:
 	_elite_modifier_chance = elite_modifier_base_chance
 	_forced_elite_modifier = EliteModifier.NONE
+	_modifier_pool = PackedInt32Array()
+	_modifier_wave_number = 0
+	_showcase_modifiers = PackedInt32Array()
+	_showcase_eligible_spawns = 0
+	_campaign_scaling_active = false
+	_enemy_movement_scale = 1.0
+	_enemy_action_speed_scale = 1.0
+	_enemy_cc_resistance = 0.0
+	_enemy_xp_multiplier = 1.0
 	for enemy in _enemies:
 		enemy.active = false
 		enemy.state = EnemyStateKind.INACTIVE
@@ -1344,10 +1407,11 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 		return -1
 	enemy.role = role
 	_configure_enemy_stats(enemy)
+	var exclusion := _get_spawn_exclusion(role)
 	if local_position.x < -90000.0:
-		local_position = _choose_spawn_position(enemy.collision_radius)
+		local_position = _choose_spawn_position(enemy.collision_radius, exclusion)
 	if not _can_occupy_diamond(local_position, enemy.collision_radius):
-		local_position = _choose_spawn_position(enemy.collision_radius)
+		local_position = _choose_spawn_position(enemy.collision_radius, exclusion)
 
 	enemy.active = true
 	enemy.state = EnemyStateKind.ADVANCING
@@ -1402,6 +1466,68 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	_active_enemy_count += 1
 	active_enemy_count_changed.emit(_active_enemy_count)
 	return enemy.id
+
+
+func _get_spawn_exclusion(role: int) -> float:
+	# The Colony Core is placed by its Colonizer at a site that was already
+	# validated, and the milestone actors are authored entrances. Only ordinary
+	# reinforcements are held away from Grandma.
+	if role == EnemyRole.COLONY_CORE or role == EnemyRole.ELITE or role == EnemyRole.BOSS:
+		return 0.0
+	if role == EnemyRole.RUSHER:
+		return rusher_spawn_exclusion_pixels
+	return normal_spawn_exclusion_pixels
+
+
+func spawn_enemy_near(role: int, wanted: Vector2) -> int:
+	## An entrance the wave director asked for, or the nearest legal one to it.
+	##
+	## A topology request that has no valid point searches around the perimeter
+	## rather than being dropped: the weak side is still the weak side even when the
+	## exact metre the scorer chose is basalt, and losing the request would quietly
+	## turn an authored pincer back into an even ring.
+	var placement := _find_perimeter_placement(role, wanted)
+	if placement.x < -90000.0:
+		return spawn_enemy(role)
+	return spawn_enemy(role, placement)
+
+
+func _find_perimeter_placement(role: int, wanted: Vector2) -> Vector2:
+	var arena_size := territory_field.tuning.arena_size
+	var center := arena_size * 0.5
+	var profile := _profile_for_role(role)
+	var radius := (
+		profile.body_radius_pixels * enemy_collision_radius_multiplier
+		if profile != null
+		else 6.0
+	)
+	# Never inside the exclusion around Grandma, and the Rusher is kept further out
+	# still: its whole role is arriving before the player has finished reacting, and
+	# a short entrance turns that into damage nothing could have answered.
+	var exclusion := (
+		rusher_spawn_exclusion_pixels
+		if role == EnemyRole.RUSHER
+		else normal_spawn_exclusion_pixels
+	)
+	var player_position := player.get_arena_position()
+	var offset := wanted - center
+	var base_angle := offset.angle() if offset.length_squared() > 0.0001 else 0.0
+	var reach := offset.length()
+	if reach <= 1.0:
+		reach = minf(center.x, center.y)
+	for attempt in range(24):
+		# Outward from the requested angle in both directions, so the fallback lands
+		# in an adjacent sector before it lands on the far side of the arena.
+		var step := float((attempt + 1) / 2) * (TAU / 32.0)
+		var angle := base_angle + (step if attempt % 2 == 0 else -step)
+		var candidate := center + Vector2.from_angle(angle) * reach
+		candidate.x = clampf(candidate.x, radius + 4.0, arena_size.x - radius - 4.0)
+		candidate.y = clampf(candidate.y, radius + 4.0, arena_size.y - radius - 4.0)
+		if candidate.distance_to(player_position) < exclusion:
+			continue
+		if _can_occupy_diamond(candidate, radius):
+			return candidate
+	return Vector2(-99999.0, -99999.0)
 
 
 func spawn_pack(role: int, count: int) -> int:
@@ -2252,6 +2378,60 @@ func set_enemy_scaling(
 	_enemy_spawn_wave_number = maxi(1, spawn_wave_number)
 	_enemy_xp_growth_per_wave = maxf(0.0, xp_growth_per_wave)
 	_enemy_xp_minimum_bonus_per_wave = maxi(0, xp_minimum_bonus_per_wave)
+	_campaign_scaling_active = false
+
+
+func set_campaign_wave_scaling(
+	wave_number: int,
+	health_scale: float,
+	damage_scale: float,
+	movement_scale: float,
+	territory_strength_scale: float,
+	action_speed_scale: float,
+	cc_resistance: float,
+	xp_multiplier: float,
+	role_profiles: Dictionary
+) -> void:
+	## The whole of one Campaign wave's pressure, applied to everything spawned
+	## while it is the current wave.
+	##
+	## Six curves rather than two. Health and contact damage alone produce a wave
+	## that is longer instead of harder: what actually threatens a built organism is
+	## enemies that arrive sooner, work on the Green faster, take the territory apart
+	## harder, and shrug off part of the control that used to hold them.
+	_campaign_scaling_active = true
+	_enemy_health_scale = maxf(0.1, health_scale)
+	_enemy_damage_scale = maxf(0.1, damage_scale)
+	_enemy_territory_erosion_scale = maxf(0.1, territory_strength_scale)
+	_enemy_movement_scale = maxf(0.1, movement_scale)
+	_enemy_action_speed_scale = maxf(0.1, action_speed_scale)
+	_enemy_cc_resistance = clampf(cc_resistance, 0.0, 1.0)
+	_enemy_xp_multiplier = maxf(0.1, xp_multiplier)
+	_enemy_spawn_wave_number = maxi(1, wave_number)
+	_role_scaling_profiles = role_profiles
+
+
+func set_modifier_stage(
+	chance: float,
+	available_modifiers: PackedInt32Array,
+	wave_number: int
+) -> void:
+	## What this wave's rule changes can be, and how often they land.
+	##
+	## A stage adds to the one before it rather than replacing it, so a modifier the
+	## player has learned to read never quietly disappears from the Campaign.
+	_elite_modifier_chance = clampf(chance, 0.0, 1.0)
+	_modifier_pool = available_modifiers.duplicate()
+	if wave_number != _modifier_wave_number:
+		_modifier_wave_number = wave_number
+		if wave_number == MODIFIER_SHOWCASE_WAVE:
+			_showcase_modifiers = PackedInt32Array()
+			_showcase_eligible_spawns = 0
+
+
+func get_modifier_showcase_types() -> int:
+	## How many different rule changes the showcase wave has demonstrated so far.
+	return _showcase_modifiers.size()
 
 
 func set_simulation_paused(paused: bool) -> void:
@@ -3023,7 +3203,10 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 		enemy.entanglement + _get_entanglement_rate(enemy, contact_strength) * delta
 	)
 	enemy.movement_speed_multiplier = 1.0 - clampf(
-		_bramble_slow_fraction * enemy.entanglement * contact_strength,
+		_bramble_slow_fraction
+		* enemy.entanglement
+		* contact_strength
+		* (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95)),
 		0.0,
 		0.85
 	)
@@ -3627,7 +3810,10 @@ func root_entangled_enemies_in_radius(
 			continue
 		if not territory_field.is_growth_path_clear(center, enemy.position):
 			continue
-		enemy.bramble_root_remaining = maxf(enemy.bramble_root_remaining, root_seconds)
+		var resisted := root_seconds * (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
+		if resisted <= 0.0:
+			continue
+		enemy.bramble_root_remaining = maxf(enemy.bramble_root_remaining, resisted)
 		enemy.bramble_root_duration = maxf(
 			enemy.bramble_root_duration,
 			enemy.bramble_root_remaining
@@ -3847,6 +4033,9 @@ func _begin_knockback(enemy: EnemyState, direction: Vector2, distance: float) ->
 	# through here rather than each refusing the shove somewhere of their own, so
 	# there is one place that decides whether a body moves.
 	distance *= 1.0 - clampf(enemy.knockback_resistance, 0.0, 1.0)
+	# The role's own immovability first, then the wave's crowd-control resistance on
+	# whatever shove is left. A late enemy is harder to move, never impossible.
+	distance *= 1.0 - clampf(enemy.cc_resistance, 0.0, 0.95)
 	if distance <= 0.0:
 		return
 	var duration := maxf(0.01, bramble_repulsion_seconds)
@@ -3895,10 +4084,16 @@ func _try_root_entangled_enemy(enemy: EnemyState) -> void:
 		or enemy.bramble_root_immunity_remaining > 0.0
 	):
 		return
-	enemy.bramble_root_remaining = _bramble_root_seconds
-	enemy.bramble_root_duration = _bramble_root_seconds
+	# The hold shortens with the wave's crowd-control resistance; reaching full
+	# Entanglement in the first place deliberately does not, so Bramble's build-up
+	# keeps working at Wave 25 and only its payoff is trimmed.
+	var root_seconds := _bramble_root_seconds * (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
+	if root_seconds <= 0.0:
+		return
+	enemy.bramble_root_remaining = root_seconds
+	enemy.bramble_root_duration = root_seconds
 	enemy.bramble_root_immunity_remaining = (
-		_bramble_root_seconds + _bramble_root_immunity_seconds
+		root_seconds + _bramble_root_immunity_seconds
 	)
 	_spawn_root_eruption(enemy.position)
 	enemy_rooted.emit(enemy.position)
@@ -4265,7 +4460,14 @@ func _perform_enemy_territory_action(enemy: EnemyState) -> void:
 func _try_establish_colony_core(colonizer: EnemyState) -> bool:
 	if colonizer.maximum_active_summons <= 0:
 		return false
-	if get_active_enemy_count_by_role(EnemyRole.COLONY_CORE) >= colonizer.maximum_active_summons:
+	# The six slots the ordinary reinforcement cap holds back are shared between
+	# Cores and the milestone actors. While an Elite or the Boss is alive the Cores
+	# give one of them up, because a milestone that cannot enter is a reward and a
+	# wave identity the run silently loses.
+	var core_cap := colonizer.maximum_active_summons
+	if has_active_boss() or get_active_enemy_count_by_role(EnemyRole.ELITE) > 0:
+		core_cap = mini(core_cap, milestone_reserved_colony_cores)
+	if get_active_enemy_count_by_role(EnemyRole.COLONY_CORE) >= core_cap:
 		return false
 	var minimum_spacing_squared := colonizer.summon_spacing_pixels * colonizer.summon_spacing_pixels
 	for enemy in _enemies:
@@ -4373,7 +4575,12 @@ func _update_projectiles(delta: float) -> void:
 
 func _update_pickups(delta: float) -> void:
 	var player_position := player.get_arena_position()
-	var attraction_radius_squared := 165.0 * 165.0
+	var attraction_radius_squared := (
+		xp_attraction_radius_pixels * xp_attraction_radius_pixels
+	)
+	## The pull ramps up over the last stretch of the reach rather than over a fixed
+	## distance, so shrinking the radius does not also flatten the pull-in.
+	var pull_ramp := xp_attraction_radius_pixels + 5.0
 	var collect_radius := player.body_radius_pixels + 7.0
 	var collect_radius_squared := collect_radius * collect_radius
 	for pickup in _pickups:
@@ -4381,9 +4588,9 @@ func _update_pickups(delta: float) -> void:
 			continue
 		pickup.age += delta
 		var distance_squared := pickup.position.distance_squared_to(player_position)
-		if distance_squared < attraction_radius_squared or pickup.age > 7.0:
+		if distance_squared < attraction_radius_squared or pickup.age > xp_giveup_seconds:
 			var distance := sqrt(distance_squared)
-			var speed := 120.0 + maxf(0.0, 170.0 - distance) * 1.7
+			var speed := 120.0 + maxf(0.0, pull_ramp - distance) * 1.7
 			pickup.position = pickup.position.move_toward(player_position, speed * delta)
 			distance_squared = pickup.position.distance_squared_to(player_position)
 		if distance_squared <= collect_radius_squared:
@@ -5041,6 +5248,25 @@ func _spawn_damage_number(
 	queue_redraw()
 
 
+func spawn_player_damage_number(local_position: Vector2, damage: float) -> void:
+	## Damage taken by Grandma, styled apart from everything dealt to enemies.
+	##
+	## The arena is already full of pale numbers flying off enemies, and the one
+	## number that actually threatens the run has to be findable inside them. It
+	## borrows the critical presentation -- larger text, the full outline ring, the
+	## longer rise -- in a colour nothing the player deals ever uses, so it reads as
+	## "this happened to you" at a glance rather than by being counted.
+	if damage <= 0.0:
+		return
+	_spawn_damage_number(
+		local_position,
+		player_damage_number_offset_pixels,
+		damage,
+		player_damage_number_color,
+		true
+	)
+
+
 func _get_damage_feedback_color(death_source: int) -> Color:
 	match death_source:
 		DeathSource.CANE:
@@ -5096,6 +5322,8 @@ func _roll_elite_modifier(role: int) -> int:
 		return forced
 	if not _is_modifier_eligible(role):
 		return EliteModifier.NONE
+	if _campaign_scaling_active:
+		return _roll_campaign_modifier()
 	if _elite_modifier_chance <= 0.0:
 		return EliteModifier.NONE
 	if randf() > _elite_modifier_chance:
@@ -5105,14 +5333,56 @@ func _roll_elite_modifier(role: int) -> int:
 	return randi_range(EliteModifier.UNSTOPPABLE, EliteModifier.VOLATILE)
 
 
+func _roll_campaign_modifier() -> int:
+	if _modifier_pool.is_empty():
+		return EliteModifier.NONE
+	if _modifier_wave_number == MODIFIER_SHOWCASE_WAVE:
+		var showcased := _draw_showcase_modifier()
+		if showcased != EliteModifier.NONE:
+			return showcased
+	if _elite_modifier_chance <= 0.0 or randf() > _elite_modifier_chance:
+		return EliteModifier.NONE
+	return _modifier_pool[randi() % _modifier_pool.size()]
+
+
+func _draw_showcase_modifier() -> int:
+	## The modifier showcase. Wave 18's first eligible spawns are steered so the
+	## player meets three different rule changes rather than three copies of
+	## whichever one the dice picked first. Shaping for one wave only: once the
+	## quota is met the wave goes back to its authored chance.
+	_showcase_eligible_spawns += 1
+	if (
+		_showcase_eligible_spawns > MODIFIER_SHOWCASE_SPAWNS
+		or _showcase_modifiers.size() >= MODIFIER_SHOWCASE_TYPES
+	):
+		return EliteModifier.NONE
+	for offset in range(_modifier_pool.size()):
+		var candidate := _modifier_pool[
+			(_showcase_eligible_spawns + offset) % _modifier_pool.size()
+		]
+		if not _showcase_modifiers.has(candidate):
+			_showcase_modifiers.append(candidate)
+			return candidate
+	return EliteModifier.NONE
+
+
 func _is_modifier_eligible(role: int) -> bool:
-	# The Elite is always eligible - it is what the modifiers are named for. The late
-	# specialists become eligible too, because the doc's final escalation stage asks
-	# for more specialised behaviour and not merely more elites. The Boss is excluded:
-	# it already changes the rules by itself, and a Colony Core cannot use any of them.
+	# The Elite is always eligible - it is what the modifiers are named for. The
+	# Boss is excluded: it already changes the rules by itself, and a Colony Core
+	# cannot use any of them, nor may it inherit its Colonizer's.
 	if role == EnemyRole.ELITE:
 		return true
-	return modifier_eligible_late_roles.has(role)
+	if role == EnemyRole.BOSS or role == EnemyRole.COLONY_CORE:
+		return false
+	if not _campaign_scaling_active:
+		return modifier_eligible_late_roles.has(role)
+	# Campaign gates each role on the wave its profile names, so the objective
+	# specialists join the system at the Boss rather than alongside the first
+	# Heavy Grazer.
+	var profile: EnemyRoleScalingProfile = _role_scaling_profiles.get(role)
+	if profile == null:
+		return false
+	return _modifier_wave_number >= profile.modifier_eligible_from_wave
 
 
 func _is_player_damage_source(death_source: int) -> bool:
@@ -5221,12 +5491,56 @@ func _configure_enemy_stats(enemy: EnemyState) -> void:
 	enemy.fresh_maturity_threshold = profile.fresh_maturity_threshold
 	enemy.maximum_active_summons = profile.maximum_active_summons
 	enemy.summon_spacing_pixels = profile.summon_spacing_pixels
+	enemy.cc_resistance = 0.0
+	if _campaign_scaling_active:
+		_apply_campaign_role_scaling(enemy)
 	enemy.xp_value = _get_scaled_xp_reward(enemy.xp_value, enemy.spawn_wave_number)
 	enemy.collision_radius = enemy.radius * enemy_collision_radius_multiplier
 	enemy.health = enemy.maximum_health
 
 
+func _apply_campaign_role_scaling(enemy: EnemyState) -> void:
+	## The share of the wave's movement, action-speed and control curves this role
+	## actually receives.
+	##
+	## Contact intervals are deliberately never touched. Faster movement and higher
+	## contact damage already increase the pressure a body applies; shortening the
+	## interval as well would stack a third multiplier the player cannot read off
+	## the screen.
+	var profile: EnemyRoleScalingProfile = _role_scaling_profiles.get(enemy.role)
+	var movement_factor := profile.movement_scaling_factor if profile != null else 1.0
+	var action_factor := profile.action_speed_scaling_factor if profile != null else 1.0
+	enemy.speed *= 1.0 + (_enemy_movement_scale - 1.0) * movement_factor
+	var action_multiplier := 1.0 + (_enemy_action_speed_scale - 1.0) * action_factor
+	if action_multiplier > 0.0 and (profile == null or profile.scales_action_interval):
+		if profile != null and profile.scales_rest_interval_only:
+			# A grazing burst keeps its authored bite cadence; only the recovery
+			# between bursts shortens, so faster waves mean more bursts rather than
+			# a tick nothing in the simulation was built to run at.
+			enemy.territory_recovery_seconds /= action_multiplier
+		else:
+			enemy.territory_action_interval /= action_multiplier
+	# Rounded here, after every spawn-time health modifier, so a wave's enemies have
+	# a whole number of hit points the telemetry and a fixture can both talk about.
+	# Damage stays a float until the presentation layer rounds it for display.
+	enemy.maximum_health = maxf(1.0, round(enemy.maximum_health))
+	var role_resistance := profile.role_cc_resistance if profile != null else 0.0
+	var receives_global := profile == null or profile.receives_global_cc_resistance
+	# Role resistance first, then the wave curve on what is left, so a Boss stays
+	# visibly affectable rather than compounding into immunity.
+	var remaining := 1.0 - clampf(role_resistance, 0.0, 0.9)
+	if receives_global:
+		remaining *= 1.0 - _enemy_cc_resistance
+	enemy.cc_resistance = clampf(1.0 - remaining, 0.0, 0.95)
+
+
 func _get_scaled_xp_reward(base_xp: int, spawn_wave_number: int) -> int:
+	# The Campaign's XP curve is deliberately far flatter than its health curve.
+	# More durable enemies already reduce the kill rate, so an XP reward that grew
+	# at the same pace would make dense late waves fund themselves and hand a
+	# finished build the ranks the pacing targets say it should not have.
+	if _campaign_scaling_active:
+		return maxi(base_xp, roundi(float(base_xp) * _enemy_xp_multiplier))
 	var wave_index := maxi(0, spawn_wave_number - 1)
 	var proportional_reward := ceili(
 		snappedf(
@@ -5269,8 +5583,9 @@ func _profile_for_role(role: int) -> PhaseBEnemyProfile:
 	return null
 
 
-func _choose_spawn_position(collision_radius: float) -> Vector2:
+func _choose_spawn_position(collision_radius: float, exclusion_pixels: float = 0.0) -> Vector2:
 	var arena_size := territory_field.tuning.arena_size
+	var player_position := player.get_arena_position()
 	for attempt in range(32):
 		var sequence := _spawn_sequence + attempt
 		var edge := sequence % 4
@@ -5290,6 +5605,15 @@ func _choose_spawn_position(collision_radius: float) -> Vector2:
 				candidate = Vector2(lerpf(margin, arena_size.x - margin, fraction), margin)
 			_:
 				candidate = Vector2(lerpf(margin, arena_size.x - margin, fraction), arena_size.y - margin)
+		# A perimeter point Grandma happens to be standing next to is not a fair
+		# entrance: it is damage that arrives before the player could have read it.
+		# Relaxed on the last few attempts so a cornered player still gets a wave.
+		if (
+			attempt < 24
+			and exclusion_pixels > 0.0
+			and candidate.distance_to(player_position) < exclusion_pixels
+		):
+			continue
 		if _can_occupy_diamond(candidate, collision_radius):
 			_spawn_sequence = sequence + 1
 			return candidate

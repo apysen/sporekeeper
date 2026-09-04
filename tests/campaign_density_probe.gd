@@ -23,6 +23,17 @@ func _run() -> void:
 	p.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
 	p.reset_run()
 	p.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	# A run opens by asking for its first Core Adaptation, and the chooser pauses the
+	# simulation until it is answered. The measurement is about spawn pressure, so it
+	# answers with a full roster and gets on with it.
+	p.progression.debug_select_paths(
+		PhaseBProgression.PathId.SPORE,
+		PhaseBProgression.PathId.ROOT
+	)
+	p.progression.debug_select_branch_paths(
+		PhaseBProgression.PathId.BRAMBLE,
+		PhaseBProgression.PathId.THISTLE
+	)
 	# The player cannot die out from under the measurement; what is being measured
 	# is the pressure the run produces, not how long a passive player survives.
 	p.player.maximum_health = 1000000.0
