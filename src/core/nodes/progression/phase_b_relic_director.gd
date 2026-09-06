@@ -426,7 +426,7 @@ func reset_director() -> void:
 	_ring_regions.clear()
 	_world_tree = WorldObject.new()
 	_relic_random.seed = 0x0FF1CE5
-	player.set_speed_multiplier(1.0)
+	player.set_relic_speed_multiplier(1.0)
 	apply_relics()
 	queue_redraw()
 

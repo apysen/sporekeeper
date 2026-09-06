@@ -2964,6 +2964,10 @@ func _draw_cane_sweep() -> void:
 		0.0,
 		1.0
 	)
+	# The stroke is drawn from where Grandma is *now*, not from where she stood when
+	# it started, so the cane stays in her hands while she keeps walking.
+	var origin := player.get_arena_position()
+	var origin_drift := origin - _cane_visual_origin
 	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
 	var start_angle := -half_angle if _cane_visual_left_to_right else half_angle
 	var end_angle := half_angle if _cane_visual_left_to_right else -half_angle
@@ -2993,7 +2997,7 @@ func _draw_cane_sweep() -> void:
 		else Color(0.90, 0.72, 0.34, 0.95 * fade)
 	)
 	draw_arc(
-		_cane_visual_origin,
+		origin,
 		_cane_visual_reach,
 		arc_start,
 		arc_end,
@@ -3002,11 +3006,13 @@ func _draw_cane_sweep() -> void:
 		2.0,
 		true
 	)
-	var shaft_start := _cane_visual_origin + direction * (player.body_radius_pixels + 3.0)
-	var shaft_end := _cane_visual_origin + direction * _cane_visual_reach
+	var shaft_start := origin + direction * (player.body_radius_pixels + 3.0)
+	var shaft_end := origin + direction * _cane_visual_reach
 	var shaft_path := PackedVector2Array([shaft_start, shaft_end])
 	if _cane_auto_targets and _cane_visual_path.size() >= 2:
 		shaft_path = _cane_visual_path.duplicate()
+		for path_index in shaft_path.size():
+			shaft_path[path_index] += origin_drift
 		shaft_path[0] = shaft_path[0].move_toward(
 			shaft_path[1],
 			player.body_radius_pixels + 3.0

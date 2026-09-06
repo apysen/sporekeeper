@@ -429,9 +429,11 @@ func reset_field() -> void:
 						1.0 - ring_depth - boundary_noise * 0.85
 					)
 			var control := 0.0
+			var is_starting_island := false
 
 			if plant_shape > 0.0 and plant_shape >= hostile_shape:
 				control = clampf(0.20 + plant_shape * 0.95, 0.0, 1.0)
+				is_starting_island = true
 			elif hostile_shape > 0.0:
 				control = -clampf(0.20 + hostile_shape * 0.95, 0.0, 1.0)
 
@@ -452,8 +454,22 @@ func reset_field() -> void:
 				control *= lerpf(0.42, 1.0, weak_distance)
 
 			_control[index] = control
-			if absf(control) > tuning.ownership_threshold:
-				_maturity[index] = clampf((absf(control) - 0.30) * 0.95, 0.04, 0.78)
+			# Authored initial state, not a formula over control magnitude. The old
+			# seed ramped with |control|, so the rim of the foothold opened Fresh
+			# while only its core read as Mature, and the same abs() quietly handed
+			# the opening hostile mass maturity resistance as well. The run should
+			# start standing on established home ground and facing Rot that has not
+			# earned its own entrenchment yet.
+			#
+			# Home is the foothold alone. The enclosed pocket behind hostile lines is
+			# a marooned colony on purpose, so it opens Fresh like anything else the
+			# run has yet to establish: handing it full maturity would make it a
+			# hardened enclave and would leave Rhizome a colony to reconnect before
+			# the run has lost one.
+			if is_starting_island and control > tuning.ownership_threshold:
+				_maturity[index] = tuning.starting_green_maturity
+			elif control < -tuning.ownership_threshold:
+				_maturity[index] = tuning.starting_rot_maturity
 
 	_rebuild_growth_path_grid()
 	_rebuild_player_frontier_mask()

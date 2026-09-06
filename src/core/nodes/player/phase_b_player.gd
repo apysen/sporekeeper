@@ -48,7 +48,12 @@ var input_enabled := true
 var simulation_paused := false
 
 var _health := 0.0
-var _speed_multiplier := 1.0
+## Movement speed is composed rather than held in one slot: relics and territory
+## both want a say, and a single shared multiplier meant whichever wrote last
+## erased the other. Each owner writes its own factor and movement reads the
+## product.
+var _relic_speed_multiplier := 1.0
+var _territory_speed_multiplier := 1.0
 var _damage_absorption := 0.0
 var _damage_absorption_cooldown := 0.0
 var _damage_absorption_remaining := 0.0
@@ -150,7 +155,8 @@ func reset_player() -> void:
 	_invulnerability_remaining = 0.0
 	_invulnerability_elapsed = 0.0
 	_damage_flash_remaining = 0.0
-	_speed_multiplier = 1.0
+	_relic_speed_multiplier = 1.0
+	_territory_speed_multiplier = 1.0
 	_damage_absorption_remaining = 0.0
 	_facing = Vector2.RIGHT
 	global_position = territory_field.to_global(
@@ -169,7 +175,7 @@ func move_with_intent(intent: Vector2, delta: float) -> void:
 	if intent.length_squared() <= 0.0001:
 		return
 	_facing = intent.normalized()
-	var movement := intent * speed_pixels_per_second * _speed_multiplier * delta
+	var movement := intent * speed_pixels_per_second * get_speed_multiplier() * delta
 	var current_local := territory_field.to_local(global_position)
 	var target_local := current_local + movement
 	if _can_occupy(target_local):
@@ -210,12 +216,17 @@ func apply_damage(amount: float) -> bool:
 	return true
 
 
-func set_speed_multiplier(multiplier: float) -> void:
-	_speed_multiplier = maxf(0.05, multiplier)
+func set_relic_speed_multiplier(multiplier: float) -> void:
+	_relic_speed_multiplier = maxf(0.05, multiplier)
 
 
+func set_territory_speed_multiplier(multiplier: float) -> void:
+	_territory_speed_multiplier = maxf(0.05, multiplier)
+
+
+## The effective multiplier movement actually travels on.
 func get_speed_multiplier() -> float:
-	return _speed_multiplier
+	return _relic_speed_multiplier * _territory_speed_multiplier
 
 
 func set_damage_absorption(fraction: float, cooldown_seconds: float) -> void:

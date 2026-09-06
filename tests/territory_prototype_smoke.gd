@@ -78,17 +78,37 @@ func _run() -> void:
 		"the besieged foothold holds its ground without an ability (%.2f%%)"
 			% field.get_player_percent()
 	)
+	# The foothold is now authored as established home ground at full maturity, so it
+	# cannot demonstrate maturation any more: it has nowhere left to climb. Ground the
+	# run claims for itself is where continuous maturing has to be proved, and that is
+	# also the case the design cares about.
+	var claimed_ground := Vector2(tuning.arena_size.x * 0.16, tuning.arena_size.y * 0.12)
 	_check(
-		field.get_maturity_at_local(Vector2(tuning.arena_size.x * 0.235, tuning.arena_size.y * 0.535))
-		> natural_maturity_before,
-		"owned territory matures continuously"
+		natural_maturity_before >= tuning.starting_green_maturity - 0.001
+		and field.get_maturity_at_local(
+			Vector2(tuning.arena_size.x * 0.235, tuning.arena_size.y * 0.535)
+		) >= tuning.starting_green_maturity - 0.001,
+		"the starting foothold opens and stays fully established"
+	)
+	field.queue_seed_growth(claimed_ground)
+	_step(field, 20)
+	var claimed_maturity_before := field.get_maturity_at_local(claimed_ground)
+	_step(field, 60)
+	_check(
+		field.is_owned_at_local(claimed_ground)
+		and claimed_maturity_before < tuning.mature_threshold
+		and field.get_maturity_at_local(claimed_ground) > claimed_maturity_before,
+		"newly claimed territory starts Fresh and matures continuously (%.3f -> %.3f)"
+			% [claimed_maturity_before, field.get_maturity_at_local(claimed_ground)]
 	)
 
 	# Phase 1 of the Root Metabolism rework. Maturity is the root substrate, so the
 	# thing to prove is the one the doc names: that ground the run keeps becomes
 	# economically distinguishable from ground it has merely touched. Stages must be
 	# ordered, reachable by holding, and lost when the ground is.
-	var held_point := Vector2(tuning.arena_size.x * 0.235, tuning.arena_size.y * 0.535)
+	# Held ground, not given ground: the starting island already opens at the top of
+	# the ladder, so the climb is measured on the patch the run seeded for itself.
+	var held_point := claimed_ground
 	var stage_ordering_holds := (
 		field.get_root_stage(0.0) == TerritoryField.RootStage.SHALLOW
 		and field.get_root_stage(field.get_root_established_threshold())
@@ -130,12 +150,27 @@ func _run() -> void:
 	)
 
 	# Losing the ground has to cost the roots, otherwise holding it meant nothing.
+	# reset_field() is no longer the way to ask: a reset field now opens with a fully
+	# established foothold, so it reports rooted ground rather than none. The honest
+	# test is to take the matured patch away and watch its roots go with it.
 	var rooted_peak := rooted_after
-	field.reset_field()
+	var stage_at_peak := field.get_root_stage_at_local(held_point)
+	for _erosion_pass in range(40):
+		field.queue_erosion(held_point, 3.0, 2.0)
+		field.step_simulation()
+	_step(field, 120)
 	field.recalculate_metrics_now()
 	_check(
-		field.get_rooted_territory_percent() < rooted_peak,
-		"roots do not survive the ground they grew in"
+		not field.is_owned_at_local(held_point)
+		and field.get_root_stage_at_local(held_point) < stage_at_peak
+		and field.get_rooted_territory_percent() < rooted_peak,
+		"roots do not survive the ground they grew in (%s to %s)"
+			% [
+				TerritoryField.get_root_stage_name(stage_at_peak),
+				TerritoryField.get_root_stage_name(
+					field.get_root_stage_at_local(held_point)
+				),
+			]
 	)
 
 

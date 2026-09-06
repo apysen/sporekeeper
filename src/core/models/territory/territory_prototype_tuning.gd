@@ -29,6 +29,17 @@ extends Resource
 @export var starting_hostile_center := Vector2(0.765, 0.515)
 ## Normalized half-extents of that hostile mass.
 @export var starting_hostile_radius := Vector2(0.285, 0.405)
+## Maturity given to every owned cell of the authored starting island. The opening
+## foothold is home rather than ground the run just claimed, so it is established at
+## full strength instead of ramping down toward a Fresh rim. This is authored initial
+## state and deliberately not a relationship between control magnitude and maturity:
+## Green claimed after the run begins still starts Fresh.
+@export_range(0.0, 1.0, 0.01) var starting_green_maturity := 1.0
+## Maturity given to the authored starting hostile mass. Zero by default so the
+## opening Rot does not begin hardened by maturity_resistance_bonus on top of
+## whatever resistance hostile ground already carries. Raise it only to entrench the
+## opening siege on purpose.
+@export_range(0.0, 1.0, 0.01) var starting_rot_maturity := 0.0
 
 @export_category("Territory Motion")
 ## Per-second strength with which control moves toward the average of neighboring cells.
