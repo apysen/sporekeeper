@@ -116,6 +116,17 @@ uniform float edge_softness_px : hint_range(0.0, 20.0) = 2.5;
 // Cosmetic only - ownership itself never moves.
 uniform float paint_threshold_scale : hint_range(0.0, 1.0) = 0.35;
 
+// How much pigment freshly claimed Green carries, against what fully established
+// Green carries. Age is painted as the strength of the wash rather than as a second
+// colour: one material laid thin and laid dense, which is what the medium actually
+// does. Ground the run has just taken reads as unfinished, ground it has held reads
+// as fully painted, and the difference is legible without reading the HUD.
+uniform float fresh_pigment_strength : hint_range(0.0, 1.0) = 0.60;
+uniform float mature_pigment_strength : hint_range(0.0, 1.5) = 1.0;
+// Interior grain, sparse on fresh ground and denser on established ground.
+uniform float fresh_detail_gain : hint_range(0.0, 0.2) = 0.014;
+uniform float mature_detail_gain : hint_range(0.0, 0.2) = 0.055;
+
 // How far the paint reaches past ownership at a front, in pixels of control
 // gradient. Open board never has a gradient worth speaking of, so this cannot paint
 // it; a front has nothing but gradient, so this carries the coat across the hair
@@ -224,10 +235,21 @@ void fragment() {
 		vec3(0.22, 0.80, 0.31),
 		clamp(maturity * 0.72 + max(control, 0.0) * 0.28, 0.0, 1.0)
 	);
-	green_color += detail * mix(0.018, 0.055, maturity);
 	if (green_wash_enabled) {
 		green_color = sample_wash(green_wash_tex, wash_coordinates(UV, wash_aspect));
 	}
+	// Maturity is applied after the wash, not before it. The wash branch replaces the
+	// colour outright, so a ramp computed above it was discarded in every build that
+	// had the wash switched on - which is every build that ships - and Fresh and
+	// Mature Green rendered identically. Thinning the pigment toward the paper it was
+	// painted on is the one operation that survives whichever branch supplied it.
+	float green_age = clamp(maturity, 0.0, 1.0);
+	green_color = mix(
+		paper_color,
+		green_color,
+		mix(fresh_pigment_strength, mature_pigment_strength, green_age)
+	);
+	green_color += detail * mix(fresh_detail_gain, mature_detail_gain, green_age);
 	vec3 rot_color = mix(
 		vec3(0.43, 0.035, 0.095),
 		vec3(0.82, 0.055, 0.14),

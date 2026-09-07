@@ -64,10 +64,10 @@ The principal editing surfaces are:
 | Select this node | Adjust these Inspector groups |
 | --- | --- |
 | `Player` | Health, movement speed and radius, Green healing rate and maturity threshold |
-| `CombatDirector` | Cane sweep damage/cadence/reach/sector targeting, Bramble flat and max-health thorn chip damage, Entanglement, roots and Repulsion, Old Growth, Briar Pod/Trap pools, combat audio, hit feedback, pool limits, and shared navigation clearance |
+| `CombatDirector` | Cane sweep damage/cadence/reach/sector targeting, Bramble flat and max-health thorn chip damage, Entanglement, Ensnare and Repulsion, Old Growth, Briar Pod/Trap pools, combat audio, hit feedback, pool limits, and shared navigation clearance |
 | Any node under `EnemyProfiles` | Health, speed, contact damage, XP, size, target priority, movement and territory behaviors, action cadence/strength, grazing burst and recovery window, catalyst sensing, preferred range, and Colony Core limits |
 | `WaveDirector` | Run and path-choice milestones, Final Stand naming, wave/grace cadence, spawn rate, Grazer pack cycle and surge waves, specialist introduction times/cycles, per-wave XP/territory growth, and end-of-run enemy scaling |
-| `BrambleDirector` | Bramble's base resistance, Entanglement slow and potency, Ensnare rate, Grasping Roots duration and immunity, and Repulsion distance |
+| `BrambleDirector` | Bramble's base resistance, Entanglement slow and potency, Ensnare rate, Grasping Thorns duration and immunity, and Repulsion distance |
 | `RootDirector` | Maturation rate, Biomass yield, Mature resistance and regrowth, and the Root Network amplification every other path reads |
 | `ManEater` | Hunger per enemy-second and its threshold, the telegraph, jaw radius, Bite damage and the elite and boss shares, and the Green the meal comes back as |
 | `SporeDirector` | Seed durability, kills per Seed, Briar Pods and Tangleburst, and the Seed Bank's storage, threshold, spread, and Mast Year delay |
@@ -194,8 +194,8 @@ fraction of the target's maximum health, so it stays relevant against late-game
 health pools without ever becoming the reason enemies die. An enemy crossing the
 starting Green island leaves with most of its health at every level of
 investment; one that camps in Green is worn down slowly. All four Bramble lines
-buy control instead. Entanglement raises the maximum slow, Ensnare Rate builds
-Entanglement faster, Grasping Roots pins enemies that reach full Entanglement,
+buy control instead. Entanglement raises the maximum slow, Entanglement Rate builds
+Entanglement faster, Grasping Thorns pins enemies that reach full Entanglement,
 and Repulsion shoves attackers off the territory they are eating. Bramble grows
 stronger because Green covers more of the arena, because enemies spend longer
 inside it, and because its Evolutions convert that control into damage.
@@ -204,13 +204,13 @@ A tick is resolved once per enemy from its own Entanglement, and is never divide
 among the enemies sharing a stretch of Green. A crowded section also gains a
 capped local horde bonus.
 
-Reaching full Entanglement triggers Grasping Roots: the enemy is rooted where it
-stands, unable to move at all until the hold expires, and roots burst visibly
-beneath it. A held enemy is drawn with roots clamped around its feet under its own
-body, so the body stays readable, and with a ring that unwinds from a full circle
-to nothing as the hold runs out, which reads as a timer on how long the enemy has
-left to serve. A root outlives the ground that caused it, so an enemy shoved or
-grown off the Green mid-hold still serves it out. Each enemy is then immune for a
+Reaching full Entanglement triggers Grasping Thorns: the enemy is **Ensnared** where
+it stands, unable to move at all until the hold expires, and thorned runners burst
+visibly beneath it. A held enemy is drawn with those runners clamped around its feet
+under its own body, so the body stays readable, and with a ring that unwinds from a
+full circle to nothing as the hold runs out, which reads as a timer on how long the
+enemy has left to serve. An Ensnare outlives the ground that caused it, so an enemy
+shoved or grown off the Green mid-hold still serves it out. Each enemy is then immune for a
 spell, so a permanently Entangled enemy is held repeatedly rather than held
 forever.
 
@@ -467,7 +467,7 @@ The Phase B smoke suite covers movement, automatic combat, XP drops, kill-to-
 Seed conversion, hostile-area germination, automatic Bloom windups, two-path
 selection and draft filtering, all four Bramble lines staying crowd control,
 territory-wide thorn chip damage, Entanglement build and decay, hedge crossing
-and Repulsion cooldowns, Grasping Roots holds and their immunity window, the
+and Repulsion cooldowns, Grasping Thorns holds and their immunity window, the
 Root Network, Briar Trap cascades, root eruptions, every Bramble
 and Root pair evolution, upgrade and relic choices,
 Biomass modifiers, Super Bloom propagation, wall-shadowed radial damage, every

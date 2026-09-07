@@ -1,9 +1,28 @@
 extends SceneTree
 
-## Thistle is deliberately absent: its four lines take Root amplification in
-## authored form rather than as virtual ranks, and _test_thistle_outputs checks
-## that shape instead.
-const ADAPTATION_UPGRADES := [
+## Root Potency reaches Thistle, Vine, and Fruit one line at a time. Counts get one
+## whole unit out of Mature ground; every other line gets its own per-rank bonus
+## multiplied by the Network where the effect resolves. Nothing here goes through
+## virtual ranks any more, which is what used to make a Fruit release look random.
+const BONUS_LINES := {
+	PhaseBProgression.UpgradeId.VINE_ELONGATION: 0.20,
+	PhaseBProgression.UpgradeId.VINE_LIGNIFICATION: 0.25,
+	PhaseBProgression.UpgradeId.VINE_TURGOR: 0.15,
+	PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE: 0.25,
+	PhaseBProgression.UpgradeId.FRUIT_RIPENING: 0.25,
+	PhaseBProgression.UpgradeId.FRUIT_MOMENTUM: 0.20,
+	PhaseBProgression.UpgradeId.FRUIT_GERMINATION: 0.20,
+	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE: 0.15,
+	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT: 0.10,
+}
+
+const COUNT_LINES := [
+	PhaseBProgression.UpgradeId.FRUIT_SET,
+	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
+	PhaseBProgression.UpgradeId.THISTLE_BURR,
+]
+
+const OWNED_LINES := [
 	PhaseBProgression.UpgradeId.VINE_ELONGATION,
 	PhaseBProgression.UpgradeId.VINE_LIGNIFICATION,
 	PhaseBProgression.UpgradeId.VINE_TURGOR,
@@ -12,9 +31,6 @@ const ADAPTATION_UPGRADES := [
 	PhaseBProgression.UpgradeId.FRUIT_RIPENING,
 	PhaseBProgression.UpgradeId.FRUIT_MOMENTUM,
 	PhaseBProgression.UpgradeId.FRUIT_GERMINATION,
-]
-
-const THISTLE_UPGRADES := [
 	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
 	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE,
 	PhaseBProgression.UpgradeId.THISTLE_BURR,
@@ -49,21 +65,34 @@ func _run() -> void:
 	prototype.territory_field._maturity[cell] = 1.0
 	prototype.adaptation_director._refresh_vine_modifiers()
 
-	for upgrade_id in ADAPTATION_UPGRADES:
+	var amplification := prototype.root_director.get_network_multiplier_here(origin)
+	_check(amplification > 1.0, "Mature ground under the player is amplifying at all")
+
+	for upgrade_id in BONUS_LINES:
 		_check(
-			prototype.adaptation_director._effective_upgrade(upgrade_id, origin) == 6,
-			"owned %s receives five Potency ranks" % PhaseBProgression.get_upgrade_name(upgrade_id)
-		)
-	for upgrade_id in THISTLE_UPGRADES:
-		_check(
-			prototype.adaptation_director._effective_upgrade(upgrade_id, origin) == 1,
-			"owned %s takes no virtual Potency ranks" % PhaseBProgression.get_upgrade_name(
-				upgrade_id
+			is_equal_approx(
+				prototype.adaptation_director._root_scaled_bonus(
+					upgrade_id, BONUS_LINES[upgrade_id], origin
+				),
+				BONUS_LINES[upgrade_id] * amplification
+			),
+			"rank-1 %s takes its own bonus times the Network" % (
+				PhaseBProgression.get_upgrade_name(upgrade_id)
 			)
 		)
-	_test_thistle_outputs(prototype, origin)
-	_test_vine_outputs(prototype)
-	_test_fruit_outputs(prototype, origin)
+	for upgrade_id in COUNT_LINES:
+		_check(
+			prototype.adaptation_director._root_count_step(upgrade_id, origin) == 1,
+			"%s takes exactly one whole unit from Potency" % (
+				PhaseBProgression.get_upgrade_name(upgrade_id)
+			)
+		)
+
+	_test_rooted_glow(prototype, origin)
+	_test_off_mature_ground(prototype, origin)
+	_test_thistle_outputs(prototype, origin, amplification)
+	_test_vine_outputs(prototype, amplification)
+	_test_fruit_outputs(prototype, origin, amplification)
 	_test_jackpot_gates(prototype, origin)
 
 	prototype.queue_free()
@@ -85,20 +114,92 @@ func _configure_owned_build(prototype: PhaseBPrototype) -> void:
 	)
 	progression.debug_select_tertiary_path(PhaseBProgression.PathId.VINE)
 	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
-	for upgrade_id in ADAPTATION_UPGRADES + THISTLE_UPGRADES:
+	for upgrade_id in OWNED_LINES:
 		progression._upgrade_levels[upgrade_id] = 1
 	prototype._apply_progression_modifiers()
 	prototype.adaptation_director.reset_adaptations()
 	prototype.combat.reset_combat()
 
 
-func _test_thistle_outputs(prototype: PhaseBPrototype, origin: Vector2) -> void:
-	## Thistle's four lines each take Root Potency in the shape that line is about:
-	## Clustering and Burr are counts and get one whole unit, Dehiscence and
-	## Needlepoint are rates and get Potency's own amplification.
+func _test_rooted_glow(prototype: PhaseBPrototype, origin: Vector2) -> void:
+	## The light is the whole-unit gate made visible, so it has to agree with the
+	## payout on both edges. If these ever diverge the player is being told a lie at
+	## exactly the moment the count changes under them.
 	var adaptations := prototype.adaptation_director
-	var amplification := prototype.root_director.get_network_multiplier_here(origin)
-	_check(amplification > 1.0, "Mature ground under the turret is amplifying at all")
+	adaptations._update_rooted_glow(0.016)
+	var lit_on_mature := (
+		adaptations._player_rooted_glow.lit
+		and adaptations._root_count_step(
+			PhaseBProgression.UpgradeId.FRUIT_SET, origin
+		) == 1
+	)
+	_check(lit_on_mature, "the light is on exactly where the whole unit is paid")
+	_check(
+		adaptations._player_rooted_glow.network > 1.0
+		and is_equal_approx(
+			adaptations._player_rooted_glow.network,
+			prototype.root_director.get_network_multiplier_here(origin)
+		),
+		"the light reports the Network depth under it"
+	)
+	# Crossing an edge flares, which is the event the player actually needs to catch.
+	_check(
+		adaptations._player_rooted_glow.flare > 0.0,
+		"crossing onto Mature ground flares"
+	)
+	var resting := prototype.player.get_arena_position()
+	prototype.player.position = prototype.player.position + Vector2(4000.0, 4000.0)
+	adaptations._update_rooted_glow(0.016)
+	_check(
+		not adaptations._player_rooted_glow.lit
+		and adaptations._player_rooted_glow.flare > 0.0,
+		"stepping off Mature ground goes dark and flares on the way out"
+	)
+	prototype.player.position = prototype.player.position - Vector2(4000.0, 4000.0)
+	adaptations._update_rooted_glow(0.016)
+	_check(
+		is_equal_approx(prototype.player.get_arena_position().x, resting.x)
+		and is_equal_approx(prototype.player.get_arena_position().y, resting.y)
+		and adaptations._player_rooted_glow.lit,
+		"the light comes back when the ground does"
+	)
+
+
+func _test_off_mature_ground(prototype: PhaseBPrototype, origin: Vector2) -> void:
+	## Root deepens the ground it has aged. Bare ground gets no whole unit, and the
+	## bonus scale falls back to 1.0 rather than snapping between two authored values.
+	var adaptations := prototype.adaptation_director
+	var bare := origin + Vector2(400.0, 400.0)
+	_check(
+		adaptations._root_count_step(PhaseBProgression.UpgradeId.FRUIT_SET, bare) == 0
+		and adaptations._root_count_step(
+			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, bare
+		) == 0,
+		"no whole unit is paid off Mature ground"
+	)
+	_check(
+		is_equal_approx(
+			adaptations._root_bonus_scale(
+				PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, bare
+			),
+			1.0
+		)
+		and is_equal_approx(
+			adaptations._root_bonus_scale(PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, bare),
+			1.0
+		),
+		"Potency amplifies nothing off Mature ground"
+	)
+
+
+func _test_thistle_outputs(
+	prototype: PhaseBPrototype,
+	origin: Vector2,
+	amplification: float
+) -> void:
+	## Clustering and Burr are counts and get one whole unit; Dehiscence and
+	## Needlepoint are rates and get their own per-rank bonus amplified.
+	var adaptations := prototype.adaptation_director
 	var enemy_id := prototype.combat.spawn_enemy(
 		PhaseBCombatDirector.EnemyRole.BOSS,
 		origin + Vector2(48.0, 0.0)
@@ -108,15 +209,18 @@ func _test_thistle_outputs(prototype: PhaseBPrototype, origin: Vector2) -> void:
 	_check(thorn.ricochets_remaining == 2, "Burr rank 1 plus Potency gives one more ricochet")
 	_check(
 		is_equal_approx(thorn.critical_chance_bonus, 0.10 * amplification),
-		"Needlepoint critical chance is scaled by Potency's amplification"
+		"Needlepoint critical chance is its own bonus times the Network"
 	)
-	_check(is_equal_approx(thorn.damage, adaptations.thistle_damage), "Root no longer adds blanket Thistle damage")
+	_check(
+		is_equal_approx(thorn.damage, adaptations.thistle_damage),
+		"Root no longer adds blanket Thistle damage"
+	)
 	_check(
 		is_equal_approx(
 			adaptations._get_thistle_attack_interval(origin),
-			adaptations.thistle_attack_interval / (1.15 * amplification)
+			adaptations.thistle_attack_interval / (1.0 + 0.15 * amplification)
 		),
-		"Dehiscence attack speed is scaled by Potency's amplification"
+		"Dehiscence attack speed is its own bonus times the Network"
 	)
 	for candidate in adaptations._thorns:
 		candidate.active = false
@@ -129,45 +233,79 @@ func _test_thistle_outputs(prototype: PhaseBPrototype, origin: Vector2) -> void:
 		"Clustering rank 1 plus Potency fires base 1 plus 2 thorns"
 	)
 
-	# Off Mature ground none of it applies: Root deepens the ground it has aged, and
-	# a turret standing on fresh Green is a plain turret.
-	var bare := origin + Vector2(400.0, 400.0)
-	_check(
-		adaptations._thistle_root_step(
-			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, bare
-		) == 0
-		and is_equal_approx(
-			adaptations._thistle_root_scale(
-				PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, bare
-			),
-			1.0
-		),
-		"Potency amplifies nothing for a Thistle standing off Mature ground"
-	)
 
-
-func _test_vine_outputs(prototype: PhaseBPrototype) -> void:
+func _test_vine_outputs(prototype: PhaseBPrototype, amplification: float) -> void:
 	var combat := prototype.combat
-	_check(is_equal_approx(combat._cane_reach_multiplier, 2.20), "Elongation uses 6 effective ranks")
-	_check(is_equal_approx(combat._cane_damage_multiplier, 2.50), "Lignification uses 6 effective ranks")
-	_check(is_equal_approx(combat._cane_cooldown_multiplier, 1.0 / 1.90), "Turgor uses 6 effective ranks")
-	_check(is_equal_approx(combat._cane_apical_damage_bonus, 1.50), "Apical Dominance uses 6 effective ranks")
-
-
-func _test_fruit_outputs(prototype: PhaseBPrototype, origin: Vector2) -> void:
-	var adaptations := prototype.adaptation_director
-	var fruit = adaptations._spawn_fruit(origin, Vector2.RIGHT)
-	_check(is_equal_approx(fruit.damage, adaptations.fruit_collision_damage * 2.50), "Ripening uses 6 effective ranks")
 	_check(
-		is_equal_approx(fruit.terminal_damage, adaptations.fruit_terminal_explosion_damage * 2.50),
-		"Ripening scales terminal damage at 6 effective ranks"
+		is_equal_approx(combat._cane_reach_multiplier, 1.0 + 0.20 * amplification),
+		"Elongation reach is its own bonus times the Network"
 	)
-	_check(is_equal_approx(fruit.normal_roll_distance, adaptations.fruit_roll_distance_pixels * 2.20), "Momentum uses 6 effective ranks")
-	_check(is_equal_approx(fruit.germination_multiplier, 2.20), "Germination uses 6 effective ranks")
+	_check(
+		is_equal_approx(combat._cane_damage_multiplier, 1.0 + 0.25 * amplification),
+		"Lignification damage is its own bonus times the Network"
+	)
+	_check(
+		is_equal_approx(
+			combat._cane_cooldown_multiplier,
+			1.0 / (1.0 + 0.15 * amplification)
+		),
+		"Turgor cadence is its own bonus times the Network"
+	)
+	_check(
+		is_equal_approx(combat._cane_apical_damage_bonus, 0.25 * amplification),
+		"Apical Dominance is its own bonus times the Network"
+	)
+
+
+func _test_fruit_outputs(
+	prototype: PhaseBPrototype,
+	origin: Vector2,
+	amplification: float
+) -> void:
+	var adaptations := prototype.adaptation_director
+	var ripening := 1.0 + 0.25 * amplification
+	var fruit = adaptations._spawn_fruit(origin, Vector2.RIGHT)
+	_check(
+		is_equal_approx(fruit.damage, adaptations.fruit_collision_damage * ripening),
+		"Ripening collision damage is its own bonus times the Network"
+	)
+	_check(
+		is_equal_approx(
+			fruit.terminal_damage,
+			adaptations.fruit_terminal_explosion_damage * ripening
+		),
+		"Ripening terminal damage is its own bonus times the Network"
+	)
+	_check(
+		is_equal_approx(
+			fruit.normal_roll_distance,
+			adaptations.fruit_roll_distance_pixels * (1.0 + 0.20 * amplification)
+		),
+		"Momentum roll distance is its own bonus times the Network"
+	)
+	_check(
+		is_equal_approx(fruit.germination_multiplier, 1.0 + 0.20 * amplification),
+		"Germination area is its own bonus times the Network"
+	)
 	for candidate in adaptations._fruits:
 		candidate.active = false
 	adaptations._begin_normal_fruit_release()
-	_check(adaptations.get_active_fruit_count() == 7, "Fruit Set produces base 1 plus 6 Fruit")
+	_check(
+		adaptations.get_active_fruit_count() == 3,
+		"Fruit Set rank 1 plus Potency releases base 1 plus 2 Fruit, whatever the rank"
+	)
+
+	# The count is the bug this probe exists for: five Potency ranks must still be
+	# worth exactly one Fruit, so a release does not change size as ranks are bought.
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 1
+	for candidate in adaptations._fruits:
+		candidate.active = false
+	adaptations._begin_normal_fruit_release()
+	_check(
+		adaptations.get_active_fruit_count() == 3,
+		"one Potency rank releases the same count as five"
+	)
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
 
 
 func _test_jackpot_gates(prototype: PhaseBPrototype, origin: Vector2) -> void:
@@ -177,18 +315,26 @@ func _test_jackpot_gates(prototype: PhaseBPrototype, origin: Vector2) -> void:
 	progression._upgrade_levels[fruit_set] = 0
 	progression.set_casino_path_active(PhaseBProgression.PathId.FRUIT, true)
 	_check(
-		adaptations._effective_upgrade(fruit_set, origin) == progression.casino_upgrade_level,
+		adaptations._root_count_step(fruit_set, origin) == 0,
 		"Fruit jackpot does not make unowned Fruit Set eligible for Potency"
 	)
 	progression.set_casino_path_active(PhaseBProgression.PathId.FRUIT, false)
 	progression._upgrade_levels[fruit_set] = 1
 	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 0
 	progression.set_casino_path_active(PhaseBProgression.PathId.ROOT, true)
+	# A Root jackpot runs the path, and it now lends Fruit and Vine exactly what it
+	# already lends Spore, Bloom, Bramble and Pruning: the Network at its lent
+	# strength, read through the one multiplier every consumer reads.
 	_check(
-		adaptations._effective_upgrade(fruit_set, origin) == 1,
-		"Root jackpot does not substitute for purchased Root Potency"
+		is_equal_approx(
+			adaptations._root_bonus_scale(fruit_set, origin),
+			prototype.root_director.get_network_multiplier_here(origin)
+		)
+		and adaptations._root_bonus_scale(fruit_set, origin) > 1.0,
+		"a Root jackpot lends Fruit the same Network every other path reads"
 	)
 	progression.set_casino_path_active(PhaseBProgression.PathId.ROOT, false)
+	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
 
 
 func _check(condition: bool, description: String) -> void:

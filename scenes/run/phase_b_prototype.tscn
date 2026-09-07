@@ -91,6 +91,16 @@
 [ext_resource type="Texture2D" uid="uid://2lubkivbn8ul" path="res://assets/placeholder_art/vfx_spark.png" id="vfx_5"]
 [ext_resource type="Texture2D" uid="uid://cia0s6g53yajr" path="res://assets/placeholder_art/vfx_burst.png" id="vfx_6"]
 [ext_resource type="Texture2D" uid="uid://daxxj0uh6aukd" path="res://assets/placeholder_art/vfx_swirl.png" id="vfx_7"]
+[ext_resource type="Script" uid="uid://dc3y4460sp7wk" path="res://src/core/nodes/ui/phase_b_territory_composition.gd" id="96_territory_composition"]
+[ext_resource type="Shader" path="res://assets/shaders/territory_bar_composition.gdshader" id="97_bar_composition_shader"]
+
+[sub_resource type="ShaderMaterial" id="TerritoryCompositionMaterial"]
+shader = ExtResource("97_bar_composition_shader")
+shader_parameter/blend_width = 0.035
+shader_parameter/green_color = Color(0.514, 0.631, 0.345, 1)
+shader_parameter/hostile_color = Color(0.43, 0.215, 0.305, 1)
+shader_parameter/top_shade = 1.06
+shader_parameter/bottom_shade = 0.94
 
 [sub_resource type="ShaderMaterial" id="BotanicalArtMaterial"]
 shader = ExtResource("125_botanical_shader")
@@ -210,7 +220,7 @@ region = Rect2(138, 0, 627, 624)
 atlas = ExtResource("26_slot_lever_down")
 region = Rect2(138, 0, 627, 624)
 
-[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_main_menu_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
+[node name="PhaseBPrototype" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "ambient_music_audio", "slot_lever_audio", "slot_reel_audio", "slot_jackpot_audio", "health_bar", "health_label", "territory_bar", "territory_label", "territory_composition", "xp_bar", "xp_label", "wave_label", "clock_label", "hostile_label", "evolution_label", "relics_label", "relic_slots", "slots_label", "upgrade_slots", "choice_panel", "choice_header", "choice_button_one", "choice_button_two", "choice_button_three", "choice_button_four", "choice_reroll_button", "reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "slot_panel", "all_in_label", "lever_grab", "lever_up", "lever_down", "banner_label", "result_panel", "result_header", "result_detail", "pause_overlay", "pause_resume_button", "pause_volume_slider", "pause_volume_value", "pause_music_volume_slider", "pause_music_volume_value", "pause_fullscreen_button", "pause_settings_button", "pause_settings_panel", "pause_settings_back_button", "pause_panel", "pause_glossary_button", "pause_main_menu_button", "pause_quit_button", "debug_help_label", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -243,6 +253,7 @@ slot_jackpot_audio = NodePath("SlotJackpotSfx")
 health_bar = NodePath("Interface/SidePanel/HealthBar")
 health_label = NodePath("Interface/SidePanel/HealthLabel")
 territory_bar = NodePath("Interface/SidePanel/TerritoryBar")
+territory_composition = NodePath("Interface/SidePanel/TerritoryBar/TerritoryComposition")
 territory_label = NodePath("Interface/SidePanel/TerritoryLabel")
 xp_bar = NodePath("Interface/SidePanel/XPBar")
 xp_label = NodePath("Interface/SidePanel/XPLabel")
@@ -449,7 +460,7 @@ base_resistance_multiplier = 1.0
 base_slow_fraction = 0.1
 slow_per_level = 0.05
 entanglement_potency_per_level = 0.1
-ensnare_per_level = 0.1
+entanglement_rate_per_level = 0.1
 
 [node name="RootDirector" type="Node" parent="Paths" unique_id=684420913 node_paths=PackedStringArray("territory_field", "progression", "relic_director")]
 script = ExtResource("24_root_director")
@@ -866,8 +877,23 @@ offset_top = 85.0
 offset_right = 236.0
 offset_bottom = 117.0
 theme_override_styles/background = ExtResource("92_wx_territory_track")
-theme_override_styles/fill = ExtResource("93_wx_territory_fill")
+theme_override_styles/fill = ExtResource("113_empty_style")
 show_percentage = false
+
+[node name="TerritoryComposition" type="Control" parent="Interface/SidePanel/TerritoryBar" unique_id=2141178968]
+material = SubResource("TerritoryCompositionMaterial")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("96_territory_composition")
+fill_style = ExtResource("93_wx_territory_fill")
+green_color = Color(0.514, 0.631, 0.345, 1)
+hostile_color = Color(0.43, 0.215, 0.305, 1)
+blend_fraction = 0.035
 
 [node name="XPLabel" type="Label" parent="Interface/SidePanel" unique_id=223406630]
 layout_mode = 0
@@ -1760,9 +1786,9 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
-text = "Entanglement  2/3
-+8 percentage points Entanglement per Bramble tick
-ROOTED 1.74x → enemies reach full Entanglement in 2.1s instead of 3.6s"
+text = "Momentum  2/5
++20% maximum Fruit roll distance
+ROOTED 1.74x → 543 px unobstructed stopping distance"
 autowrap_mode = 2
 
 

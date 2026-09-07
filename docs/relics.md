@@ -318,7 +318,7 @@ Use these event definitions unless an Adaptation's final implementation explicit
 
 - **Spore:** one Seed germination
 - **Bloom:** one Bloom detonation
-- **Bramble:** one Grasping Roots activation
+- **Bramble:** one Grasping Thorns activation
 - **Root:** one eligible Root Network pulse or authored Root core event
 - **Pruning:** one released Pruning ring
 - **Thistle:** one Thistle network firing cycle
@@ -1059,7 +1059,7 @@ Both enemies gain additional Entanglement.
 - Only displacement caused by Bramble Repulsion can qualify.
 - Contact caused by ordinary movement or unrelated knockback does not qualify.
 - Apply the target's elite or boss Entanglement multiplier after the flat percentage-point value is determined.
-- Hookthorn may push either enemy to full Entanglement and therefore trigger normal Grasping Roots behavior.
+- Hookthorn may push either enemy to full Entanglement and therefore trigger normal Grasping Thorns behavior.
 - Hookthorn cannot recursively retrigger from the same Repulsion event.
 
 ---
@@ -1120,7 +1120,7 @@ The enemy carries burrs with it and can spread Entanglement by touching other en
 - Burr is applied at the Green-to-non-Green boundary crossing.
 - Re-entering Green does not remove Burr early.
 - Leaving Green again while already carrying Burr does not refresh the timer.
-- Cocklebur-applied Entanglement can trigger normal Grasping Roots behavior.
+- Cocklebur-applied Entanglement can trigger normal Grasping Thorns behavior.
 - A Cocklebur carrier cannot spread Burr status itself. It spreads only Entanglement.
 
 ---
@@ -1129,7 +1129,7 @@ The enemy carries burrs with it and can spread Entanglement by touching other en
 
 ### Snare Vine
 
-**Player-facing description:** Rooting an enemy spreads 20% Entanglement to up to 2 nearby enemies.
+**Player-facing description:** Ensnaring an enemy spreads 20% Entanglement to up to 2 nearby enemies.
 
 **Trigger:** An enemy becomes Rooted from reaching full Entanglement.
 
@@ -1181,7 +1181,7 @@ Its remains become a temporary trap that snares the next enemy that approaches.
 - Spawn the Knot at the corpse location, moved to the nearest valid ground point within **32 px** if necessary.
 - If the active-Knot cap is reached, replace the oldest Knot.
 - A triggered Knot disappears immediately after resolving its pull and Entanglement.
-- Briar Knot Entanglement can trigger normal Grasping Roots behavior.
+- Briar Knot Entanglement can trigger normal Grasping Thorns behavior.
 - Briar Knot kills nothing directly and therefore cannot create another Briar Knot by itself.
 
 ---
@@ -1198,7 +1198,7 @@ Dense enemy groups standing in Green cause local Bramble behavior to accelerate 
 
 - Enemy requirement: **6**
 - Density radius: **150 px**
-- Ensnare Rate multiplier: **1.20×**
+- Entanglement Rate multiplier: **1.20×**
 - Repulsion interval multiplier: **0.55×**
 - Linger duration after density condition is lost: **1.5s**
 

@@ -38,11 +38,38 @@ signal died
 ## Player collision and contact radius in arena pixels.
 @export_range(1.0, 40.0, 0.5) var body_radius_pixels := 12.0
 
+@export_group("Territory Movement")
+## Peak movement bonus supplied by fully mature owned Green. Established ground is
+## a home-field advantage rather than a tax on losing it: Rot, Neutral and Fresh
+## Green all move at the plain base speed, so ground the run loses takes an
+## advantage away without ever making recovery slower than normal.
+@export_range(0.0, 1.0, 0.01) var mature_green_speed_bonus := 0.10
+## Radius of the local territory sample, as a fraction of the body radius. Movement
+## reads a small patch rather than the single cell underfoot, because one raw sample
+## flickers along a noisy border and the bonus would strobe with it. The radius is
+## floored at one territory cell whatever this is set to: a sample tighter than the
+## lattice lands every offset back in the middle cell and silently becomes the
+## single-cell read this exists to avoid.
+@export_range(0.1, 3.0, 0.05) var territory_sample_radius_fraction := 1.00
+## Local control average at which an active bonus is released. Deliberately below
+## the ownership threshold that grants it: entering and leaving on the same number
+## would toggle every time the frontier breathes.
+@export_range(0.0, 0.49, 0.01) var territory_bonus_release_control := 0.10
+
 @export_group("Photosynthesis")
 ## Health restored per second while standing on sufficiently mature Green territory.
 @export_range(0.0, 10.0, 0.05) var green_healing_per_second := 1.0
 ## Minimum 0-to-1 local maturity required for Green territory to heal the player.
 @export_range(0.0, 1.0, 0.01) var green_healing_maturity_threshold := 0.25
+
+## Where the movement sample looks, beyond the cell underfoot. Four neighbours is
+## enough to average out a noisy border without making movement pay for a survey.
+const TERRITORY_SAMPLE_OFFSETS: Array[Vector2] = [
+	Vector2.RIGHT,
+	Vector2.LEFT,
+	Vector2.UP,
+	Vector2.DOWN,
+]
 
 var input_enabled := true
 var simulation_paused := false
@@ -54,6 +81,10 @@ var _health := 0.0
 ## product.
 var _relic_speed_multiplier := 1.0
 var _territory_speed_multiplier := 1.0
+## Whether the territory bonus is currently granted. Held as state because the
+## thresholds that enter and leave it differ; one Grandma means one boolean, which
+## is why the hysteresis lives here rather than on every field cell.
+var _territory_bonus_active := false
 var _damage_absorption := 0.0
 var _damage_absorption_cooldown := 0.0
 var _damage_absorption_remaining := 0.0
@@ -79,6 +110,7 @@ func _physics_process(delta: float) -> void:
 	_damage_flash_remaining = maxf(0.0, _damage_flash_remaining - delta)
 	_damage_absorption_remaining = maxf(0.0, _damage_absorption_remaining - delta)
 
+	_update_territory_speed()
 	if input_enabled:
 		var movement := _read_movement_input()
 		move_with_intent(movement, delta)
@@ -157,6 +189,7 @@ func reset_player() -> void:
 	_damage_flash_remaining = 0.0
 	_relic_speed_multiplier = 1.0
 	_territory_speed_multiplier = 1.0
+	_territory_bonus_active = false
 	_damage_absorption_remaining = 0.0
 	_facing = Vector2.RIGHT
 	global_position = territory_field.to_global(
@@ -216,12 +249,51 @@ func apply_damage(amount: float) -> bool:
 	return true
 
 
+func _update_territory_speed() -> void:
+	## The territory factor is derived rather than pushed: the player already holds
+	## the field reference and is the only thing that needs the answer, so nothing
+	## outside writes this slot and the two owners the composition exists to keep
+	## apart stay apart.
+	var local_position := territory_field.to_local(global_position)
+	var ownership_threshold := territory_field.tuning.ownership_threshold
+	var cell_width := (
+		territory_field.tuning.arena_size.x
+		/ float(territory_field.tuning.field_size.x)
+	)
+	var sample_radius := maxf(
+		body_radius_pixels * territory_sample_radius_fraction,
+		cell_width
+	)
+	var control_sum := territory_field.get_control_at_local(local_position)
+	var maturity_sum := 0.0
+	var owned_samples := 0
+	if control_sum > ownership_threshold:
+		maturity_sum = territory_field.get_maturity_at_local(local_position)
+		owned_samples = 1
+	for offset in TERRITORY_SAMPLE_OFFSETS:
+		var point := local_position + offset * sample_radius
+		var control := territory_field.get_control_at_local(point)
+		control_sum += control
+		if control > ownership_threshold:
+			maturity_sum += territory_field.get_maturity_at_local(point)
+			owned_samples += 1
+	var control_average := control_sum / float(TERRITORY_SAMPLE_OFFSETS.size() + 1)
+	if _territory_bonus_active:
+		_territory_bonus_active = control_average > territory_bonus_release_control
+	else:
+		_territory_bonus_active = control_average >= ownership_threshold
+	if not _territory_bonus_active or owned_samples == 0:
+		_territory_speed_multiplier = 1.0
+		return
+	# Fresh Green is worth nothing here on purpose. What the bonus pays for is age,
+	# so the routes worth defending are the ones the run has held longest.
+	_territory_speed_multiplier = 1.0 + mature_green_speed_bonus * (
+		maturity_sum / float(owned_samples)
+	)
+
+
 func set_relic_speed_multiplier(multiplier: float) -> void:
 	_relic_speed_multiplier = maxf(0.05, multiplier)
-
-
-func set_territory_speed_multiplier(multiplier: float) -> void:
-	_territory_speed_multiplier = maxf(0.05, multiplier)
 
 
 ## The effective multiplier movement actually travels on.

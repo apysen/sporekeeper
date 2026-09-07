@@ -357,11 +357,11 @@ static func get_relic_description(relic_id: int) -> String:
 		Id.COCKLEBUR:
 			return "Enemies leaving Green at 50% or more Entanglement carry burrs for 3s, tangling enemies they touch."
 		Id.SNARE_VINE:
-			return "Rooting an enemy spreads 20% Entanglement to up to 2 nearby enemies."
+			return "Ensnaring an enemy spreads 20% Entanglement to up to 2 nearby enemies."
 		Id.BRIAR_KNOT:
 			return "Enemies that die at 90% or more Entanglement leave a one-use knot that yanks and tangles the next enemy near it."
 		Id.LIVING_RAMPART:
-			return "Pack 6 enemies into a 150 px Green patch to accelerate Ensnare and Repulsion."
+			return "Pack 6 enemies into a 150 px Green patch to accelerate Entanglement and Repulsion."
 		Id.BRIARBALL:
 			return "Every 4 heavily Entangled deaths creates a rolling Briarball that damages, repels, and tangles up to 8 enemies."
 		Id.THE_HEDGE:

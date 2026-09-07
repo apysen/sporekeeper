@@ -80,8 +80,8 @@ enum UpgradeId {
 	AFTERGROWTH,
 	SUPPRESSION,
 	BRAMBLE_ENTANGLEMENT,
-	BRAMBLE_ENSNARE_RATE,
-	BRAMBLE_GRASPING_ROOTS,
+	BRAMBLE_ENTANGLEMENT_RATE,
+	BRAMBLE_GRASPING_THORNS,
 	BRAMBLE_REPULSION,
 	ROOT_MATURATION,
 	ROOT_LATERAL_ROOTS,
@@ -238,10 +238,21 @@ enum EvolutionId {
 @export var metabolism: PhaseBMetabolism
 
 @export_group("Relic Effects")
-## Biomass generated each second per percentage point of player-owned Green territory.
+## Biomass generated each second per percentage point of the arena held as Green.
 @export_range(0.0, 2.0, 0.001) var biomass_per_green_percent := 0.018
-## Extra Biomass generated each second per percentage point of Mature Green territory.
-@export_range(0.0, 4.0, 0.001) var biomass_per_mature_percent := 0.055
+## Extra Biomass generated each second per percentage point of the arena held as
+## Mature Green. Both coefficients now multiply the same kind of quantity - a share
+## of the whole arena - which is the invariant that was silently broken while this
+## one was being fed a share of held Green instead.
+##
+## 0.022 is a compatibility value, not a balance target. It was chosen to land the
+## opening economy back on the ~0.16 Biomass/s the run produced before the metric was
+## corrected, so the territory rework can be tested without also moving the economy
+## under it. No single coefficient can preserve the old curve everywhere: the old
+## formula fed the same number for a run holding 10% Green and one holding 60%, and
+## the corrected one does not, which is the entire point of fixing it. Retune across
+## early, mid, strong, damaged and recovery states once the territory loop settles.
+@export_range(0.0, 4.0, 0.001) var biomass_per_mature_percent := 0.022
 ## Reference Biomass amount used for one-off payouts such as an exhausted relic
 ## pool. Repeatable percentage purchases are gone; Metabolism spends the Reserve.
 @export_range(1.0, 100.0, 0.5) var biomass_base_cost := 8.0
@@ -871,15 +882,20 @@ func get_required_xp() -> int:
 
 func tick_biomass(
 	delta: float,
-	green_percent: float,
-	mature_green_percent: float,
+	green_percent_of_arena: float,
+	mature_percent_of_arena: float,
 	root_yield_multiplier: float = 1.0
 ) -> void:
+	# Both arguments are shares of the whole arena. The names say so because they used
+	# not to be: this took "what share of my Green is Mature" and multiplied it by a
+	# per-arena-percentage coefficient, so a small fully established foothold paid as
+	# though it had established most of the board.
+	#
 	# Root's yield arrives as an argument: the economy is progression's, but what
 	# Mature Green is worth belongs to the Root path.
 	biomass_per_second = (
-		green_percent * biomass_per_green_percent
-		+ mature_green_percent
+		green_percent_of_arena * biomass_per_green_percent
+		+ mature_percent_of_arena
 		* biomass_per_mature_percent
 		* maxf(0.0, root_yield_multiplier)
 	) * get_biomass_production_multiplier()
@@ -1180,10 +1196,10 @@ static func get_upgrade_name(upgrade_id: int) -> String:
 			return "Suppression"
 		UpgradeId.BRAMBLE_ENTANGLEMENT:
 			return "Entanglement"
-		UpgradeId.BRAMBLE_ENSNARE_RATE:
-			return "Ensnare Rate"
-		UpgradeId.BRAMBLE_GRASPING_ROOTS:
-			return "Grasping Roots"
+		UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
+			return "Entanglement Rate"
+		UpgradeId.BRAMBLE_GRASPING_THORNS:
+			return "Grasping Thorns"
 		UpgradeId.BRAMBLE_REPULSION:
 			return "Repulsion"
 		UpgradeId.ROOT_MATURATION:
@@ -1326,13 +1342,13 @@ func get_upgrade_description(upgrade_id: int) -> String:
 			return "+%d%% slow on fully Entangled enemies" % roundi(
 				bramble_director.slow_per_level * 100.0 if bramble_director != null else 0.0
 			)
-		UpgradeId.BRAMBLE_ENSNARE_RATE:
+		UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
 			return "+%d%% faster Entanglement build-up on your Green" % roundi(
-				bramble_director.ensnare_per_level * 100.0 if bramble_director != null else 0.0
+				bramble_director.entanglement_rate_per_level * 100.0 if bramble_director != null else 0.0
 			)
-		UpgradeId.BRAMBLE_GRASPING_ROOTS:
-			return "+%.2fs root on enemies that reach full Entanglement" % (
-				bramble_director.root_seconds_per_level if bramble_director != null else 0.0
+		UpgradeId.BRAMBLE_GRASPING_THORNS:
+			return "+%.2fs Ensnare on enemies that reach full Entanglement" % (
+				bramble_director.ensnare_seconds_per_level if bramble_director != null else 0.0
 			)
 		UpgradeId.BRAMBLE_REPULSION:
 			return "+%d px knockback when an enemy damages your territory" % roundi(
@@ -1673,8 +1689,8 @@ func _get_upgrade_path(upgrade_id: int) -> int:
 		UpgradeId.BLOOM_FORCE, UpgradeId.BLOOM_FREQUENCY, \
 		UpgradeId.AFTERGROWTH, UpgradeId.SUPPRESSION:
 			return PathId.BLOOM
-		UpgradeId.BRAMBLE_ENTANGLEMENT, UpgradeId.BRAMBLE_ENSNARE_RATE, \
-		UpgradeId.BRAMBLE_GRASPING_ROOTS, UpgradeId.BRAMBLE_REPULSION:
+		UpgradeId.BRAMBLE_ENTANGLEMENT, UpgradeId.BRAMBLE_ENTANGLEMENT_RATE, \
+		UpgradeId.BRAMBLE_GRASPING_THORNS, UpgradeId.BRAMBLE_REPULSION:
 			return PathId.BRAMBLE
 		UpgradeId.ROOT_MATURATION, UpgradeId.ROOT_LATERAL_ROOTS, \
 		UpgradeId.ROOT_MATURE_STRENGTH, UpgradeId.ROOT_POTENCY:

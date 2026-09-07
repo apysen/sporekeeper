@@ -37,10 +37,10 @@ signal evolution_changed(status: int)
 @export_range(1.0, 4.0, 0.05) var floral_cascade_grand_scale := 1.80
 ## Entanglement a germinating Seed applies at Tangleburst level one.
 @export_range(0.0, 1.0, 0.01) var tangleburst_entanglement := 0.15
-## Entanglement above which germination roots an enemy at Tangleburst level two.
-@export_range(0.0, 1.0, 0.01) var tangleburst_root_threshold := 0.70
-## Root duration germination applies at Tangleburst level two.
-@export_range(0.0, 3.0, 0.05) var tangleburst_root_seconds := 0.35
+## Entanglement above which germination Ensnares an enemy at Tangleburst level two.
+@export_range(0.0, 1.0, 0.01) var tangleburst_ensnare_threshold := 0.70
+## Ensnare duration germination applies at Tangleburst level two.
+@export_range(0.0, 3.0, 0.05) var tangleburst_ensnare_hold_seconds := 0.35
 ## Pixels a germinating Seed pulls nearby enemies inward at Tangleburst level three.
 @export_range(0.0, 200.0, 1.0) var tangleburst_pull_pixels := 26.0
 ## Germinating Seeds between each mass Briar pulse at Tangleburst level five.
@@ -125,10 +125,10 @@ signal evolution_changed(status: int)
 @export_range(1.0, 4.0, 0.05) var briar_pod_contact_multiplier := 1.50
 
 @export_group("Tangleburst")
-## Ensnare-rate bonus Aggressive Growth leaves on freshly claimed Seed ground.
-@export_range(0.0, 4.0, 0.05) var tangleburst_ensnare_bonus := 0.50
+## Entanglement-rate bonus Aggressive Growth leaves on freshly claimed Seed ground.
+@export_range(0.0, 4.0, 0.05) var tangleburst_entanglement_bonus := 0.50
 ## Seconds that bonus lingers on the new ground.
-@export_range(0.1, 20.0, 0.1) var tangleburst_ensnare_seconds := 3.0
+@export_range(0.1, 20.0, 0.1) var tangleburst_entanglement_seconds := 3.0
 ## Radius multiple of the mass Briar pulse at Tangleburst level five.
 @export_range(1.0, 6.0, 0.05) var tangleburst_pulse_radius_scale := 2.20
 
@@ -506,7 +506,7 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 						roundi(tangleburst_entanglement * 100.0)
 					)
 				2:
-					return "Grasping Shoots: germination roots already-Entangled enemies"
+					return "Grasping Shoots: germination Ensnares already-Entangled enemies"
 				3:
 					return "Constricting Growth: germination drags nearby enemies inward"
 				4:

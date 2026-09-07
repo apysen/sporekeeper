@@ -857,7 +857,7 @@ away from newly established territory.*
 | 1 | **Spiked Fruit** — Fruit collisions apply **30% Entanglement**. |
 | 2 | **Tangled Momentum** — Fruit loses **40% less momentum** from Entangled enemies. |
 | 3 | **Impalement** — fully Entangled enemies take **+25% Fruit collision damage**. |
-| 4 | **Thorned Trail** — Green freshly created by Fruit gains **+50% Ensnare Rate for 4 seconds**. |
+| 4 | **Thorned Trail** — Green freshly created by Fruit gains **+50% Entanglement Rate for 4 seconds**. |
 | 5 | **Durian Crash** — when the Fruit stops, enemies near the terminal foothold receive **60% Entanglement** and one full Bramble Repulsion outward from the impact. |
 
 ---

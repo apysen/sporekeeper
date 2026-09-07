@@ -444,7 +444,7 @@ func _advance_flowering_season(delta: float) -> void:
 	):
 		_flowering_charge = 0.0
 		return
-	_flowering_charge += territory_field.get_mature_player_percent() * delta
+	_flowering_charge += territory_field.get_mature_fraction_of_green() * delta
 	if _flowering_charge < evolutions.flowering_season_charge_required:
 		return
 	_flowering_charge = 0.0
@@ -1030,8 +1030,10 @@ func _apply_tempo_window(
 ) -> void:
 	# Two halves of one window: the ground gets something disposable to lose, and the
 	# things eating it get worse at eating. Neither touches damage, radius, pressure,
-	# conversion or maturity - Bloom Force and Root already own those.
-	var shield := get_aftergrowth_shield()
+	# conversion or maturity - Bloom Force owns those. Both halves are Root Potency's
+	# business though: a Bloom out of old Green leaves a thicker shield and a longer
+	# shadow over what is eating it, read at the ground the Bloom landed on.
+	var shield := get_aftergrowth_shield_at(local_position)
 	if shield > 0.0:
 		territory_field.queue_aftergrowth(
 			local_position,
@@ -1039,7 +1041,7 @@ func _apply_tempo_window(
 			shield,
 			bloom_tempo_window_seconds
 		)
-	var suppression := get_suppression_share()
+	var suppression := get_suppression_share_at(local_position)
 	if suppression > 0.0:
 		combat.apply_suppression_in_radius(
 			local_position,
@@ -1055,6 +1057,11 @@ func get_aftergrowth_shield() -> float:
 	)
 
 
+func get_aftergrowth_shield_at(local_position: Vector2) -> float:
+	## The shield this Bloom actually leaves, after the Root Network under it.
+	return get_aftergrowth_shield() * _root_network_multiplier_at(local_position)
+
+
 func get_suppression_share() -> float:
 	return clampf(
 		suppression_per_level * float(
@@ -1063,6 +1070,22 @@ func get_suppression_share() -> float:
 		0.0,
 		0.95
 	)
+
+
+func get_suppression_share_at(local_position: Vector2) -> float:
+	## Suppression this Bloom actually applies, after the Root Network under it. The
+	## 95% ceiling is Suppression's own cap and the Network does not lift it.
+	return clampf(
+		get_suppression_share() * _root_network_multiplier_at(local_position),
+		0.0,
+		0.95
+	)
+
+
+func _root_network_multiplier_at(local_position: Vector2) -> float:
+	if root_director == null:
+		return 1.0
+	return root_director.get_network_multiplier_here(local_position)
 
 func get_landing_maturity_reinforcement() -> float:
 	# How much thrown material roots when it settles onto growth the run already

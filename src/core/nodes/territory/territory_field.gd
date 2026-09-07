@@ -18,11 +18,15 @@ const PAPER_TEXTURE := preload("res://assets/textures/paper_v1.png")
 const WATERCOLOR_NOISE_TEXTURE := preload("res://assets/textures/watercolor_noise_v2.png")
 const EDGE_NOISE_TEXTURE := preload("res://assets/textures/edge_noise_v2.png")
 
+## The two maturity numbers are different questions and are named as such wherever
+## they travel. This one carries "how much of what the run holds has established",
+## which is what a bar drawn inside the Green span wants; anything weighing Mature
+## ground against the arena wants get_mature_percent_of_arena() instead.
 signal metrics_changed(
 	player_percent: float,
 	hostile_percent: float,
 	neutral_percent: float,
-	mature_player_percent: float,
+	mature_fraction_of_green: float,
 	fragment_count: int
 )
 signal simulation_reset
@@ -298,7 +302,13 @@ var _field_material: ShaderMaterial
 var _player_percent := 0.0
 var _hostile_percent := 0.0
 var _neutral_percent := 100.0
-var _mature_player_percent := 0.0
+## Share of held Green that has matured, 0-100. Answers "how established is what I
+## hold", and is independent of how much that is.
+var _mature_fraction_of_green := 0.0
+## Share of the claimable arena that is both held and matured, 0-100. Answers "how
+## much established ground do I actually control". Kept as its own measurement rather
+## than derived from the pair above, so it cannot drift with rounding.
+var _mature_percent_of_arena := 0.0
 var _rooted_territory_percent := 0.0
 var _deep_rooted_percent := 0.0
 var _fragment_count := 0
@@ -2016,9 +2026,14 @@ func recalculate_metrics_now() -> void:
 		_player_percent = float(player_cells) / float(claimable_cells) * 100.0
 		_hostile_percent = float(hostile_cells) / float(claimable_cells) * 100.0
 		_neutral_percent = maxf(0.0, 100.0 - _player_percent - _hostile_percent)
-	_mature_player_percent = (
+	_mature_fraction_of_green = (
 		float(mature_player_cells) / float(player_cells) * 100.0
 		if player_cells > 0
+		else 0.0
+	)
+	_mature_percent_of_arena = (
+		float(mature_player_cells) / float(claimable_cells) * 100.0
+		if claimable_cells > 0
 		else 0.0
 	)
 	if claimable_cells == 0:
@@ -2031,7 +2046,7 @@ func recalculate_metrics_now() -> void:
 		_player_percent,
 		_hostile_percent,
 		_neutral_percent,
-		_mature_player_percent,
+		_mature_fraction_of_green,
 		_fragment_count
 	)
 
@@ -2873,8 +2888,18 @@ func get_neutral_percent() -> float:
 	return _neutral_percent
 
 
-func get_mature_player_percent() -> float:
-	return _mature_player_percent
+func get_mature_fraction_of_green() -> float:
+	## "What share of my Green is Mature." Independent of how much Green there is: a
+	## run holding one established cell reads the same here as one holding half the
+	## arena, all of it established.
+	return _mature_fraction_of_green
+
+
+func get_mature_percent_of_arena() -> float:
+	## "What share of the arena is Mature Green." This is the one to weigh against
+	## get_player_percent(), because both are shares of the same whole. Anything that
+	## multiplies a maturity number by a per-arena-percentage coefficient wants this.
+	return _mature_percent_of_arena
 
 
 func get_rooted_territory_percent() -> float:

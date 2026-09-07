@@ -3,7 +3,7 @@ extends Node
 
 ## Bramble: what the run's Bramble investment resolves to, and pushing those
 ## values into the systems that execute them. Bramble has no cadence and owns no
-## entities of its own - its damage, Entanglement, roots and repulsion are
+## entities of its own - its damage, Entanglement, Ensnare and repulsion are
 ## resolved per enemy inside the combat loop, and its resistance is a field rule -
 ## so this component owns the path's tuning and its derived values rather than a
 ## per-frame simulation.
@@ -11,7 +11,7 @@ extends Node
 @export_group("Collaborators")
 ## Authoritative field that applies Bramble's resistance rule.
 @export var territory_field: TerritoryField
-## Combat component that resolves thorn contact, Entanglement, roots, and repulsion.
+## Combat component that resolves thorn contact, Entanglement, Ensnare, and repulsion.
 @export var combat: PhaseBCombatDirector
 ## Progression component that owns which lines the run has taken and at what level.
 @export var progression: PhaseBProgression
@@ -106,18 +106,18 @@ var _briarball_charge := 0
 ## Additive multiplier on Entanglement applied by Bramble effects per rank.
 @export_range(0.0, 1.0, 0.01) var entanglement_potency_per_level := 0.10
 
-@export_group("Ensnare Rate")
-## Additive Entanglement build rate granted by each Ensnare Rate rank.
-@export_range(0.0, 2.0, 0.01) var ensnare_per_level := 0.10
+@export_group("Entanglement Rate")
+## Additive Entanglement build rate granted by each Entanglement Rate rank.
+@export_range(0.0, 2.0, 0.01) var entanglement_rate_per_level := 0.10
 
-@export_group("Grasping Roots")
-## Seconds a fully Entangled enemy is rooted whenever Bramble is selected.
-@export_range(0.0, 5.0, 0.05) var base_root_seconds := 0.35
-## Additional seconds of root granted by each Grasping Roots rank.
-@export_range(0.0, 2.0, 0.05) var root_seconds_per_level := 0.35
-## Seconds an enemy cannot be rooted again after Grasping Roots releases it, so a
+@export_group("Grasping Thorns")
+## Seconds a fully Entangled enemy is Ensnared whenever Bramble is selected.
+@export_range(0.0, 5.0, 0.05) var base_ensnare_seconds := 0.35
+## Additional seconds of Ensnare granted by each Grasping Thorns rank.
+@export_range(0.0, 2.0, 0.05) var ensnare_seconds_per_level := 0.35
+## Seconds an enemy cannot be Ensnared again after Grasping Thorns releases it, so a
 ## permanently Entangled enemy is held repeatedly rather than held forever.
-@export_range(0.0, 20.0, 0.1) var root_immunity_seconds := 4.0
+@export_range(0.0, 20.0, 0.1) var ensnare_immunity_seconds := 4.0
 
 @export_group("Repulsion")
 ## Arena pixels an enemy damaging Green is shoved back whenever Bramble is
@@ -546,11 +546,11 @@ func get_resistance_multiplier() -> float:
 	return base_resistance_multiplier
 
 
-func get_ensnare_multiplier() -> float:
+func get_entanglement_rate_multiplier() -> float:
 	if not has_path():
 		return 1.0
-	return 1.0 + ensnare_per_level * float(
-		progression.get_upgrade_level(PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE)
+	return 1.0 + entanglement_rate_per_level * float(
+		progression.get_upgrade_level(PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE)
 	)
 
 
@@ -571,25 +571,25 @@ func get_slow_fraction() -> float:
 
 func get_entanglement_multiplier() -> float:
 	# Entanglement deepens the effect Bramble applies, which is what a Briar Trap
-	# or a root eruption hands an enemy on top of its damage.
+	# or a Root Network eruption hands an enemy on top of its damage.
 	return 1.0 + entanglement_potency_per_level * float(
 		progression.get_upgrade_level(PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT)
 	)
 
 
-func get_root_seconds() -> float:
-	# Grasping Roots: reaching maximum Entanglement pins an enemy in place. The
+func get_ensnare_seconds() -> float:
+	# Grasping Thorns: reaching maximum Entanglement Ensnares an enemy in place. The
 	# path is built on holding enemies still, so the base comes with selecting
 	# Bramble and the line lengthens it.
 	if not has_path():
 		return 0.0
-	return base_root_seconds + root_seconds_per_level * float(
-		progression.get_upgrade_level(PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS)
+	return base_ensnare_seconds + ensnare_seconds_per_level * float(
+		progression.get_upgrade_level(PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS)
 	)
 
 
-func get_root_immunity_seconds() -> float:
-	return root_immunity_seconds
+func get_ensnare_immunity_seconds() -> float:
+	return ensnare_immunity_seconds
 
 
 func get_repulsion_pixels() -> float:
@@ -608,9 +608,9 @@ func apply_modifiers(root_network_bonus: float) -> void:
 	combat.set_bramble_modifiers(
 		enabled,
 		get_slow_fraction(),
-		get_ensnare_multiplier(),
-		get_root_seconds(),
-		get_root_immunity_seconds(),
+		get_entanglement_rate_multiplier(),
+		get_ensnare_seconds(),
+		get_ensnare_immunity_seconds(),
 		get_repulsion_pixels(),
 		progression.has_active_evolution(PhaseBProgression.EvolutionId.OLD_GROWTH),
 		root_network_bonus

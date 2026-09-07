@@ -1973,6 +1973,14 @@ func _run() -> void:
 	adaptations.reset_adaptations()
 	prototype.combat.reset_combat()
 	adaptations._begin_normal_fruit_release()
+	var first_release_count := adaptations._fruit_release_count
+	# The clock starts at the launch. A Fruit still rolling, or still sitting on its
+	# planted fuse, no longer holds the next release: that is what made Momentum a
+	# cadence tax rather than a range upgrade.
+	var cooldown_began_at_launch := is_equal_approx(
+		adaptations._fruit_release_remaining,
+		adaptations.fruit_release_interval
+	)
 	var cadence_fruit = null
 	for candidate in adaptations._fruits:
 		if candidate.active and not candidate.dropped_seed:
@@ -1982,30 +1990,35 @@ func _run() -> void:
 		cadence_fruit.speed = 0.0
 		cadence_fruit.velocity = Vector2.ZERO
 		adaptations._advance_fruit(cadence_fruit, 0.0)
-	var first_release_count := adaptations._fruit_release_count
-	adaptations._update_fruit_release_cadence(5.0)
-	var fuse_holds_release := (
-		adaptations._fruit_release_waiting_for_clear
-		and adaptations._fruit_release_count == first_release_count
-	)
-	adaptations._update_fruitseeds(adaptations.fruitseed_germination_seconds + 0.01)
-	adaptations._update_fruit_release_cadence(0.0)
-	var cooldown_began_after_burst := (
-		not adaptations._fruit_release_waiting_for_clear
-		and is_equal_approx(
-			adaptations._fruit_release_remaining,
-			adaptations.fruit_release_interval
-		)
-	)
 	adaptations._update_fruit_release_cadence(adaptations.fruit_release_interval - 0.01)
-	var no_early_release := adaptations._fruit_release_count == first_release_count
+	var no_early_release := (
+		adaptations._fruit_release_count == first_release_count
+		and adaptations._has_live_normal_fruit_release()
+	)
 	adaptations._update_fruit_release_cadence(0.02)
 	_check(
-		fuse_holds_release
-		and cooldown_began_after_burst
+		cooldown_began_at_launch
 		and no_early_release
 		and adaptations._fruit_release_count == first_release_count + 1,
-		"Fruit's one-second cooldown begins after the previous planted batch explodes"
+		"Fruit's release cooldown runs from the launch, not from the previous batch bursting"
+	)
+
+	# Weighted Harvest is the exception, because it stores its batch on the Vine tip
+	# instead of putting it in the air, and a second arming would overwrite it.
+	adaptations.reset_adaptations()
+	prototype.combat.reset_combat()
+	adaptations._gourdvine_pending_count = 3
+	var gourdvine_release_count := adaptations._fruit_release_count
+	adaptations._update_fruit_release_cadence(adaptations.fruit_release_interval * 3.0)
+	var gourdvine_holds_release := (
+		adaptations._fruit_release_count == gourdvine_release_count
+	)
+	adaptations._gourdvine_pending_count = 0
+	adaptations._update_fruit_release_cadence(adaptations.fruit_release_interval + 0.01)
+	_check(
+		gourdvine_holds_release
+		and adaptations._fruit_release_count == gourdvine_release_count + 1,
+		"an armed Weighted Harvest holds the cadence until the sweep spends it"
 	)
 	adaptations.reset_adaptations()
 	prototype.combat.reset_combat()
@@ -3777,7 +3790,7 @@ func _run() -> void:
 		if not open_slot_draft_paths.has(upgrade_path):
 			open_slot_draft_paths.append(upgrade_path)
 	_check(
-		bramble_upgrade_options.has(PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE)
+		bramble_upgrade_options.has(PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE)
 		and bramble_upgrade_options.has(PhaseBProgression.UpgradeId.BRAMBLE_REPULSION)
 		and open_slot_draft_paths.has(PhaseBProgression.PathId.BLOOM),
 		"drafts expose Bramble's remaining lines and keep the roster open for Core 2"
@@ -3848,7 +3861,7 @@ func _run() -> void:
 		prototype.progression.maximum_upgrade_level
 	)
 	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.BRAMBLE_REPULSION] = 1
-	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE] = (
+	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE] = (
 		prototype.progression.maximum_upgrade_level
 	)
 	prototype._apply_progression_modifiers()
@@ -3894,7 +3907,7 @@ func _run() -> void:
 		and is_equal_approx(repeat_shove, 0.0)
 		and prototype.bramble_director.get_slow_fraction()
 		> slow_before_entanglement_line
-		and prototype.bramble_director.get_ensnare_multiplier() > 1.0,
+		and prototype.bramble_director.get_entanglement_rate_multiplier() > 1.0,
 		"Repulsion slides a territory attacker out over time without damaging it, once per cooldown"
 	)
 
@@ -3931,7 +3944,7 @@ func _run() -> void:
 	# Grasping Roots: full Entanglement pins an enemy, then an immunity window stops
 	# it from being pinned again immediately.
 	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS
 	] = 1
 	prototype._apply_progression_modifiers()
 	prototype.combat.reset_combat()
@@ -3943,12 +3956,12 @@ func _run() -> void:
 	)
 	rooted_enemy.entanglement = 0.5
 	prototype.combat.simulate_step(0.0)
-	var half_entangled_root := rooted_enemy.bramble_root_remaining
+	var half_entangled_root := rooted_enemy.bramble_ensnare_remaining
 	rooted_enemy.entanglement = 1.0
 	rooted_enemy.position = frontier_position
 	prototype.combat.simulate_step(0.0)
-	var root_seconds := rooted_enemy.bramble_root_remaining
-	var root_duration_for_indicator := rooted_enemy.bramble_root_duration
+	var ensnare_seconds := rooted_enemy.bramble_ensnare_remaining
+	var ensnare_duration_for_indicator := rooted_enemy.bramble_ensnare_duration
 	var rooted_speed := rooted_enemy.movement_speed_multiplier
 	# Serve out the hold, then confirm the immunity window blocks an instant re-root.
 	for _root_step in range(30):
@@ -3957,20 +3970,20 @@ func _run() -> void:
 		prototype.combat.simulate_step(0.05)
 	_check(
 		is_equal_approx(half_entangled_root, 0.0)
-		and root_seconds > 0.0
-		and is_equal_approx(root_seconds, prototype.bramble_director.get_root_seconds())
+		and ensnare_seconds > 0.0
+		and is_equal_approx(ensnare_seconds, prototype.bramble_director.get_ensnare_seconds())
 		and is_equal_approx(rooted_speed, 0.0)
-		and is_equal_approx(rooted_enemy.bramble_root_remaining, 0.0)
-		and rooted_enemy.bramble_root_immunity_remaining > 0.0,
+		and is_equal_approx(rooted_enemy.bramble_ensnare_remaining, 0.0)
+		and rooted_enemy.bramble_ensnare_immunity_remaining > 0.0,
 		"Grasping Roots pins a fully Entangled enemy, then holds it immune for a spell"
 	)
 	_check(
-		is_equal_approx(root_duration_for_indicator, root_seconds)
-		and root_duration_for_indicator > 0.0,
+		is_equal_approx(ensnare_duration_for_indicator, ensnare_seconds)
+		and ensnare_duration_for_indicator > 0.0,
 		"a rooted enemy records the hold's full length so its indicator can unwind"
 	)
 	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS
 	] = 0
 	prototype._apply_progression_modifiers()
 
@@ -4386,8 +4399,8 @@ func _run() -> void:
 	var bramble_lines_are_control_shaped := true
 	for bramble_line in [
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT,
-		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE,
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS,
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE,
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS,
 		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION,
 	]:
 		bramble_lines_are_control_shaped = (
@@ -4401,8 +4414,8 @@ func _run() -> void:
 	)
 	for bramble_line in [
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT,
-		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE,
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS,
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE,
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS,
 		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION,
 	]:
 		prototype.progression._upgrade_levels[bramble_line] = (
@@ -4415,8 +4428,8 @@ func _run() -> void:
 	)
 	for bramble_line in [
 		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT,
-		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE,
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS,
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE,
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS,
 		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION,
 	]:
 		prototype.progression._upgrade_levels[bramble_line] = 0
@@ -7806,7 +7819,7 @@ func _run() -> void:
 			PhaseBCombatDirector.EnemyRole.HUNTER,
 			lone_spot + Vector2.from_angle(float(snare_index) * 1.2) * 30.0
 		))
-	prototype.combat.enemy_rooted.emit(lone_spot)
+	prototype.combat.enemy_ensnared.emit(lone_spot)
 	var snared := 0
 	for snare_id in snare_ids:
 		if prototype.combat.get_enemy_entanglement(snare_id) > 0.0:
@@ -8224,12 +8237,12 @@ func _run() -> void:
 	for candidate in prototype.combat._enemies:
 		if candidate.active and candidate.id == unstoppable_id:
 			unstoppable = candidate
-	unstoppable.bramble_root_remaining = 5.0
+	unstoppable.bramble_ensnare_remaining = 5.0
 	unstoppable.movement_speed_multiplier = 0.4
 	prototype.combat._advance_elite_modifier(unstoppable, 1.0 / 60.0)
 	_check(
 		unstoppable.elite_modifier == PhaseBCombatDirector.EliteModifier.UNSTOPPABLE
-		and is_equal_approx(unstoppable.bramble_root_remaining, 0.0)
+		and is_equal_approx(unstoppable.bramble_ensnare_remaining, 0.0)
 		and is_equal_approx(unstoppable.movement_speed_multiplier, 0.4),
 		"an Unstoppable elite breaks a hold and stays slowed"
 	)

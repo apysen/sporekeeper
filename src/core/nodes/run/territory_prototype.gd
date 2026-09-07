@@ -71,7 +71,7 @@ func _ready() -> void:
 		territory_field.get_player_percent(),
 		territory_field.get_hostile_percent(),
 		territory_field.get_neutral_percent(),
-		territory_field.get_mature_player_percent(),
+		territory_field.get_mature_fraction_of_green(),
 		territory_field.get_fragment_count()
 	)
 	_update_view_label()

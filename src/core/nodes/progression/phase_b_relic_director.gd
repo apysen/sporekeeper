@@ -159,7 +159,7 @@ class SweepState:
 @export_range(0.05, 2.0, 0.05) var perennial_force := 0.60
 
 @export_group("Bramble")
-## Enemies that receive spread Entanglement when Grasping Roots bites.
+## Enemies that receive spread Entanglement when Grasping Thorns bites.
 @export_range(1, 8, 1) var snare_vine_targets := 2
 ## Radius in pixels Snare Vine spreads across.
 @export_range(20.0, 400.0, 5.0) var snare_vine_radius_pixels := 96.0
@@ -169,8 +169,8 @@ class SweepState:
 @export_range(2, 30, 1) var living_rampart_enemies := 6
 ## Radius in pixels a Rampart covers.
 @export_range(40.0, 500.0, 5.0) var living_rampart_radius_pixels := 150.0
-## Ensnare-rate bonus applied inside a Rampart.
-@export_range(0.0, 4.0, 0.05) var living_rampart_ensnare_bonus := 1.20
+## Entanglement-rate bonus applied inside a Rampart.
+@export_range(0.0, 4.0, 0.05) var living_rampart_entanglement_bonus := 1.20
 ## Repulsion-interval multiplier inside a Rampart; lower repels more often.
 @export_range(0.05, 1.0, 0.01) var living_rampart_repulsion_multiplier := 0.55
 ## Seconds a Rampart persists after the crowd that raised it thins out.
@@ -362,7 +362,7 @@ func _ready() -> void:
 	assert(player != null, "PhaseBRelicDirector requires PhaseBPlayer")
 	assert(wave_director != null, "PhaseBRelicDirector requires PhaseBWaveDirector")
 	combat.enemy_killed.connect(_on_enemy_killed)
-	combat.enemy_rooted.connect(_on_enemy_rooted)
+	combat.enemy_ensnared.connect(_on_enemy_ensnared)
 	overlay.seed_germinated_with_context.connect(_on_seed_germinated)
 	overlay.bloom_detonated.connect(_on_bloom_detonated)
 	player.damage_taken.connect(_on_player_damage_taken)
@@ -550,7 +550,7 @@ func _advance_rampart(delta: float) -> void:
 		combat.set_rampart(
 			best_position,
 			living_rampart_radius_pixels,
-			living_rampart_ensnare_bonus,
+			living_rampart_entanglement_bonus,
 			living_rampart_repulsion_multiplier
 		)
 		if not was_active:
@@ -1522,7 +1522,7 @@ func _on_enemy_killed(
 	_try_trigger_hedge()
 
 
-func _on_enemy_rooted(local_position: Vector2) -> void:
+func _on_enemy_ensnared(local_position: Vector2) -> void:
 	if not has(PhaseBRelicCatalog.Id.SNARE_VINE):
 		return
 	var spread := combat.spread_entanglement_from(

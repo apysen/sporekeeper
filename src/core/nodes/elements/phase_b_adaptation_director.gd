@@ -31,6 +31,39 @@ enum PendingKind {
 }
 
 
+class RootedGlowState:
+	## One point's reading of the Root Network under it: whether it is standing on
+	## Mature player ground, how deep the Network is there, and how much of the
+	## transition flare is left. Kept per point rather than recomputed in _draw so a
+	## paused run holds its light still instead of breathing on a stopped clock.
+	var lit := false
+	var network := 1.0
+	var flare := 0.0
+	var _was_lit := false
+
+	func advance(
+		delta: float,
+		now_lit: bool,
+		now_network: float,
+		flare_seconds: float
+	) -> void:
+		# Both edges flare. Stepping on is when the whole unit is won and stepping
+		# off is when it is lost, and the second is the one a player misses.
+		if now_lit != _was_lit:
+			flare = 1.0
+		elif flare > 0.0:
+			flare = maxf(0.0, flare - delta / maxf(0.01, flare_seconds))
+		_was_lit = now_lit
+		lit = now_lit
+		network = now_network
+
+	func clear() -> void:
+		lit = false
+		network = 1.0
+		flare = 0.0
+		_was_lit = false
+
+
 class ThistleState:
 	var active := false
 	var permanent := true
@@ -52,6 +85,10 @@ class ThistleState:
 	## Time before this turret is willing to catch on Grandma again. Without it she
 	## would simply stand on the thing and never put it down.
 	var stick_cooldown_remaining := 0.0
+	## The Root Network under this turret, which is where Clustering and Burr are
+	## measured. A carried turret takes no light of its own: it is standing exactly
+	## where Grandma is and her own light already says so.
+	var rooted_glow := RootedGlowState.new()
 
 
 ## What fired a thorn. Only NATURAL advances a network counter; every relic-made
@@ -101,6 +138,10 @@ class FruitState:
 	var speed := 0.0
 	var base_speed := 0.0
 	var deceleration := 0.0
+	## Seconds this Fruit may keep rolling before it bursts wherever it is. A Fruit
+	## is a roll and then a burst; nothing legitimately outlives its own roll, so
+	## this is the backstop that makes permanent scenery impossible.
+	var roll_deadline_remaining := 0.0
 	var last_direction := Vector2.RIGHT
 	var remaining_distance := 0.0
 	var maximum_distance := 1.0
@@ -235,17 +276,53 @@ class PendingEvent:
 @export_range(0.0, 3.0, 0.05) var thistle_carry_seconds_per_line := 0.25
 @export_range(0.0, 3.0, 0.05) var thistle_stick_cooldown_per_line := 0.55
 
+@export_group("Root Network Feedback")
+## Whether to light points that the Root Network is paying out under. Root Potency's
+## whole-unit step is the one part of the Network that is on or off rather than
+## proportional, so it is the one part that has to be visible: without it a player
+## holding three Potency ranks reads a four-Fruit release as a bug rather than as
+## ground they walked off.
+@export var draw_rooted_ground_glow := true
+## Light radius under Grandma, which is where Fruit Set is measured.
+@export_range(4.0, 80.0, 1.0) var rooted_glow_player_radius := 27.0
+## Light radius under a planted Thistle, which is where Clustering and Burr are.
+@export_range(4.0, 80.0, 1.0) var rooted_glow_thistle_radius := 19.0
+## Breaths per second of the sustained light. Deliberately under 1 Hz: this state
+## lasts most of a Root run, and anything faster stops reading as calm.
+@export_range(0.1, 4.0, 0.05) var rooted_glow_pulse_hz := 0.85
+## Seconds the brighter flare lasts when a point crosses onto or off Mature ground.
+@export_range(0.05, 2.0, 0.05) var rooted_glow_flare_seconds := 0.40
+
 @export_group("Fruit Base")
 ## Direct damage on each enemy collision.
 @export_range(1.0, 500.0, 1.0) var fruit_collision_damage := 36.0
 ## Maximum direct damage at the center of the terminal burst. Radius damage uses
 ## Combat's standard falloff, reaching 48% of this value at the outer edge.
 @export_range(0.0, 200.0, 1.0) var fruit_terminal_explosion_damage := 10.0
-## Cooldown after every Fruit in the previous release has burst. Rolling and the
-## planted-fruit fuse do not consume any part of this interval.
-@export_range(0.2, 30.0, 0.1) var fruit_release_interval := 1.0
+## Cooldown between releases, started the moment the Fruit launch. Rolling and the
+## planted fuse run on their own time inside it. Waiting for the previous batch to
+## burst made Momentum a cadence tax -- a longer roll pushed the next release further
+## out, so the line that bought reach was paying for it in releases per minute.
+@export_range(0.2, 30.0, 0.1) var fruit_release_interval := 3.0
 @export_range(20.0, 1000.0, 5.0) var fruit_roll_distance_pixels := 320.0
 @export_range(20.0, 1000.0, 5.0) var fruit_speed_pixels_per_second := 300.0
+## Speed under which a Fruit counts as stopped and bursts. This is a threshold and
+## not an exact zero on purpose: of the three things that reduce a Fruit's speed, two
+## are multiplications -- an obstacle bounce keeps 55% and an enemy collision keeps as
+## little as 15% -- and a multiplication never arrives at zero. Testing for exactly
+## zero meant a Fruit could be parked microscopically above it forever: motionless,
+## never bursting, never freeing its pool slot, and still dealing contact damage to
+## anything that walked into it.
+@export_range(0.001, 20.0, 0.001) var fruit_minimum_roll_speed := 1.0
+## Floor under a Fruit's deceleration. Constant deceleration is the only thing that
+## actually brings a Fruit to rest, so it is never allowed to reach zero.
+@export_range(0.01, 100.0, 0.01) var fruit_minimum_deceleration := 1.0
+## Multiple of its own unobstructed roll time after which a Fruit bursts wherever it
+## is. Bounces and the re-acceleration relics legitimately stretch a roll, so this is
+## slack rather than a schedule -- it should never fire in a healthy run.
+@export_range(1.0, 20.0, 0.5) var fruit_roll_deadline_safety := 4.0
+## Floor under that deadline, for Fruit whose authored roll is very short.
+@export_range(1.0, 120.0, 0.5) var fruit_minimum_roll_deadline_seconds := 8.0
 @export_range(10.0, 180.0, 1.0) var fruit_targeting_sector_degrees := 90.0
 @export_range(2.0, 80.0, 1.0) var fruit_radius_pixels := 18.0
 @export_range(0.0, 200.0, 1.0) var fruit_knockback_pixels := 38.0
@@ -403,7 +480,9 @@ var _fruitseeds: Array[FruitseedState] = []
 var _saplings: Array[SaplingState] = []
 var _pending_events: Array[PendingEvent] = []
 var _fruit_release_remaining := 0.0
-var _fruit_release_waiting_for_clear := false
+## The light under Grandma, and the free-running clock its breath rides on.
+var _player_rooted_glow := RootedGlowState.new()
+var _rooted_glow_phase := 0.0
 var _fruit_release_count := 0
 var _fruit_terminal_count := 0
 var _rot_terminal_count := 0
@@ -546,6 +625,7 @@ func advance(delta: float) -> void:
 	_update_fruit_release_cadence(delta)
 	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_RELEASE)
 	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_TOTAL)
+	_update_rooted_glow(delta)
 	queue_redraw()
 
 
@@ -567,7 +647,10 @@ func reset_adaptations() -> void:
 	for pending in _pending_events:
 		pending.active = false
 	_fruit_release_remaining = fruit_release_interval
-	_fruit_release_waiting_for_clear = false
+	_player_rooted_glow.clear()
+	for thistle in _thistles:
+		thistle.rooted_glow.clear()
+	_rooted_glow_phase = 0.0
 	_fruit_release_count = 0
 	_fruit_terminal_count = 0
 	_rot_terminal_count = 0
@@ -642,18 +725,23 @@ func _refresh_vine_modifiers() -> void:
 	var apical_bonus := 0.0
 	if vine_active:
 		var origin := player.get_arena_position()
-		damage_multiplier += 0.25 * float(_effective_upgrade(
-			PhaseBProgression.UpgradeId.VINE_LIGNIFICATION, origin
-		))
-		cooldown_multiplier /= 1.0 + 0.15 * float(_effective_upgrade(
-			PhaseBProgression.UpgradeId.VINE_TURGOR, origin
-		))
-		reach_multiplier += 0.20 * float(_effective_upgrade(
-			PhaseBProgression.UpgradeId.VINE_ELONGATION, origin
-		))
-		apical_bonus = 0.25 * float(_effective_upgrade(
-			PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE, origin
-		))
+		# Each Vine line takes Root Potency on its own bonus, so the Network
+		# lengthens the reach, quickens the stroke, and hardens the tip rather than
+		# only inflating one damage figure. This refresh runs every frame and all
+		# four lines resolve at the same point, so they share one Network sample.
+		var network := _root_network_at(origin)
+		damage_multiplier += _root_scaled_bonus_with(
+			PhaseBProgression.UpgradeId.VINE_LIGNIFICATION, 0.25, network
+		)
+		cooldown_multiplier /= 1.0 + _root_scaled_bonus_with(
+			PhaseBProgression.UpgradeId.VINE_TURGOR, 0.15, network
+		)
+		reach_multiplier += _root_scaled_bonus_with(
+			PhaseBProgression.UpgradeId.VINE_ELONGATION, 0.20, network
+		)
+		apical_bonus = _root_scaled_bonus_with(
+			PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE, 0.25, network
+		)
 	combat.set_cane_modifiers(
 		damage_multiplier,
 		cooldown_multiplier,
@@ -665,66 +753,60 @@ func _refresh_vine_modifiers() -> void:
 	combat.set_vine_enabled(vine_active)
 
 
-const THISTLE_LINE_IDS: Array[int] = [
-	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
-	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE,
-	PhaseBProgression.UpgradeId.THISTLE_BURR,
-	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT,
-]
-
-
-func _effective_upgrade(upgrade_id: int, origin: Vector2) -> int:
-	var effective := _upgrade(upgrade_id)
-	# Thistle takes its Root amplification in authored form instead of as virtual
-	# ranks: one more thorn, one more ricochet, and Potency's own multiplier on the
-	# two lines that are a rate rather than a count. See _thistle_root_step.
-	if THISTLE_LINE_IDS.has(upgrade_id):
-		return effective
-	# Potency deepens a line the build has started; it never invents an unowned line
-	# from Root alone or from a temporary casino loan.
-	if progression.get_owned_upgrade_level(upgrade_id) <= 0:
-		return effective
-	return effective + _root_potency_ranks_at(origin)
-
-
-## Whether Root Potency is amplifying a Thistle line resolving at this point. Same
-## rule as the generic path: Mature player ground under the effect, Root in the run,
-## and a line the build has actually started -- Root deepens what is being built and
-## never invents an unowned line out of Root alone.
-func _thistle_root_amplifies(upgrade_id: int, origin: Vector2) -> bool:
+## Root Potency reaches Thistle, Vine, and Fruit one line at a time, in the shape
+## that line is about. A line is only amplified where the effect actually happens,
+## and only when the build has started the line itself: Root deepens what is being
+## built and never invents an unowned line out of Root alone or out of a temporary
+## casino loan.
+func _root_amplifies_line(upgrade_id: int) -> bool:
 	return (
 		progression.get_owned_upgrade_level(upgrade_id) > 0
 		and root_director != null
 		and root_director.has_path()
-		and territory_field.is_mature_player_territory_at_local(origin)
 	)
 
 
-## Clustering and Burr are counts, so Potency pays them in whole units: one more
-## thorn in the volley, one more ricochet on the thorn.
-func _thistle_root_step(upgrade_id: int, origin: Vector2) -> int:
-	return 1 if _thistle_root_amplifies(upgrade_id, origin) else 0
+## Counts get whole units, because half a thorn and half a Fruit are not things.
+## Clustering, Burr, and Fruit Set each gain exactly one, and only out of ground
+## that is actually Mature -- there is no partial unit to scale.
+func _root_count_step(upgrade_id: int, origin: Vector2) -> int:
+	if not _root_amplifies_line(upgrade_id):
+		return 0
+	return 1 if territory_field.is_mature_player_territory_at_local(origin) else 0
 
 
-## Dehiscence and Needlepoint are rates, so Potency pays them with its own
-## amplification -- the same 1 + bonus every other Root consumer reads, scaled by
-## how Mature the ground under the turret actually is.
-func _thistle_root_scale(upgrade_id: int, origin: Vector2) -> float:
-	if not _thistle_root_amplifies(upgrade_id, origin):
+## Everything that is a rate, a reach, or a damage figure gets its own per-rank
+## bonus multiplied instead. This is the Root Network multiplier read where the
+## effect happens, so it rises and falls continuously with the maturity of the
+## ground under it rather than snapping on at the Mature threshold. It scales the
+## line's bonus and not the authored base, so amplification is proportional to what
+## the run actually invested in that line.
+func _root_bonus_scale(upgrade_id: int, origin: Vector2) -> float:
+	if not _root_amplifies_line(upgrade_id):
 		return 1.0
 	return maxf(1.0, root_director.get_network_multiplier_here(origin))
 
 
-func _root_potency_ranks_at(origin: Vector2) -> int:
-	if (
-		root_director == null
-		or not root_director.has_path()
-		or not territory_field.is_mature_player_territory_at_local(origin)
-	):
-		return 0
-	# A Root jackpot may lend rank-5 Root behavior, but virtual adaptation ranks are
-	# earned by purchased Potency ranks only.
-	return progression.get_owned_upgrade_level(PhaseBProgression.UpgradeId.ROOT_POTENCY)
+## One line's per-rank bonus after Root Potency: rank x per-rank value x the
+## Network where it resolves. Every rate/reach/damage line reads its bonus through
+## this, which is what keeps the amplified number in the ROOTED row honest.
+func _root_scaled_bonus(upgrade_id: int, per_rank: float, origin: Vector2) -> float:
+	return per_rank * float(_upgrade(upgrade_id)) * _root_bonus_scale(upgrade_id, origin)
+
+
+## The Network at a point, sampled once for callers whose lines all resolve there.
+## The projection query behind it walks nearby ground, so a per-frame refresh or a
+## multi-line spawn takes one sample instead of one per line.
+func _root_network_at(origin: Vector2) -> float:
+	if root_director == null or not root_director.has_path():
+		return 1.0
+	return maxf(1.0, root_director.get_network_multiplier_here(origin))
+
+
+## Same rule as _root_scaled_bonus, for a caller that already holds that sample.
+func _root_scaled_bonus_with(upgrade_id: int, per_rank: float, network: float) -> float:
+	var scale := network if _root_amplifies_line(upgrade_id) else 1.0
+	return per_rank * float(_upgrade(upgrade_id)) * scale
 
 
 func _configure_pools() -> void:
@@ -1051,11 +1133,8 @@ func _collapse_thistle(thistle: ThistleState, support_loss: bool) -> void:
 
 
 func _get_thistle_attack_interval(origin: Vector2) -> float:
-	var speed_bonus := 0.15 * float(_effective_upgrade(
-		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, origin
-	))
-	var rate := (1.0 + speed_bonus) * _thistle_root_scale(
-		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, origin
+	var rate := 1.0 + _root_scaled_bonus(
+		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE, 0.15, origin
 	)
 	return thistle_attack_interval / maxf(0.05, rate)
 
@@ -1071,10 +1150,8 @@ func _fire_thistle(
 		return 0
 	var projectile_count := (
 		1
-		+ _effective_upgrade(
-			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, thistle.position
-		)
-		+ _thistle_root_step(
+		+ _upgrade(PhaseBProgression.UpgradeId.THISTLE_CLUSTERING)
+		+ _root_count_step(
 			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, thistle.position
 		)
 	)
@@ -1728,9 +1805,9 @@ func _spawn_thorn(
 		* maxf(0.0, damage_scale)
 		* (1.5 if heavy else 1.0)
 	)
-	var effective_burr := _effective_upgrade(
-		PhaseBProgression.UpgradeId.THISTLE_BURR, origin
-	) + _thistle_root_step(PhaseBProgression.UpgradeId.THISTLE_BURR, origin)
+	var effective_burr := _upgrade(
+		PhaseBProgression.UpgradeId.THISTLE_BURR
+	) + _root_count_step(PhaseBProgression.UpgradeId.THISTLE_BURR, origin)
 	thorn.ricochets_remaining = (
 		effective_burr + maxi(0, extra_ricochets)
 		if ricochet_cap_override < 0
@@ -1742,11 +1819,9 @@ func _spawn_thorn(
 	thorn.pierce_remaining = maxi(0, extra_pierce)
 	thorn.pierces_normal_only = pierces_normal_only
 	thorn.critical_chance_bonus = maxf(0.0, critical_chance_bonus) + (
-		0.10
-		* float(_effective_upgrade(
-			PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, origin
-		))
-		* _thistle_root_scale(PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, origin)
+		_root_scaled_bonus(
+			PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, 0.10, origin
+		)
 		if inherit_needlepoint
 		else 0.0
 	)
@@ -2318,11 +2393,8 @@ func _fire_thornwhip(
 		var head_position := origin + facing * reach * fraction
 		var scale := 1.0
 		if rank >= 3 and head_index == head_count - 1:
-			scale += 0.25 * float(
-				_effective_upgrade(
-					PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE,
-					origin
-				)
+			scale += _root_scaled_bonus(
+				PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE, 0.25, origin
 			)
 		_fire_mounted_head(
 			head_position,
@@ -2381,10 +2453,8 @@ func _fire_mounted_head(
 		return
 	var projectile_count := (
 		1
-		+ _effective_upgrade(
-			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, head_position
-		)
-		+ _thistle_root_step(
+		+ _upgrade(PhaseBProgression.UpgradeId.THISTLE_CLUSTERING)
+		+ _root_count_step(
 			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, head_position
 		)
 	)
@@ -2628,18 +2698,15 @@ func _update_fruits(delta: float) -> void:
 func _update_fruit_release_cadence(delta: float) -> void:
 	if not progression.has_path_active(PhaseBProgression.PathId.FRUIT):
 		# A temporary Fruit loan can expire while its last roll is still resolving.
-		# Remember that batch so reactivating the path cannot overlap it with a new
-		# release; Dropped Seed remains excluded by _has_live_normal_fruit_release().
-		_fruit_release_waiting_for_clear = _has_live_normal_fruit_release()
+		# The clock is left where it stands rather than cleared, so reactivating the
+		# path cannot hand back a release the loan already paid for.
 		_fruit_release_remaining = minf(_fruit_release_remaining, fruit_release_interval)
 		return
-	if _fruit_release_waiting_for_clear:
-		if _has_live_normal_fruit_release():
-			return
-		# The cooldown begins now, after the final planted Fruit has burst. It does
-		# not inherit this frame's delta because that time belonged to the old batch.
-		_fruit_release_waiting_for_clear = false
-		_fruit_release_remaining = fruit_release_interval
+	if _gourdvine_pending_count > 0 or _gourdvine_attached:
+		# Weighted Harvest is the one release that is a stored object rather than a
+		# batch already in the air: it sits on the Vine tip until a sweep spends it,
+		# and arming a second would overwrite the first. So this case, and only this
+		# case, still waits for the previous release to clear.
 		return
 	_fruit_release_remaining -= delta
 	if _fruit_release_remaining <= 0.0:
@@ -2647,6 +2714,9 @@ func _update_fruit_release_cadence(delta: float) -> void:
 
 
 func _has_live_normal_fruit_release() -> bool:
+	## Whether a normal release is still resolving somewhere on the field. The
+	## cadence no longer waits on this -- releases overlap freely now -- but Orchard
+	## and the probes still ask, and Dropped Seed is deliberately excluded.
 	if _gourdvine_pending_count > 0 or _gourdvine_attached:
 		return true
 	for fruit in _fruits:
@@ -2659,10 +2729,13 @@ func _has_live_normal_fruit_release() -> bool:
 
 
 func _begin_normal_fruit_release() -> void:
-	_fruit_release_waiting_for_clear = true
+	# The clock restarts here, at the launch, not when the batch finishes bursting.
+	_fruit_release_remaining = fruit_release_interval
 	var release_origin := player.get_arena_position()
-	var fruit_count := 1 + _effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_SET, release_origin
+	var fruit_count := (
+		1
+		+ _upgrade(PhaseBProgression.UpgradeId.FRUIT_SET)
+		+ _root_count_step(PhaseBProgression.UpgradeId.FRUIT_SET, release_origin)
 	)
 	_fruit_release_count += 1
 	var gourdvine_rank := _evolution_rank(PhaseBProgression.EvolutionId.GOURDVINE)
@@ -2763,9 +2836,9 @@ func _get_fruit_aim_direction(origin: Vector2, distance_scale: float = 1.0) -> V
 	var fallback := player.get_facing_direction()
 	if fallback.length_squared() <= 0.0001:
 		fallback = Vector2.RIGHT
-	var momentum_multiplier := 1.0 + 0.20 * float(_effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, origin
-	))
+	var momentum_multiplier := 1.0 + _root_scaled_bonus(
+		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, 0.20, origin
+	)
 	return combat.get_densest_target_direction(
 		origin,
 		fruit_roll_distance_pixels * momentum_multiplier * maxf(0.05, distance_scale),
@@ -2805,18 +2878,20 @@ func _spawn_fruit(
 	var roll_direction := direction.normalized()
 	if roll_direction.length_squared() <= 0.0001:
 		roll_direction = Vector2.RIGHT
-	var ripening_rank := _effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_RIPENING, origin
+	# Every Fruit line takes Root Potency on its own bonus at the launch origin, so
+	# Mature ground makes the Fruit hit harder, roll further, and paint more Green
+	# instead of only raising the damage figure. One Network sample serves all three:
+	# a multi-Fruit release spawns up to sixteen of these on one frame.
+	var fruit_network := _root_network_at(origin)
+	var ripening_multiplier := 1.0 + _root_scaled_bonus_with(
+		PhaseBProgression.UpgradeId.FRUIT_RIPENING, 0.25, fruit_network
 	)
-	var momentum_rank := _effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, origin
+	var momentum_multiplier := 1.0 + _root_scaled_bonus_with(
+		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, 0.20, fruit_network
 	)
-	var germination_rank := _effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_GERMINATION, origin
+	var germination_multiplier := 1.0 + _root_scaled_bonus_with(
+		PhaseBProgression.UpgradeId.FRUIT_GERMINATION, 0.20, fruit_network
 	)
-	var ripening_multiplier := 1.0 + 0.25 * float(ripening_rank)
-	var momentum_multiplier := 1.0 + 0.20 * float(momentum_rank)
-	var germination_multiplier := 1.0 + 0.20 * float(germination_rank)
 	var graft_damage := 1.0 + 0.03 * float(clampi(graft_cuttings, 0, 12))
 	var graft_area := 1.0
 	if _evolution_rank(PhaseBProgression.EvolutionId.GRAFT) >= 2:
@@ -2867,7 +2942,10 @@ func _spawn_fruit(
 	fruit.visual_scale = (
 		(0.68 if fragment else 1.0)
 		* (1.50 if prize else 1.0)
-		* (1.0 + 0.055 * float(ripening_rank))
+		# Ripening shows on the Fruit. It reads the amplified multiplier rather than
+		# the raw rank, so a Fruit launched out of Mature ground looks as heavy as
+		# it hits.
+		* (1.0 + 0.22 * (ripening_multiplier - 1.0))
 	)
 	fruit.visual_index = _random.randi_range(0, FRUIT_TEXTURES.size() - 1)
 	_fruit_sequence += 1
@@ -2902,10 +2980,28 @@ func _recompute_fruit_deceleration(fruit: FruitState) -> void:
 	## Constant deceleration makes maximum_distance the unobstructed stopping
 	## distance. Collisions and bounces reduce velocity directly, so they make a
 	## Fruit stop earlier without inventing a distance-based despawn condition.
-	fruit.deceleration = (
+	##
+	## The floor matters more than it looks. Every Fruit that reaches its burst does
+	## so because this subtraction walked its speed down to the stop threshold, and a
+	## Fruit that ever reached zero deceleration would never stop at all: the only
+	## other things touching its speed are multiplications, which converge on zero
+	## without arriving. So the one term the whole lifecycle depends on is not
+	## allowed to vanish.
+	fruit.deceleration = maxf(
+		fruit_minimum_deceleration,
 		fruit.base_speed * fruit.base_speed
 		/ (2.0 * maxf(1.0, fruit.maximum_distance))
 	)
+	# Derived rather than authored, so retuning Momentum or the base roll cannot
+	# leave a fixed deadline cutting a legitimate roll short.
+	fruit.roll_deadline_remaining = maxf(
+		fruit_minimum_roll_deadline_seconds,
+		fruit.base_speed / fruit.deceleration * fruit_roll_deadline_safety
+	)
+
+
+func _fruit_has_stopped(fruit: FruitState) -> bool:
+	return fruit.speed <= fruit_minimum_roll_speed
 
 
 func _advance_fruit(fruit: FruitState, delta: float) -> void:
@@ -2916,7 +3012,12 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_BURDOCK)
 	_update_burdock_head(fruit, delta)
 	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_BURDOCK)
-	if fruit.speed <= 0.0:
+	fruit.roll_deadline_remaining -= delta
+	if _fruit_has_stopped(fruit) or fruit.roll_deadline_remaining <= 0.0:
+		# Either it has come to rest or it has outlived any roll it could have had.
+		# Both end the same way: it bursts where it is. Deleting it instead would
+		# quietly rob the player of the territory and the terminal damage the Fruit
+		# had already been paid for.
 		fruit.speed = 0.0
 		fruit.velocity = Vector2.ZERO
 		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
@@ -2953,7 +3054,8 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 		PhaseBPerfCounters.timer_add_since(
 			PhaseBPerfCounters.TIMER_FRUIT_TERRAIN, terrain_began
 		)
-		if fruit.speed <= 0.0:
+		if _fruit_has_stopped(fruit):
+			fruit.speed = 0.0
 			fruit.velocity = Vector2.ZERO
 			PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
 			_finish_fruit(fruit)
@@ -2977,7 +3079,7 @@ func _advance_fruit(fruit: FruitState, delta: float) -> void:
 		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_HIT_RESOLUTION)
 		_resolve_fruit_enemy_hit(fruit, enemy_id)
 		PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_FRUIT_HIT_RESOLUTION)
-	if fruit.speed <= 0.0:
+	if _fruit_has_stopped(fruit):
 		fruit.speed = 0.0
 		fruit.velocity = Vector2.ZERO
 		PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_FRUIT_FINISH)
@@ -3455,7 +3557,7 @@ func _stamp_fruit_trail(fruit: FruitState, position: Vector2) -> void:
 	if _evolution_rank(PhaseBProgression.EvolutionId.ROT) >= 2:
 		combat.add_spore_rate_zone(position, zone_radius, 0.50, 4.0)
 	if _evolution_rank(PhaseBProgression.EvolutionId.DURIAN) >= 4:
-		combat.add_ensnare_zone(position, zone_radius, 0.50, 4.0)
+		combat.add_entanglement_rate_zone(position, zone_radius, 0.50, 4.0)
 
 
 func _stamp_fruit_trail_segment(
@@ -3516,10 +3618,8 @@ func _fire_burdock_volley(fruit: FruitState, empowered_final: bool) -> int:
 	var inherit_upgrades := rank >= 2
 	var projectile_count := (
 		1
-		+ _effective_upgrade(
-			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, fruit.position
-		)
-		+ _thistle_root_step(
+		+ _upgrade(PhaseBProgression.UpgradeId.THISTLE_CLUSTERING)
+		+ _root_count_step(
 			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, fruit.position
 		)
 		if inherit_upgrades
@@ -3664,7 +3764,7 @@ func _germinate_fruitseed(fruitseed: FruitseedState) -> void:
 		if _evolution_rank(PhaseBProgression.EvolutionId.ROT) >= 2:
 			combat.add_spore_rate_zone(fruitseed.position, radius, 0.50, 4.0)
 		if _evolution_rank(PhaseBProgression.EvolutionId.DURIAN) >= 4:
-			combat.add_ensnare_zone(fruitseed.position, radius, 0.50, 4.0)
+			combat.add_entanglement_rate_zone(fruitseed.position, radius, 0.50, 4.0)
 		_apply_fruit_terminal_evolution(fruitseed)
 	territory_field.queue_seed_growth(
 		fruitseed.position,
@@ -3882,13 +3982,13 @@ func _apply_attached_gourdvine_hit(enemy_id: int, cane_damage: float) -> void:
 	if rank <= 0 or not combat.is_enemy_active(enemy_id):
 		return
 	if rank >= 2:
-		var ripening_rank := _effective_upgrade(
-			PhaseBProgression.UpgradeId.FRUIT_RIPENING,
-			player.get_arena_position()
-		)
 		var weighted_damage := (
 			fruit_collision_damage
-			* (1.0 + 0.25 * float(ripening_rank))
+			* (1.0 + _root_scaled_bonus(
+				PhaseBProgression.UpgradeId.FRUIT_RIPENING,
+				0.25,
+				player.get_arena_position()
+			))
 			* 0.50
 		)
 		combat.damage_enemy_by_id(
@@ -3897,11 +3997,10 @@ func _apply_attached_gourdvine_hit(enemy_id: int, cane_damage: float) -> void:
 			PhaseBCombatDirector.DeathSource.FRUIT
 		)
 	if rank >= 4 and combat.is_enemy_active(enemy_id):
-		var ripening_bonus := 0.25 * float(
-			_effective_upgrade(
-				PhaseBProgression.UpgradeId.FRUIT_RIPENING,
-				player.get_arena_position()
-			)
+		var ripening_bonus := _root_scaled_bonus(
+			PhaseBProgression.UpgradeId.FRUIT_RIPENING,
+			0.25,
+			player.get_arena_position()
 		)
 		combat.damage_enemy_by_id(
 			enemy_id,
@@ -3927,8 +4026,8 @@ func _detach_gourdvine_fruit(
 	var distance_scale := 1.0
 	if rank >= 3:
 		distance_scale += 0.10 * float(
-			_effective_upgrade(PhaseBProgression.UpgradeId.VINE_ELONGATION, origin)
-		)
+			_upgrade(PhaseBProgression.UpgradeId.VINE_ELONGATION)
+		) * _root_bonus_scale(PhaseBProgression.UpgradeId.VINE_ELONGATION, origin)
 	var speed_scale := 1.50 if rank >= 5 else 1.0
 	var fruit_aim := _get_fruit_aim_direction(tip, distance_scale)
 	for index in range(_gourdvine_pending_count):
@@ -3979,6 +4078,21 @@ func fire_slot_jackpot(path_id: int, jackpot_scale: float) -> void:
 
 
 func _draw() -> void:
+	# First, under everything else: this is ground the effects stand on, not another
+	# effect stacked on top of them.
+	if draw_rooted_ground_glow:
+		_draw_rooted_glow(
+			_player_rooted_glow,
+			player.get_arena_position(),
+			rooted_glow_player_radius
+		)
+		for thistle in _thistles:
+			if thistle.active and not thistle.carried:
+				_draw_rooted_glow(
+					thistle.rooted_glow,
+					thistle.position,
+					rooted_glow_thistle_radius
+				)
 	for sapling in _saplings:
 		if sapling.active:
 			_draw_sapling(sapling)
@@ -4013,6 +4127,72 @@ func _draw() -> void:
 				float(index) * 0.9,
 				Color(1.0, 1.0, 1.0, 0.88)
 			)
+
+
+## Sample the Network at every point that takes a whole unit from it. Same two
+## conditions the count step reads, so the light is true by construction rather than
+## by a second copy of the rule: Root in the run, and Mature player ground here.
+func _update_rooted_glow(delta: float) -> void:
+	if not draw_rooted_ground_glow:
+		return
+	_rooted_glow_phase += delta
+	var rooted := root_director != null and root_director.has_path()
+	_advance_rooted_glow(_player_rooted_glow, player.get_arena_position(), rooted, delta)
+	for thistle in _thistles:
+		if thistle.active and not thistle.carried:
+			_advance_rooted_glow(thistle.rooted_glow, thistle.position, rooted, delta)
+		else:
+			thistle.rooted_glow.clear()
+
+
+func _advance_rooted_glow(
+	glow: RootedGlowState,
+	center: Vector2,
+	rooted: bool,
+	delta: float
+) -> void:
+	var lit := rooted and territory_field.is_mature_player_territory_at_local(center)
+	# The depth read is only worth paying for where the light is actually on.
+	var network := (
+		root_director.get_network_multiplier_here(center)
+		if lit
+		else 1.0
+	)
+	glow.advance(delta, lit, network, rooted_glow_flare_seconds)
+
+
+## A slow breathing light, brighter for a deeper Network, flaring on both edges.
+##
+## Sustained brightness follows the local Network rather than being a flat on/off
+## mark, because the proportional lines are reading that same number at the same
+## point -- a faint light is ground that just turned Mature, a strong one is a deep
+## colony or an Annual Rings region, and the difference is worth seeing while moving.
+## The breath is under 1 Hz on purpose: this state lasts most of a Root run, so it has
+## to survive being looked at for minutes without becoming noise. The flares are what
+## carry the actual event, and stepping *off* flares too -- an afterglow with nothing
+## under it is the frame where the extra Fruit was lost.
+func _draw_rooted_glow(glow: RootedGlowState, center: Vector2, radius: float) -> void:
+	if not glow.lit and glow.flare <= 0.0:
+		return
+	var breath := 0.5 + 0.5 * sin(_rooted_glow_phase * TAU * rooted_glow_pulse_hz)
+	var alpha := 0.0
+	if glow.lit:
+		var depth := clampf((glow.network - 1.0) / 1.6, 0.0, 1.0)
+		alpha = lerpf(0.16, 0.38, depth) * lerpf(0.58, 1.0, breath)
+	alpha += 0.30 * glow.flare * glow.flare
+	if alpha <= 0.004:
+		return
+	var scale := 1.0 + 0.07 * breath + 0.24 * glow.flare
+	# There is no gradient texture in this project, so the falloff is four stacked
+	# discs drawn widest and dimmest first. Cheap enough at two points, and it reads
+	# as light spilling out of the ground rather than as an outline drawn on it.
+	for step in range(4):
+		var t := 1.0 - float(step) / 3.0
+		draw_circle(
+			center,
+			radius * scale * lerpf(0.42, 1.0, t),
+			Color(1.0, 0.87, 0.48, alpha * lerpf(1.0, 0.26, t))
+		)
 
 
 func _draw_thistle(thistle: ThistleState) -> void:

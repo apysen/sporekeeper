@@ -167,9 +167,13 @@ func _run_case(
 
 	# What one release will actually put on the field, read the same way the
 	# release itself reads it.
-	var released := 1 + prototype.adaptation_director._effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_SET,
-		origin
+	var released := (
+		1
+		+ prototype.progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUIT_SET)
+		+ prototype.adaptation_director._root_count_step(
+			PhaseBProgression.UpgradeId.FRUIT_SET,
+			origin
+		)
 	)
 
 	var combat := PackedFloat32Array()
@@ -251,9 +255,13 @@ func _run_bisect(
 		enemy.health = enemy.maximum_health
 	prototype.combat.simulate_step(0.0)
 
-	var released := 1 + prototype.adaptation_director._effective_upgrade(
-		PhaseBProgression.UpgradeId.FRUIT_SET,
-		origin
+	var released := (
+		1
+		+ prototype.progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUIT_SET)
+		+ prototype.adaptation_director._root_count_step(
+			PhaseBProgression.UpgradeId.FRUIT_SET,
+			origin
+		)
 	)
 	var combat := PackedFloat32Array()
 	var peak_fruit := 0

@@ -157,12 +157,18 @@ stay Bloom Force's and Root's.
 > Your Green entangles, slows, roots, and repels whatever stands on it.
 
 Base behavior: enemies touching owned Green accumulate Entanglement. At full
-Entanglement, they are slowed and periodically rooted; Bramble applies its
+Entanglement, they are slowed and periodically **Ensnared**; Bramble applies its
 frontier-resistance multiplier and shoves enemies back when they damage Green. In
 the playable scene the base values are **10% slow**, **1.0x frontier resistance**,
-**0.35s roots**, and **26 px repulsion**. The base Entanglement build multiplier is
-1.0x; the upgrade lines increase the slow, build rate, root duration, or shove
+**0.35s Ensnare**, and **26 px repulsion**. The base Entanglement build multiplier is
+1.0x; the upgrade lines increase the slow, build rate, Ensnare duration, or shove
 distance. Bramble has no independent timer or spawned pool.
+
+**Ensnare** is the status, not the Root path. It stops an enemy from moving for its
+duration — Ensnared enemies may still attack — and is followed by a short immunity so
+a permanently Entangled enemy is held repeatedly rather than held forever. It was
+called Root until it was renamed, because a Bramble status named after another Path
+was unreadable in play.
 Base thorn contact damage is **0.18 + 0.05% of the enemy's max health per tick**,
 every **0.45 seconds**; at full Entanglement it is multiplied up to **3.0x**. A
 first crossing of a developed frontier hedge also deals **1.0 damage**; hedge
@@ -172,9 +178,13 @@ each**, capped at **60%**.
 | Line | Per rank | At rank 5 |
 |---|---|---|
 | **Entanglement** | +5pp slow and +10% Bramble-applied Entanglement potency | +25pp slow, +50% potency |
-| **Ensnare Rate** | +10% faster Entanglement build-up on your Green | +50% |
-| **Grasping Roots** | +0.35s root on enemies reaching full Entanglement | +1.75s |
+| **Entanglement Rate** | +10% faster Entanglement build-up on your Green | +50% |
+| **Grasping Thorns** | +0.35s Ensnare on enemies reaching full Entanglement | +1.75s |
 | **Repulsion** | +16 px knockback when an enemy damages your territory | +80 px |
+
+All four Bramble lines take Root Potency where the effect resolves: the slow
+percentage (capped at 85%), the build rate, the Ensnare duration, and the shove
+distance.
 
 ### Root
 
@@ -210,18 +220,71 @@ amplify compatible effects beyond its own cells.
 |---|---|---|
 | Seed inherited growth mass | Spore | `phase_b_spore_director.gd` |
 | Germination speed (Seed charge time) | Spore | `get_germination_seconds_at` |
-| Bloom Force | Bloom | `on_bloom_detonated` |
-| Bloom cadence (interval to the next Bloom) | Bloom | `advance` |
-| Entanglement accrual rate | Bramble | `_get_entanglement_rate` |
-| Bramble tick damage | Bramble | `get_bramble_tick_damage` |
-| Repulsion knockback distance | Bramble | `repel_territory_attacker` |
 | Spore accumulation rate | Spore | `_update_enemy_spore` |
 | Fruiting Body cloud and rupture Spore | Spore | `_get_fruiting_body_spore` |
+| Bloom Force | Bloom | `on_bloom_detonated` |
+| Bloom cadence (interval to the next Bloom) | Bloom | `advance` |
+| Aftergrowth shield | Bloom | `get_aftergrowth_shield_at` |
+| Suppression share (capped at 95%) | Bloom | `get_suppression_share_at` |
+| Entanglement accrual rate | Bramble | `_get_entanglement_rate` |
+| Bramble tick damage | Bramble | `get_bramble_tick_damage` |
+| Entangled slow fraction (capped at 85%) | Bramble | `_update_enemy_bramble` |
+| Ensnare duration | Bramble | `_try_ensnare_entangled_enemy` |
+| Repulsion knockback distance | Bramble | `repel_territory_attacker` |
 | Cutting damage | Pruning | `_raise_cuttings` |
 | Deadfall Volley spike damage | Pruning | `_fire_deadfall_volley` |
-| Thorn damage | Thistle | firing turret position |
-| Cane/Vine damage | Vine | player position at sweep start |
-| Collision, terminal damage, and territory area | Fruit | Fruit launch origin |
+| Every Thistle line, one at a time | Thistle | firing turret position |
+| Every Vine line, one at a time | Vine | player position at sweep start |
+| Every Fruit line, one at a time | Fruit | Fruit launch origin |
+
+**How a line takes Potency.** Spore, Bloom, Bramble, and Pruning hook Root onto an
+authored value, so the Network multiplies that value outright. Thistle, Vine, and
+Fruit hook it onto each *line* instead, and there the rule is uniform across all
+twelve lines:
+
+- **Counts get whole units**, because half a thorn and half a Fruit are not things.
+  Clustering gains one thorn, Burr one ricochet, and Fruit Set one Fruit, and only
+  out of ground that is actually Mature — there is no partial unit to scale.
+- **Everything else gets its own per-rank bonus multiplied**: `base x (1 + per-rank x
+  rank x amplification)`. The amplification is the Network multiplier read where the
+  effect resolves, so it rises and falls continuously with the maturity of the ground
+  under it rather than snapping on at the Mature threshold. It scales the bonus and
+  not the authored base, so what Root pays is proportional to what the run actually
+  invested in that line.
+- A line the build has not started takes no Potency at all. Root deepens what is
+  being built; it never invents an unowned line out of Root alone or out of a
+  temporary Clover loan.
+
+**Reading it in play.** The whole-unit step is the only part of the Network that is
+on or off rather than proportional, so it is the only part that needs saying out
+loud. While the run owns Root, `_update_rooted_glow` samples the same two conditions
+`_root_count_step` reads — Root in the run, Mature player ground here — at Grandma
+and at each planted Thistle, and `_draw_rooted_glow` lights those points. The light
+cannot disagree with the payout, because it is the same predicate rather than a
+second copy of the rule.
+
+Three things it reports at once:
+
+- **Lit or not** is the whole-unit gate. One more Fruit, thorn, or ricochet is being
+  paid exactly while the light is on.
+- **Sustained brightness** follows the local Network multiplier, so it also reports
+  depth — the same number the proportional lines are reading at that point. Faint is
+  ground that just turned Mature; strong is an old colony or an Annual Rings region.
+- **Flares on both edges.** Crossing onto Mature ground flares, and crossing off
+  flares too, leaving an afterglow with nothing under it. The step-off edge is the
+  one that answers "why did only four launch" — it is the frame the extra Fruit was
+  lost, and it is the edge a player otherwise never notices.
+
+The breath runs at `rooted_glow_pulse_hz`, deliberately under 1 Hz: in a Root build
+this state holds for most of a run, so it has to survive being looked at for minutes
+without becoming noise. The flares carry the events. A carried Thistle takes no light
+of its own — it is standing exactly where Grandma is and her light already says so.
+`draw_rooted_ground_glow` turns the whole thing off.
+
+These three paths previously took Potency as *virtual ranks* — standing on Mature
+ground added N whole ranks to every line at once and dropped to zero the instant the
+player stepped off. That is what made a Fruit release look randomised, and it is
+gone.
 
 Pruning is the one path measured over a patch rather than at a point: a harvest cuts
 many cells at once, so its Root maturity is the **Mature share of the cut**
@@ -312,21 +375,19 @@ Clustering distributes its projectiles across distinct available targets before
 wrapping. Dehiscence divides the base interval by `1 + 0.15 × rank`; it is not a
 flat subtraction.
 
-**Root Potency.** Thistle does not take Root amplification as virtual ranks the way
-Vine and Fruit do, and it does not multiply thorn damage at all. Each line takes it in
-the shape that line is about, sampled where the turret is standing and only on Mature
-player ground, and only for a line the run has actually started:
+**Root Potency.** Thistle does not multiply thorn damage at all. Each line takes
+Potency in the shape that line is about, sampled where the turret is standing, and
+only for a line the run has actually started:
 
 | Line | What Root Potency adds |
 |---|---|
-| **Clustering** | **+1 thorn** in the volley |
-| **Burr** | **+1 ricochet** on every thorn |
-| **Dehiscence** | attack rate multiplied by Root's own amplification (**+25%/rank** over a +30% base, scaled by ground maturity) |
-| **Needlepoint** | critical chance multiplied by that same amplification |
+| **Clustering** | **+1 thorn** in the volley, on Mature ground |
+| **Burr** | **+1 ricochet** on every thorn, on Mature ground |
+| **Dehiscence** | its attack-speed bonus multiplied: `1 + 0.15 x rank x amplification` |
+| **Needlepoint** | its critical chance multiplied: `10pp x rank x amplification` |
 
-Counts get whole units because half a thorn is not a thing; rates get the multiplier
-because that is what Root's amplification already is everywhere else. A turret on
-fresh Green gets none of it.
+Counts get whole units because half a thorn is not a thing; the two rate lines get
+their own bonus multiplied. A turret on fresh Green gets none of it.
 
 ### Vine
 
@@ -343,8 +404,10 @@ per sweep. The Vine remains visible between attacks and bends around basalt rath
 than appearing only as a temporary shaft and sector telegraph.
 
 Base damage: **24 per enemy**, inherited from Cane. The normal Apical zone is the
-outermost **25%** of current reach. Root Potency multiplies Vine damage when the
-sweep starts from Mature Green.
+outermost **25%** of current reach. Root Potency reaches all four Vine lines, each on
+its own bonus, sampled at the player position where the sweep starts — so Mature
+Green lengthens the reach, quickens the stroke, and hardens the tip as well as
+raising the damage.
 
 | Line | Per rank | At rank 5 |
 |---|---|---|
@@ -355,7 +418,9 @@ sweep starts from Mature Green.
 
 Elongation and Lignification are additive from their base (`1 + per-rank bonus`).
 Turgor divides cooldown by its speed multiplier. Apical Dominance multiplies the
-already Lignified/Root-amplified hit and never widens the 90° arc.
+already Lignified hit and never widens the 90° arc. Root Potency multiplies each
+line's per-rank bonus, so at rank 5 Lignification with a 2.40x Network, damage is
+`24 x (1 + 0.25 x 5 x 2.40)` = **96**, not `54 x 2.40`.
 
 ### Fruit
 
@@ -370,6 +435,20 @@ ordinary collision momentum loss starts at **32%** and is weighted by enemy mass
 Obstacles reflect the roll while preserving **55%** momentum. Each collision applies
 **38 px knockback** before mass resistance.
 
+A Fruit ends in exactly one way: it slows to a stop and bursts. Two of the three
+things that reduce its speed are multiplications — an obstacle bounce keeps 55% and
+an enemy collision keeps as little as 15% — and a multiplication never arrives at
+zero, so the stop is a **threshold** (`fruit_minimum_roll_speed`, 1 px/s) rather than
+an exact zero, constant deceleration is floored so it can never stall, and every
+Fruit carries a **roll deadline** derived from its own unobstructed roll time
+(`fruit_roll_deadline_safety`, 4x, with an 8s floor) after which it bursts wherever
+it is. The deadline should never fire in a healthy run — a Momentum-5 roll measures
+about 12s against a 30s deadline — and it bursts rather than despawning, so a Fruit
+that hits it still pays out the territory and terminal damage it was owed. Together
+these are what stop a Fruit from being parked microscopically above zero forever:
+motionless, never bursting, never freeing its pool slot, and still dealing contact
+damage to anything that walks into it.
+
 The roll stamps immature Green every **20 px** (0.18 mass, 0.60 pressure cells,
 1.30-cell radius before Germination scaling). At velocity zero, the same Fruit art
 remains planted for a **0.5s fuse**—it does not turn into the Fruitseed image—then
@@ -382,8 +461,14 @@ Base damage: **36 per enemy collision** plus up to **10 terminal explosion damag
 at the center (standard radial falloff reaches 48%, or 4.8 damage, at the edge).
 Ripening and Root Network scale both values. Graft, Prize Fruit, Bank Shot, Durian,
 and first-collision bonuses modify collision damage only.
-The next release's **1.0s cooldown begins only after every normal Fruit and fragment
-from the previous release has exploded**; legendary Dropped Seeds do not hold it.
+The next release's **3.0s cooldown starts the moment the Fruit launch**. Rolling and
+the planted fuse run on their own time inside it, so releases overlap freely and a
+long roll no longer delays the next one. This used to wait for every normal Fruit and
+fragment to explode, which made Momentum a cadence tax: buying reach bought a slower
+release rate, because a base roll takes roughly 2.1s and a rank-5 roll roughly 4.3s.
+The one exception is an armed **GOURDVINE** Weighted Harvest, which stores its batch
+on the Vine tip instead of putting it in the air; the cadence waits for the sweep
+that spends it, because arming a second batch would overwrite the first.
 
 | Line | Per rank | At rank 5 |
 |---|---|---|
@@ -391,6 +476,11 @@ from the previous release has exploded**; legendary Dropped Seeds do not hold it
 | **Ripening** | +25% collision and terminal damage | +125%; 81 collision, 22.5 terminal center |
 | **Momentum** | +20% unobstructed roll distance | +100%; 320 px → 640 px |
 | **Germination** | +20% total Fruit-created Green area | +100%; 2× trail/terminal area budget |
+
+Root Potency reaches all four Fruit lines at the launch origin. Fruit Set is a count,
+so Mature ground adds exactly **one** Fruit however many Potency ranks the run holds;
+Ripening, Momentum, and Germination each take the Network on their own per-rank
+bonus.
 
 Multiple Fruit fan around the dense-sector aim rather than sharing one exact line.
 Germination scales total area: mass/pressure scale linearly and radii use the square
@@ -813,7 +903,7 @@ is up to **10 Bloom damage**, and the terminal Bloom is up to **26** (rank 4: **
 | 1 | **Spiked Fruit** — collisions apply 30% Entanglement |
 | 2 | **Tangled Momentum** — Fruit loses 40% less momentum against Entangled enemies |
 | 3 | **Impalement** — already-fully-Entangled enemies take +25% collision damage |
-| 4 | **Thorned Trail** — fresh Fruit Green gains +50% Ensnare Rate for 4s |
+| 4 | **Thorned Trail** — fresh Fruit Green gains +50% Entanglement Rate for 4s |
 | 5 | **Durian Crash** — terminal Fruit applies 60% Entanglement nearby and one full Bramble Repulsion outward |
 
 Base collision is **36**, rank-3 collision is **45** against a full target, and the

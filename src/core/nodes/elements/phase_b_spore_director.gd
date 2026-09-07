@@ -250,7 +250,7 @@ func _advance_seed_bank(delta: float) -> void:
 		capacity *= 1.0 + evolutions.seed_reserve_capacity_per_rank
 	_seed_bank_storage = minf(
 		capacity,
-		_seed_bank_storage + territory_field.get_mature_player_percent() * storage_rate * delta
+		_seed_bank_storage + territory_field.get_mature_fraction_of_green() * storage_rate * delta
 	)
 	# The Season is a clock now rather than a threshold: it fires on time with
 	# whatever the Bank has managed to store, so the player can count on it.
@@ -756,11 +756,11 @@ func _apply_tangleburst(local_position: Vector2, radius: float) -> void:
 		evolutions.tangleburst_entanglement
 	)
 	if rank >= 2:
-		combat.root_entangled_enemies_in_radius(
+		combat.ensnare_entangled_enemies_in_radius(
 			local_position,
 			radius,
-			evolutions.tangleburst_root_threshold,
-			evolutions.tangleburst_root_seconds
+			evolutions.tangleburst_ensnare_threshold,
+			evolutions.tangleburst_ensnare_hold_seconds
 		)
 	if rank >= 3:
 		combat.pull_enemies_toward(
@@ -769,11 +769,11 @@ func _apply_tangleburst(local_position: Vector2, radius: float) -> void:
 			evolutions.tangleburst_pull_pixels
 		)
 	if rank >= 4:
-		combat.add_ensnare_zone(
+		combat.add_entanglement_rate_zone(
 			local_position,
 			radius,
-			evolutions.tangleburst_ensnare_bonus,
-			evolutions.tangleburst_ensnare_seconds
+			evolutions.tangleburst_entanglement_bonus,
+			evolutions.tangleburst_entanglement_seconds
 		)
 	if (
 		rank >= 5

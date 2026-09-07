@@ -196,6 +196,10 @@ enum QueuedReward {
 @export var health_label: Label
 ## Progress bar that displays the percentage of the arena controlled by Green.
 @export var territory_bar: ProgressBar
+## Draws the rest of the territory bar: what the run does not hold, and how much of
+## what it does hold has established. Optional, so a fixture that builds the HUD
+## without it still runs.
+@export var territory_composition: PhaseBTerritoryComposition
 ## Label that displays Green territory percentage and the Seed-progress tooltip.
 @export var territory_label: Label
 ## Progress bar that displays XP earned toward the next level.
@@ -915,7 +919,7 @@ func advance_run(delta: float) -> void:
 	progression.tick_biomass(
 		delta,
 		territory_field.get_player_percent(),
-		territory_field.get_mature_player_percent(),
+		territory_field.get_mature_percent_of_arena(),
 		1.0
 	)
 	if _clover_enabled:
@@ -2298,14 +2302,25 @@ func _on_evolution_changed(_status: int) -> void:
 
 func _on_territory_metrics_changed(
 	player_percent: float,
-	_hostile_percent: float,
-	_neutral_percent: float,
-	_mature_player_percent: float,
+	hostile_percent: float,
+	neutral_percent: float,
+	mature_player_percent: float,
 	_fragment_count: int
 ) -> void:
 	if not is_node_ready():
 		return
 	territory_bar.value = player_percent
+	if territory_composition != null:
+		# Neutral and Rot are different situations rather than two ways of not being
+		# Green: available soil recovers, entrenched ground has to be taken. The bar
+		# used to render both as the same empty space, so it could not say which of
+		# the two the run was actually in.
+		territory_composition.set_composition(
+			player_percent,
+			neutral_percent,
+			hostile_percent,
+			mature_player_percent
+		)
 	_authored.write(territory_label, {"green": "%.1f" % player_percent})
 
 
@@ -3251,16 +3266,16 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 			return "up to %d%% slow when fully Entangled" % roundi(
 				bramble_director.get_slow_fraction() * 100.0
 			)
-		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE:
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
 			var rate := (
 				combat.bramble_entanglement_per_second
-				* bramble_director.get_ensnare_multiplier()
+				* bramble_director.get_entanglement_rate_multiplier()
 			)
 			return "fully Entangled after %.1fs on Green" % (1.0 / maxf(0.01, rate))
-		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_ROOTS:
-			return "%.2fs root, then %.0fs immune" % [
-				bramble_director.get_root_seconds(),
-				bramble_director.get_root_immunity_seconds(),
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS:
+			return "%.2fs Ensnare, then %.0fs immune" % [
+				bramble_director.get_ensnare_seconds(),
+				bramble_director.get_ensnare_immunity_seconds(),
 			]
 		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION:
 			return "%.0f px knockback on territory attackers" % (
@@ -3335,7 +3350,13 @@ func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
 				adaptation_director.thistle_critical_multiplier,
 			]
 		PhaseBProgression.UpgradeId.VINE_ELONGATION:
-			return "%.0f px Vine reach" % combat.get_cane_reach()
+			# From the export rather than through get_cane_reach, which already folds
+			# in the Root Network where Grandma is standing. This is the plain row;
+			# the Network's contribution is reported on its own row beneath it.
+			return "%.0f px Vine reach" % (
+				combat.cane_reach_pixels
+				* (1.0 + 0.20 * float(progression.get_upgrade_level(upgrade_id)))
+			)
 		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION:
 			return "%.1f damage before Apical, Root, and relic modifiers" % (
 				combat.cane_damage
@@ -3395,11 +3416,27 @@ func _get_root_potency_note(upgrade_id: int) -> String:
 	})
 
 
+func _rooted_line_bonus(upgrade_id: int, per_rank: float, multiplier: float) -> float:
+	# One line's own per-rank bonus out of fully Mature ground. Thistle, Vine, and
+	# Fruit take Root Potency on the bonus they bought rather than on the authored
+	# base, so this is the same expression the Adaptation applies and the ROOTED row
+	# stays honest as the line ranks up.
+	return per_rank * float(progression.get_upgrade_level(upgrade_id)) * multiplier
+
+
+func _has_started_line(upgrade_id: int) -> bool:
+	# Root deepens a line the build has started. An unbought line has no Network row,
+	# and a Clover jackpot lending a Path its ceiling does not create one either.
+	return progression.get_owned_upgrade_level(upgrade_id) > 0
+
+
 func _get_root_potency_effect(upgrade_id: int) -> String:
 	# What this line resolves to on fully Mature ground, read through the same
 	# amplification the systems apply. Full maturity is the honest headline: it is
 	# the ceiling the Network reaches, and every consumer scales down from it with
-	# the age of the ground the effect actually happens on.
+	# the age of the ground the effect actually happens on. Every row names the
+	# line's own number -- its reach, its cadence, its count, its hold -- rather than
+	# reporting a damage figure the line was never about.
 	if root_director == null:
 		return ""
 	var bonus := root_director.get_network_bonus()
@@ -3444,13 +3481,36 @@ func _get_root_potency_effect(upgrade_id: int) -> String:
 				* bloom_director.get_bloom_interval_multiplier()
 				/ multiplier
 			)
-		PhaseBProgression.UpgradeId.BRAMBLE_ENSNARE_RATE:
+		PhaseBProgression.UpgradeId.AFTERGROWTH:
+			return "%d temporary control on Bloomed Green for %.0fs" % [
+				roundi(bloom_director.get_aftergrowth_shield() * multiplier),
+				bloom_director.bloom_tempo_window_seconds,
+			]
+		PhaseBProgression.UpgradeId.SUPPRESSION:
+			return "%d%% less Territory damage for %.0fs after a Bloom" % [
+				roundi(
+					clampf(bloom_director.get_suppression_share() * multiplier, 0.0, 0.95)
+					* 100.0
+				),
+				bloom_director.bloom_tempo_window_seconds,
+			]
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT:
+			return "up to %d%% slow when fully Entangled" % roundi(
+				clampf(bramble_director.get_slow_fraction() * multiplier, 0.0, 0.85)
+				* 100.0
+			)
+		PhaseBProgression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
 			var rate := (
 				combat.bramble_entanglement_per_second
-				* bramble_director.get_ensnare_multiplier()
+				* bramble_director.get_entanglement_rate_multiplier()
 				* multiplier
 			)
 			return "fully Entangled after %.1fs on Green" % (1.0 / maxf(0.01, rate))
+		PhaseBProgression.UpgradeId.BRAMBLE_GRASPING_THORNS:
+			return "%.2fs Ensnare, then %.0fs immune" % [
+				bramble_director.get_ensnare_seconds() * multiplier,
+				bramble_director.get_ensnare_immunity_seconds(),
+			]
 		PhaseBProgression.UpgradeId.BRAMBLE_REPULSION:
 			return "%.0f px knockback on territory attackers" % (
 				bramble_director.get_repulsion_pixels() * multiplier
@@ -3486,58 +3546,75 @@ func _get_root_potency_effect(upgrade_id: int) -> String:
 					* 100.0
 				),
 			]
+		PhaseBProgression.UpgradeId.ROOT_POTENCY:
+			return (
+				"Spore, Bloom, Bramble, Cuttings, thorns, Vine, and Fruit "
+				+ "out of Mature ground"
+			)
+	# Everything below is a Thistle, Vine, or Fruit line. Those paths take Potency one
+	# line at a time, on the bonus that line bought, and only once the build has
+	# actually started the line.
+	if not _has_started_line(upgrade_id):
+		return ""
+	match upgrade_id:
 		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING:
-			# Root deepens a line the run has started rather than inventing one, so an
-			# unbought line has no Network row to show.
-			if progression.get_owned_upgrade_level(upgrade_id) <= 0:
-				return ""
 			return "%d thorns per firing event out of Mature ground" % (
 				2 + progression.get_upgrade_level(upgrade_id)
 			)
+		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE:
+			return "one firing event every %.3fs" % (
+				adaptation_director.thistle_attack_interval / maxf(
+					0.05,
+					1.0 + _rooted_line_bonus(upgrade_id, 0.15, multiplier)
+				)
+			)
 		PhaseBProgression.UpgradeId.THISTLE_BURR:
-			if progression.get_owned_upgrade_level(upgrade_id) <= 0:
-				return ""
 			return "%d full-damage ricochets per thorn out of Mature ground" % (
 				1 + progression.get_upgrade_level(upgrade_id)
 			)
-		PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE:
-			var rooted_rate := (
-				1.0 + 0.15 * float(progression.get_upgrade_level(upgrade_id))
-			) * multiplier
-			return "one firing event every %.3fs" % (
-				adaptation_director.thistle_attack_interval / maxf(0.05, rooted_rate)
-			)
 		PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT:
-			return "%d%% critical chance per impact" % roundi(
-				10.0 * float(progression.get_upgrade_level(upgrade_id)) * multiplier
-			)
-		PhaseBProgression.UpgradeId.VINE_ELONGATION, \
-		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION, \
-		PhaseBProgression.UpgradeId.VINE_TURGOR, \
-		PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE:
-			var rooted_vine_damage := (
-				combat.cane_damage
-				* (1.0 + 0.25 * float(
-					progression.get_upgrade_level(
-						PhaseBProgression.UpgradeId.VINE_LIGNIFICATION
-					)
-				))
-				* multiplier
-			)
-			return "%.1f Vine damage before Apical/relic modifiers" % rooted_vine_damage
-		PhaseBProgression.UpgradeId.FRUIT_SET, \
-		PhaseBProgression.UpgradeId.FRUIT_RIPENING, \
-		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, \
-		PhaseBProgression.UpgradeId.FRUIT_GERMINATION:
-			var rooted_ripening := 1.0 + 0.25 * float(
-				progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUIT_RIPENING)
-			)
-			return "%.1f collision, up to %.1f terminal damage" % [
-				adaptation_director.fruit_collision_damage * rooted_ripening * multiplier,
-				adaptation_director.fruit_terminal_explosion_damage * rooted_ripening * multiplier,
+			return "%d%% critical chance per impact at %.0fx damage" % [
+				roundi(_rooted_line_bonus(upgrade_id, 10.0, multiplier)),
+				adaptation_director.thistle_critical_multiplier,
 			]
-		PhaseBProgression.UpgradeId.ROOT_POTENCY:
-			return "Seeds, Blooms, Cuttings, thorns, and Fruit out of Mature ground"
+		PhaseBProgression.UpgradeId.VINE_ELONGATION:
+			return "%.0f px Vine reach" % (
+				combat.cane_reach_pixels
+				* (1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier))
+			)
+		PhaseBProgression.UpgradeId.VINE_LIGNIFICATION:
+			return "%.1f Vine damage before Apical and relic modifiers" % (
+				combat.cane_damage
+				* (1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier))
+			)
+		PhaseBProgression.UpgradeId.VINE_TURGOR:
+			return "one automatic sweep every %.3fs before relic timing" % (
+				combat.cane_cooldown_seconds
+				/ maxf(0.05, 1.0 + _rooted_line_bonus(upgrade_id, 0.15, multiplier))
+			)
+		PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE:
+			return "%.2fx damage in the outer 25%% of reach" % (
+				1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier)
+			)
+		PhaseBProgression.UpgradeId.FRUIT_SET:
+			return "%d Fruit per release out of Mature ground" % (
+				2 + progression.get_upgrade_level(upgrade_id)
+			)
+		PhaseBProgression.UpgradeId.FRUIT_RIPENING:
+			var rooted_ripening := 1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier)
+			return "%.1f collision damage, up to %.1f terminal damage" % [
+				adaptation_director.fruit_collision_damage * rooted_ripening,
+				adaptation_director.fruit_terminal_explosion_damage * rooted_ripening,
+			]
+		PhaseBProgression.UpgradeId.FRUIT_MOMENTUM:
+			return "%.0f px unobstructed stopping distance" % (
+				adaptation_director.fruit_roll_distance_pixels
+				* (1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier))
+			)
+		PhaseBProgression.UpgradeId.FRUIT_GERMINATION:
+			return "%d%% Fruit-created Green area" % roundi(
+				(1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier)) * 100.0
+			)
 	return ""
 
 

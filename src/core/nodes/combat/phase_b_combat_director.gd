@@ -30,9 +30,9 @@ signal briar_trap_detonated(local_position: Vector2)
 ## An Overgrown enemy shedding a Fruiting Body's Seeds is Spore's business, not
 ## combat's: this reports the rupture and the Spore path decides what Seeds it makes.
 signal fruiting_body_ruptured(local_position: Vector2)
-## Grasping Roots pinned an enemy. Published so a relic can answer a root without
+## Grasping Thorns Ensnared an enemy. Published so a relic can answer an Ensnare without
 ## reaching into the combat loop for it.
-signal enemy_rooted(local_position: Vector2)
+signal enemy_ensnared(local_position: Vector2)
 ## Bramble Repulsion shoved an enemy. Carries where it started and where it is being
 ## sent, because the relics that answer a shove care about what it collides with.
 signal enemy_repelled(enemy_id: int, from_position: Vector2, direction: Vector2)
@@ -100,7 +100,7 @@ enum EnemyRole {
 ## two rule changes on one body is a fight the player cannot read.
 enum EliteModifier {
 	NONE,
-	## Cannot be rooted or shoved. Still fully vulnerable to being slowed, which is
+	## Cannot be Ensnared or shoved. Still fully vulnerable to being slowed, which is
 	## what keeps it a rule change rather than an immunity to Bramble.
 	UNSTOPPABLE,
 	## Leaves Hostile territory in its wake, so its path through the organism has to
@@ -207,7 +207,7 @@ class EnemyState:
 	var xp_value := 1
 	var spawn_wave_number := 1
 	var territory_erosion_scale := 1.0
-	## Share of an incoming root duration, shove distance or slow this body ignores,
+	## Share of an incoming Ensnare duration, shove distance or slow this body ignores,
 	## resolved once at spawn from the wave's curve and this role's own resistance.
 	## Stored on the body rather than read live so an enemy fights at the wave it
 	## entered in, which is the same rule its health and damage already follow.
@@ -222,12 +222,12 @@ class EnemyState:
 	var bramble_repulsion_remaining := 0.0
 	var bramble_crossing_remaining := 0.0
 	var bramble_eruption_remaining := 0.0
-	## Seconds left of a Grasping Roots hold, during which the enemy cannot move.
-	var bramble_root_remaining := 0.0
+	## Seconds left of a Grasping Thorns Ensnare, during which the enemy cannot move.
+	var bramble_ensnare_remaining := 0.0
 	## Full length of the current hold, so the indicator can show what is left of it.
-	var bramble_root_duration := 0.0
-	## Seconds left before this enemy may be rooted again.
-	var bramble_root_immunity_remaining := 0.0
+	var bramble_ensnare_duration := 0.0
+	## Seconds left before this enemy may be Ensnared again.
+	var bramble_ensnare_immunity_remaining := 0.0
 	## Direction of a repulsion shove currently playing out.
 	var knockback_direction := Vector2.ZERO
 	## Seconds left of that shove, which travels over time rather than teleporting.
@@ -660,14 +660,14 @@ const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
 ## Thorn-damage multiplier reached once an enemy is fully Entangled. Chip damage
 ## still rises with Entanglement, but a crossing enemy must never be killed by it.
 @export_range(1.0, 12.0, 0.05) var bramble_entangled_damage_multiplier := 3.00
-## Entanglement gained per second of contact before the Ensnare Rate line applies.
+## Entanglement gained per second of contact before the Entanglement Rate line applies.
 @export_range(0.01, 2.0, 0.01) var bramble_entanglement_per_second := 0.20
 ## Entanglement shed per second once an enemy leaves Bramble-covered ground.
 @export_range(0.0, 4.0, 0.01) var bramble_entanglement_decay_per_second := 0.30
 ## Extra thorn damage supplied by standing in a fully developed frontier hedge.
 @export_range(0.0, 4.0, 0.05) var bramble_frontier_damage_bonus := 0.60
 ## Extra Entanglement rate supplied by a fully developed frontier hedge.
-@export_range(0.0, 4.0, 0.05) var bramble_frontier_ensnare_bonus := 0.75
+@export_range(0.0, 4.0, 0.05) var bramble_frontier_entanglement_bonus := 0.75
 ## One-off thorn damage dealt the moment an enemy crosses an established hedge.
 @export_range(0.0, 100.0, 0.5) var bramble_frontier_crossing_damage := 1.0
 ## Seconds before the same enemy can be hit by crossing a hedge again.
@@ -861,7 +861,7 @@ var _enemy_art_ready := false
 var _enemy_art_baking := false
 var _rampart_center := Vector2(-1.0, -1.0)
 var _rampart_radius := 0.0
-var _rampart_ensnare_bonus := 0.0
+var _rampart_entanglement_rate_bonus := 0.0
 var _rampart_repulsion_multiplier := 1.0
 var _sporulation_enabled := false
 var _sporulation_rate_multiplier := 1.0
@@ -870,9 +870,9 @@ var _fruiting_body_sequence := 0
 var _bramble_enabled := false
 var _bramble_slow_fraction := 0.0
 var _bramble_repulsion_pixels := 0.0
-var _bramble_root_seconds := 0.0
-var _bramble_root_immunity_seconds := 0.0
-var _bramble_ensnare_multiplier := 1.0
+var _bramble_ensnare_seconds := 0.0
+var _bramble_ensnare_immunity_seconds := 0.0
+var _bramble_entanglement_rate_multiplier := 1.0
 var _root_network_bonus := 0.0
 var _old_growth_enabled := false
 var _bramble_horde_refresh_remaining := 0.0
@@ -896,9 +896,10 @@ var _ancient_fury_awakening_cooldown := 10.0
 var _ancient_fury_awakening_remaining := 0.0
 var _pending_eruptions: Array[PendingEruptionState] = []
 var _briar_heart_recharges: Array = []
-var _ensnare_zones: Array = []
-## Short-lived local multipliers created by contaminated Fruit trails. Like Ensnare
-## zones, overlapping patches refresh/choose the strongest value instead of stacking.
+var _entanglement_rate_zones: Array = []
+## Short-lived local multipliers created by contaminated Fruit trails. Like the
+## Entanglement-rate zones, overlapping patches refresh/choose the strongest value
+## instead of stacking.
 var _spore_rate_zones: Array = []
 var _mass_entanglement_elite_share := 0.5
 var _mass_entanglement_boss_share := 0.2
@@ -1077,7 +1078,7 @@ func simulate_step(delta: float) -> void:
 	_update_briar_traps(delta)
 	_update_fruiting_bodies(delta)
 	_update_forest_awakening(delta)
-	_update_ensnare_zones(delta)
+	_update_entanglement_rate_zones(delta)
 	_update_spore_rate_zones(delta)
 	_update_pending_eruptions(delta)
 	_update_root_eruptions(delta)
@@ -1146,11 +1147,11 @@ func _draw() -> void:
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
-		if enemy.bramble_root_remaining > 0.0:
+		if enemy.bramble_ensnare_remaining > 0.0:
 			if use_crowd_lod:
-				_draw_enemy_root_hold_lod(enemy)
+				_draw_enemy_ensnare_hold_lod(enemy)
 			else:
-				_draw_enemy_root_hold(enemy)
+				_draw_enemy_ensnare_hold(enemy)
 		# The baked quad is the art, so there is no longer a density at which the
 		# enemy stops looking like itself. The direct path stays as the fallback for
 		# a driver that could not bake, and for the few enemies whose art is not a
@@ -1180,19 +1181,19 @@ func set_temporary_attack_rate_multiplier(multiplier: float, seconds: float) -> 
 func set_rampart(
 	center: Vector2,
 	radius: float,
-	ensnare_bonus: float,
+	entanglement_rate_bonus: float,
 	repulsion_multiplier: float
 ) -> void:
 	_rampart_center = center
 	_rampart_radius = maxf(0.0, radius)
-	_rampart_ensnare_bonus = maxf(0.0, ensnare_bonus)
+	_rampart_entanglement_rate_bonus = maxf(0.0, entanglement_rate_bonus)
 	_rampart_repulsion_multiplier = clampf(repulsion_multiplier, 0.05, 1.0)
 
 
 func clear_rampart() -> void:
 	_rampart_center = Vector2(-1.0, -1.0)
 	_rampart_radius = 0.0
-	_rampart_ensnare_bonus = 0.0
+	_rampart_entanglement_rate_bonus = 0.0
 	_rampart_repulsion_multiplier = 1.0
 
 
@@ -1211,7 +1212,7 @@ func spread_entanglement_from(
 	maximum_targets: int
 ) -> int:
 	# Snare Vine: the nearest few enemies pick up part of the hold, capped, so a
-	# dense crowd cannot be entangled wholesale by one root.
+	# dense crowd cannot be entangled wholesale by one strand.
 	if amount <= 0.0 or maximum_targets <= 0:
 		return 0
 	var nearby: Array[EnemyState] = []
@@ -1341,7 +1342,7 @@ func reset_combat() -> void:
 	for pending in _pending_eruptions:
 		pending.active = false
 	_briar_heart_recharges.clear()
-	_ensnare_zones.clear()
+	_entanglement_rate_zones.clear()
 	_spore_rate_zones.clear()
 	_ancient_fury_awakening_remaining = 0.0
 	_root_eruption_sequence = 0
@@ -1437,9 +1438,9 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	enemy.bramble_repulsion_remaining = 0.0
 	enemy.bramble_crossing_remaining = 0.0
 	enemy.bramble_eruption_remaining = 0.0
-	enemy.bramble_root_remaining = 0.0
-	enemy.bramble_root_duration = 0.0
-	enemy.bramble_root_immunity_remaining = 0.0
+	enemy.bramble_ensnare_remaining = 0.0
+	enemy.bramble_ensnare_duration = 0.0
+	enemy.bramble_ensnare_immunity_remaining = 0.0
 	enemy.knockback_direction = Vector2.ZERO
 	enemy.knockback_remaining = 0.0
 	enemy.knockback_speed = 0.0
@@ -2137,18 +2138,18 @@ func set_sporulation_modifiers(enabled: bool, rate_multiplier: float = 1.0) -> v
 func set_bramble_modifiers(
 	enabled: bool,
 	slow_fraction: float,
-	ensnare_multiplier: float = 1.0,
-	root_seconds: float = 0.0,
-	root_immunity_seconds: float = 4.0,
+	entanglement_rate_multiplier: float = 1.0,
+	ensnare_seconds: float = 0.0,
+	ensnare_immunity_seconds: float = 4.0,
 	repulsion_pixels: float = 0.0,
 	old_growth_enabled: bool = false,
 	root_network_bonus: float = 0.0
 ) -> void:
 	_bramble_enabled = enabled
 	_bramble_slow_fraction = clampf(slow_fraction, 0.0, 0.85)
-	_bramble_ensnare_multiplier = maxf(0.05, ensnare_multiplier)
-	_bramble_root_seconds = maxf(0.0, root_seconds)
-	_bramble_root_immunity_seconds = maxf(0.0, root_immunity_seconds)
+	_bramble_entanglement_rate_multiplier = maxf(0.05, entanglement_rate_multiplier)
+	_bramble_ensnare_seconds = maxf(0.0, ensnare_seconds)
+	_bramble_ensnare_immunity_seconds = maxf(0.0, ensnare_immunity_seconds)
 	_bramble_repulsion_pixels = maxf(0.0, repulsion_pixels)
 	_old_growth_enabled = old_growth_enabled
 	_root_network_bonus = maxf(0.0, root_network_bonus)
@@ -2156,7 +2157,7 @@ func set_bramble_modifiers(
 		for enemy in _enemies:
 			enemy.was_on_bramble = false
 			enemy.entanglement = 0.0
-			enemy.bramble_root_remaining = 0.0
+			enemy.bramble_ensnare_remaining = 0.0
 			enemy.movement_speed_multiplier = 1.0
 
 
@@ -3169,13 +3170,13 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 	)
 	enemy.bramble_crossing_remaining = maxf(0.0, enemy.bramble_crossing_remaining - delta)
 	enemy.bramble_eruption_remaining = maxf(0.0, enemy.bramble_eruption_remaining - delta)
-	enemy.bramble_root_immunity_remaining = maxf(
+	enemy.bramble_ensnare_immunity_remaining = maxf(
 		0.0,
-		enemy.bramble_root_immunity_remaining - delta
+		enemy.bramble_ensnare_immunity_remaining - delta
 	)
-	# A root outlives the ground that caused it, so an enemy shoved or grown off
+	# An Ensnare outlives the ground that caused it, so an enemy shoved or grown off
 	# the Green mid-hold still finishes serving it.
-	enemy.bramble_root_remaining = maxf(0.0, enemy.bramble_root_remaining - delta)
+	enemy.bramble_ensnare_remaining = maxf(0.0, enemy.bramble_ensnare_remaining - delta)
 
 	# All owned Green is hazardous ground. The frontier hedge and a Briar Pod ring
 	# are bonuses layered on top of that coverage, never its foundation, so holes,
@@ -3197,7 +3198,7 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 		enemy.bramble_frontier_strength = 0.0
 		enemy.bramble_ground_maturity = 0.0
 		enemy.bramble_damage_remaining = 0.0
-		enemy.movement_speed_multiplier = 0.0 if enemy.bramble_root_remaining > 0.0 else 1.0
+		enemy.movement_speed_multiplier = 0.0 if enemy.bramble_ensnare_remaining > 0.0 else 1.0
 		return
 
 	enemy.bramble_frontier_strength = frontier_strength
@@ -3208,17 +3209,22 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 		1.0,
 		enemy.entanglement + _get_entanglement_rate(enemy, contact_strength) * delta
 	)
+	# Root Potency deepens the hold the same way it deepens every other Bramble
+	# effect: read where the enemy is standing, so a fully Entangled enemy on old
+	# Green is slowed harder than one on ground that was Green a moment ago. The
+	# 85% ceiling is the path's own cap and the Network does not lift it.
 	enemy.movement_speed_multiplier = 1.0 - clampf(
 		_bramble_slow_fraction
 		* enemy.entanglement
 		* contact_strength
-		* (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95)),
+		* (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
+		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity),
 		0.0,
 		0.85
 	)
-	_try_root_entangled_enemy(enemy)
-	if enemy.bramble_root_remaining > 0.0:
-		# Grasping Roots holds the enemy outright; the slow it was already under is
+	_try_ensnare_entangled_enemy(enemy)
+	if enemy.bramble_ensnare_remaining > 0.0:
+		# Grasping Thorns holds the enemy outright; the slow it was already under is
 		# irrelevant while it cannot move at all.
 		enemy.movement_speed_multiplier = 0.0
 	if (
@@ -3253,14 +3259,14 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 
 func _get_entanglement_rate(enemy: EnemyState, contact_strength: float) -> float:
 	var frontier_bonus := (
-		1.0 + bramble_frontier_ensnare_bonus * enemy.bramble_frontier_strength
+		1.0 + bramble_frontier_entanglement_bonus * enemy.bramble_frontier_strength
 	)
 	return (
 		bramble_entanglement_per_second
-		* _bramble_ensnare_multiplier
+		* _bramble_entanglement_rate_multiplier
 		* contact_strength
 		* frontier_bonus
-		* (1.0 + _get_ensnare_zone_bonus(enemy.position))
+		* (1.0 + _get_entanglement_rate_zone_bonus(enemy.position))
 		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
 	)
 
@@ -3603,7 +3609,7 @@ func _get_root_network_multiplier(local_position: Vector2, ground_maturity: floa
 	return 1.0 + _root_network_bonus * clampf(ground_maturity, 0.0, 1.0)
 
 
-func add_ensnare_zone(
+func add_entanglement_rate_zone(
 	center: Vector2,
 	radius: float,
 	rate_bonus: float,
@@ -3614,7 +3620,7 @@ func add_ensnare_zone(
 		return
 	# Fruit stamps can arrive every few pixels. Merge nearby equal zones so a long
 	# trail remains one bounded gameplay region rather than hundreds of arrays.
-	for zone in _ensnare_zones:
+	for zone in _entanglement_rate_zones:
 		if (
 			Vector2(zone[0]).distance_to(center) <= maxf(8.0, radius * 0.55)
 			and is_equal_approx(float(zone[2]), rate_bonus)
@@ -3623,32 +3629,32 @@ func add_ensnare_zone(
 			zone[1] = maxf(float(zone[1]), radius)
 			zone[3] = maxf(float(zone[3]), duration)
 			return
-	_ensnare_zones.append([center, radius, rate_bonus, duration])
-	if _ensnare_zones.size() > 64:
-		_ensnare_zones.pop_front()
+	_entanglement_rate_zones.append([center, radius, rate_bonus, duration])
+	if _entanglement_rate_zones.size() > 64:
+		_entanglement_rate_zones.pop_front()
 
 
-func get_active_ensnare_zone_count() -> int:
-	return _ensnare_zones.size()
+func get_active_entanglement_rate_zone_count() -> int:
+	return _entanglement_rate_zones.size()
 
 
-func _update_ensnare_zones(delta: float) -> void:
-	for index in range(_ensnare_zones.size() - 1, -1, -1):
-		var zone: Array = _ensnare_zones[index]
+func _update_entanglement_rate_zones(delta: float) -> void:
+	for index in range(_entanglement_rate_zones.size() - 1, -1, -1):
+		var zone: Array = _entanglement_rate_zones[index]
 		zone[3] = float(zone[3]) - delta
 		if zone[3] <= 0.0:
-			_ensnare_zones.remove_at(index)
+			_entanglement_rate_zones.remove_at(index)
 
 
-func _get_ensnare_zone_bonus(local_position: Vector2) -> float:
+func _get_entanglement_rate_zone_bonus(local_position: Vector2) -> float:
 	var bonus := 0.0
-	for zone in _ensnare_zones:
+	for zone in _entanglement_rate_zones:
 		if local_position.distance_to(zone[0]) <= float(zone[1]):
 			bonus = maxf(bonus, float(zone[2]))
 	if is_in_rampart(local_position):
 		# Living Rampart is a standing zone rather than a timed one, so it is read
 		# here beside the timed zones instead of being re-added every frame.
-		bonus = maxf(bonus, _rampart_ensnare_bonus)
+		bonus = maxf(bonus, _rampart_entanglement_rate_bonus)
 	return bonus
 
 
@@ -3801,13 +3807,13 @@ func apply_entanglement_in_radius(
 	_apply_entanglement_in_radius(center, radius, entanglement_gain)
 
 
-func root_entangled_enemies_in_radius(
+func ensnare_entangled_enemies_in_radius(
 	center: Vector2,
 	radius: float,
 	threshold: float,
-	root_seconds: float
+	ensnare_seconds: float
 ) -> int:
-	# Tangleburst: germination pins whatever was already tangled enough to catch.
+	# Tangleburst: germination Ensnares whatever was already tangled enough to catch.
 	var rooted := 0
 	for enemy in _enemies:
 		if not enemy.active or enemy.entanglement < threshold:
@@ -3816,13 +3822,13 @@ func root_entangled_enemies_in_radius(
 			continue
 		if not territory_field.is_growth_path_clear(center, enemy.position):
 			continue
-		var resisted := root_seconds * (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
+		var resisted := ensnare_seconds * (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
 		if resisted <= 0.0:
 			continue
-		enemy.bramble_root_remaining = maxf(enemy.bramble_root_remaining, resisted)
-		enemy.bramble_root_duration = maxf(
-			enemy.bramble_root_duration,
-			enemy.bramble_root_remaining
+		enemy.bramble_ensnare_remaining = maxf(enemy.bramble_ensnare_remaining, resisted)
+		enemy.bramble_ensnare_duration = maxf(
+			enemy.bramble_ensnare_duration,
+			enemy.bramble_ensnare_remaining
 		)
 		rooted += 1
 	return rooted
@@ -4080,34 +4086,41 @@ func _advance_knockback(enemy: EnemyState, delta: float) -> void:
 		travelled += advance
 
 
-func _try_root_entangled_enemy(enemy: EnemyState) -> void:
-	# Grasping Roots: maximum Entanglement pins the enemy outright. The immunity
+func _try_ensnare_entangled_enemy(enemy: EnemyState) -> void:
+	# Grasping Thorns: maximum Entanglement Ensnares the enemy outright. The immunity
 	# window means a camper is held repeatedly rather than held forever.
 	if (
-		_bramble_root_seconds <= 0.0
+		_bramble_ensnare_seconds <= 0.0
 		or enemy.entanglement < 1.0
-		or enemy.bramble_root_remaining > 0.0
-		or enemy.bramble_root_immunity_remaining > 0.0
+		or enemy.bramble_ensnare_remaining > 0.0
+		or enemy.bramble_ensnare_immunity_remaining > 0.0
 	):
 		return
 	# The hold shortens with the wave's crowd-control resistance; reaching full
 	# Entanglement in the first place deliberately does not, so Bramble's build-up
 	# keeps working at Wave 25 and only its payoff is trimmed.
-	var root_seconds := _bramble_root_seconds * (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
-	if root_seconds <= 0.0:
+	# The Network lengthens the hold where the hold happens. The immunity window is
+	# measured from the hold that was actually applied, so a longer Ensnare out of
+	# Mature ground still cannot chain into a permanent one.
+	var ensnare_seconds := (
+		_bramble_ensnare_seconds
+		* (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
+		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
+	)
+	if ensnare_seconds <= 0.0:
 		return
-	enemy.bramble_root_remaining = root_seconds
-	enemy.bramble_root_duration = root_seconds
-	enemy.bramble_root_immunity_remaining = (
-		root_seconds + _bramble_root_immunity_seconds
+	enemy.bramble_ensnare_remaining = ensnare_seconds
+	enemy.bramble_ensnare_duration = ensnare_seconds
+	enemy.bramble_ensnare_immunity_remaining = (
+		ensnare_seconds + _bramble_ensnare_immunity_seconds
 	)
 	_spawn_root_eruption(enemy.position)
-	enemy_rooted.emit(enemy.position)
+	enemy_ensnared.emit(enemy.position)
 
 
-func get_enemy_root_remaining(enemy_id: int) -> float:
+func get_enemy_ensnare_remaining(enemy_id: int) -> float:
 	var enemy := _find_enemy(enemy_id)
-	return enemy.bramble_root_remaining if enemy != null else 0.0
+	return enemy.bramble_ensnare_remaining if enemy != null else 0.0
 
 
 func _try_erupt_root_network(enemy: EnemyState) -> void:
@@ -5415,8 +5428,8 @@ func _advance_elite_modifier(enemy: EnemyState, delta: float) -> void:
 			# Rooted is the one state it refuses. Slowed is deliberately left alone:
 			# the note says it can still be slowed, and an Unstoppable that ignored
 			# Bramble entirely would read as immunity rather than as a rule change.
-			enemy.bramble_root_remaining = 0.0
-			enemy.bramble_root_duration = 0.0
+			enemy.bramble_ensnare_remaining = 0.0
+			enemy.bramble_ensnare_duration = 0.0
 			enemy.knockback_remaining = 0.0
 		EliteModifier.REGENERATIVE:
 			if (
@@ -5699,11 +5712,11 @@ func _draw_occluded_briar_arc(center: Vector2, radius: float, color: Color) -> v
 		previous_visible = visible
 
 
-func _draw_enemy_root_hold(enemy: EnemyState) -> void:
+func _draw_enemy_ensnare_hold(enemy: EnemyState) -> void:
 	# Drawn beneath the enemy so the body stays readable: roots clamped around its
 	# feet, plus a ring that unwinds as the hold runs out.
 	var remaining_fraction := clampf(
-		enemy.bramble_root_remaining / maxf(0.01, enemy.bramble_root_duration),
+		enemy.bramble_ensnare_remaining / maxf(0.01, enemy.bramble_ensnare_duration),
 		0.0,
 		1.0
 	)
@@ -5737,9 +5750,9 @@ func _draw_enemy_root_hold(enemy: EnemyState) -> void:
 		)
 
 
-func _draw_enemy_root_hold_lod(enemy: EnemyState) -> void:
+func _draw_enemy_ensnare_hold_lod(enemy: EnemyState) -> void:
 	var remaining_fraction := clampf(
-		enemy.bramble_root_remaining / maxf(0.01, enemy.bramble_root_duration),
+		enemy.bramble_ensnare_remaining / maxf(0.01, enemy.bramble_ensnare_duration),
 		0.0,
 		1.0
 	)
