@@ -5468,11 +5468,11 @@ func _run() -> void:
 	prototype.progression.reset_progression()
 	prototype.progression._owned_relics[RelicCatalog.Id.HARD_HUSK] = 1
 	prototype.progression._owned_relics[RelicCatalog.Id.DOMINO_GERMINATION] = 1
-	prototype._update_relic_slots()
-	var common_edge := prototype.relic_slots.get_slot_border_color(0)
-	var legendary_edge := prototype.relic_slots.get_slot_border_color(1)
-	var empty_edge := prototype.relic_slots.get_slot_border_color(2)
-	var slot_names_rarity := prototype.relic_slots.get_slot_tooltip(1).contains("LEGENDARY")
+	prototype.relic_tray.refresh()
+	var common_edge := prototype.relic_tray.slots.get_slot_border_color(0)
+	var legendary_edge := prototype.relic_tray.slots.get_slot_border_color(1)
+	var empty_edge := prototype.relic_tray.slots.get_slot_border_color(2)
+	var slot_names_rarity := prototype.relic_tray.slots.get_slot_tooltip(1).contains("LEGENDARY")
 	# Hue only: the row keeps its own border alpha so a rarity cannot quietly change how
 	# solid a slot looks, only what colour it is.
 	var same_hue := func(edge: Color, rarity: int) -> bool:
@@ -5491,7 +5491,7 @@ func _run() -> void:
 		"a relic slot is coloured by its rarity and still names it in words"
 	)
 	prototype.progression.reset_progression()
-	prototype._update_relic_slots()
+	prototype.relic_tray.refresh()
 
 	# All In whiff: everything goes, the ordinary extinction countdown is held off, and
 	# the run gets exactly three seconds to put something back.
@@ -5954,7 +5954,7 @@ func _run() -> void:
 	# length several times a second, and rebuilding on an assignment that changed
 	# nothing destroyed every slot ten times a second: long enough to draw, never
 	# long enough to finish the half-second hover a tooltip needs.
-	var relic_panel := prototype.relic_slots.get_child(0, true)
+	var relic_panel := prototype.relic_tray.slots.get_child(0, true)
 	var upgrade_panel := slot_row.get_child(0, true)
 	var relic_instance := relic_panel.get_instance_id()
 	var upgrade_instance := upgrade_panel.get_instance_id()
@@ -5962,7 +5962,7 @@ func _run() -> void:
 		prototype._update_hud()
 	_check(
 		is_instance_valid(relic_panel)
-		and prototype.relic_slots.get_child(0, true).get_instance_id() == relic_instance
+		and prototype.relic_tray.slots.get_child(0, true).get_instance_id() == relic_instance
 		and is_instance_valid(upgrade_panel)
 		and slot_row.get_child(0, true).get_instance_id() == upgrade_instance,
 		"slots survive a HUD refresh, so a hover can last long enough to raise a tooltip"
@@ -5971,7 +5971,7 @@ func _run() -> void:
 	# A held relic explains itself on hover, the way an upgrade line does.
 	prototype.progression._owned_relics[RelicCatalog.Id.GREEN_THUMB] = 1
 	prototype._update_hud()
-	var relic_tooltip := prototype.relic_slots.get_slot_tooltip(0)
+	var relic_tooltip := prototype.relic_tray.slots.get_slot_tooltip(0)
 	prototype.progression._owned_relics[RelicCatalog.Id.GREEN_THUMB] = 0
 	_check(
 		relic_tooltip.contains("Green Thumb")
@@ -7191,15 +7191,15 @@ func _run() -> void:
 	var campaign_relic_target := 14
 	for tray_relic in range(campaign_relic_target):
 		prototype.progression._owned_relics[tray_relic] = 1
-	prototype._update_relic_slots()
-	var shown := prototype.relic_slots.get_slot_count()
+	prototype.relic_tray.refresh()
+	var shown := prototype.relic_tray.slots.get_slot_count()
 	var every_relic_named := true
 	for tray_index in range(campaign_relic_target):
-		if prototype.relic_slots.get_slot_tooltip(tray_index).is_empty():
+		if prototype.relic_tray.slots.get_slot_tooltip(tray_index).is_empty():
 			every_relic_named = false
 			break
 	prototype.progression.reset_progression()
-	prototype._update_relic_slots()
+	prototype.relic_tray.refresh()
 	_check(
 		shown >= campaign_relic_target and every_relic_named,
 		"the relic tray shows a whole run's relics rather than stopping at six (%d)"

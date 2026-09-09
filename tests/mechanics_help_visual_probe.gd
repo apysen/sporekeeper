@@ -65,18 +65,18 @@ func _run() -> void:
 	prototype._choice_kind = RunRoot.ChoiceKind.NONE
 	prototype._choice_ids.clear()
 	prototype._mechanics_help.hide_tooltip()
-	prototype.relic_slots.set_slot(
+	prototype.relic_tray.slots.set_slot(
 		0,
 		"RB",
 		"",
 		"ROOTED BARK\nGain defense while standing on Mature Green. Root Potency improves the effect.",
 		UpgradeSlots.SlotState.FILLED
 	)
-	Input.warp_mouse(prototype.relic_slots.get_slot_global_rect(0).get_center() * 2.0)
-	prototype._on_hud_slot_hovered(0, prototype.relic_slots)
+	Input.warp_mouse(prototype.relic_tray.slots.get_slot_global_rect(0).get_center() * 2.0)
+	prototype.relic_tray._on_slot_hovered(0)
 	await process_frame
 	await process_frame
-	var relic_source := prototype.relic_slots.get_slot_global_rect(0)
+	var relic_source := prototype.relic_tray.slots.get_slot_global_rect(0)
 	var relic_card := prototype._mechanics_help._stack.get_rect()
 	if absf(relic_source.position.y - relic_card.end.y - MechanicsHelp.HUD_GAP) > 1.0:
 		push_error("Relic tooltip is not directly above its bottom-tray slot")
@@ -140,7 +140,7 @@ func _run() -> void:
 		UpgradeSlots.SlotState.FILLED
 	)
 	Input.warp_mouse(prototype.adaptation_tree.core_one_slots.get_slot_global_rect(0).get_center() * 2.0)
-	prototype._on_hud_slot_hovered(0, prototype.adaptation_tree.core_one_slots)
+	prototype.adaptation_tree._on_slot_hovered(0, prototype.adaptation_tree.core_one_slots)
 	await process_frame
 	await process_frame
 	var adaptation_source := prototype.adaptation_tree.core_one_slots.get_slot_global_rect(0)
@@ -155,8 +155,8 @@ func _run() -> void:
 	_save("res://.godot/mechanics_adaptation_tooltip.png")
 	prototype._mechanics_help.hide_tooltip()
 	prototype._open_pause_menu()
-	Input.warp_mouse(prototype.relic_slots.get_slot_global_rect(0).get_center() * 2.0)
-	prototype._on_hud_slot_hovered(0, prototype.relic_slots)
+	Input.warp_mouse(prototype.relic_tray.slots.get_slot_global_rect(0).get_center() * 2.0)
+	prototype.relic_tray._on_slot_hovered(0)
 	await process_frame
 	await process_frame
 	_save("res://.godot/mechanics_paused_hud_tooltip.png")

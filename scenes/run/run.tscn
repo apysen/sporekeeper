@@ -99,6 +99,7 @@
 [ext_resource type="PackedScene" path="res://scenes/run/run_audio.tscn" id="203_run_audio"]
 [ext_resource type="PackedScene" path="res://scenes/ui/drafts/choice_panel.tscn" id="204_choice_panel"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/adaptation_tree.tscn" id="205_adaptation_tree"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/relic_tray.tscn" id="206_relic_tray"]
 
 [sub_resource type="ShaderMaterial" id="TerritoryCompositionMaterial"]
 shader = ExtResource("97_bar_composition_shader")
@@ -226,7 +227,7 @@ region = Rect2(138, 0, 627, 624)
 atlas = ExtResource("26_slot_lever_down")
 region = Rect2(138, 0, 627, 624)
 
-[node name="RunRoot" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "health_bar", "health_label", "territory_bar", "territory_label", "territory_composition", "xp_bar", "xp_label", "wave_label", "status_label", "hostile_label", "evolution_label", "relics_label", "relic_slots", "slot_panel", "all_in_label", "banner_label", "result_panel", "result_header", "result_detail", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "pause_menu", "run_audio", "choice_panel", "adaptation_tree")]
+[node name="RunRoot" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "audio_settings", "health_bar", "health_label", "territory_bar", "territory_label", "territory_composition", "xp_bar", "xp_label", "wave_label", "status_label", "hostile_label", "evolution_label", "relic_tray", "slot_panel", "all_in_label", "banner_label", "result_panel", "result_header", "result_detail", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "pause_menu", "run_audio", "choice_panel", "adaptation_tree")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -263,8 +264,7 @@ wave_label = NodePath("Interface/SidePanel/WaveLabel")
 status_label = NodePath("Interface/SidePanel/StatusLabel")
 hostile_label = NodePath("Interface/SidePanel/HostileLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
-relics_label = NodePath("Interface/UpgradeTray/RelicsLabel")
-relic_slots = NodePath("Interface/UpgradeTray/RelicSlots")
+relic_tray = NodePath("Interface/RelicTray")
 slot_panel = NodePath("Interface/SidePanel/SlotMachinePanel")
 all_in_label = NodePath("Interface/AllInCountdown")
 banner_label = NodePath("Interface/Banner")
@@ -694,46 +694,6 @@ autowrap_mode = 2
 
 [node name="SlotMachinePanel" parent="Interface/SidePanel" instance=ExtResource("201_slot_panel")]
 
-[node name="UpgradeTray" type="Panel" parent="Interface" unique_id=1622654852]
-z_index = 21
-offset_left = 24.0
-offset_top = 651.0
-offset_right = 984.0
-offset_bottom = 708.0
-theme_override_styles/panel = ExtResource("31_tray_style")
-
-[node name="RelicsLabel" type="Label" parent="Interface/UpgradeTray" unique_id=600132886]
-layout_mode = 0
-offset_left = 16.0
-offset_top = 9.0
-offset_right = 96.0
-offset_bottom = 49.0
-theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
-theme_override_font_sizes/font_size = 20
-text = "RELICS"
-horizontal_alignment = 1
-vertical_alignment = 1
-autowrap_mode = 2
-
-[node name="RelicSlots" type="Control" parent="Interface/UpgradeTray" unique_id=1188305471]
-anchors_preset = 0
-offset_left = 102.0
-offset_top = 12.0
-offset_right = 616.0
-offset_bottom = 46.0
-script = ExtResource("20_upgrade_slots")
-slot_count = 14
-slot_size = 33.0
-slot_spacing = 4.0
-level_font_size = 7
-locked_icon = ExtResource("21_lock_icon")
-locked_icon_scale = 0.35
-locked_icon_offset = Vector2(-0.52, -1.26)
-empty_marker_font_size = 13
-title_offset_scale = 0.07
-level_offset_scale = 0.4
-slot_texture_style = ExtResource("35_slot_style")
-
 [node name="Banner" type="Label" parent="Interface" unique_id=771320547]
 modulate = Color(1, 1, 1, 0)
 offset_left = 224.0
@@ -810,3 +770,5 @@ horizontal_alignment = 1
 [node name="EnemyProfiles" parent="CombatDirector" instance=ExtResource("202_enemy_profiles")]
 
 [node name="AdaptationTree" parent="Interface/SidePanel" instance=ExtResource("205_adaptation_tree")]
+
+[node name="RelicTray" parent="Interface" instance=ExtResource("206_relic_tray")]

@@ -60,7 +60,8 @@ RunRoot
 └── Interface
     ├── SidePanel
     │   ├── SlotMachinePanel   (scenes/ui/hud/slot_machine_panel.tscn)
-    │   └── UpgradeSection
+    │   └── AdaptationTree     (scenes/ui/hud/adaptation_tree.tscn)
+    ├── RelicTray          (scenes/ui/hud/relic_tray.tscn)
     ├── ChoicePanel        (scenes/ui/drafts/choice_panel.tscn)
     ├── ResultPanel
     └── PauseMenu          (scenes/ui/menus/pause_menu.tscn)
@@ -75,16 +76,23 @@ signals, rather than letting the run root reach into its children:
 | --- | --- | --- |
 | `PauseMenu` | Pause panel, settings page, volume and fullscreen controls, dev-control card | `opened`, `closed`, `settings_toggled`, `glossary_requested`, `main_menu_requested`, `quit_requested` |
 | `SlotMachinePanel` | Reels and their near-miss rewind, the lever, the wager notch, the odds readout, pair-focus scaling | `spin_started`, `spin_refused`, `cinematic_started`, `cinematic_ended` |
+| `AdaptationTree` | The two Core rows, the Evolution between them, and the two Branch rows | `slot_hovered` |
+| `RelicTray` | The fixed heading and the relic row, including the empty socket that names the next reward | `slot_hovered` |
 | `ChoicePanel` | A heading, four cards and a reroll - and nothing about what a card means | `option_chosen`, `reroll_requested`, `option_hovered` |
 | `EnemyProfiles` | The authored enemy roster, one child per archetype | nothing; `CombatDirector` reads it |
 | `RunAudio` | The ambient theme and the three Clover voices | nothing; callers ask it to play |
 
-`Interface/SidePanel/UpgradeSection` has **not** been pulled out yet. Its rows are
-drawn from `_build_upgrade_tooltip` and `_get_upgrade_abbreviation`, which sit on
-several hundred lines of upgrade-description logic reading `Progression` and every
-path director. Extracting the scene before that logic moves to `src/core/rules/`
-would give the sub-scene nothing to draw with except a call back into the run
-root, which is the coupling inverted rather than removed. The rules move first.
+Every interface region of the run scene is now a sub-scene. The Adaptation rows
+went last but one, and only after the upgrade-description logic they draw with had
+moved to `src/core/rules/progression/upgrade_descriptions.gd` - extracting the
+scene first would have given it nothing to draw with except a call back into the
+run root, which is the coupling inverted rather than removed. The rules move first.
+
+Both slot rows report a hover rather than showing one. The tooltip stack they
+would draw into is shared with the reward hovers that belong to neither of them,
+so `RunRoot._show_slot_tooltip` owns it and each row only says what was hovered
+and where. The wording each row prints comes from `UpgradeDescriptions`, which the
+run root and the rows each hold, so neither reaches through the other for a string.
 
 The principal editing surfaces are:
 

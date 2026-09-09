@@ -188,11 +188,8 @@ enum QueuedReward {
 @export var hostile_label: Label
 ## Label that displays selected Plant paths, mastery readiness, and active evolution.
 @export var evolution_label: Label
-## Label that lists relics acquired during the current run.
-@export var relics_label: Label
-## Label used for milestone, combat, upgrade, and failure-status messages.
-## Row of rounded slots showing which relics the run holds.
-@export var relic_slots: UpgradeSlots
+## The relic row: the run's relics as rounded slots, under a fixed heading.
+@export var relic_tray: RelicTray
 ## Panel shown while the player chooses an upgrade or relic.
 ## The Adaptation panel: the Core and Branch rows and the Evolution between them.
 @export var adaptation_tree: AdaptationTree
@@ -335,8 +332,6 @@ var _conductive_reveal_remaining := 0.0
 ## Whether the last input came from a controller. The focus ring is a controller
 ## affordance: with a mouse in hand it is a white box sitting on a button nobody is
 ## about to press, so it is only shown once a pad is actually being used.
-## Authored row lengths, captured before the rows are trimmed to what the run has.
-var _maximum_relic_slots := 6
 var _hud_accumulator := 0.0
 var _base_natural_spread_rate := 0.0
 var _base_maturity_resistance_bonus := 0.0
@@ -391,10 +386,6 @@ func _ready() -> void:
 		territory_field,
 		root_potency_note_template,
 	)
-	# The authored row lengths are the ceiling the run grows toward, so they are
-	# read once before either row is trimmed to what the run currently holds.
-	if relic_slots != null:
-		_maximum_relic_slots = relic_slots.slot_count
 	assert(banner_label != null, "RunRoot requires the event banner")
 	assert(run_audio != null, "RunRoot requires RunAudio")
 	var required_interface_controls: Array[Control] = [
@@ -408,8 +399,6 @@ func _ready() -> void:
 		status_label,
 		hostile_label,
 		evolution_label,
-		relics_label,
-		relic_slots,
 		result_panel,
 		result_header,
 		result_detail,
@@ -477,9 +466,11 @@ func _ready() -> void:
 	# costs the run - a status line, and a battlefield that stops for the first pair.
 	slot_panel.setup(slot_machine, player, wager_layer, _clover_enabled)
 	adaptation_tree.setup(progression, _descriptions)
-	adaptation_tree.slot_hovered.connect(_on_tree_slot_hovered)
-	if relic_slots != null:
-		relic_slots.slot_hovered.connect(_on_hud_slot_hovered.bind(relic_slots))
+	adaptation_tree.slot_hovered.connect(_show_slot_tooltip)
+	# The tray reads the run's authored relic cadence so its empty socket can name
+	# where the next relic comes from; the number stays authored here.
+	relic_tray.setup(progression, relic_director, relic_reward_wave_cycle)
+	relic_tray.slot_hovered.connect(_show_slot_tooltip)
 	slot_panel.spin_started.connect(_on_slot_spin_started)
 	slot_panel.spin_refused.connect(_set_status)
 	slot_panel.cinematic_started.connect(_on_slot_cinematic_started)
@@ -1244,20 +1235,10 @@ func _on_reels_started(stake: int, committed_cells: PackedInt32Array) -> void:
 	slot_panel.refresh_controls()
 
 
-func _on_hud_slot_hovered(index: int, row: UpgradeSlots) -> void:
-	# The relic row, which lives in the tray rather than the Adaptation panel and so
-	# is still this script's to describe.
-	var description := row.get_slot_tooltip(index)
-	if description.is_empty():
-		return
-	var title := description.get_slice("
-", 0).strip_edges()
-	_mechanics_help.show_hud_tooltip(
-		title, MechanicsHelp.tooltip_body(description, title), row.get_slot_global_rect(index)
-	)
-
-
-func _on_tree_slot_hovered(title: String, body: String, anchor: Rect2) -> void:
+## Both slot rows - the Adaptation panel and the relic tray - report a hover rather
+## than showing it, because the tooltip stack they would draw into is shared with
+## reward hovers that belong to neither of them.
+func _show_slot_tooltip(title: String, body: String, anchor: Rect2) -> void:
 	_mechanics_help.show_hud_tooltip(title, body, anchor)
 
 
@@ -1977,68 +1958,9 @@ func _update_hud() -> void:
 			# Nothing worth announcing until a pairing is actually in reach.
 			evolution_label.text = ""
 			evolution_label.modulate = Color("93aab0")
-	# The relics heading is a fixed word the scene owns; the run's Paths are read
-	# from the slots beneath it rather than from this line.
 	_advance_all_in_countdown()
-	_update_relic_slots()
+	relic_tray.refresh()
 	adaptation_tree.refresh()
-
-
-
-func _update_relic_slots() -> void:
-	if relic_slots == null:
-		return
-	# The pool is far larger than the row, so the row shows what the run actually
-	# holds, in the order it was taken, with the trigger counter a relic needs to
-	# be readable on the slot itself.
-	var held := PackedInt32Array()
-	for relic_id in range(RelicCatalog.get_count()):
-		if progression.has_relic(relic_id):
-			held.append(relic_id)
-	# One empty socket beyond what the run holds: enough to say more are coming,
-	# without a permanent row of placeholders for relics it may never take.
-	relic_slots.slot_count = clampi(held.size() + 1, 1, _maximum_relic_slots)
-	# The empty slot names where the next relic comes from, so the authored wave
-	# cadence is what the tooltip reports rather than a number written twice.
-	var empty_hint := "Empty relic slot.\nDefeat an elite or the boss to choose a relic."
-	if relic_reward_wave_cycle > 0:
-		empty_hint = (
-			"Empty relic slot.\nEvery %d waves, the elite, and the boss each offer one."
-			% relic_reward_wave_cycle
-		)
-	for index in range(relic_slots.get_slot_count()):
-		if index >= held.size():
-			relic_slots.set_slot(
-				index,
-				relic_slots.empty_marker,
-				"",
-				empty_hint,
-				UpgradeSlots.SlotState.EMPTY
-			)
-			continue
-		var relic_id := held[index]
-		var relic_name := Progression.get_relic_name(relic_id)
-		var rarity := RelicCatalog.get_rarity(relic_id)
-		var tooltip := "%s   %s\n%s" % [
-			relic_name,
-			RelicCatalog.get_rarity_name(rarity),
-			progression.get_relic_description(relic_id),
-		]
-		var counter := relic_director.get_relic_counter_text(relic_id)
-		if not counter.is_empty():
-			tooltip += "\nProgress: %s" % counter
-		relic_slots.set_slot(
-			index,
-			UpgradeDescriptions.initials(relic_name),
-			counter,
-			tooltip,
-			UpgradeSlots.SlotState.FILLED,
-			# Rarity on the slot itself, so the row reads as a collection at a glance
-			# rather than only under the pointer. Colour is never the only signal: the
-			# tooltip still names the rarity in words, which is the same rule the reel
-			# faces and the Bust symbol follow.
-			RelicCatalog.get_rarity_color(rarity)
-		)
 
 
 func _format_time(seconds: float) -> String:

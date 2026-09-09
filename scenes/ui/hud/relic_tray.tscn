@@ -1,0 +1,51 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" uid="uid://d228oue1fn11s" path="res://src/core/nodes/run/upgrade_slots.gd" id="20_upgrade_slots"]
+[ext_resource type="Texture2D" uid="uid://nknmqellq7dm" path="res://assets/icons/lock.svg" id="21_lock_icon"]
+[ext_resource type="StyleBox" path="res://assets/ui/tray_style.tres" id="31_tray_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/slot_style.tres" id="35_slot_style"]
+[ext_resource type="Script" path="res://src/core/nodes/ui/relic_tray.gd" id="1_root"]
+
+[node name="RelicTray" type="Panel"]
+unique_name_in_owner = true
+z_index = 21
+offset_left = 24.0
+offset_top = 651.0
+offset_right = 984.0
+offset_bottom = 708.0
+theme_override_styles/panel = ExtResource("31_tray_style")
+script = ExtResource("1_root")
+
+[node name="RelicsLabel" type="Label" parent="." unique_id=600132886]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 16.0
+offset_top = 9.0
+offset_right = 96.0
+offset_bottom = 49.0
+theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
+theme_override_font_sizes/font_size = 20
+text = "RELICS"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="RelicSlots" type="Control" parent="." unique_id=1188305471]
+unique_name_in_owner = true
+anchors_preset = 0
+offset_left = 102.0
+offset_top = 12.0
+offset_right = 616.0
+offset_bottom = 46.0
+script = ExtResource("20_upgrade_slots")
+slot_count = 14
+slot_size = 33.0
+slot_spacing = 4.0
+level_font_size = 7
+locked_icon = ExtResource("21_lock_icon")
+locked_icon_scale = 0.35
+locked_icon_offset = Vector2(-0.52, -1.26)
+empty_marker_font_size = 13
+title_offset_scale = 0.07
+level_offset_scale = 0.4
+slot_texture_style = ExtResource("35_slot_style")

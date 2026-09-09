@@ -39,7 +39,7 @@ func _run() -> void:
 	await process_frame
 
 	var offenders := 0
-	for row: UpgradeSlots in [prototype.relic_slots, prototype.adaptation_tree.core_one_slots]:
+	for row: UpgradeSlots in [prototype.relic_tray.slots, prototype.adaptation_tree.core_one_slots]:
 		if row == null:
 			continue
 		for index in range(row.get_slot_count()):
