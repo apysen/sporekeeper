@@ -5923,25 +5923,25 @@ func _run() -> void:
 	] = 2
 	prototype._apply_progression_modifiers()
 	prototype._update_hud()
-	var slot_row := prototype.upgrade_slots
+	var slot_row := prototype.adaptation_tree.core_one_slots
 	var filled_tooltip := slot_row.get_slot_tooltip(0)
 	var empty_tooltip := slot_row.get_slot_tooltip(2)
-	var locked_tooltip := prototype._evolution_upgrade_slot.get_slot_tooltip(0)
+	var locked_tooltip := prototype.adaptation_tree.evolution_slot.get_slot_tooltip(0)
 	var expected_slow := roundi(prototype.bramble_director.get_slow_fraction() * 100.0)
 	_check(
 		slot_row.get_slot_count() == 4
-		and prototype._secondary_upgrade_slots.get_slot_count() == 4
-		and prototype._evolution_upgrade_slot.get_slot_count() == 1
-		and prototype._support_upgrade_slots.get_slot_count() == 4
-		and prototype._branch_two_upgrade_slots.get_slot_count() == 4
+		and prototype.adaptation_tree.core_two_slots.get_slot_count() == 4
+		and prototype.adaptation_tree.evolution_slot.get_slot_count() == 1
+		and prototype.adaptation_tree.branch_one_slots.get_slot_count() == 4
+		and prototype.adaptation_tree.branch_two_slots.get_slot_count() == 4
 		# Every row is named plainly; nothing marks one Adaptation over another.
-		and prototype._path_one_label.text == "BRAMBLE"
-		and prototype._path_two_label.text == "ROOT"
-		and prototype._support_path_label.text == "BRANCH 1"
-		and prototype._branch_two_label.text == "BRANCH 2"
-		and prototype._support_path_emblem_lock.visible
-		and prototype._branch_two_emblem_lock.visible
-		and not prototype._support_path_emblem.visible
+		and prototype.adaptation_tree.core_one_label.text == "BRAMBLE"
+		and prototype.adaptation_tree.core_two_label.text == "ROOT"
+		and prototype.adaptation_tree.branch_one_label.text == "BRANCH 1"
+		and prototype.adaptation_tree.branch_two_label.text == "BRANCH 2"
+		and prototype.adaptation_tree.branch_one_emblem_lock.visible
+		and prototype.adaptation_tree.branch_two_emblem_lock.visible
+		and not prototype.adaptation_tree.branch_one_emblem.visible
 		and filled_tooltip.contains("Entanglement")
 		and filled_tooltip.contains("3/3")
 		and filled_tooltip.contains("up to %d%% slow" % expected_slow)
@@ -5986,9 +5986,9 @@ func _run() -> void:
 	# marker.
 	_check(
 		slot_row.locked_icon != null
-		and prototype._evolution_upgrade_slot.is_slot_locked_icon_visible(0)
-		and prototype._support_upgrade_slots.is_slot_locked_icon_visible(0)
-		and prototype._evolution_upgrade_slot.get_slot_level_text(0).is_empty()
+		and prototype.adaptation_tree.evolution_slot.is_slot_locked_icon_visible(0)
+		and prototype.adaptation_tree.branch_one_slots.is_slot_locked_icon_visible(0)
+		and prototype.adaptation_tree.evolution_slot.get_slot_level_text(0).is_empty()
 		# A bought line reads against its own ceiling, so 2 of 3 is never mistaken
 		# for a barely-started five-rank line. An unbought one keeps only its marker.
 		and slot_row.get_slot_level_text(2).is_empty()
@@ -6008,13 +6008,13 @@ func _run() -> void:
 	prototype.progression.grant_evolution_if_ready()
 	prototype._apply_progression_modifiers()
 	prototype._update_hud()
-	var branch_tooltip := prototype._support_upgrade_slots.get_slot_tooltip(0)
+	var branch_tooltip := prototype.adaptation_tree.branch_one_slots.get_slot_tooltip(0)
 	_check(
 		slotted_after.size() == slotted_before.size() + 1
 		and slotted_after[0] == slotted_before[0]
 		and slotted_after[1] == slotted_before[1]
-		and prototype._evolution_upgrade_slot.get_slot_level_text(0) == "1/5"
-		and prototype._support_path_emblem_lock.visible
+		and prototype.adaptation_tree.evolution_slot.get_slot_level_text(0) == "1/5"
+		and prototype.adaptation_tree.branch_one_emblem_lock.visible
 		and branch_tooltip.contains("Elite Rootbreaker"),
 		"a line keeps its slot, and evolving never opens a Branch row"
 	)
@@ -6023,8 +6023,8 @@ func _run() -> void:
 	# making the HUD jump when Evolution is claimed.
 	_check(
 		slot_row.get_slot_count() == 4
-		and prototype._secondary_upgrade_slots.get_slot_count() == 4
-		and prototype._support_upgrade_slots.get_slot_count() == 4,
+		and prototype.adaptation_tree.core_two_slots.get_slot_count() == 4
+		and prototype.adaptation_tree.branch_one_slots.get_slot_count() == 4,
 		"the upgrade tree keeps its path-grouped silhouette as states unlock"
 	)
 
@@ -6032,20 +6032,28 @@ func _run() -> void:
 	# here the way it would be re-typed on the node in the editor, the HUD is asked to
 	# refresh, and the running label is read back: wording, spacing and which values
 	# appear at all follow the scene rather than a format string in code.
+	# The third entry is the AuthoredText that owns each label. Re-typing wording in
+	# the editor reaches the registry belonging to the scene the node lives in, so a
+	# label inside a sub-scene is re-authored through that sub-scene's own registry.
 	var authored_probes := [
-		[prototype.slots_label, "LINES {filled} OF {total}"],
-		[prototype.health_label, "VITALITY {current}"],
-		[prototype.territory_label, "HELD {green} PERCENT"],
-		[prototype.xp_label, "LVL {level}"],
-		[prototype.hostile_label, "{hostiles} ENEMIES ABOUT"],
-		[prototype.wave_label, "ROUND {wave}"],
+		[
+			prototype.adaptation_tree.heading_label,
+			"LINES {filled} OF {total}",
+			prototype.adaptation_tree._authored,
+		],
+		[prototype.health_label, "VITALITY {current}", prototype._authored],
+		[prototype.territory_label, "HELD {green} PERCENT", prototype._authored],
+		[prototype.xp_label, "LVL {level}", prototype._authored],
+		[prototype.hostile_label, "{hostiles} ENEMIES ABOUT", prototype._authored],
+		[prototype.wave_label, "ROUND {wave}", prototype._authored],
 	]
 	var authored_reaches_game := true
 	var authored_report := ""
 	for probe: Array in authored_probes:
 		var label: Label = probe[0]
 		var authored: String = probe[1]
-		prototype._authored.set_template(label, authored)
+		var registry: AuthoredText = probe[2]
+		registry.set_template(label, authored)
 	prototype._on_health_changed(
 		prototype.player.get_health(),
 		prototype.player.maximum_health
@@ -6081,10 +6089,12 @@ func _run() -> void:
 	)
 	# A placeholder the author deletes simply stops appearing, rather than shifting
 	# every later value onto the wrong slot the way a positional format would.
-	prototype._authored.set_template(prototype.slots_label, "UPGRADES")
+	prototype.adaptation_tree._authored.set_template(
+		prototype.adaptation_tree.heading_label, "UPGRADES"
+	)
 	prototype._update_hud()
 	_check(
-		prototype.slots_label.text == "UPGRADES",
+		prototype.adaptation_tree.heading_label.text == "UPGRADES",
 		"a line with no placeholders is printed exactly as authored"
 	)
 	prototype.progression.reset_progression()
@@ -7948,11 +7958,11 @@ func _run() -> void:
 		Progression.EvolutionId.SUPER_BLOOM
 	)
 	prototype._update_hud()
-	var hover_rank_one_tooltip := prototype._evolution_upgrade_slot.get_slot_tooltip(0)
+	var hover_rank_one_tooltip := prototype.adaptation_tree.evolution_slot.get_slot_tooltip(0)
 	prototype.progression._upgrade_levels[evolution_upgrade_id] = 3
 	prototype._apply_progression_modifiers()
 	prototype._update_hud()
-	var hover_rank_three_tooltip := prototype._evolution_upgrade_slot.get_slot_tooltip(0)
+	var hover_rank_three_tooltip := prototype.adaptation_tree.evolution_slot.get_slot_tooltip(0)
 	var hover_rank_one_text := prototype.evolutions.get_evolution_upgrade_rank_description(
 		evolution_upgrade_id,
 		1

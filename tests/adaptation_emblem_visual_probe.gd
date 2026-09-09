@@ -30,19 +30,19 @@ func _run() -> void:
 		await process_frame
 		await process_frame
 		if not _check_icon(
-			prototype._path_one_emblem_icon,
-			prototype._path_one_emblem,
-			prototype._get_path_emblem_texture(pair[0])
+			prototype.adaptation_tree.core_one_emblem_icon,
+			prototype.adaptation_tree.core_one_emblem,
+			prototype.adaptation_tree._get_path_emblem_texture(pair[0])
 		) or not _check_icon(
-			prototype._path_two_emblem_icon,
-			prototype._path_two_emblem,
-			prototype._get_path_emblem_texture(pair[1])
+			prototype.adaptation_tree.core_two_emblem_icon,
+			prototype.adaptation_tree.core_two_emblem,
+			prototype.adaptation_tree._get_path_emblem_texture(pair[1])
 		):
 			quit(1)
 			return
 		_save("res://.godot/adaptation_icons_%s.png" % pair[2])
 	for path_id in range(Progression.PathId.size()):
-		if prototype._get_path_emblem_texture(path_id) == null:
+		if prototype.adaptation_tree._get_path_emblem_texture(path_id) == null:
 			push_error("Path %d has no circular adaptation icon" % path_id)
 			quit(1)
 			return

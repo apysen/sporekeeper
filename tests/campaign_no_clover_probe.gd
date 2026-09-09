@@ -37,7 +37,7 @@ func _run() -> void:
 	var cabinet_top := campaign.slot_panel.position.y
 	_check(not campaign.slot_panel.visible, "Campaign hides the Clover cabinet")
 	_check(
-		is_equal_approx(campaign.get_node("%UpgradeSection").position.y, cabinet_top),
+		is_equal_approx(campaign.adaptation_tree.position.y, cabinet_top),
 		"Campaign moves the Adaptation rows up into the space the cabinet held",
 	)
 	# The lever is the only way to stake ground, and it answers nothing in Campaign.
@@ -57,7 +57,7 @@ func _run() -> void:
 	var quick: RunRoot = await _load_run(RunMode.Id.QUICK)
 	_check(quick.slot_panel.visible, "Quick still has the Clover cabinet")
 	_check(
-		quick.get_node("%UpgradeSection").position.y > quick.slot_panel.position.y,
+		quick.adaptation_tree.position.y > quick.slot_panel.position.y,
 		"Quick leaves the Adaptation rows where the scene authored them, below the cabinet",
 	)
 

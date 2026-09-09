@@ -52,7 +52,7 @@ func _run() -> void:
 	_check_border(prototype.get_node("Interface/SidePanel") as Control, 12, "side panel")
 	_check_border(prototype.get_node("Interface/UpgradeTray") as Control, 4, "relic tray")
 	_check_border(prototype.relic_slots.get_node("Slot1") as Control, 8, "relic slot")
-	_check_border(prototype.upgrade_slots.get_node("Slot1") as Control, 8, "adaptation slot")
+	_check_border(prototype.adaptation_tree.core_one_slots.get_node("Slot1") as Control, 8, "adaptation slot")
 	_check_border(prototype.pause_menu.resume_button, 12, "pause button")
 	prototype.pause_menu.resume_button.disabled = true
 	await process_frame

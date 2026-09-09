@@ -132,18 +132,18 @@ func _run() -> void:
 		quit(1)
 		return
 	prototype._mechanics_help.hide_tooltip()
-	prototype.upgrade_slots.set_slot(
+	prototype.adaptation_tree.core_one_slots.set_slot(
 		0,
 		"RB",
 		"",
 		"ROOTED BARK\nGain defense while standing on Mature Green.",
 		UpgradeSlots.SlotState.FILLED
 	)
-	Input.warp_mouse(prototype.upgrade_slots.get_slot_global_rect(0).get_center() * 2.0)
-	prototype._on_hud_slot_hovered(0, prototype.upgrade_slots)
+	Input.warp_mouse(prototype.adaptation_tree.core_one_slots.get_slot_global_rect(0).get_center() * 2.0)
+	prototype._on_hud_slot_hovered(0, prototype.adaptation_tree.core_one_slots)
 	await process_frame
 	await process_frame
-	var adaptation_source := prototype.upgrade_slots.get_slot_global_rect(0)
+	var adaptation_source := prototype.adaptation_tree.core_one_slots.get_slot_global_rect(0)
 	var adaptation_card := prototype._mechanics_help._stack.get_rect()
 	if absf(adaptation_source.position.x - adaptation_card.end.x - MechanicsHelp.HUD_GAP) > 1.0:
 		push_error(

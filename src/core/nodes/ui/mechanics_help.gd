@@ -80,6 +80,16 @@ func _process(_delta: float) -> void:
 		hide_tooltip()
 
 
+## Strips the title off the front of a slot's tooltip text, so a card does not print
+## its own heading twice. Static because every row that owns slots needs it and none
+## of them should own a copy.
+static func tooltip_body(value: String, title: String) -> String:
+	var body := value.strip_edges()
+	if body.begins_with(title):
+		body = body.trim_prefix(title).strip_edges()
+	return body
+
+
 func show_hud_tooltip(title: String, description: String, anchor: Rect2) -> void:
 	_tooltip_mode = TooltipMode.HUD
 	_source_rect = anchor

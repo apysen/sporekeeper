@@ -9,14 +9,6 @@ const HOME_SCENE := "res://scenes/menu/home_screen.tscn"
 
 ## Placeholder reel faces. Each stands for one Path, plus the Clover wild and the Bust.
 
-const ADAPTATION_ICON_SPORE := preload("res://assets/art/adaptation_icons/spore/spore.png")
-const ADAPTATION_ICON_BLOOM := preload("res://assets/art/adaptation_icons/bloom/bloom_512x512.png")
-const ADAPTATION_ICON_BRAMBLE := preload("res://assets/art/adaptation_icons/bramble/bramble.png")
-const ADAPTATION_ICON_ROOT := preload("res://assets/art/adaptation_icons/root/root.png")
-const ADAPTATION_ICON_PRUNING := preload("res://assets/art/adaptation_icons/pruning/pruning.png")
-const ADAPTATION_ICON_THISTLE := preload("res://assets/art/adaptation_icons/thistle/thistle.svg")
-const ADAPTATION_ICON_VINE := preload("res://assets/art/adaptation_icons/vine/vine.png")
-const ADAPTATION_ICON_FRUIT := preload("res://assets/art/adaptation_icons/fruit/red-apple.png")
 
 enum RunState {
 	RUNNING,
@@ -201,11 +193,9 @@ enum QueuedReward {
 ## Label used for milestone, combat, upgrade, and failure-status messages.
 ## Row of rounded slots showing which relics the run holds.
 @export var relic_slots: UpgradeSlots
-## Label that names the 13-position Adaptations tree in the side HUD.
-@export var slots_label: Label
-## Row of rounded slots showing the growth lines the run has taken.
-@export var upgrade_slots: UpgradeSlots
 ## Panel shown while the player chooses an upgrade or relic.
+## The Adaptation panel: the Core and Branch rows and the Evolution between them.
+@export var adaptation_tree: AdaptationTree
 @export var choice_panel: ChoicePanel
 
 @export_group("Clover Machine")
@@ -308,6 +298,9 @@ var _final_stand_announced := false
 ## before anything writes to a control, so what is typed in the editor is what the
 ## game prints - wording, spacing, order, and which values appear at all.
 var _authored := AuthoredText.new()
+## Every line the interface prints about an upgrade. Built in `_ready`, once the
+## components it reads from exist, and handed to anything that draws upgrade text.
+var _descriptions: UpgradeDescriptions
 var _choice_kind := ChoiceKind.NONE
 var _choice_ids := PackedInt32Array()
 var _zero_territory_remaining := 0.0
@@ -354,26 +347,6 @@ var _base_small_fragment_decay := 0.0
 ## advances none of it; Quick still keeps the whole machine.
 var _clover_enabled := true
 var _mechanics_help: MechanicsHelp
-@onready var _secondary_upgrade_slots: UpgradeSlots = %Path2Slots
-@onready var _evolution_upgrade_slot: UpgradeSlots = %EvolutionSlot
-@onready var _support_upgrade_slots: UpgradeSlots = %SupportSlots
-@onready var _path_one_label: Label = %Path1Label
-@onready var _path_two_label: Label = %Path2Label
-@onready var _support_path_label: Label = %SupportPathLabel
-@onready var _upgrade_section: Control = %UpgradeSection
-@onready var _evolution_tree_label: Label = %EvolutionTreeLabel
-@onready var _path_one_emblem: Label = %Path1EmblemLabel
-@onready var _path_two_emblem: Label = %Path2EmblemLabel
-@onready var _support_path_emblem: Label = %SupportEmblemLabel
-@onready var _path_one_emblem_icon: TextureRect = %Path1EmblemIcon
-@onready var _path_two_emblem_icon: TextureRect = %Path2EmblemIcon
-@onready var _support_path_emblem_icon: TextureRect = %SupportEmblemIcon
-@onready var _support_path_emblem_lock: TextureRect = %SupportEmblemLock
-@onready var _branch_two_upgrade_slots: UpgradeSlots = %Branch2Slots
-@onready var _branch_two_label: Label = %Branch2Label
-@onready var _branch_two_emblem: Label = %Branch2EmblemLabel
-@onready var _branch_two_emblem_icon: TextureRect = %Branch2EmblemIcon
-@onready var _branch_two_emblem_lock: TextureRect = %Branch2EmblemLock
 
 
 func _ready() -> void:
@@ -405,6 +378,19 @@ func _ready() -> void:
 	assert(pruning_director != null, "RunRoot requires PruningDirector")
 	assert(audio_settings != null, "RunRoot requires AudioSettings")
 	assert(pause_menu != null, "RunRoot requires PauseMenu")
+	_descriptions = UpgradeDescriptions.new(
+		progression,
+		evolutions,
+		combat,
+		spore_director,
+		bloom_director,
+		bramble_director,
+		root_director,
+		pruning_director,
+		adaptation_director,
+		territory_field,
+		root_potency_note_template,
+	)
 	# The authored row lengths are the ceiling the run grows toward, so they are
 	# read once before either row is trimmed to what the run currently holds.
 	if relic_slots != null:
@@ -424,8 +410,6 @@ func _ready() -> void:
 		evolution_label,
 		relics_label,
 		relic_slots,
-		slots_label,
-		upgrade_slots,
 		result_panel,
 		result_header,
 		result_detail,
@@ -492,6 +476,10 @@ func _ready() -> void:
 	# is what a view of a machine does; what it hands back are the two things a spin
 	# costs the run - a status line, and a battlefield that stops for the first pair.
 	slot_panel.setup(slot_machine, player, wager_layer, _clover_enabled)
+	adaptation_tree.setup(progression, _descriptions)
+	adaptation_tree.slot_hovered.connect(_on_tree_slot_hovered)
+	if relic_slots != null:
+		relic_slots.slot_hovered.connect(_on_hud_slot_hovered.bind(relic_slots))
 	slot_panel.spin_started.connect(_on_slot_spin_started)
 	slot_panel.spin_refused.connect(_set_status)
 	slot_panel.cinematic_started.connect(_on_slot_cinematic_started)
@@ -1130,7 +1118,7 @@ func _build_choice_entry(kind: int, option_id: int) -> Dictionary:
 		# line once it is taken. The draft is where the choice is made, so the
 		# amplified number belongs on the card and not only in the hover.
 		var detail := progression.get_upgrade_description(option_id)
-		var rooted := _get_root_potency_note(option_id)
+		var rooted := _descriptions.root_potency_note(option_id)
 		if not rooted.is_empty():
 			detail += "
 %s" % rooted
@@ -1254,6 +1242,23 @@ func _on_reels_started(stake: int, committed_cells: PackedInt32Array) -> void:
 		committed_cells.size(),
 	])
 	slot_panel.refresh_controls()
+
+
+func _on_hud_slot_hovered(index: int, row: UpgradeSlots) -> void:
+	# The relic row, which lives in the tray rather than the Adaptation panel and so
+	# is still this script's to describe.
+	var description := row.get_slot_tooltip(index)
+	if description.is_empty():
+		return
+	var title := description.get_slice("
+", 0).strip_edges()
+	_mechanics_help.show_hud_tooltip(
+		title, MechanicsHelp.tooltip_body(description, title), row.get_slot_global_rect(index)
+	)
+
+
+func _on_tree_slot_hovered(title: String, body: String, anchor: Rect2) -> void:
+	_mechanics_help.show_hud_tooltip(title, body, anchor)
 
 
 func _on_slot_spin_started() -> void:
@@ -1728,16 +1733,6 @@ func _format_compact(value: float) -> String:
 	return "%d" % int(round(value))
 
 
-## A multiplier as a player would write it. Needlepoint's ranks land on whole
-## numbers -- 3x, 4x, 5x -- and printing those as "3.00x" makes a clean line read
-## like a rounding error; the Root Network is what puts a fraction on it, and only
-## then is the fraction worth showing.
-func _format_multiplier(value: float) -> String:
-	if is_equal_approx(value, round(value)):
-		return "%d" % int(round(value))
-	return "%.2f" % value
-
-
 func _with_thousands_separator(value: int) -> String:
 	var digits := str(absi(value))
 	var grouped := ""
@@ -1823,41 +1818,21 @@ func _on_reward_hovered(_index: int, button: Button) -> void:
 	_mechanics_help.show_reward_tooltips(button.text, anchor)
 
 
-func _on_hud_slot_hovered(index: int, row: UpgradeSlots) -> void:
-	var description := row.get_slot_tooltip(index)
-	if description.is_empty():
-		return
-	var title := description.get_slice("\n", 0).strip_edges()
-	_mechanics_help.show_hud_tooltip(
-		title, _tooltip_body(description, title), row.get_slot_global_rect(index)
-	)
-
-
-func _tooltip_body(value: String, title: String) -> String:
-	var body := value.strip_edges()
-	if body.begins_with(title):
-		body = body.trim_prefix(title).strip_edges()
-	return body
-
-
 func _apply_clover_presence() -> void:
 	# Quick keeps the machine exactly as the scene authored it.
 	if _clover_enabled:
 		# All but the Adaptation heading, which the cabinet sits on top of. The four
 		# rows under it are self-describing -- each names its own Adaptation -- so the
 		# word is what gives way rather than the panel being re-laid out around it.
-		if slots_label != null:
-			slots_label.visible = false
+		adaptation_tree.set_heading_visible(false)
 		return
-	if slots_label != null:
-		slots_label.visible = true
+	adaptation_tree.set_heading_visible(true)
 	# The cabinet goes, and the Adaptation rows move up into the space it held rather
 	# than leaving a hole in the middle of the panel. Where they move to is read off
 	# the cabinet itself, so the two stay in step whenever the scene moves either one.
 	if slot_panel != null:
 		slot_panel.visible = false
-		if _upgrade_section != null:
-			_upgrade_section.position.y = slot_panel.position.y
+		adaptation_tree.position.y = slot_panel.position.y
 	if all_in_label != null:
 		all_in_label.visible = false
 	wager_layer.clear_wager()
@@ -2006,17 +1981,7 @@ func _update_hud() -> void:
 	# from the slots beneath it rather than from this line.
 	_advance_all_in_countdown()
 	_update_relic_slots()
-	# Ranks bought against ranks the roster can hold, which is what the four rows
-	# beneath the heading are actually a picture of.
-	_authored.write(slots_label, {
-		"filled": _get_owned_ordinary_rank_total(),
-		"total": (
-			progression.get_owned_adaptation_count()
-			* Progression.LINES_PER_ADAPTATION
-			* progression.maximum_upgrade_level
-		),
-	})
-	_update_upgrade_slots()
+	adaptation_tree.refresh()
 
 
 
@@ -2064,7 +2029,7 @@ func _update_relic_slots() -> void:
 			tooltip += "\nProgress: %s" % counter
 		relic_slots.set_slot(
 			index,
-			_get_initials(relic_name),
+			UpgradeDescriptions.initials(relic_name),
 			counter,
 			tooltip,
 			UpgradeSlots.SlotState.FILLED,
@@ -2074,779 +2039,6 @@ func _update_relic_slots() -> void:
 			# faces and the Bust symbol follow.
 			RelicCatalog.get_rarity_color(rarity)
 		)
-
-
-func _get_initials(source: String) -> String:
-	# Two letters taken from an authored name, so a slot reads at a glance and
-	# never needs a second name kept in sync with it.
-	var words := source.split(" ", false)
-	if words.size() >= 2:
-		return (words[0].substr(0, 1) + words[1].substr(0, 1)).to_upper()
-	if words.size() == 1:
-		return words[0].substr(0, 2).to_upper()
-	return "--"
-
-
-func _get_owned_ordinary_rank_total() -> int:
-	var total := 0
-	for path_id in progression.get_owned_adaptations():
-		for upgrade_id in progression.get_adaptation_line_ids(path_id):
-			total += progression.get_owned_upgrade_level(upgrade_id)
-	return total
-
-
-func _update_upgrade_slots() -> void:
-	## Five rows: two Cores, the Evolution that joins them, then two Branches.
-	##
-	## Every owned Adaptation shows all four of its lines with their rank pips, so
-	## the panel reads as what the run has grown rather than as a list of slots it
-	## has consumed. Nothing is ever locked out here now: an empty pip is a line the
-	## player has not bought yet, never one they can no longer reach.
-	if upgrade_slots == null:
-		return
-	_update_path_upgrade_row(
-		upgrade_slots,
-		_path_one_label,
-		_path_one_emblem,
-		_path_one_emblem_icon,
-		progression.primary_path,
-		"CORE 1"
-	)
-	_update_path_upgrade_row(
-		_secondary_upgrade_slots,
-		_path_two_label,
-		_path_two_emblem,
-		_path_two_emblem_icon,
-		progression.secondary_path,
-		"CORE 2"
-	)
-	_update_evolution_tree_slot()
-	_update_branch_upgrade_row(
-		_support_upgrade_slots,
-		_support_path_label,
-		_support_path_emblem,
-		_support_path_emblem_icon,
-		_support_path_emblem_lock,
-		0,
-		"BRANCH 1"
-	)
-	if _branch_two_upgrade_slots != null:
-		_update_branch_upgrade_row(
-			_branch_two_upgrade_slots,
-			_branch_two_label,
-			_branch_two_emblem,
-			_branch_two_emblem_icon,
-			_branch_two_emblem_lock,
-			1,
-			"BRANCH 2"
-		)
-
-
-func _update_branch_upgrade_row(
-	row: UpgradeSlots,
-	path_label: Label,
-	emblem: Label,
-	emblem_icon: TextureRect,
-	emblem_lock: TextureRect,
-	branch_index: int,
-	fallback_label: String
-) -> void:
-	# A Branch slot the run has not reached yet shows a lock and says what unlocks
-	# it, so the roster's shape is legible from the first minute.
-	var owned := branch_index < progression.branch_adaptations.size()
-	var path_id := (
-		progression.branch_adaptations[branch_index]
-		if owned
-		else Progression.UNSELECTED_PATH
-	)
-	if emblem_lock != null:
-		emblem_lock.visible = not owned
-	_update_path_upgrade_row(
-		row,
-		path_label,
-		emblem,
-		emblem_icon,
-		path_id,
-		fallback_label
-	)
-	if not owned:
-		emblem.visible = false
-		emblem_icon.visible = false
-		for index in range(row.get_slot_count()):
-			_set_locked_tree_slot(
-				row,
-				index,
-				(
-					"Branch Adaptation %d.\nDefeat the %s to choose it."
-					% [
-						branch_index + 1,
-						"Elite Rootbreaker" if branch_index == 0 else "Burrower Boss",
-					]
-				)
-			)
-
-
-func _update_path_upgrade_row(
-	row: UpgradeSlots,
-	path_label: Label,
-	emblem: Label,
-	emblem_icon: TextureRect,
-	path_id: int,
-	fallback_label: String
-) -> void:
-	row.slot_count = 4
-	var selected := path_id != Progression.UNSELECTED_PATH
-	path_label.text = (
-		Progression.get_path_name(path_id).to_upper()
-		if selected
-		else fallback_label
-	)
-	var accent := _get_path_hud_color(path_id) if selected else Color("596052")
-	if selected and progression.is_adaptation_mastered(path_id):
-		# The mastered row is brightened rather than given permanent extra space:
-		# mastery is completion, and completion should read at a glance without the
-		# panel growing a new element the moment it happens.
-		accent = accent.lightened(0.28)
-	_set_path_emblem(emblem, emblem_icon, path_id, selected, accent)
-	var path_upgrades := _get_path_upgrade_ids(path_id) if selected else PackedInt32Array()
-	for index in range(4):
-		if not selected or index >= path_upgrades.size():
-			_set_locked_tree_slot(
-				row,
-				index,
-				"Acquire this Adaptation to reveal its upgrade lines."
-			)
-			continue
-		var upgrade_id := path_upgrades[index]
-		var level := progression.get_owned_upgrade_level(upgrade_id)
-		var maximum := progression.get_upgrade_maximum_level(upgrade_id)
-		if level > 0:
-			row.set_slot(
-				index,
-				_get_upgrade_abbreviation(upgrade_id),
-				# Rank against its own ceiling, so a line at 2 of 3 is never mistaken
-				# for a line at 2 of 5 the run has barely started.
-				"%d/%d" % [level, maximum],
-				_build_upgrade_tooltip(upgrade_id),
-				UpgradeSlots.SlotState.FILLED,
-				accent
-			)
-		else:
-			# Every line of an owned Adaptation is always available. There is no
-			# locked ordinary line any more, so this row never shows one.
-			# No rank line on an unbought slot: the marker is centred in the slot on
-			# its own, and a second line under it would push the marker off centre.
-			# The ceiling is named in the tooltip instead.
-			row.set_slot(
-				index,
-				row.empty_marker,
-				"",
-				"%s\nAvailable on an upgrade draft. Reaches rank %d." % [
-					Progression.get_upgrade_name(upgrade_id),
-					maximum,
-				],
-				UpgradeSlots.SlotState.EMPTY,
-				accent
-			)
-
-
-func _update_evolution_tree_slot() -> void:
-	_evolution_upgrade_slot.slot_count = 1
-	match progression.evolution_status:
-		Progression.EvolutionStatus.EVOLVED:
-			var evolution_name := Evolutions.get_evolution_name(progression.active_evolution)
-			var upgrade_id := Evolutions.get_evolution_upgrade_id(progression.active_evolution)
-			_evolution_tree_label.text = evolution_name
-			_evolution_upgrade_slot.set_slot(
-				0,
-				_get_initials(evolution_name),
-				# Against its own five-rank ceiling, the same way every ordinary line
-				# now reads against three.
-				"%d/%d" % [
-					progression.get_evolution_upgrade_level(),
-					progression.get_upgrade_maximum_level(upgrade_id),
-				],
-				_build_upgrade_tooltip(upgrade_id),
-				UpgradeSlots.SlotState.FILLED,
-				Color("d4a94f")
-			)
-		Progression.EvolutionStatus.READY:
-			# Named only once it has been claimed. Until then the slot says what it
-			# is for and nothing about what is waiting in it.
-			_evolution_tree_label.text = "EVOLUTION"
-			_evolution_upgrade_slot.set_slot(
-				0,
-				_evolution_upgrade_slot.empty_marker,
-				"",
-				"This pairing has not evolved yet.",
-				UpgradeSlots.SlotState.EMPTY,
-				Color("d4a94f")
-			)
-		_:
-			_evolution_tree_label.text = "EVOLUTION"
-			_set_locked_tree_slot(
-				_evolution_upgrade_slot,
-				0,
-				"Evolution unlocks once two lines in each Core Adaptation reach rank 3."
-			)
-
-
-
-func _set_path_emblem(
-	label: Label,
-	icon: TextureRect,
-	path_id: int,
-	selected: bool,
-	accent: Color
-) -> void:
-	label.visible = not selected
-	icon.visible = selected
-	if not selected:
-		label.text = "?"
-		label.modulate = accent.lightened(0.22)
-		icon.texture = null
-		return
-	label.text = ""
-	icon.texture = _get_path_emblem_texture(path_id)
-	icon.modulate = _get_path_emblem_tint(path_id, accent)
-
-
-func _get_path_emblem_texture(path_id: int) -> Texture2D:
-	match path_id:
-		Progression.PathId.SPORE:
-			return ADAPTATION_ICON_SPORE
-		Progression.PathId.BLOOM:
-			return ADAPTATION_ICON_BLOOM
-		Progression.PathId.BRAMBLE:
-			return ADAPTATION_ICON_BRAMBLE
-		Progression.PathId.ROOT:
-			return ADAPTATION_ICON_ROOT
-		Progression.PathId.PRUNING:
-			return ADAPTATION_ICON_PRUNING
-		Progression.PathId.THISTLE:
-			return ADAPTATION_ICON_THISTLE
-		Progression.PathId.VINE:
-			return ADAPTATION_ICON_VINE
-		Progression.PathId.FRUIT:
-			return ADAPTATION_ICON_FRUIT
-	return null
-
-
-func _get_path_emblem_tint(path_id: int, accent: Color) -> Color:
-	# Bloom and Fruit already carry their authored colour. The remaining source
-	# art is white/off-white and takes on the path colour here without duplicating
-	# recoloured raster files.
-	if path_id in [Progression.PathId.BLOOM, Progression.PathId.FRUIT]:
-		return Color.WHITE
-	return accent.lightened(0.22)
-
-
-func _set_locked_tree_slot(row: UpgradeSlots, index: int, tooltip: String) -> void:
-	row.set_slot(
-		index,
-		"",
-		"",
-		tooltip,
-		UpgradeSlots.SlotState.LOCKED
-	)
-
-
-func _get_path_upgrade_ids(path_id: int) -> PackedInt32Array:
-	var ids := PackedInt32Array()
-	if path_id == Progression.UNSELECTED_PATH:
-		return ids
-	for upgrade_id in range(Progression.UpgradeId.size()):
-		if progression._get_upgrade_path(upgrade_id) == path_id:
-			ids.append(upgrade_id)
-	return ids
-
-
-func _get_path_hud_color(path_id: int) -> Color:
-	match path_id:
-		Progression.PathId.SPORE:
-			return Color("68a96a")
-		Progression.PathId.BLOOM:
-			return Color("9b68b5")
-		Progression.PathId.BRAMBLE:
-			return Color("798f45")
-		Progression.PathId.ROOT:
-			return Color("b18449")
-		Progression.PathId.PRUNING:
-			return Color("b66255")
-		Progression.PathId.THISTLE:
-			return Color("a76ca8")
-		Progression.PathId.VINE:
-			return Color("4f9c76")
-		Progression.PathId.FRUIT:
-			return Color("c17d45")
-	return Color("596052")
-
-
-func _get_upgrade_abbreviation(upgrade_id: int) -> String:
-	return _get_initials(Progression.get_upgrade_name(upgrade_id))
-
-
-func _build_upgrade_tooltip(upgrade_id: int) -> String:
-	# What the line is, what one more rank buys, and what the run's numbers
-	# actually resolve to right now.
-	var level := progression.get_owned_upgrade_level(upgrade_id)
-	var maximum := progression.get_upgrade_maximum_level(upgrade_id)
-	var lines := PackedStringArray()
-	lines.append("%s   %d/%d" % [
-		Progression.get_upgrade_name(upgrade_id),
-		level,
-		maximum,
-	])
-	# An Evolution line's ranks each do something different, so the hover carries
-	# every rank the run has bought rather than one averaged line. This is the only
-	# place the player can read the finished build back, and it is empty for the
-	# ordinary lines, whose ranks are all the same thing again.
-	var owned := _get_evolution_owned_ranks(upgrade_id)
-	for owned_rank in owned:
-		lines.append(owned_rank)
-	var per_rank := progression.get_upgrade_description(upgrade_id)
-	if not per_rank.is_empty():
-		var rank_label := "Next rank" if level < maximum else "Maxed"
-		lines.append("%s: %s" % [rank_label, per_rank])
-	if owned.is_empty():
-		# For an Evolution line the last owned rank above already says this, and the
-		# hover should not print it twice.
-		var resolved := _get_upgrade_resolved_effect(upgrade_id)
-		if not resolved.is_empty():
-			lines.append("Now: %s" % resolved)
-	# The Root Network row sits under the base number rather than replacing it, so
-	# the hover shows what the line is worth on its own and what Mature ground turns
-	# that into, in that order.
-	var rooted := _get_root_potency_note(upgrade_id)
-	if not rooted.is_empty():
-		lines.append(rooted)
-	return "\n".join(lines)
-
-
-func _get_evolution_owned_ranks(upgrade_id: int) -> PackedStringArray:
-	# Every Evolution rank the run has actually bought, in the order it bought them.
-	# Owned rather than effective level: a Clover jackpot lends a Path its ceiling for
-	# a few seconds, and the hover must not claim the run holds ranks it never took.
-	var owned := PackedStringArray()
-	if Evolutions.get_upgrade_evolution(upgrade_id) == Progression.EvolutionId.NONE:
-		return owned
-	var level := progression.get_owned_upgrade_level(upgrade_id)
-	for rank in range(1, level + 1):
-		var description := evolutions.get_evolution_upgrade_rank_description(upgrade_id, rank)
-		if description.is_empty():
-			continue
-		owned.append("%d. %s" % [rank, description])
-	return owned
-
-
-func _get_upgrade_resolved_effect(upgrade_id: int) -> String:
-	# The finished numbers, read from the same values the systems use, so the hover
-	# text can never drift from what the run is actually doing.
-	match upgrade_id:
-		Progression.UpgradeId.SEED_PRODUCTION:
-			return "%d kills per Seed" % spore_director.get_seed_kill_threshold()
-		Progression.UpgradeId.GROWTH_MASS:
-			return "%d%% Seed growth mass" % roundi(
-				spore_director.get_seed_mass_multiplier() * 100.0
-			)
-		Progression.UpgradeId.SPORULATION:
-			var spore_rate := (
-				combat.sporulation_per_second
-				* spore_director.get_sporulation_rate_multiplier()
-			)
-			return "%.2f%% Spore per second, Overgrown after %.0fs on Green" % [
-				spore_rate * 100.0,
-				1.0 / maxf(0.0001, spore_rate),
-			]
-		Progression.UpgradeId.FRUITING_BODIES:
-			return "%d%% of germinations inside your Green raise a colony" % roundi(
-				spore_director.get_fruiting_body_chance() * 100.0
-			)
-		Progression.UpgradeId.BLOOM_FORCE:
-			return "%d%% Bloom force, %.0f Bloom damage" % [
-				roundi(bloom_director.get_bloom_force_multiplier() * 100.0),
-				bloom_director.bloom_damage * bloom_director.get_bloom_force_multiplier(),
-			]
-		Progression.UpgradeId.BLOOM_FREQUENCY:
-			return "a Bloom every %.1fs" % (
-				bloom_director.bloom_interval_seconds
-				* bloom_director.get_bloom_interval_multiplier()
-			)
-		Progression.UpgradeId.AFTERGROWTH:
-			return "%d temporary control on Bloomed Green for %.0fs" % [
-				roundi(bloom_director.get_aftergrowth_shield()),
-				bloom_director.bloom_tempo_window_seconds,
-			]
-		Progression.UpgradeId.SUPPRESSION:
-			return "%d%% less Territory damage for %.0fs after a Bloom" % [
-				roundi(bloom_director.get_suppression_share() * 100.0),
-				bloom_director.bloom_tempo_window_seconds,
-			]
-		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT:
-			return "up to %d%% slow when fully Entangled" % roundi(
-				bramble_director.get_slow_fraction() * 100.0
-			)
-		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
-			var rate := (
-				combat.bramble_entanglement_per_second
-				* bramble_director.get_entanglement_rate_multiplier()
-			)
-			return "fully Entangled after %.1fs on Green" % (1.0 / maxf(0.01, rate))
-		Progression.UpgradeId.BRAMBLE_GRASPING_THORNS:
-			return "%.2fs Ensnare, then %.0fs immune" % [
-				bramble_director.get_ensnare_seconds(),
-				bramble_director.get_ensnare_immunity_seconds(),
-			]
-		Progression.UpgradeId.BRAMBLE_REPULSION:
-			return "%.0f px knockback on territory attackers" % (
-				bramble_director.get_repulsion_pixels()
-			)
-		Progression.UpgradeId.ROOT_MATURATION:
-			return "%d%% maturation rate" % roundi(
-				root_director.get_maturation_multiplier() * 100.0
-			)
-		Progression.UpgradeId.ROOT_LATERAL_ROOTS:
-			return "+%d px projected Root reach" % roundi(
-				root_director.get_lateral_reach()
-			)
-		Progression.UpgradeId.ROOT_MATURE_STRENGTH:
-			return "%.2fx Mature resistance, +%.3f control per second" % [
-				root_director.get_mature_resistance_multiplier(),
-				root_director.get_regeneration_per_second(),
-			]
-		Progression.UpgradeId.ROOT_POTENCY:
-			return "+%d%% from fully Mature ground" % roundi(
-				root_director.get_network_bonus() * 100.0
-			)
-		Progression.UpgradeId.PRUNING_HARVEST_RATE:
-			return "%.1f cells per second held, %.1f at full Charge" % [
-				pruning_director.upkeep_cells_per_second
-				* pruning_director.get_pruning_harvest_rate_multiplier(),
-				pruning_director.upkeep_cells_per_second_at_charge
-				* pruning_director.get_pruning_harvest_rate_multiplier(),
-			]
-		Progression.UpgradeId.PRUNING_CUTTING_YIELD:
-			return "%.2f Cuttings per cell harvested" % (
-				pruning_director.cuttings_per_cell
-				* pruning_director.get_pruning_cutting_yield_multiplier()
-			)
-		Progression.UpgradeId.PRUNING_CUTTING_DAMAGE:
-			return "%.0f thicket damage per bite, %.0f per launched Cutting" % [
-				pruning_director.orbit_contact_damage
-				* pruning_director.get_pruning_cutting_damage_multiplier(),
-				pruning_director.cutting_damage
-				* pruning_director.get_pruning_cutting_damage_multiplier(),
-			]
-		Progression.UpgradeId.PRUNING_CHARGE:
-			# Read from the exports rather than through get_charge_seconds, which now
-			# folds in the Root Network where Grandma is standing. This is the plain
-			# row; the Network's contribution is reported on its own row beneath it.
-			return "full Charge in %.1fs, +%d%% launch damage" % [
-				pruning_director.charge_seconds / maxf(
-					0.05, pruning_director.get_pruning_charge_multiplier()
-				),
-				roundi(
-					pruning_director.launch_charge_damage_bonus
-					* pruning_director.get_pruning_charge_multiplier()
-					* 100.0
-				),
-			]
-		Progression.UpgradeId.THISTLE_CLUSTERING:
-			return "%d thorns per normal turret firing event" % (
-				1 + progression.get_upgrade_level(upgrade_id)
-			)
-		Progression.UpgradeId.THISTLE_DEHISCENCE:
-			var thistle_speed := 1.0 + 0.15 * float(progression.get_upgrade_level(upgrade_id))
-			return "one turret firing event every %.3fs" % (
-				adaptation_director.thistle_attack_interval / thistle_speed
-			)
-		Progression.UpgradeId.THISTLE_BURR:
-			return "%d full-damage ricochets per thorn" % (
-				progression.get_upgrade_level(upgrade_id)
-			)
-		Progression.UpgradeId.THISTLE_NEEDLEPOINT:
-			return "%d%% critical chance per impact at %sx damage" % [
-				roundi(100.0 * adaptation_director.thistle_base_critical_chance),
-				_format_multiplier(
-					adaptation_director.thistle_critical_multiplier
-					+ adaptation_director.thistle_needlepoint_critical_damage_per_rank
-					* float(progression.get_upgrade_level(upgrade_id))
-				),
-			]
-		Progression.UpgradeId.VINE_ELONGATION:
-			# From the export rather than through get_cane_reach, which already folds
-			# in the Root Network where Grandma is standing. This is the plain row;
-			# the Network's contribution is reported on its own row beneath it.
-			return "%.0f px Vine reach" % (
-				combat.cane_reach_pixels
-				* (1.0 + 0.20 * float(progression.get_upgrade_level(upgrade_id)))
-			)
-		Progression.UpgradeId.VINE_LIGNIFICATION:
-			return "%.1f damage before Apical, Root, and relic modifiers" % (
-				combat.cane_damage
-				* (1.0 + 0.25 * float(progression.get_upgrade_level(upgrade_id)))
-			)
-		Progression.UpgradeId.VINE_TURGOR:
-			var vine_speed := 1.0 + 0.15 * float(progression.get_upgrade_level(upgrade_id))
-			return "one automatic sweep every %.3fs before relic timing" % (
-				combat.cane_cooldown_seconds / vine_speed
-			)
-		Progression.UpgradeId.VINE_APICAL_DOMINANCE:
-			return "%.2fx damage in the outer 25%% of reach" % (
-				1.0 + 0.25 * float(progression.get_upgrade_level(upgrade_id))
-			)
-		Progression.UpgradeId.FRUIT_SET:
-			return "%d Fruit per normal release" % (
-				1 + progression.get_upgrade_level(upgrade_id)
-			)
-		Progression.UpgradeId.FRUIT_RIPENING:
-			var ripening := 1.0 + 0.25 * float(progression.get_upgrade_level(upgrade_id))
-			return "%.1f collision damage, up to %.1f terminal damage" % [
-				adaptation_director.fruit_collision_damage * ripening,
-				adaptation_director.fruit_terminal_explosion_damage * ripening,
-			]
-		Progression.UpgradeId.FRUIT_MOMENTUM:
-			return "%.0f px unobstructed stopping distance" % (
-				adaptation_director.fruit_roll_distance_pixels
-				* (1.0 + 0.20 * float(progression.get_upgrade_level(upgrade_id)))
-			)
-		Progression.UpgradeId.FRUIT_GERMINATION:
-			return "%d%% Fruit-created Green area" % roundi(
-				(1.0 + 0.20 * float(progression.get_upgrade_level(upgrade_id))) * 100.0
-			)
-	if Evolutions.get_upgrade_evolution(upgrade_id) != Progression.EvolutionId.NONE:
-		# An Evolution line's ranks each do something different, so what it is doing
-		# now is the description of the rank the run has actually reached.
-		var evolution_level := progression.get_upgrade_level(upgrade_id)
-		if evolution_level <= 0:
-			return ""
-		return evolutions.get_evolution_upgrade_rank_description(
-			upgrade_id,
-			evolution_level
-		)
-	return ""
-
-
-func _get_root_potency_note(upgrade_id: int) -> String:
-	# The finished Root Network row for a line, or nothing at all. A run without Root
-	# and every line the Network does not touch return empty, so the row appears only
-	# where it is true rather than as a permanent piece of furniture.
-	var effect := _get_root_potency_effect(upgrade_id)
-	if effect.is_empty():
-		return ""
-	return AuthoredText.render(root_potency_note_template, {
-		"multiplier": "%.2f" % (1.0 + root_director.get_network_bonus()),
-		"effect": effect,
-	})
-
-
-func _rooted_line_bonus(upgrade_id: int, per_rank: float, multiplier: float) -> float:
-	# One line's own per-rank bonus out of fully Mature ground. Thistle, Vine, and
-	# Fruit take Root Potency on the bonus they bought rather than on the authored
-	# base, so this is the same expression the Adaptation applies and the ROOTED row
-	# stays honest as the line ranks up.
-	return per_rank * float(progression.get_upgrade_level(upgrade_id)) * multiplier
-
-
-func _has_started_line(upgrade_id: int) -> bool:
-	# Root deepens a line the build has started. An unbought line has no Network row,
-	# and a Clover jackpot lending a Path its ceiling does not create one either.
-	return progression.get_owned_upgrade_level(upgrade_id) > 0
-
-
-func _get_root_potency_effect(upgrade_id: int) -> String:
-	# What this line resolves to on fully Mature ground, read through the same
-	# amplification the systems apply. Full maturity is the honest headline: it is
-	# the ceiling the Network reaches, and every consumer scales down from it with
-	# the age of the ground the effect actually happens on. Every row names the
-	# line's own number -- its reach, its cadence, its count, its hold -- rather than
-	# reporting a damage figure the line was never about.
-	if root_director == null:
-		return ""
-	var bonus := root_director.get_network_bonus()
-	if bonus <= 0.0:
-		return ""
-	var multiplier := 1.0 + bonus
-	match upgrade_id:
-		Progression.UpgradeId.SEED_PRODUCTION:
-			return "Seeds germinate in %.2fs instead of %.2fs" % [
-				territory_field.tuning.seed_charge_seconds / multiplier,
-				territory_field.tuning.seed_charge_seconds,
-			]
-		Progression.UpgradeId.GROWTH_MASS:
-			return "%d%% Seed growth mass" % roundi(
-				spore_director.get_seed_mass_multiplier() * multiplier * 100.0
-			)
-		Progression.UpgradeId.SPORULATION:
-			var rooted_spore := (
-				combat.sporulation_per_second
-				* spore_director.get_sporulation_rate_multiplier()
-				* multiplier
-			)
-			return "%.2f%% Spore per second, Overgrown after %.0fs" % [
-				rooted_spore * 100.0,
-				1.0 / maxf(0.0001, rooted_spore),
-			]
-		Progression.UpgradeId.FRUITING_BODIES:
-			return "colonies apply %d%% Spore per cloud, %d%% on rupture" % [
-				roundi(combat.fruiting_body_cloud_spore * multiplier * 100.0),
-				roundi(combat.fruiting_body_rupture_spore * multiplier * 100.0),
-			]
-		Progression.UpgradeId.BLOOM_FORCE:
-			return "%d%% Bloom force, %.0f Bloom damage" % [
-				roundi(bloom_director.get_bloom_force_multiplier() * multiplier * 100.0),
-				bloom_director.bloom_damage
-				* bloom_director.get_bloom_force_multiplier()
-				* multiplier,
-			]
-		Progression.UpgradeId.BLOOM_FREQUENCY:
-			return "a Bloom every %.1fs" % (
-				bloom_director.bloom_interval_seconds
-				* bloom_director.get_bloom_interval_multiplier()
-				/ multiplier
-			)
-		Progression.UpgradeId.AFTERGROWTH:
-			return "%d temporary control on Bloomed Green for %.0fs" % [
-				roundi(bloom_director.get_aftergrowth_shield() * multiplier),
-				bloom_director.bloom_tempo_window_seconds,
-			]
-		Progression.UpgradeId.SUPPRESSION:
-			return "%d%% less Territory damage for %.0fs after a Bloom" % [
-				roundi(
-					clampf(bloom_director.get_suppression_share() * multiplier, 0.0, 0.95)
-					* 100.0
-				),
-				bloom_director.bloom_tempo_window_seconds,
-			]
-		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT:
-			return "up to %d%% slow when fully Entangled" % roundi(
-				clampf(bramble_director.get_slow_fraction() * multiplier, 0.0, 0.85)
-				* 100.0
-			)
-		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
-			var rate := (
-				combat.bramble_entanglement_per_second
-				* bramble_director.get_entanglement_rate_multiplier()
-				* multiplier
-			)
-			return "fully Entangled after %.1fs on Green" % (1.0 / maxf(0.01, rate))
-		Progression.UpgradeId.BRAMBLE_GRASPING_THORNS:
-			return "%.2fs Ensnare, then %.0fs immune" % [
-				bramble_director.get_ensnare_seconds() * multiplier,
-				bramble_director.get_ensnare_immunity_seconds(),
-			]
-		Progression.UpgradeId.BRAMBLE_REPULSION:
-			return "%.0f px knockback on territory attackers" % (
-				bramble_director.get_repulsion_pixels() * multiplier
-			)
-		Progression.UpgradeId.PRUNING_CUTTING_DAMAGE:
-			return "%.0f per launched Cutting" % (
-				pruning_director.cutting_damage
-					* pruning_director.get_pruning_cutting_damage_multiplier()
-					* multiplier
-			)
-		Progression.UpgradeId.PRUNING_HARVEST_RATE:
-			return "%.1f cells per second held, and the spikes to match" % (
-				pruning_director.upkeep_cells_per_second
-				* pruning_director.get_pruning_harvest_rate_multiplier()
-				* multiplier
-			)
-		Progression.UpgradeId.PRUNING_CUTTING_YIELD:
-			return "%.2f Cuttings per cell harvested" % (
-				pruning_director.cuttings_per_cell
-				* pruning_director.get_pruning_cutting_yield_multiplier()
-				* multiplier
-			)
-		Progression.UpgradeId.PRUNING_CHARGE:
-			return "full Charge in %.1fs, +%d%% launch damage" % [
-				pruning_director.charge_seconds / maxf(
-					0.05,
-					pruning_director.get_pruning_charge_multiplier() * multiplier
-				),
-				roundi(
-					pruning_director.launch_charge_damage_bonus
-					* pruning_director.get_pruning_charge_multiplier()
-					* multiplier
-					* 100.0
-				),
-			]
-		Progression.UpgradeId.ROOT_POTENCY:
-			return (
-				"Spore, Bloom, Bramble, Cuttings, thorns, Vine, and Fruit "
-				+ "out of Mature ground"
-			)
-	# Everything below is a Thistle, Vine, or Fruit line. Those paths take Potency one
-	# line at a time, on the bonus that line bought, and only once the build has
-	# actually started the line.
-	if not _has_started_line(upgrade_id):
-		return ""
-	match upgrade_id:
-		Progression.UpgradeId.THISTLE_CLUSTERING:
-			return "%d thorns per firing event out of Mature ground" % (
-				2 + progression.get_upgrade_level(upgrade_id)
-			)
-		Progression.UpgradeId.THISTLE_DEHISCENCE:
-			return "one firing event every %.3fs" % (
-				adaptation_director.thistle_attack_interval / maxf(
-					0.05,
-					1.0 + _rooted_line_bonus(upgrade_id, 0.15, multiplier)
-				)
-			)
-		Progression.UpgradeId.THISTLE_BURR:
-			return "%d full-damage ricochets per thorn out of Mature ground" % (
-				1 + progression.get_upgrade_level(upgrade_id)
-			)
-		Progression.UpgradeId.THISTLE_NEEDLEPOINT:
-			return "%d%% critical chance per impact at %sx damage" % [
-				roundi(100.0 * adaptation_director.thistle_base_critical_chance),
-				_format_multiplier(
-					adaptation_director.thistle_critical_multiplier
-					+ _rooted_line_bonus(
-						upgrade_id,
-						adaptation_director.thistle_needlepoint_critical_damage_per_rank,
-						multiplier
-					)
-				),
-			]
-		Progression.UpgradeId.VINE_ELONGATION:
-			return "%.0f px Vine reach" % (
-				combat.cane_reach_pixels
-				* (1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier))
-			)
-		Progression.UpgradeId.VINE_LIGNIFICATION:
-			return "%.1f Vine damage before Apical and relic modifiers" % (
-				combat.cane_damage
-				* (1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier))
-			)
-		Progression.UpgradeId.VINE_TURGOR:
-			return "one automatic sweep every %.3fs before relic timing" % (
-				combat.cane_cooldown_seconds
-				/ maxf(0.05, 1.0 + _rooted_line_bonus(upgrade_id, 0.15, multiplier))
-			)
-		Progression.UpgradeId.VINE_APICAL_DOMINANCE:
-			return "%.2fx damage in the outer 25%% of reach" % (
-				1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier)
-			)
-		Progression.UpgradeId.FRUIT_SET:
-			return "%d Fruit per release out of Mature ground" % (
-				2 + progression.get_upgrade_level(upgrade_id)
-			)
-		Progression.UpgradeId.FRUIT_RIPENING:
-			var rooted_ripening := 1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier)
-			return "%.1f collision damage, up to %.1f terminal damage" % [
-				adaptation_director.fruit_collision_damage * rooted_ripening,
-				adaptation_director.fruit_terminal_explosion_damage * rooted_ripening,
-			]
-		Progression.UpgradeId.FRUIT_MOMENTUM:
-			return "%.0f px unobstructed stopping distance" % (
-				adaptation_director.fruit_roll_distance_pixels
-				* (1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier))
-			)
-		Progression.UpgradeId.FRUIT_GERMINATION:
-			return "%d%% Fruit-created Green area" % roundi(
-				(1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier)) * 100.0
-			)
-	return ""
 
 
 func _format_time(seconds: float) -> String:
