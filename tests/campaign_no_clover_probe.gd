@@ -42,7 +42,7 @@ func _run() -> void:
 	)
 	# The lever is the only way to stake ground, and it answers nothing in Campaign.
 	var spins_before := campaign.slot_machine.get_spin_count()
-	campaign._pull_lever()
+	campaign.slot_panel.pull_lever()
 	for _step in range(120):
 		campaign.advance_run(1.0 / 60.0)
 	_check(
