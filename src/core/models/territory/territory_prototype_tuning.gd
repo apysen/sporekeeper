@@ -107,13 +107,13 @@ extends Resource
 @export_range(0.0, 6.0, 0.05) var seed_hostile_conversion_factor := 3.2
 
 @export_category("Grazer")
-## Phase A debug-Grazer speed in pixels per second; Phase B speed lives on its enemy profile.
+## Phase A debug-Grazer speed in pixels per second; Sporekeeper speed lives on its enemy profile.
 @export_range(20.0, 600.0, 5.0) var grazer_speed_pixels_per_second := 205.0
-## Base radius in cells for all queued enemy erosion actions in Phase A and Phase B.
+## Base radius in cells for all queued enemy erosion actions in Phase A and Sporekeeper.
 @export_range(1.0, 12.0, 0.25) var grazer_radius_cells := 3.75
 ## Base Green control removed at an erosion stamp's center before falloff and resistance.
 @export_range(0.0, 2.0, 0.05) var grazer_erosion_per_stamp := 1.65
-## Phase A debug-Grazer stamp cadence; Phase B cadence lives on each enemy profile.
+## Phase A debug-Grazer stamp cadence; Sporekeeper cadence lives on each enemy profile.
 @export_range(0.01, 0.2, 0.01) var grazer_stamp_interval := 0.045
 
 @export_category("Fragments")

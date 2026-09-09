@@ -550,7 +550,7 @@ Root ownership and Potency may amplify compatible effects from Core or Branch Ad
 Vine and Fruit take that amplification as virtual ranks on a started line. Thistle does
 not: each of its four lines takes Potency in authored form instead -- +1 thorn on
 Clustering, +1 ricochet on Burr, and Potency's own multiplier on Dehiscence's attack
-rate and Needlepoint's critical chance. Thistle thorn damage is never amplified. Both
+rate and Needlepoint's critical damage. Thistle thorn damage is never amplified. Both
 routes share the same gate: Mature player ground under the effect, and a line the run
 has already started.
 

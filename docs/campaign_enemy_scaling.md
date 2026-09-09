@@ -1,8 +1,8 @@
 # Campaign enemy scaling
 
 This document describes the shipped Campaign configuration in
-`PhaseBWaveDirector`, `PhaseBCombatDirector`, and the enemy profiles authored in
-`scenes/run/phase_b_prototype.tscn`.
+`WaveDirector`, `CombatDirector`, and the enemy profiles authored in
+`scenes/run/run.tscn`.
 
 Campaign lasts 1,800 seconds: 30 waves of 60 seconds. Wave 1 starts immediately.
 Waves 2-30 normally reserve their first 5 seconds as a reinforcement-free break.

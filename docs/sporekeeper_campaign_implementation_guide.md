@@ -62,7 +62,7 @@ The Evolution remains progression-driven. It becomes eligible when the player ma
 
 ## 4. Data-driven architecture
 
-Create a `CampaignWaveSpec` Resource for every wave. Do not hard-code wave-number branches throughout `PhaseBWaveDirector`.
+Create a `CampaignWaveSpec` Resource for every wave. Do not hard-code wave-number branches throughout `WaveDirector`.
 
 Recommended resource fields:
 

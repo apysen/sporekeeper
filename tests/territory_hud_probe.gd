@@ -22,7 +22,7 @@ const ROT_WASH_REFERENCE := Color(0.317, 0.161, 0.232)
 ## this bar sits in the same palette as the health and XP bars beside it.
 const TERRITORY_FILL_ART := Color(0.514, 0.631, 0.345)
 const COMPOSITION_SHADER_PATH := "res://assets/shaders/territory_bar_composition.gdshader"
-const RUN_SCENE_PATH := "res://scenes/run/phase_b_prototype.tscn"
+const RUN_SCENE_PATH := "res://scenes/run/run.tscn"
 
 var _failures := 0
 
@@ -32,7 +32,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var composition := PhaseBTerritoryComposition.new()
+	var composition := TerritoryComposition.new()
 	composition.size = Vector2(220.0, 32.0)
 	root.add_child(composition)
 
@@ -96,7 +96,7 @@ func _run() -> void:
 	quit(0)
 
 
-func _test_colour_edges(composition: PhaseBTerritoryComposition) -> void:
+func _test_colour_edges(composition: TerritoryComposition) -> void:
 	## Where each colour ends is the only geometry this component still owns, so it is
 	## what the bar's correctness now rests on.
 	composition.set_composition(60.0, 20.0, 20.0, 50.0)
@@ -123,7 +123,7 @@ func _test_colour_edges(composition: PhaseBTerritoryComposition) -> void:
 	)
 
 
-func _test_palette(composition: PhaseBTerritoryComposition) -> void:
+func _test_palette(composition: TerritoryComposition) -> void:
 	## Two colours and no more. The bar briefly carried four and that was too many
 	## things to read at a glance on a strip thirty pixels tall.
 	_check(
@@ -159,7 +159,7 @@ func _test_palette(composition: PhaseBTerritoryComposition) -> void:
 	)
 
 
-func _test_shader_contract(composition: PhaseBTerritoryComposition) -> void:
+func _test_shader_contract(composition: TerritoryComposition) -> void:
 	## Every name the script pushes has to exist in the shader. set_shader_parameter on
 	## a name the shader does not declare fails silently, so without this a renamed
 	## uniform would simply stop colouring the bar with no error anywhere.
@@ -249,7 +249,7 @@ func _test_scene_wiring() -> void:
 		territory.get_theme_stylebox("fill") is StyleBoxEmpty,
 		"the territory bar leaves its fill to the composition"
 	)
-	var composition := territory.get_node_or_null("TerritoryComposition") as PhaseBTerritoryComposition
+	var composition := territory.get_node_or_null("TerritoryComposition") as TerritoryComposition
 	if composition == null:
 		_check(false, "the territory bar has its composition child")
 		run.free()
@@ -292,7 +292,7 @@ func _near(a: Color, b: Color, tolerance: float = 0.06) -> bool:
 	return maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b))) < tolerance
 
 
-func _band_widths(composition: PhaseBTerritoryComposition) -> Vector3:
+func _band_widths(composition: TerritoryComposition) -> Vector3:
 	## Green, Neutral, Rot in bar pixels, derived the way the control derives them so
 	## the probe measures the same geometry that is drawn.
 	var width := composition.size.x
@@ -303,7 +303,7 @@ func _band_widths(composition: PhaseBTerritoryComposition) -> Vector3:
 	)
 
 
-func _mature_width(composition: PhaseBTerritoryComposition) -> float:
+func _mature_width(composition: TerritoryComposition) -> float:
 	var green_width := composition.size.x * composition.get_player_percent() * 0.01
 	return green_width * composition.get_mature_fraction_of_green() * 0.01
 

@@ -43,15 +43,15 @@ static var DEFAULT_DENSITIES := PackedInt32Array([130, 160, 200, 250, 300])
 ## are excluded from the baked enemy art and always draw in full detail, so a mix
 ## without them measures an enemy population the game never actually fields.
 const STRESS_ROLES := [
-	PhaseBCombatDirector.EnemyRole.HUNTER,
-	PhaseBCombatDirector.EnemyRole.GRAZER,
-	PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-	PhaseBCombatDirector.EnemyRole.RUSHER,
-	PhaseBCombatDirector.EnemyRole.SABOTEUR,
-	PhaseBCombatDirector.EnemyRole.CORRUPTOR,
-	PhaseBCombatDirector.EnemyRole.COLONIZER,
-	PhaseBCombatDirector.EnemyRole.WARDEN,
-	PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	CombatDirector.EnemyRole.HUNTER,
+	CombatDirector.EnemyRole.GRAZER,
+	CombatDirector.EnemyRole.HEAVY_GRAZER,
+	CombatDirector.EnemyRole.RUSHER,
+	CombatDirector.EnemyRole.SABOTEUR,
+	CombatDirector.EnemyRole.CORRUPTOR,
+	CombatDirector.EnemyRole.COLONIZER,
+	CombatDirector.EnemyRole.WARDEN,
+	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
 ]
 
 const PLANT_RELIC_COUNT := 5
@@ -93,32 +93,32 @@ const FIXTURES := {
 	},
 	"B": {
 		"name": "max_thistle",
-		"paths": [PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.BRAMBLE],
+		"paths": [Progression.PathId.THISTLE, Progression.PathId.BRAMBLE],
 		"relics": true,
 	},
 	"C": {
 		"name": "max_fruit",
-		"paths": [PhaseBProgression.PathId.FRUIT, PhaseBProgression.PathId.BLOOM],
+		"paths": [Progression.PathId.FRUIT, Progression.PathId.BLOOM],
 		"relics": true,
 	},
 	"D": {
 		"name": "thistle_fruit",
-		"paths": [PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.FRUIT],
+		"paths": [Progression.PathId.THISTLE, Progression.PathId.FRUIT],
 		"relics": true,
 	},
 	"E": {
 		"name": "thistle_vine",
-		"paths": [PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.VINE],
+		"paths": [Progression.PathId.THISTLE, Progression.PathId.VINE],
 		"relics": true,
 	},
 	"F": {
 		"name": "root_fruit",
-		"paths": [PhaseBProgression.PathId.ROOT, PhaseBProgression.PathId.FRUIT],
+		"paths": [Progression.PathId.ROOT, Progression.PathId.FRUIT],
 		"relics": true,
 	},
 	"G": {
 		"name": "thistle_fruit_churn",
-		"paths": [PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.FRUIT],
+		"paths": [Progression.PathId.THISTLE, Progression.PathId.FRUIT],
 		"relics": true,
 		"churn": true,
 	},
@@ -154,16 +154,16 @@ func _run_probe() -> void:
 	_parse_arguments()
 	_commit = _read_commit()
 
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 
@@ -233,7 +233,7 @@ func _read_commit() -> String:
 	return String(output[0]).strip_edges()
 
 
-func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int) -> void:
+func _run_fixture(prototype: RunRoot, fixture_key: String, density: int) -> void:
 	var fixture: Dictionary = FIXTURES[fixture_key]
 	var paths: Array = fixture["paths"]
 	var first_path := int(paths[0])
@@ -249,7 +249,7 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 		prototype.progression.debug_select_tertiary_path(
 			_support_path_for(first_path, second_path)
 		)
-		for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+		for upgrade_id in range(Progression.UpgradeId.size()):
 			var path_id := prototype.progression._get_upgrade_path(upgrade_id)
 			if prototype.progression.has_path(path_id):
 				prototype.progression._upgrade_levels[upgrade_id] = (
@@ -261,7 +261,7 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 	prototype._apply_progression_modifiers()
 	prototype.relic_director.apply_relics()
 
-	prototype.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	prototype.wave_director.configure_mode(RunMode.Id.CAMPAIGN)
 	prototype.wave_director.reset_director()
 	prototype.wave_director.debug_advance_time(
 		prototype.wave_director.final_invasion_time_seconds
@@ -308,8 +308,8 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 			enemy.maximum_health = 1000000000.0
 			enemy.health = enemy.maximum_health
 	var holds_vine := (
-		first_path == PhaseBProgression.PathId.VINE
-		or second_path == PhaseBProgression.PathId.VINE
+		first_path == Progression.PathId.VINE
+		or second_path == Progression.PathId.VINE
 	)
 	if holds_vine and prototype.combat.vine_whip != null:
 		prototype.combat.vine_whip.build(origin, prototype.combat.get_cane_reach())
@@ -317,11 +317,11 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 
 	var total := PackedFloat32Array()
 	var samples := {}
-	for timer in PhaseBPerfCounters.TIMER_NAMES:
+	for timer in PerfCounters.TIMER_NAMES:
 		samples[timer] = PackedFloat32Array()
 	var counter_totals := {}
 	var counter_peaks := {}
-	for counter in PhaseBPerfCounters.COUNT_NAMES:
+	for counter in PerfCounters.COUNT_NAMES:
 		counter_totals[counter] = 0
 		counter_peaks[counter] = 0
 
@@ -353,9 +353,9 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 		else:
 			prototype.territory_field.refresh_visuals_now()
 
-	PhaseBPerfCounters.begin_session()
+	PerfCounters.begin_session()
 	for frame_index in range(SAMPLE_FRAMES):
-		PhaseBPerfCounters.reset_frame()
+		PerfCounters.reset_frame()
 		if churn:
 			# Replacing losses before the frame runs, at the director's own rate. The
 			# spawns land outside the measured phases below.
@@ -414,14 +414,14 @@ func _run_fixture(prototype: PhaseBPrototype, fixture_key: String, density: int)
 		if frame_ms > worst_frame_ms:
 			worst_frame_ms = frame_ms
 			worst_frame_index = frame_index
-			worst_frame = PhaseBPerfCounters.snapshot()
-		for timer in PhaseBPerfCounters.TIMER_NAMES:
-			samples[timer].append(PhaseBPerfCounters.get_timer_ms(timer))
-		for counter in PhaseBPerfCounters.COUNT_NAMES:
-			var value := PhaseBPerfCounters.get_count(counter)
+			worst_frame = PerfCounters.snapshot()
+		for timer in PerfCounters.TIMER_NAMES:
+			samples[timer].append(PerfCounters.get_timer_ms(timer))
+		for counter in PerfCounters.COUNT_NAMES:
+			var value := PerfCounters.get_count(counter)
 			counter_totals[counter] = int(counter_totals[counter]) + value
 			counter_peaks[counter] = maxi(int(counter_peaks[counter]), value)
-	PhaseBPerfCounters.end_session()
+	PerfCounters.end_session()
 
 	_record(
 		fixture_key,
@@ -543,7 +543,7 @@ func _record(
 	)
 	# The subsystems that actually ran, so an undrafted fixture does not print
 	# twenty-one zero rows under itself.
-	for timer in PhaseBPerfCounters.TIMER_NAMES:
+	for timer in PerfCounters.TIMER_NAMES:
 		var timer_samples: PackedFloat32Array = samples[timer]
 		var timer_p99 := _p99(timer_samples)
 		var timer_median := _median(timer_samples)
@@ -552,7 +552,7 @@ func _record(
 		_table_rows.append(
 			"DENSITY_LADDER   %-40s %8.3f %8.3f" % [timer, timer_median, timer_p99]
 		)
-	for counter in PhaseBPerfCounters.COUNT_NAMES:
+	for counter in PerfCounters.COUNT_NAMES:
 		var counter_total := int(counter_totals[counter])
 		if counter_total <= 0:
 			continue
@@ -571,14 +571,14 @@ func _record(
 		median, p95, p99, maximum, over_16, over_25, over_33,
 		"frame", median, p99, 0
 	)
-	for timer in PhaseBPerfCounters.TIMER_NAMES:
+	for timer in PerfCounters.TIMER_NAMES:
 		var timer_samples: PackedFloat32Array = samples[timer]
 		_append_csv_row(
 			fixture_key, fixture, density, spawned,
 			median, p95, p99, maximum, over_16, over_25, over_33,
 			String(timer), _median(timer_samples), _p99(timer_samples), 0
 		)
-	for counter in PhaseBPerfCounters.COUNT_NAMES:
+	for counter in PerfCounters.COUNT_NAMES:
 		_append_csv_row(
 			fixture_key, fixture, density, spawned,
 			median, p95, p99, maximum, over_16, over_25, over_33,
@@ -587,7 +587,7 @@ func _record(
 
 
 func _refill(
-	prototype: PhaseBPrototype, density: int, origin: Vector2, delta: float
+	prototype: RunRoot, density: int, origin: Vector2, delta: float
 ) -> void:
 	var combat := prototype.combat
 	_churn_budget += delta
@@ -624,7 +624,7 @@ func _record_worst_frame(
 		"DENSITY_LADDER   worst frame #%d = %.3fms, made of:" % [frame_index, frame_ms]
 	)
 	var accounted := 0.0
-	for timer in PhaseBPerfCounters.TIMER_NAMES:
+	for timer in PerfCounters.TIMER_NAMES:
 		var value := float(snapshot.get(timer, 0.0))
 		if value <= 0.0005:
 			continue
@@ -639,15 +639,15 @@ func _record_worst_frame(
 		"DENSITY_LADDER     %-38s %8.3f (top-level bars only)" % [
 			"unattributed",
 			frame_ms - (
-				float(snapshot.get(PhaseBPerfCounters.TIMER_THISTLE_TOTAL, 0.0))
-				+ float(snapshot.get(PhaseBPerfCounters.TIMER_FRUIT_TOTAL, 0.0))
-				+ float(snapshot.get(PhaseBPerfCounters.TIMER_TERRITORY_TOTAL, 0.0))
-				+ float(snapshot.get(PhaseBPerfCounters.TIMER_TERRITORY_VISUAL_PAINT, 0.0))
-				+ float(snapshot.get(PhaseBPerfCounters.TIMER_ENEMY_MANAGER_TOTAL, 0.0))
+				float(snapshot.get(PerfCounters.TIMER_THISTLE_TOTAL, 0.0))
+				+ float(snapshot.get(PerfCounters.TIMER_FRUIT_TOTAL, 0.0))
+				+ float(snapshot.get(PerfCounters.TIMER_TERRITORY_TOTAL, 0.0))
+				+ float(snapshot.get(PerfCounters.TIMER_TERRITORY_VISUAL_PAINT, 0.0))
+				+ float(snapshot.get(PerfCounters.TIMER_ENEMY_MANAGER_TOTAL, 0.0))
 			),
 		]
 	)
-	for counter in PhaseBPerfCounters.COUNT_NAMES:
+	for counter in PerfCounters.COUNT_NAMES:
 		var count_value := int(snapshot.get(counter, 0))
 		if count_value <= 0:
 			continue
@@ -684,10 +684,10 @@ func _append_csv_row(
 ) -> void:
 	var paths: Array = fixture["paths"]
 	var first_name := (
-		PhaseBProgression.get_path_name(int(paths[0])) if int(paths[0]) >= 0 else "none"
+		Progression.get_path_name(int(paths[0])) if int(paths[0]) >= 0 else "none"
 	)
 	var second_name := (
-		PhaseBProgression.get_path_name(int(paths[1])) if int(paths[1]) >= 0 else "none"
+		Progression.get_path_name(int(paths[1])) if int(paths[1]) >= 0 else "none"
 	)
 	_csv_rows.append(
 		"%s,%s,%s,%s,%d,%d,%s,%s,%s,%s,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%s,%.4f,%.4f,%d" % [
@@ -753,15 +753,15 @@ func _write_csv() -> void:
 
 
 func _support_path_for(first_path: int, second_path: int) -> int:
-	for path_id in range(PhaseBProgression.PathId.size()):
+	for path_id in range(Progression.PathId.size()):
 		if path_id != first_path and path_id != second_path:
 			return path_id
-	return PhaseBProgression.PathId.SPORE
+	return Progression.PathId.SPORE
 
 
 func _relics_for(first_path: int, second_path: int) -> Array[int]:
 	var chosen: Array[int] = []
-	_append_pool_relics(chosen, PhaseBRelicCatalog.Pool.PLANT, PLANT_RELIC_COUNT)
+	_append_pool_relics(chosen, RelicCatalog.Pool.PLANT, PLANT_RELIC_COUNT)
 	_append_pool_relics(chosen, _pool_for_path(first_path), PRIMARY_RELIC_COUNT)
 	_append_pool_relics(chosen, _pool_for_path(second_path), SECONDARY_RELIC_COUNT)
 	return chosen
@@ -769,10 +769,10 @@ func _relics_for(first_path: int, second_path: int) -> Array[int]:
 
 func _append_pool_relics(chosen: Array[int], pool: int, wanted: int) -> void:
 	var taken := 0
-	for relic_id in range(PhaseBRelicCatalog.get_count()):
+	for relic_id in range(RelicCatalog.get_count()):
 		if taken >= wanted:
 			return
-		if PhaseBRelicCatalog.get_pool(relic_id) != pool:
+		if RelicCatalog.get_pool(relic_id) != pool:
 			continue
 		chosen.append(relic_id)
 		taken += 1
@@ -780,23 +780,23 @@ func _append_pool_relics(chosen: Array[int], pool: int, wanted: int) -> void:
 
 func _pool_for_path(path_id: int) -> int:
 	match path_id:
-		PhaseBProgression.PathId.SPORE:
-			return PhaseBRelicCatalog.Pool.SPORE
-		PhaseBProgression.PathId.BLOOM:
-			return PhaseBRelicCatalog.Pool.BLOOM
-		PhaseBProgression.PathId.BRAMBLE:
-			return PhaseBRelicCatalog.Pool.BRAMBLE
-		PhaseBProgression.PathId.ROOT:
-			return PhaseBRelicCatalog.Pool.ROOT
-		PhaseBProgression.PathId.PRUNING:
-			return PhaseBRelicCatalog.Pool.PRUNING
-		PhaseBProgression.PathId.THISTLE:
-			return PhaseBRelicCatalog.Pool.THISTLE
-		PhaseBProgression.PathId.VINE:
-			return PhaseBRelicCatalog.Pool.VINE
-		PhaseBProgression.PathId.FRUIT:
-			return PhaseBRelicCatalog.Pool.FRUIT
-	return PhaseBRelicCatalog.Pool.PLANT
+		Progression.PathId.SPORE:
+			return RelicCatalog.Pool.SPORE
+		Progression.PathId.BLOOM:
+			return RelicCatalog.Pool.BLOOM
+		Progression.PathId.BRAMBLE:
+			return RelicCatalog.Pool.BRAMBLE
+		Progression.PathId.ROOT:
+			return RelicCatalog.Pool.ROOT
+		Progression.PathId.PRUNING:
+			return RelicCatalog.Pool.PRUNING
+		Progression.PathId.THISTLE:
+			return RelicCatalog.Pool.THISTLE
+		Progression.PathId.VINE:
+			return RelicCatalog.Pool.VINE
+		Progression.PathId.FRUIT:
+			return RelicCatalog.Pool.FRUIT
+	return RelicCatalog.Pool.PLANT
 
 
 func _ms_since(began_usec: int) -> float:

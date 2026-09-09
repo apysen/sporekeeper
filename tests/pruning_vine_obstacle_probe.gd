@@ -11,16 +11,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -41,7 +41,7 @@ func _run() -> void:
 		quit(1)
 
 
-func _test_growth_route(prototype: PhaseBPrototype) -> void:
+func _test_growth_route(prototype: RunRoot) -> void:
 	var field := prototype.territory_field
 	var route := field.get_growth_path(RIDGE_LEFT, RIDGE_RIGHT)
 	_check(
@@ -62,16 +62,16 @@ func _test_growth_route(prototype: PhaseBPrototype) -> void:
 	)
 
 
-func _test_cutting_stops_at_ridge(prototype: PhaseBPrototype) -> void:
+func _test_cutting_stops_at_ridge(prototype: RunRoot) -> void:
 	prototype.combat.reset_combat()
 	prototype.combat._cane_remaining = 9999.0
 	var enemy_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.BOSS,
+		CombatDirector.EnemyRole.BOSS,
 		RIDGE_RIGHT
 	)
 	var health_before := prototype.combat.get_enemy_health(enemy_id)
 	var cutting := prototype.pruning_director._cuttings[0]
-	cutting.state = PhaseBPruningDirector.CuttingState.LAUNCHED
+	cutting.state = PruningDirector.CuttingState.LAUNCHED
 	cutting.position = RIDGE_LEFT
 	cutting.velocity = RIDGE_LEFT.direction_to(RIDGE_RIGHT) * RIDGE_LEFT.distance_to(RIDGE_RIGHT)
 	cutting.remaining = 2.0
@@ -80,7 +80,7 @@ func _test_cutting_stops_at_ridge(prototype: PhaseBPrototype) -> void:
 	cutting.last_hit_enemy_id = -1
 	prototype.pruning_director._advance_launched_cutting(cutting, 1.0)
 	_check(
-		cutting.state == PhaseBPruningDirector.CuttingState.INACTIVE,
+		cutting.state == PruningDirector.CuttingState.INACTIVE,
 		"a Cutting is spent when its frame segment reaches the ridge"
 	)
 	_check(
@@ -89,12 +89,12 @@ func _test_cutting_stops_at_ridge(prototype: PhaseBPrototype) -> void:
 	)
 
 
-func _test_vine_wraps_around_ridge(prototype: PhaseBPrototype) -> void:
+func _test_vine_wraps_around_ridge(prototype: RunRoot) -> void:
 	prototype.combat.reset_combat()
 	prototype.player.global_position = prototype.territory_field.to_global(RIDGE_LEFT)
 	prototype.combat._cane_remaining = 9999.0
 	var enemy_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.BOSS,
+		CombatDirector.EnemyRole.BOSS,
 		RIDGE_RIGHT
 	)
 	var route := prototype.territory_field.get_growth_path(RIDGE_LEFT, RIDGE_RIGHT)

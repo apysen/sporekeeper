@@ -19,12 +19,12 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
 		quit(1)
 		return
@@ -34,8 +34,8 @@ func _run() -> void:
 	var progression := prototype.progression
 	progression.reset_progression()
 	progression.debug_select_paths(
-		PhaseBProgression.PathId.FRUIT,
-		PhaseBProgression.PathId.SPORE
+		Progression.PathId.FRUIT,
+		Progression.PathId.SPORE
 	)
 	prototype._apply_progression_modifiers()
 	prototype.adaptation_director.reset_adaptations()
@@ -57,14 +57,14 @@ func _run() -> void:
 		quit(1)
 
 
-func _clear_fruit(prototype: PhaseBPrototype) -> void:
+func _clear_fruit(prototype: RunRoot) -> void:
 	for fruit in prototype.adaptation_director._fruits:
 		fruit.active = false
 	for fruitseed in prototype.adaptation_director._fruitseeds:
 		fruitseed.active = false
 
 
-func _frames_until_inactive(prototype: PhaseBPrototype, fruit) -> int:
+func _frames_until_inactive(prototype: RunRoot, fruit) -> int:
 	var adaptations := prototype.adaptation_director
 	for frame in range(GENEROUS_FRAMES):
 		if not fruit.active:
@@ -73,7 +73,7 @@ func _frames_until_inactive(prototype: PhaseBPrototype, fruit) -> int:
 	return -1
 
 
-func _test_zero_deceleration_terminates(prototype: PhaseBPrototype) -> void:
+func _test_zero_deceleration_terminates(prototype: RunRoot) -> void:
 	## Deceleration is the only thing that can drive a Fruit's speed to exactly zero;
 	## the obstacle bounce and the collision momentum loss are both multiplications,
 	## and a multiplication never arrives at zero. So a Fruit that has lost its
@@ -95,7 +95,7 @@ func _test_zero_deceleration_terminates(prototype: PhaseBPrototype) -> void:
 	)
 
 
-func _test_residual_speed_terminates(prototype: PhaseBPrototype) -> void:
+func _test_residual_speed_terminates(prototype: RunRoot) -> void:
 	## The exact shape a multiplication leaves behind: a speed far below anything the
 	## eye reads as motion, but strictly greater than zero.
 	var adaptations := prototype.adaptation_director
@@ -118,7 +118,7 @@ func _test_residual_speed_terminates(prototype: PhaseBPrototype) -> void:
 		)
 
 
-func _test_repeated_bounce_terminates(prototype: PhaseBPrototype) -> void:
+func _test_repeated_bounce_terminates(prototype: RunRoot) -> void:
 	## An obstacle bounce keeps 55% of the speed. A Fruit wedged so that it bounces
 	## every frame is the natural way to grind the speed down to a residue.
 	var adaptations := prototype.adaptation_director
@@ -143,7 +143,7 @@ func _test_repeated_bounce_terminates(prototype: PhaseBPrototype) -> void:
 	)
 
 
-func _test_repeated_collision_terminates(prototype: PhaseBPrototype) -> void:
+func _test_repeated_collision_terminates(prototype: RunRoot) -> void:
 	## Enemy collisions take a share of the momentum, and that share is also a
 	## multiplication. A Fruit bowling through a dense pack takes many of them.
 	var adaptations := prototype.adaptation_director
@@ -163,7 +163,7 @@ func _test_repeated_collision_terminates(prototype: PhaseBPrototype) -> void:
 	)
 
 
-func _test_no_fruit_outlives_its_roll(prototype: PhaseBPrototype) -> void:
+func _test_no_fruit_outlives_its_roll(prototype: RunRoot) -> void:
 	## Whatever happens to it, a Fruit is a roll and then a burst. Nothing should be
 	## able to leave one sitting on the field as a permanent contact hazard.
 	var adaptations := prototype.adaptation_director

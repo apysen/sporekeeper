@@ -11,10 +11,10 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var p := current_scene as PhaseBPrototype
+	var p := current_scene as RunRoot
 	var combat := p.combat
 	# Give the bake every chance to finish before asking about it.
 	for _frame in range(90):
@@ -27,7 +27,7 @@ func _run() -> void:
 	combat.reset_combat()
 	for i in range(120):
 		combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
+			CombatDirector.EnemyRole.HUNTER,
 			Vector2(300.0, 280.0) + Vector2.from_angle(float(i)) * (30.0 + float(i % 6) * 14.0)
 		)
 	combat.queue_redraw()

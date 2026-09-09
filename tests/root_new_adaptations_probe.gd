@@ -5,36 +5,36 @@ extends SceneTree
 ## multiplied by the Network where the effect resolves. Nothing here goes through
 ## virtual ranks any more, which is what used to make a Fruit release look random.
 const BONUS_LINES := {
-	PhaseBProgression.UpgradeId.VINE_ELONGATION: 0.20,
-	PhaseBProgression.UpgradeId.VINE_LIGNIFICATION: 0.25,
-	PhaseBProgression.UpgradeId.VINE_TURGOR: 0.15,
-	PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE: 0.25,
-	PhaseBProgression.UpgradeId.FRUIT_RIPENING: 0.25,
-	PhaseBProgression.UpgradeId.FRUIT_MOMENTUM: 0.20,
-	PhaseBProgression.UpgradeId.FRUIT_GERMINATION: 0.20,
-	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE: 0.15,
-	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT: 0.10,
+	Progression.UpgradeId.VINE_ELONGATION: 0.20,
+	Progression.UpgradeId.VINE_LIGNIFICATION: 0.25,
+	Progression.UpgradeId.VINE_TURGOR: 0.15,
+	Progression.UpgradeId.VINE_APICAL_DOMINANCE: 0.25,
+	Progression.UpgradeId.FRUIT_RIPENING: 0.25,
+	Progression.UpgradeId.FRUIT_MOMENTUM: 0.20,
+	Progression.UpgradeId.FRUIT_GERMINATION: 0.20,
+	Progression.UpgradeId.THISTLE_DEHISCENCE: 0.15,
+	Progression.UpgradeId.THISTLE_NEEDLEPOINT: 1.0,
 }
 
 const COUNT_LINES := [
-	PhaseBProgression.UpgradeId.FRUIT_SET,
-	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
-	PhaseBProgression.UpgradeId.THISTLE_BURR,
+	Progression.UpgradeId.FRUIT_SET,
+	Progression.UpgradeId.THISTLE_CLUSTERING,
+	Progression.UpgradeId.THISTLE_BURR,
 ]
 
 const OWNED_LINES := [
-	PhaseBProgression.UpgradeId.VINE_ELONGATION,
-	PhaseBProgression.UpgradeId.VINE_LIGNIFICATION,
-	PhaseBProgression.UpgradeId.VINE_TURGOR,
-	PhaseBProgression.UpgradeId.VINE_APICAL_DOMINANCE,
-	PhaseBProgression.UpgradeId.FRUIT_SET,
-	PhaseBProgression.UpgradeId.FRUIT_RIPENING,
-	PhaseBProgression.UpgradeId.FRUIT_MOMENTUM,
-	PhaseBProgression.UpgradeId.FRUIT_GERMINATION,
-	PhaseBProgression.UpgradeId.THISTLE_CLUSTERING,
-	PhaseBProgression.UpgradeId.THISTLE_DEHISCENCE,
-	PhaseBProgression.UpgradeId.THISTLE_BURR,
-	PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT,
+	Progression.UpgradeId.VINE_ELONGATION,
+	Progression.UpgradeId.VINE_LIGNIFICATION,
+	Progression.UpgradeId.VINE_TURGOR,
+	Progression.UpgradeId.VINE_APICAL_DOMINANCE,
+	Progression.UpgradeId.FRUIT_SET,
+	Progression.UpgradeId.FRUIT_RIPENING,
+	Progression.UpgradeId.FRUIT_MOMENTUM,
+	Progression.UpgradeId.FRUIT_GERMINATION,
+	Progression.UpgradeId.THISTLE_CLUSTERING,
+	Progression.UpgradeId.THISTLE_DEHISCENCE,
+	Progression.UpgradeId.THISTLE_BURR,
+	Progression.UpgradeId.THISTLE_NEEDLEPOINT,
 ]
 
 var _failures := 0
@@ -45,12 +45,12 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
 		quit(1)
 		return
@@ -77,14 +77,14 @@ func _run() -> void:
 				BONUS_LINES[upgrade_id] * amplification
 			),
 			"rank-1 %s takes its own bonus times the Network" % (
-				PhaseBProgression.get_upgrade_name(upgrade_id)
+				Progression.get_upgrade_name(upgrade_id)
 			)
 		)
 	for upgrade_id in COUNT_LINES:
 		_check(
 			prototype.adaptation_director._root_count_step(upgrade_id, origin) == 1,
 			"%s takes exactly one whole unit from Potency" % (
-				PhaseBProgression.get_upgrade_name(upgrade_id)
+				Progression.get_upgrade_name(upgrade_id)
 			)
 		)
 
@@ -105,15 +105,15 @@ func _run() -> void:
 		quit(1)
 
 
-func _configure_owned_build(prototype: PhaseBPrototype) -> void:
+func _configure_owned_build(prototype: RunRoot) -> void:
 	var progression := prototype.progression
 	progression.reset_progression()
 	progression.debug_select_paths(
-		PhaseBProgression.PathId.ROOT,
-		PhaseBProgression.PathId.THISTLE
+		Progression.PathId.ROOT,
+		Progression.PathId.THISTLE
 	)
-	progression.debug_select_tertiary_path(PhaseBProgression.PathId.VINE)
-	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
+	progression.debug_select_tertiary_path(Progression.PathId.VINE)
+	progression._upgrade_levels[Progression.UpgradeId.ROOT_POTENCY] = 5
 	for upgrade_id in OWNED_LINES:
 		progression._upgrade_levels[upgrade_id] = 1
 	prototype._apply_progression_modifiers()
@@ -121,7 +121,7 @@ func _configure_owned_build(prototype: PhaseBPrototype) -> void:
 	prototype.combat.reset_combat()
 
 
-func _test_rooted_glow(prototype: PhaseBPrototype, origin: Vector2) -> void:
+func _test_rooted_glow(prototype: RunRoot, origin: Vector2) -> void:
 	## The light is the whole-unit gate made visible, so it has to agree with the
 	## payout on both edges. If these ever diverge the player is being told a lie at
 	## exactly the moment the count changes under them.
@@ -130,7 +130,7 @@ func _test_rooted_glow(prototype: PhaseBPrototype, origin: Vector2) -> void:
 	var lit_on_mature := (
 		adaptations._player_rooted_glow.lit
 		and adaptations._root_count_step(
-			PhaseBProgression.UpgradeId.FRUIT_SET, origin
+			Progression.UpgradeId.FRUIT_SET, origin
 		) == 1
 	)
 	_check(lit_on_mature, "the light is on exactly where the whole unit is paid")
@@ -165,27 +165,27 @@ func _test_rooted_glow(prototype: PhaseBPrototype, origin: Vector2) -> void:
 	)
 
 
-func _test_off_mature_ground(prototype: PhaseBPrototype, origin: Vector2) -> void:
+func _test_off_mature_ground(prototype: RunRoot, origin: Vector2) -> void:
 	## Root deepens the ground it has aged. Bare ground gets no whole unit, and the
 	## bonus scale falls back to 1.0 rather than snapping between two authored values.
 	var adaptations := prototype.adaptation_director
 	var bare := origin + Vector2(400.0, 400.0)
 	_check(
-		adaptations._root_count_step(PhaseBProgression.UpgradeId.FRUIT_SET, bare) == 0
+		adaptations._root_count_step(Progression.UpgradeId.FRUIT_SET, bare) == 0
 		and adaptations._root_count_step(
-			PhaseBProgression.UpgradeId.THISTLE_CLUSTERING, bare
+			Progression.UpgradeId.THISTLE_CLUSTERING, bare
 		) == 0,
 		"no whole unit is paid off Mature ground"
 	)
 	_check(
 		is_equal_approx(
 			adaptations._root_bonus_scale(
-				PhaseBProgression.UpgradeId.THISTLE_NEEDLEPOINT, bare
+				Progression.UpgradeId.THISTLE_NEEDLEPOINT, bare
 			),
 			1.0
 		)
 		and is_equal_approx(
-			adaptations._root_bonus_scale(PhaseBProgression.UpgradeId.FRUIT_MOMENTUM, bare),
+			adaptations._root_bonus_scale(Progression.UpgradeId.FRUIT_MOMENTUM, bare),
 			1.0
 		),
 		"Potency amplifies nothing off Mature ground"
@@ -193,23 +193,29 @@ func _test_off_mature_ground(prototype: PhaseBPrototype, origin: Vector2) -> voi
 
 
 func _test_thistle_outputs(
-	prototype: PhaseBPrototype,
+	prototype: RunRoot,
 	origin: Vector2,
 	amplification: float
 ) -> void:
 	## Clustering and Burr are counts and get one whole unit; Dehiscence and
-	## Needlepoint are rates and get their own per-rank bonus amplified.
+	## Needlepoint are rates and get their own per-rank bonus amplified. Needlepoint
+	## is critical damage now rather than critical chance, and the Network scales the
+	## bonus it grants the same way it scaled the odds it used to grant.
 	var adaptations := prototype.adaptation_director
 	var enemy_id := prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.BOSS,
+		CombatDirector.EnemyRole.BOSS,
 		origin + Vector2(48.0, 0.0)
 	)
 	adaptations._spawn_thorn(origin, enemy_id, 1.0, 0, false, false, 0.0)
 	var thorn = adaptations._thorns[0]
 	_check(thorn.ricochets_remaining == 2, "Burr rank 1 plus Potency gives one more ricochet")
 	_check(
-		is_equal_approx(thorn.critical_chance_bonus, 0.10 * amplification),
-		"Needlepoint critical chance is its own bonus times the Network"
+		is_zero_approx(thorn.critical_chance_bonus)
+		and is_equal_approx(
+			thorn.critical_damage_bonus,
+			adaptations.thistle_needlepoint_critical_damage_per_rank * amplification
+		),
+		"Needlepoint critical damage is its own bonus times the Network"
 	)
 	_check(
 		is_equal_approx(thorn.damage, adaptations.thistle_damage),
@@ -234,7 +240,7 @@ func _test_thistle_outputs(
 	)
 
 
-func _test_vine_outputs(prototype: PhaseBPrototype, amplification: float) -> void:
+func _test_vine_outputs(prototype: RunRoot, amplification: float) -> void:
 	var combat := prototype.combat
 	_check(
 		is_equal_approx(combat._cane_reach_multiplier, 1.0 + 0.20 * amplification),
@@ -258,7 +264,7 @@ func _test_vine_outputs(prototype: PhaseBPrototype, amplification: float) -> voi
 
 
 func _test_fruit_outputs(
-	prototype: PhaseBPrototype,
+	prototype: RunRoot,
 	origin: Vector2,
 	amplification: float
 ) -> void:
@@ -297,7 +303,7 @@ func _test_fruit_outputs(
 
 	# The count is the bug this probe exists for: five Potency ranks must still be
 	# worth exactly one Fruit, so a release does not change size as ranks are bought.
-	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 1
+	prototype.progression._upgrade_levels[Progression.UpgradeId.ROOT_POTENCY] = 1
 	for candidate in adaptations._fruits:
 		candidate.active = false
 	adaptations._begin_normal_fruit_release()
@@ -305,23 +311,23 @@ func _test_fruit_outputs(
 		adaptations.get_active_fruit_count() == 3,
 		"one Potency rank releases the same count as five"
 	)
-	prototype.progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
+	prototype.progression._upgrade_levels[Progression.UpgradeId.ROOT_POTENCY] = 5
 
 
-func _test_jackpot_gates(prototype: PhaseBPrototype, origin: Vector2) -> void:
+func _test_jackpot_gates(prototype: RunRoot, origin: Vector2) -> void:
 	var progression := prototype.progression
 	var adaptations := prototype.adaptation_director
-	var fruit_set := PhaseBProgression.UpgradeId.FRUIT_SET
+	var fruit_set := Progression.UpgradeId.FRUIT_SET
 	progression._upgrade_levels[fruit_set] = 0
-	progression.set_casino_path_active(PhaseBProgression.PathId.FRUIT, true)
+	progression.set_casino_path_active(Progression.PathId.FRUIT, true)
 	_check(
 		adaptations._root_count_step(fruit_set, origin) == 0,
 		"Fruit jackpot does not make unowned Fruit Set eligible for Potency"
 	)
-	progression.set_casino_path_active(PhaseBProgression.PathId.FRUIT, false)
+	progression.set_casino_path_active(Progression.PathId.FRUIT, false)
 	progression._upgrade_levels[fruit_set] = 1
-	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 0
-	progression.set_casino_path_active(PhaseBProgression.PathId.ROOT, true)
+	progression._upgrade_levels[Progression.UpgradeId.ROOT_POTENCY] = 0
+	progression.set_casino_path_active(Progression.PathId.ROOT, true)
 	# A Root jackpot runs the path, and it now lends Fruit and Vine exactly what it
 	# already lends Spore, Bloom, Bramble and Pruning: the Network at its lent
 	# strength, read through the one multiplier every consumer reads.
@@ -333,8 +339,8 @@ func _test_jackpot_gates(prototype: PhaseBPrototype, origin: Vector2) -> void:
 		and adaptations._root_bonus_scale(fruit_set, origin) > 1.0,
 		"a Root jackpot lends Fruit the same Network every other path reads"
 	)
-	progression.set_casino_path_active(PhaseBProgression.PathId.ROOT, false)
-	progression._upgrade_levels[PhaseBProgression.UpgradeId.ROOT_POTENCY] = 5
+	progression.set_casino_path_active(Progression.PathId.ROOT, false)
+	progression._upgrade_levels[Progression.UpgradeId.ROOT_POTENCY] = 5
 
 
 func _check(condition: bool, description: String) -> void:

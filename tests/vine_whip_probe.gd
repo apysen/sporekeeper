@@ -23,16 +23,16 @@ func _check(condition: bool, message: String) -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
-	_check(load_error == OK, "Phase B scene loads")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
+	_check(load_error == OK, "Sporekeeper scene loads")
 	if load_error != OK:
 		quit(1)
 		return
 	await process_frame
 	await process_frame
 
-	var prototype := current_scene as PhaseBPrototype
-	var whip := PhaseBVineWhip.new()
+	var prototype := current_scene as RunRoot
+	var whip := VineWhip.new()
 	whip.territory_field = prototype.territory_field
 	prototype.add_child(whip)
 
@@ -243,7 +243,7 @@ func _run() -> void:
 	whip.build(origin, 184.0)
 	for stress_index in range(90):
 		prototype.combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
+			CombatDirector.EnemyRole.HUNTER,
 			origin + Vector2(
 				-120.0 + float(stress_index % 12) * 22.0,
 				-90.0 + float(stress_index / 12) * 24.0
@@ -280,7 +280,7 @@ func _run() -> void:
 	quit(1)
 
 
-func _measure_swing(whip: PhaseBVineWhip, origin: Vector2, left_to_right: bool) -> float:
+func _measure_swing(whip: VineWhip, origin: Vector2, left_to_right: bool) -> float:
 	## Signed angle the tip travels through during one driven stroke. Its sign is the
 	## direction the rope actually went, which is what alternation has to be read from.
 	whip.begin_sweep(Vector2.RIGHT, left_to_right, 0.72)
@@ -294,7 +294,7 @@ func _measure_swing(whip: PhaseBVineWhip, origin: Vector2, left_to_right: bool) 
 	return travelled
 
 
-func _find_wrap_anchor(prototype: PhaseBPrototype) -> Vector2:
+func _find_wrap_anchor(prototype: RunRoot) -> Vector2:
 	## Somewhere the Vine can be hung beside solid ground: a point whose immediate
 	## surroundings are open but which has terrain within the rope's reach.
 	var field := prototype.territory_field
@@ -322,7 +322,7 @@ func _find_wrap_anchor(prototype: PhaseBPrototype) -> Vector2:
 	return Vector2(-1.0, -1.0)
 
 
-func _find_open_anchor(prototype: PhaseBPrototype) -> Vector2:
+func _find_open_anchor(prototype: RunRoot) -> Vector2:
 	var field := prototype.territory_field
 	var size := field.tuning.arena_size
 	for step_y in range(10, 55):

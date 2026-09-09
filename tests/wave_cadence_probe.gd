@@ -27,16 +27,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -48,13 +48,13 @@ func _run() -> void:
 
 	_check_final_wave_spawns(
 		prototype,
-		PhaseBRunMode.Id.CAMPAIGN,
-		PhaseBCampaignWaves.WAVE_COUNT,
-		PhaseBCampaignWaves.CAMPAIGN_DURATION_SECONDS
+		RunMode.Id.CAMPAIGN,
+		CampaignWaves.WAVE_COUNT,
+		CampaignWaves.CAMPAIGN_DURATION_SECONDS
 	)
 	# Deliberately after Campaign. The director outlives a run, so this is also the
 	# case where Quick used to inherit Campaign's thirty-minute clock.
-	_check_final_wave_spawns(prototype, PhaseBRunMode.Id.QUICK, 12, 720.0)
+	_check_final_wave_spawns(prototype, RunMode.Id.QUICK, 12, 720.0)
 	_check_mode_switch_restores(prototype)
 	_check_grace_skipped_when_clear(prototype)
 	_check_grace_holds_while_enemies_live(prototype)
@@ -73,7 +73,7 @@ func _run() -> void:
 
 
 func _check_final_wave_spawns(
-	prototype: PhaseBPrototype, mode: int, final_wave: int, run_seconds: float
+	prototype: RunRoot, mode: int, final_wave: int, run_seconds: float
 ) -> void:
 	## The last wave must contain at least one moment where the director would
 	## spawn. Checked by asking the director, not by counting enemies, so a full
@@ -119,14 +119,14 @@ func _check_final_wave_spawns(
 	)
 
 
-func _check_mode_switch_restores(prototype: PhaseBPrototype) -> void:
+func _check_mode_switch_restores(prototype: RunRoot) -> void:
 	## Configuring a mode must say what that mode is, not what has changed since the
 	## last one.
 	var director := prototype.wave_director
 	_checks += 1
-	director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	director.configure_mode(RunMode.Id.CAMPAIGN)
 	var campaign_run: float = director.run_duration_seconds
-	director.configure_mode(PhaseBRunMode.Id.QUICK)
+	director.configure_mode(RunMode.Id.QUICK)
 	var quick_run: float = director.run_duration_seconds
 	var quick_cleanup: float = director.cleanup_time_seconds
 	var quick_boss: float = director.boss_time_seconds
@@ -145,15 +145,15 @@ func _check_mode_switch_restores(prototype: PhaseBPrototype) -> void:
 
 
 func _mode_name(mode: int) -> String:
-	## Spelled out here rather than through PhaseBRunMode.get_name, whose name
+	## Spelled out here rather than through RunMode.get_name, whose name
 	## collides with a built-in and resolves to the wrong one.
-	return "CAMPAIGN" if mode == PhaseBRunMode.Id.CAMPAIGN else "QUICK"
+	return "CAMPAIGN" if mode == RunMode.Id.CAMPAIGN else "QUICK"
 
 
-func _check_grace_skipped_when_clear(prototype: PhaseBPrototype) -> void:
+func _check_grace_skipped_when_clear(prototype: RunRoot) -> void:
 	## An empty arena during a wave's opening break should end the break.
 	var director := prototype.wave_director
-	director.configure_mode(PhaseBRunMode.Id.QUICK)
+	director.configure_mode(RunMode.Id.QUICK)
 	director.reset_director()
 	prototype.combat.reset_combat()
 	_checks += 1
@@ -175,18 +175,18 @@ func _check_grace_skipped_when_clear(prototype: PhaseBPrototype) -> void:
 	print("WAVE_CADENCE          cleared arena ends the wave break early")
 
 
-func _check_grace_holds_while_enemies_live(prototype: PhaseBPrototype) -> void:
+func _check_grace_holds_while_enemies_live(prototype: RunRoot) -> void:
 	## The break is a break. It should only be cut short by clearing the arena, not
 	## by the arena happening to be quiet for other reasons.
 	var director := prototype.wave_director
-	director.configure_mode(PhaseBRunMode.Id.QUICK)
+	director.configure_mode(RunMode.Id.QUICK)
 	director.reset_director()
 	prototype.combat.reset_combat()
 	prototype.territory_field.reset_field()
 	_checks += 1
 
 	prototype.combat.spawn_enemy(
-		PhaseBCombatDirector.EnemyRole.GRAZER, Vector2(320.0, 300.0)
+		CombatDirector.EnemyRole.GRAZER, Vector2(320.0, 300.0)
 	)
 	if prototype.combat.get_active_enemy_count() == 0:
 		_failures.append("WAVE_CADENCE: could not spawn the enemy this case needs")

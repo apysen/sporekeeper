@@ -1,10 +1,10 @@
 extends SceneTree
 
 const PAIRS := [
-	[PhaseBProgression.PathId.SPORE, PhaseBProgression.PathId.BLOOM, "spore_bloom"],
-	[PhaseBProgression.PathId.BRAMBLE, PhaseBProgression.PathId.ROOT, "bramble_root"],
-	[PhaseBProgression.PathId.PRUNING, PhaseBProgression.PathId.THISTLE, "pruning_thistle"],
-	[PhaseBProgression.PathId.VINE, PhaseBProgression.PathId.FRUIT, "vine_fruit"],
+	[Progression.PathId.SPORE, Progression.PathId.BLOOM, "spore_bloom"],
+	[Progression.PathId.BRAMBLE, Progression.PathId.ROOT, "bramble_root"],
+	[Progression.PathId.PRUNING, Progression.PathId.THISTLE, "pruning_thistle"],
+	[Progression.PathId.VINE, Progression.PathId.FRUIT, "vine_fruit"],
 ]
 
 
@@ -13,12 +13,12 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	prototype._set_simulation_paused(true)
@@ -41,7 +41,7 @@ func _run() -> void:
 			quit(1)
 			return
 		_save("res://.godot/adaptation_icons_%s.png" % pair[2])
-	for path_id in range(PhaseBProgression.PathId.size()):
+	for path_id in range(Progression.PathId.size()):
 		if prototype._get_path_emblem_texture(path_id) == null:
 			push_error("Path %d has no circular adaptation icon" % path_id)
 			quit(1)

@@ -19,10 +19,10 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	# Everything that can be on screen at once, so nothing is judged while hidden.

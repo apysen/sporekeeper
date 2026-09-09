@@ -1,0 +1,380 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/divider_style.tres" id="36_divider_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/empty_style.tres" id="113_empty_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/panel_style.tres" id="30_panel_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_fill.tres" id="107_wager_fill"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_track.tres" id="106_wager_track"]
+[ext_resource type="Texture2D" uid="uid://lmti7co0xiyr" path="res://assets/ui/kenney/wager_grabber.png" id="108_wager_grabber"]
+[ext_resource type="Texture2D" uid="uid://chxr84qbg23ry" path="res://assets/ui/kenney/wager_grabber_hover.png" id="109_wager_grabber_hover"]
+[ext_resource type="Texture2D" uid="uid://douyogsg7iwsg" path="res://assets/ui/kenney/wager_grabber_pressed.png" id="110_wager_grabber_pressed"]
+[ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/wager_slider.gd" id="111_wager_slider"]
+[ext_resource type="Texture2D" uid="uid://brgx0c7yrekb" path="res://assets/ui/kenney/wager_knob_footprint.png" id="112_wager_knob_footprint"]
+[ext_resource type="StyleBox" uid="uid://b5op5esvwk6sv" path="res://assets/ui/wx_fantasy_button.tres" id="121_btn"]
+[ext_resource type="StyleBox" uid="uid://bn7byuq70ndfl" path="res://assets/ui/wx_fantasy_button_hover.tres" id="122_btn_hover"]
+[ext_resource type="StyleBox" uid="uid://c4qacuvts2rif" path="res://assets/ui/wx_fantasy_button_pressed.tres" id="123_btn_pressed"]
+[ext_resource type="Script" path="res://src/core/nodes/ui/pause_menu.gd" id="1_pause_menu"]
+
+[node name="PauseMenu" type="Control" node_paths=PackedStringArray("panel", "settings_panel", "resume_button", "fullscreen_button", "settings_button", "glossary_button", "main_menu_button", "quit_button", "settings_back_button", "volume_slider", "volume_value", "music_volume_slider", "music_volume_value", "setting_button_friendly_effects", "setting_button_enemy_telegraphs", "setting_button_territory_detail", "setting_button_damage_numbers", "setting_button_player_highlight", "debug_help_label")]
+visible = false
+z_index = 20
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_pause_menu")
+panel = NodePath("PausePanel")
+settings_panel = NodePath("PauseSettingsPanel")
+resume_button = NodePath("PausePanel/ResumeButton")
+fullscreen_button = NodePath("PausePanel/FullscreenButton")
+settings_button = NodePath("PausePanel/SettingsButton")
+glossary_button = NodePath("PausePanel/GlossaryButton")
+main_menu_button = NodePath("PausePanel/MainMenuButton")
+quit_button = NodePath("PausePanel/QuitButton")
+settings_back_button = NodePath("PauseSettingsPanel/BackButton")
+volume_slider = NodePath("PausePanel/VolumeSlider")
+volume_value = NodePath("PausePanel/VolumeValue")
+music_volume_slider = NodePath("PausePanel/MusicVolumeSlider")
+music_volume_value = NodePath("PausePanel/MusicVolumeValue")
+setting_button_friendly_effects = NodePath("PauseSettingsPanel/FriendlyEffects")
+setting_button_enemy_telegraphs = NodePath("PauseSettingsPanel/EnemyTelegraphs")
+setting_button_territory_detail = NodePath("PauseSettingsPanel/TerritoryDetail")
+setting_button_damage_numbers = NodePath("PauseSettingsPanel/DamageNumbers")
+setting_button_player_highlight = NodePath("PauseSettingsPanel/PlayerHighlight")
+
+[node name="Dim" type="ColorRect" parent="." unique_id=1725400433]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.003, 0.008, 0.011, 0.82)
+
+[node name="DebugHelp" type="Label" parent="." unique_id=2105709273]
+z_index = 2
+layout_mode = 0
+offset_left = 831.0
+offset_top = 238.0
+offset_right = 1051.0
+offset_bottom = 311.0
+theme_override_colors/font_color = Color(0.663, 0.69, 0.608, 1)
+theme_override_font_sizes/font_size = 10
+text = "DEV CONTROLS
+F4 ECONOMY    F5 ROOT VIEW
+TAB INSPECT    F6 +2M
+F7 XP    F8 MASTERY
+F9 BOSS    F10 RELIC"
+horizontal_alignment = 1
+
+[node name="PausePanel" type="Panel" parent="." unique_id=349622250]
+z_index = 2
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -231.0
+offset_top = -309.0
+offset_right = 231.0
+offset_bottom = 309.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="Header" type="Label" parent="PausePanel" unique_id=752714992]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 46.0
+offset_right = 436.0
+offset_bottom = 80.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 25
+text = "FRONTIER PAUSED"
+horizontal_alignment = 1
+
+[node name="VolumeLabel" type="Label" parent="PausePanel" unique_id=1837610547]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 102.0
+offset_right = 270.0
+offset_bottom = 124.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+text = "SFX VOLUME"
+
+[node name="VolumeValue" type="Label" parent="PausePanel" unique_id=828577539]
+layout_mode = 0
+offset_left = 320.0
+offset_top = 102.0
+offset_right = 420.0
+offset_bottom = 124.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 12
+text = "{percent}%"
+horizontal_alignment = 2
+
+[node name="VolumeSlider" type="HSlider" parent="PausePanel" unique_id=1167653586]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 128.0
+offset_right = 420.0
+offset_bottom = 152.0
+theme_override_icons/grabber = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("112_wager_knob_footprint")
+theme_override_icons/tick = ExtResource("112_wager_knob_footprint")
+theme_override_styles/slider = ExtResource("113_empty_style")
+theme_override_styles/grabber_area = ExtResource("113_empty_style")
+theme_override_styles/grabber_area_highlight = ExtResource("113_empty_style")
+value = 100.0
+script = ExtResource("111_wager_slider")
+track_style = ExtResource("106_wager_track")
+fill_style = ExtResource("107_wager_fill")
+tick_length = 0.0
+knob_size = 26.0
+grabber_texture = ExtResource("108_wager_grabber")
+grabber_hover_texture = ExtResource("109_wager_grabber_hover")
+grabber_pressed_texture = ExtResource("110_wager_grabber_pressed")
+
+[node name="MusicVolumeLabel" type="Label" parent="PausePanel" unique_id=1062121371]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 164.0
+offset_right = 270.0
+offset_bottom = 186.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+text = "MUSIC VOLUME"
+
+[node name="MusicVolumeValue" type="Label" parent="PausePanel" unique_id=1582880756]
+layout_mode = 0
+offset_left = 320.0
+offset_top = 164.0
+offset_right = 420.0
+offset_bottom = 186.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 12
+text = "{percent}%"
+horizontal_alignment = 2
+
+[node name="MusicVolumeSlider" type="HSlider" parent="PausePanel" unique_id=1948950124]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 190.0
+offset_right = 420.0
+offset_bottom = 214.0
+theme_override_icons/grabber = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("112_wager_knob_footprint")
+theme_override_icons/tick = ExtResource("112_wager_knob_footprint")
+theme_override_styles/slider = ExtResource("113_empty_style")
+theme_override_styles/grabber_area = ExtResource("113_empty_style")
+theme_override_styles/grabber_area_highlight = ExtResource("113_empty_style")
+value = 100.0
+script = ExtResource("111_wager_slider")
+track_style = ExtResource("106_wager_track")
+fill_style = ExtResource("107_wager_fill")
+tick_length = 0.0
+knob_size = 26.0
+grabber_texture = ExtResource("108_wager_grabber")
+grabber_hover_texture = ExtResource("109_wager_grabber_hover")
+grabber_pressed_texture = ExtResource("110_wager_grabber_pressed")
+
+[node name="Divider" type="HSeparator" parent="PausePanel" unique_id=1990565945]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 231.0
+offset_right = 420.0
+offset_bottom = 235.0
+theme_override_styles/separator = ExtResource("36_divider_style")
+
+[node name="ResumeButton" type="Button" parent="PausePanel" unique_id=723962275]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 250.0
+offset_right = 420.0
+offset_bottom = 298.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "RESUME  [ESC]"
+
+[node name="FullscreenButton" type="Button" parent="PausePanel" unique_id=151020111]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 308.0
+offset_right = 420.0
+offset_bottom = 356.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "ENTER FULLSCREEN"
+
+[node name="SettingsButton" type="Button" parent="PausePanel" unique_id=349622253]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 362.0
+offset_right = 420.0
+offset_bottom = 410.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "SETTINGS"
+
+[node name="GlossaryButton" type="Button" parent="PausePanel" unique_id=1139312943]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 414.0
+offset_right = 420.0
+offset_bottom = 462.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "GLOSSARY"
+
+[node name="MainMenuButton" type="Button" parent="PausePanel" unique_id=651669993]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 472.0
+offset_right = 420.0
+offset_bottom = 520.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "MAIN MENU"
+
+[node name="QuitButton" type="Button" parent="PausePanel" unique_id=651669992]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 530.0
+offset_right = 420.0
+offset_bottom = 578.0
+theme_override_colors/font_color = Color(0.643, 0.373, 0.424, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "QUIT TO DESKTOP"
+
+[node name="PauseSettingsPanel" type="Panel" parent="." unique_id=349622251]
+visible = false
+z_index = 2
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -280.0
+offset_right = 250.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("30_panel_style")
+
+[node name="SettingsHeader" type="Label" parent="PauseSettingsPanel" unique_id=921100000]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 22.0
+offset_right = 460.0
+offset_bottom = 56.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 13
+text = "PRESENTATION"
+
+[node name="FriendlyEffects" type="Button" parent="PauseSettingsPanel" unique_id=921100001]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 68.0
+offset_right = 460.0
+offset_bottom = 116.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "FRIENDLY EFFECTS   {value}"
+
+[node name="EnemyTelegraphs" type="Button" parent="PauseSettingsPanel" unique_id=921100002]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 122.0
+offset_right = 460.0
+offset_bottom = 170.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "ENEMY TELEGRAPHS   {value}"
+
+[node name="TerritoryDetail" type="Button" parent="PauseSettingsPanel" unique_id=921100003]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 176.0
+offset_right = 460.0
+offset_bottom = 224.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "TERRITORY DETAIL   {value}"
+
+[node name="DamageNumbers" type="Button" parent="PauseSettingsPanel" unique_id=921100004]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 230.0
+offset_right = 460.0
+offset_bottom = 278.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "DAMAGE NUMBERS   {value}"
+
+[node name="PlayerHighlight" type="Button" parent="PauseSettingsPanel" unique_id=921100005]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 284.0
+offset_right = 460.0
+offset_bottom = 332.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "PLAYER HIGHLIGHT   {value}"
+
+[node name="BackButton" type="Button" parent="PauseSettingsPanel" unique_id=349622252]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 338.0
+offset_right = 460.0
+offset_bottom = 386.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("121_btn")
+theme_override_styles/pressed = ExtResource("123_btn_pressed")
+theme_override_styles/hover = ExtResource("122_btn_hover")
+theme_override_styles/focus = ExtResource("121_btn")
+text = "BACK  [ESC]"

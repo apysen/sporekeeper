@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://cbsir45nitkf"]
 
 [ext_resource type="Script" uid="uid://bxemd8p8klwb3" path="res://src/core/nodes/menu/home_screen.gd" id="1_home"]
-[ext_resource type="Script" uid="uid://ca800f7dbuwb1" path="res://src/core/nodes/run/phase_b_display_settings.gd" id="2_display_settings"]
-[ext_resource type="Script" uid="uid://cwuy2wawxa2cl" path="res://src/core/nodes/run/phase_b_audio_settings.gd" id="3_audio_settings"]
+[ext_resource type="Script" uid="uid://ca800f7dbuwb1" path="res://src/core/nodes/run/display_settings.gd" id="2_display_settings"]
+[ext_resource type="Script" uid="uid://cwuy2wawxa2cl" path="res://src/core/nodes/run/audio_settings.gd" id="3_audio_settings"]
 [ext_resource type="StyleBox" uid="uid://dntud22nnvk3h" path="res://assets/ui/wx_panel_ornate.tres" id="4_panel_ornate"]
-[ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/phase_b_wager_slider.gd" id="7_slider"]
+[ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/wager_slider.gd" id="7_slider"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_wager_track.tres" id="8_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_wager_fill.tres" id="9_fill"]
 [ext_resource type="Texture2D" uid="uid://lmti7co0xiyr" path="res://assets/ui/kenney/wager_grabber.png" id="10_grabber"]

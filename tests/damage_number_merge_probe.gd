@@ -32,16 +32,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -59,11 +59,11 @@ func _run() -> void:
 	var previous_choice := -1
 	if combat.display_settings != null:
 		previous_choice = combat.display_settings.get_choice(
-			PhaseBDisplaySettings.OptionId.DAMAGE_NUMBERS
+			DisplaySettings.OptionId.DAMAGE_NUMBERS
 		)
 		combat.display_settings.set_choice(
-			PhaseBDisplaySettings.OptionId.DAMAGE_NUMBERS,
-			PhaseBDisplaySettings.DamageNumbers.FULL
+			DisplaySettings.OptionId.DAMAGE_NUMBERS,
+			DisplaySettings.DamageNumbers.FULL
 		)
 
 	# Merging on and off, because the accounting has to hold either way and the
@@ -78,7 +78,7 @@ func _run() -> void:
 
 	if combat.display_settings != null and previous_choice >= 0:
 		combat.display_settings.set_choice(
-			PhaseBDisplaySettings.OptionId.DAMAGE_NUMBERS, previous_choice
+			DisplaySettings.OptionId.DAMAGE_NUMBERS, previous_choice
 		)
 
 	prototype.queue_free()
@@ -95,7 +95,7 @@ func _run() -> void:
 
 
 func _run_case(
-	prototype: PhaseBPrototype,
+	prototype: RunRoot,
 	label: String,
 	merge_seconds: float,
 	allow_kills: bool = false
@@ -127,7 +127,7 @@ func _run_case(
 			combat._damage_enemy(
 				enemy,
 				random.randf_range(1.0, 14.0),
-				PhaseBCombatDirector.DeathSource.THISTLE,
+				CombatDirector.DeathSource.THISTLE,
 				0,
 				critical
 			)
@@ -162,10 +162,10 @@ func _run_case(
 		)
 
 
-func _fill(combat: PhaseBCombatDirector, origin: Vector2, killable: bool) -> void:
+func _fill(combat: CombatDirector, origin: Vector2, killable: bool) -> void:
 	for index in range(ENEMIES):
 		var spawned := combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.GRAZER,
+			CombatDirector.EnemyRole.GRAZER,
 			origin
 			+ Vector2.from_angle(float(index) * 2.39996)
 			* (30.0 + float(index % 6) * 20.0)

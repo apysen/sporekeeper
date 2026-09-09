@@ -11,28 +11,28 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var p := current_scene as PhaseBPrototype
+	var p := current_scene as RunRoot
 	p.set_process(false)
 	p.player.input_enabled = false
 	p.combat.set_process(false)
 	p.adaptation_director.set_process(false)
 	p.overlay.set_process(false)
-	p.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	p.wave_director.configure_mode(RunMode.Id.CAMPAIGN)
 	p.reset_run()
-	p.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	p.wave_director.configure_mode(RunMode.Id.CAMPAIGN)
 	# A run opens by asking for its first Core Adaptation, and the chooser pauses the
 	# simulation until it is answered. The measurement is about spawn pressure, so it
 	# answers with a full roster and gets on with it.
 	p.progression.debug_select_paths(
-		PhaseBProgression.PathId.SPORE,
-		PhaseBProgression.PathId.ROOT
+		Progression.PathId.SPORE,
+		Progression.PathId.ROOT
 	)
 	p.progression.debug_select_branch_paths(
-		PhaseBProgression.PathId.BRAMBLE,
-		PhaseBProgression.PathId.THISTLE
+		Progression.PathId.BRAMBLE,
+		Progression.PathId.THISTLE
 	)
 	# The player cannot die out from under the measurement; what is being measured
 	# is the pressure the run produces, not how long a passive player survives.

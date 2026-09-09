@@ -52,7 +52,7 @@ hold is an enemy the measurement silently would not include.
 
 ## Counters
 
-`PhaseBPerfCounters` (`src/core/models/run/phase_b_perf_counters.gd`) holds the
+`PerfCounters` (`src/core/models/run/perf_counters.gd`) holds the
 game-specific timers and volume counters. It is **off by default** — a disabled
 counter costs one static bool read, and the hot loops accumulate into a local and
 report once per pass rather than calling in per candidate. Only probes turn it on.
@@ -568,7 +568,7 @@ of the enemy pool.** `_resolve_thorn_hit` does the same six times. That is the s
 defect as the six fixes before it, but rather than patch each call site it was
 worth fixing where it lives.
 
-`PhaseBCombatDirector` now keeps `_enemy_slot_by_id`, maintained on spawn and
+`CombatDirector` now keeps `_enemy_slot_by_id`, maintained on spawn and
 cleared on reset, and all sixteen by-id accessors funnel through `_find_enemy`.
 The map is **a shortcut, never the authority**: a slot is accepted only if it still
 holds an active enemy with the id asked for, and anything else falls through to the

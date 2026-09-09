@@ -1,6 +1,6 @@
-# Elemental territory simulation architecture
+# Sporekeeper territory simulation architecture
 
-Elemental uses a continuous, physics-inspired territory field for a fixed-screen
+Sporekeeper uses a continuous, physics-inspired territory field for a fixed-screen
 survivor arena. Territorial material grows, pushes, resists, erodes, fragments,
 and converts; it is not a board of discrete gameplay tiles. The complete arena
 remains visible and active throughout a run.
@@ -224,7 +224,7 @@ rules without inheriting Plant terminology or one-to-one path equivalents.
 The field exposes the material as gameplay properties — ownership, mass,
 pressure, resistance, maturity, cohesion, and age — and the incremental economy
 changes those parameters rather than adding a separate progression layer on top.
-`PhaseBMetabolism` reports Photosynthesis as Mass, Meristem as Pressure, and
+`Metabolism` reports Photosynthesis as Mass, Meristem as Pressure, and
 Cambium as Cohesion; the run root folds those, together with whatever Root has
 earned, into the field's spread rate, resistance bonus, cohesion multiplier,
 pressure advection, and fragment decay. A Breakthrough changes the shape of a
@@ -243,7 +243,7 @@ pointing through it, and a torn ecosystem spends the repair share thickening thi
 Green and pushing back hostile material beside it. Callers pass budgets and read
 back what was applied; they never learn which cells were touched.
 
-The Phase B implementation now maintains a compact cached mask of player cells
+The Sporekeeper implementation now maintains a compact cached mask of player cells
 that border claimable non-player cells, plus a parallel 0-to-1 development value
 per cell. Both refresh alongside the fixed field step, so per-enemy Bramble
 contact queries scan only a small local band and do not reconstruct the whole
@@ -311,7 +311,7 @@ the same boundary:
 - **Hive Queen** creates hostile cores through the Colonizer contract and does
   not maintain a private copy of hostile territory.
 
-The Phase B prototype now implements all six core roles through visible typed
+The Sporekeeper run now implements all six core roles through visible typed
 enemy profiles. Corruptor and Colony Core actions submit wall-occluded hostile
 growth commands, while Warden actions submit wall-occluded maturity suppression
 commands. Saboteurs navigate to targetable Seed/Bloom entities but still require
@@ -417,7 +417,7 @@ The Phase A territory sandbox must verify:
 10. Deformation, splatter, pressure, and recovery remain readable and satisfying
     at the agreed stress load.
 
-Phase B must additionally verify that Cane/Adaptation deaths, baseline Seeds, Spore,
+Sporekeeper must additionally verify that Cane/Adaptation deaths, baseline Seeds, Spore,
 Bloom, Bramble, a small relic pool, all three available pairing evolutions
 claimed from the level-up draft, XP, and Biomass interact through the documented
 boundaries. Automated tests should

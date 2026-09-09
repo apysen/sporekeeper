@@ -9,10 +9,10 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	await process_frame
@@ -21,7 +21,7 @@ func _run() -> void:
 	var render_scale := float(shot.get_width()) / 1280.0
 	var corners_inked := 0
 	var faces := 0
-	for reel in [prototype.reel_one, prototype.reel_two, prototype.reel_three]:
+	for reel in [prototype.slot_panel.reel_one, prototype.slot_panel.reel_two, prototype.slot_panel.reel_three]:
 		for child in reel.get_children():
 			var face := child as TextureRect
 			if face == null or not face.is_visible_in_tree():
@@ -51,7 +51,7 @@ func _run() -> void:
 	# reels were placed by hand a third of a unit right of the glass, which reads as the
 	# symbol leaning against one side of its own window.
 	var off_centre := 0.0
-	for reel in [prototype.reel_one, prototype.reel_two, prototype.reel_three]:
+	for reel in [prototype.slot_panel.reel_one, prototype.slot_panel.reel_two, prototype.slot_panel.reel_three]:
 		var window: Rect2 = reel.get_global_rect()
 		for child in reel.get_children():
 			var face := child as TextureRect

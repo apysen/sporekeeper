@@ -97,17 +97,18 @@ All standard Thistle upgrade paths use uniform scaling. Unique per-level mechani
 
 ### Needlepoint
 
-**Effect:** +10 percentage points of critical-hit chance per rank.
+**Effect:** +1x critical-hit damage per rank.
 
-| Rank | Crit Chance Bonus |
+| Rank | Crit Multiplier |
 |---:|---:|
-| 1 | +10% |
-| 2 | +20% |
-| 3 | +30% |
-| 4 | +40% |
-| 5 | +50% |
+| 1 | 3x |
+| 2 | 4x |
+| 3 | 5x |
+| 4 | 6x |
+| 5 | 7x |
 
-- Initial critical-hit multiplier: **2x damage**.
+- Base critical-hit chance: **10%**, carried by every Thistle whether or not the line is owned. Needlepoint buys the size of a critical hit, never the odds of one.
+- Base critical-hit multiplier before Needlepoint: **2x damage**.
 - Each projectile impact rolls its own critical-hit chance.
 - Ricochet hits independently roll for critical hits rather than inheriting the result of the projectile's first impact.
 - Critical hits should have clearly stronger visual and audio feedback than normal hits.
@@ -120,10 +121,10 @@ Thistle's four upgrade paths are intentionally multiplicative with one another.
 
 - **Clustering + Dehiscence:** dense volleys fired rapidly.
 - **Clustering + Burr:** extremely high crowd coverage.
-- **Clustering + Needlepoint:** many independent opportunities to critically hit.
+- **Clustering + Needlepoint:** many independent opportunities to land an oversized critical hit.
 - **Dehiscence + Burr:** constant ricocheting projectile pressure.
-- **Dehiscence + Needlepoint:** high-frequency critical-hit generation.
-- **Burr + Needlepoint:** each projectile gains several independent opportunities to critically hit.
+- **Dehiscence + Needlepoint:** more rolls per second against the same enlarged critical hit.
+- **Burr + Needlepoint:** each projectile gains several independent chances at an enlarged critical hit.
 
 A fully upgraded Thistle build can produce extremely high late-game projectile density. This is intentional because Thistle is a dedicated damage Adaptation and contributes no Territory generation by default.
 
@@ -158,8 +159,9 @@ At maximum deployment, the player should have **five visibly distinct Thistle tu
 | Clustering | +1 projectile per rank |
 | Dehiscence | +15% attack speed per rank |
 | Burr | +1 ricochet target per rank |
-| Needlepoint | +10% crit chance per rank |
-| Crit Damage | 2x |
+| Needlepoint | +1x crit damage per rank |
+| Crit Chance | 10%, flat |
+| Base Crit Damage | 2x |
 | Upgrade Ranks per Path | 5 |
 
 These values are starting points for playtesting and can be tuned after the first implementation.

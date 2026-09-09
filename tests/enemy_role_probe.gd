@@ -8,10 +8,10 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	prototype._set_simulation_paused(true)
@@ -21,7 +21,7 @@ func _run() -> void:
 	# Every role the enum declares, so a role added later cannot be forgotten by this
 	# check the way it was forgotten by the draw match.
 	var roles: Array[int] = []
-	for role in range(PhaseBCombatDirector.EnemyRole.size()):
+	for role in range(CombatDirector.EnemyRole.size()):
 		roles.append(role)
 	for index in range(roles.size()):
 		combat.spawn_enemy(roles[index], Vector2(
@@ -31,7 +31,7 @@ func _run() -> void:
 	# The Siege Corruptor is drawn part-way through its escalation, because how far
 	# along it is is the whole of what its design has to say.
 	for enemy in combat._enemies:
-		if enemy.active and enemy.role == PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR:
+		if enemy.active and enemy.role == CombatDirector.EnemyRole.SIEGE_CORRUPTOR:
 			enemy.territory_action_escalation_cap = maxf(
 				2.0,
 				enemy.territory_action_escalation_cap

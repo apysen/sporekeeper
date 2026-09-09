@@ -1,0 +1,267 @@
+[gd_scene load_steps=24 format=3]
+
+[ext_resource type="Texture2D" uid="uid://b2it052ync4ng" path="res://assets/art/slots/slot-machine1.png" id="26_slot_cabinet"]
+[ext_resource type="Texture2D" uid="uid://2h3ml2r0yx4k" path="res://assets/art/slots/slot-machine3.png" id="26_slot_lever_down"]
+[ext_resource type="Texture2D" uid="uid://dd17upet750cs" path="res://assets/art/slots/slot-machine2.png" id="26_slot_lever_up"]
+[ext_resource type="Texture2D" uid="uid://c25w4a8ge316u" path="res://assets/art/slots/symbols/symbol_wild.svg" id="26_symbol_wild"]
+[ext_resource type="Shader" uid="uid://c77hgm8vg3lm7" path="res://assets/shaders/slot_symbol.gdshader" id="99_slot_symbol_shader"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_track.tres" id="106_wager_track"]
+[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_fill.tres" id="107_wager_fill"]
+[ext_resource type="Texture2D" uid="uid://lmti7co0xiyr" path="res://assets/ui/kenney/wager_grabber.png" id="108_wager_grabber"]
+[ext_resource type="Texture2D" uid="uid://chxr84qbg23ry" path="res://assets/ui/kenney/wager_grabber_hover.png" id="109_wager_grabber_hover"]
+[ext_resource type="Texture2D" uid="uid://douyogsg7iwsg" path="res://assets/ui/kenney/wager_grabber_pressed.png" id="110_wager_grabber_pressed"]
+[ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/wager_slider.gd" id="111_wager_slider"]
+[ext_resource type="Texture2D" uid="uid://brgx0c7yrekb" path="res://assets/ui/kenney/wager_knob_footprint.png" id="112_wager_knob_footprint"]
+[ext_resource type="StyleBox" path="res://assets/ui/empty_style.tres" id="113_empty_style"]
+[ext_resource type="Script" path="res://src/core/nodes/ui/slot_machine_panel.gd" id="1_slot_panel"]
+
+[sub_resource type="AtlasTexture" id="AtlasCabinet"]
+atlas = ExtResource("26_slot_cabinet")
+region = Rect2(138, 0, 627, 624)
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol1A"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol1B"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol2A"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol2B"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol3A"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="ShaderMaterial" id="SlotSymbol3B"]
+shader = ExtResource("99_slot_symbol_shader")
+shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
+shader_parameter/outline_color = Color(0, 0, 0, 1)
+shader_parameter/outline_texels = 9.0
+
+[sub_resource type="AtlasTexture" id="AtlasLeverUp"]
+atlas = ExtResource("26_slot_lever_up")
+region = Rect2(138, 0, 627, 624)
+
+[sub_resource type="AtlasTexture" id="AtlasLeverDown"]
+atlas = ExtResource("26_slot_lever_down")
+region = Rect2(138, 0, 627, 624)
+
+[node name="SlotMachinePanel" type="Control" node_paths=PackedStringArray("reel_one", "reel_two", "reel_three", "wager_slider", "wager_label", "odds_label", "lever_grab", "lever_up", "lever_down")]
+anchors_preset = 0
+offset_left = 25.5
+offset_top = 176.0
+offset_right = 226.5
+offset_bottom = 420.0
+script = ExtResource("1_slot_panel")
+reel_one = NodePath("Reel1")
+reel_two = NodePath("Reel2")
+reel_three = NodePath("Reel3")
+wager_slider = NodePath("Wager")
+wager_label = NodePath("WagerLabel")
+odds_label = NodePath("OddsLabel")
+lever_grab = NodePath("LeverGrab")
+lever_up = NodePath("LeverUp")
+lever_down = NodePath("LeverDown")
+
+[node name="Cabinet" type="TextureRect" parent="." unique_id=7710001]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 9.0
+offset_right = 213.0
+offset_bottom = 209.0
+texture = SubResource("AtlasCabinet")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Reel1" type="Control" parent="." unique_id=7710010]
+clip_contents = true
+anchors_preset = 0
+offset_left = 41.68
+offset_top = 93.4
+offset_right = 75.68
+offset_bottom = 149.4
+mouse_filter = 2
+
+[node name="FaceA" type="TextureRect" parent="Reel1" unique_id=7710020]
+material = SubResource("SlotSymbol1A")
+layout_mode = 0
+offset_left = 1.0
+offset_top = 12.0
+offset_right = 33.0
+offset_bottom = 44.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceB" type="TextureRect" parent="Reel1" unique_id=7710030]
+material = SubResource("SlotSymbol1B")
+layout_mode = 0
+offset_left = 1.0
+offset_top = -44.0
+offset_right = 33.0
+offset_bottom = -12.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Reel2" type="Control" parent="." unique_id=7710011]
+clip_contents = true
+anchors_preset = 0
+offset_left = 83.36
+offset_top = 93.4
+offset_right = 117.36
+offset_bottom = 149.4
+mouse_filter = 2
+
+[node name="FaceA" type="TextureRect" parent="Reel2" unique_id=7710021]
+material = SubResource("SlotSymbol2A")
+layout_mode = 0
+offset_left = 1.0
+offset_top = 12.0
+offset_right = 33.0
+offset_bottom = 44.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceB" type="TextureRect" parent="Reel2" unique_id=7710031]
+material = SubResource("SlotSymbol2B")
+layout_mode = 0
+offset_left = 1.0
+offset_top = -44.0
+offset_right = 33.0
+offset_bottom = -12.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Reel3" type="Control" parent="." unique_id=7710012]
+clip_contents = true
+anchors_preset = 0
+offset_left = 125.03
+offset_top = 93.4
+offset_right = 159.03
+offset_bottom = 149.4
+mouse_filter = 2
+
+[node name="FaceA" type="TextureRect" parent="Reel3" unique_id=7710022]
+material = SubResource("SlotSymbol3A")
+layout_mode = 0
+offset_left = 1.0
+offset_top = 12.0
+offset_right = 33.0
+offset_bottom = 44.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceB" type="TextureRect" parent="Reel3" unique_id=7710032]
+material = SubResource("SlotSymbol3B")
+layout_mode = 0
+offset_left = 1.0
+offset_top = -44.0
+offset_right = 33.0
+offset_bottom = -12.0
+mouse_filter = 2
+texture = ExtResource("26_symbol_wild")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeverUp" type="TextureRect" parent="." unique_id=7710004]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 9.0
+offset_right = 213.0
+offset_bottom = 209.0
+mouse_filter = 2
+texture = SubResource("AtlasLeverUp")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeverDown" type="TextureRect" parent="." unique_id=7710005]
+visible = false
+layout_mode = 0
+offset_right = 201.0
+offset_bottom = 200.0
+mouse_filter = 2
+texture = SubResource("AtlasLeverDown")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LeverGrab" type="Control" parent="." unique_id=7710006]
+anchors_preset = 0
+offset_left = 178.0
+offset_top = 97.0
+offset_right = 218.0
+offset_bottom = 205.0
+tooltip_text = "Pull the lever to spin."
+
+[node name="WagerLabel" type="Label" parent="." unique_id=7710007]
+layout_mode = 0
+offset_top = 214.0
+offset_right = 201.0
+offset_bottom = 232.0
+theme_override_colors/font_color = Color(0.769, 0.604, 0.314, 1)
+theme_override_font_sizes/font_size = 12
+text = "MINIMUM BUY-IN"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Wager" type="HSlider" parent="." unique_id=7710008]
+layout_mode = 0
+offset_top = 260.0
+offset_right = 201.0
+offset_bottom = 270.0
+theme_override_icons/grabber = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_highlight = ExtResource("112_wager_knob_footprint")
+theme_override_icons/grabber_disabled = ExtResource("112_wager_knob_footprint")
+theme_override_icons/tick = ExtResource("112_wager_knob_footprint")
+theme_override_styles/slider = ExtResource("113_empty_style")
+theme_override_styles/grabber_area = ExtResource("113_empty_style")
+theme_override_styles/grabber_area_highlight = ExtResource("113_empty_style")
+max_value = 3.0
+tick_count = 4
+ticks_position = 3
+script = ExtResource("111_wager_slider")
+track_style = ExtResource("106_wager_track")
+fill_style = ExtResource("107_wager_fill")
+tick_length = 6.0
+tick_gap = 0.0
+knob_size = 30.0
+grabber_texture = ExtResource("108_wager_grabber")
+grabber_hover_texture = ExtResource("109_wager_grabber_hover")
+grabber_pressed_texture = ExtResource("110_wager_grabber_pressed")
+
+[node name="OddsLabel" type="Label" parent="." unique_id=7710009]
+layout_mode = 0
+offset_top = 234.0
+offset_right = 201.0
+offset_bottom = 250.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 11
+text = "{held} / {need}% ESTABLISHED"
+horizontal_alignment = 1
+vertical_alignment = 1
+

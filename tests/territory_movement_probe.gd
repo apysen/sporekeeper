@@ -26,7 +26,7 @@ func _run() -> void:
 	root.add_child(field)
 	field.reset_field()
 
-	var player := PhaseBPlayer.new()
+	var player := Player.new()
 	player.territory_field = field
 	root.add_child(player)
 	player.reset_player()
@@ -178,7 +178,7 @@ func _run() -> void:
 	quit(0)
 
 
-func _place(player: PhaseBPlayer, field: TerritoryField, local_position: Vector2) -> void:
+func _place(player: Player, field: TerritoryField, local_position: Vector2) -> void:
 	player.global_position = field.to_global(local_position)
 
 

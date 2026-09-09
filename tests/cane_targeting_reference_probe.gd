@@ -50,16 +50,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -127,7 +127,7 @@ func _run() -> void:
 	quit(1)
 
 
-func _run_layout(prototype: PhaseBPrototype, layout: String, auto_targets: bool) -> void:
+func _run_layout(prototype: RunRoot, layout: String, auto_targets: bool) -> void:
 	var combat := prototype.combat
 	var random := RandomNumberGenerator.new()
 	for case_index in range(CASES_PER_LAYOUT):
@@ -187,11 +187,11 @@ func _run_layout(prototype: PhaseBPrototype, layout: String, auto_targets: bool)
 		# matters is how far apart the chosen directions ever get.
 		var pruned := combat.debug_densest_target_direction_mode(
 			origin, reach, sector, facing,
-			PhaseBCombatDirector.DensestTargetMode.DOT_PRUNE
+			CombatDirector.DensestTargetMode.DOT_PRUNE
 		)
 		var sorted_result := combat.debug_densest_target_direction_mode(
 			origin, reach, sector, facing,
-			PhaseBCombatDirector.DensestTargetMode.SORTED
+			CombatDirector.DensestTargetMode.SORTED
 		)
 		var reference := combat.debug_densest_target_direction_reference(
 			origin, reach, sector, facing
@@ -227,7 +227,7 @@ func _run_layout(prototype: PhaseBPrototype, layout: String, auto_targets: bool)
 
 
 func _place_enemies(
-	combat: PhaseBCombatDirector,
+	combat: CombatDirector,
 	random: RandomNumberGenerator,
 	layout: String,
 	origin: Vector2,
@@ -264,7 +264,7 @@ func _place_enemies(
 				radius = random.randf_range(10.0, maxf(24.0, reach * 1.4))
 		var position := origin + Vector2.from_angle(angle) * radius
 		combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.GRAZER if index % 2 == 0
-			else PhaseBCombatDirector.EnemyRole.RUSHER,
+			CombatDirector.EnemyRole.GRAZER if index % 2 == 0
+			else CombatDirector.EnemyRole.RUSHER,
 			position
 		)

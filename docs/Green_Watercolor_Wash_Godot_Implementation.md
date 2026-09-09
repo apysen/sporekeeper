@@ -196,13 +196,13 @@ This keeps the visual mask extremely small.
 Create:
 
 ```text
-phase_b_green_wash_renderer.gd
+green_wash_renderer.gd
 ```
 
 Example:
 
 ```gdscript
-class_name PhaseBGreenWashRenderer
+class_name GreenWashRenderer
 extends Node
 
 @export var territory_field: Node
@@ -1114,7 +1114,7 @@ res://art/territory/
 
 res://phase_b/visuals/
     green_watercolor_wash.gdshader
-    phase_b_green_wash_renderer.gd
+    green_wash_renderer.gd
 ```
 
 If a general Territory visual controller already exists, integrate this functionality there instead of creating unnecessary parallel systems.

@@ -24,15 +24,15 @@ const TARGET_FRAME_MS := 16.67
 ## expensive ones. Warden and Siege Corruptor matter most: they are excluded from
 ## the baked enemy art and always draw in full detail.
 const STRESS_ROLES := [
-	PhaseBCombatDirector.EnemyRole.HUNTER,
-	PhaseBCombatDirector.EnemyRole.GRAZER,
-	PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-	PhaseBCombatDirector.EnemyRole.RUSHER,
-	PhaseBCombatDirector.EnemyRole.SABOTEUR,
-	PhaseBCombatDirector.EnemyRole.CORRUPTOR,
-	PhaseBCombatDirector.EnemyRole.COLONIZER,
-	PhaseBCombatDirector.EnemyRole.WARDEN,
-	PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	CombatDirector.EnemyRole.HUNTER,
+	CombatDirector.EnemyRole.GRAZER,
+	CombatDirector.EnemyRole.HEAVY_GRAZER,
+	CombatDirector.EnemyRole.RUSHER,
+	CombatDirector.EnemyRole.SABOTEUR,
+	CombatDirector.EnemyRole.CORRUPTOR,
+	CombatDirector.EnemyRole.COLONIZER,
+	CombatDirector.EnemyRole.WARDEN,
+	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
 ]
 
 ## Fourteen relics -- the top of the document's 10-14 per run -- drawn from the
@@ -51,16 +51,16 @@ func _initialize() -> void:
 
 
 func _run_probe() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 
@@ -79,8 +79,8 @@ func _run_probe() -> void:
 		"PEAK_DENSITY: sweeping every pairing at the enemy cap, %d frames each"
 		% SAMPLE_FRAMES
 	)
-	for first_path in range(PhaseBProgression.PathId.size()):
-		for second_path in range(first_path + 1, PhaseBProgression.PathId.size()):
+	for first_path in range(Progression.PathId.size()):
+		for second_path in range(first_path + 1, Progression.PathId.size()):
 			await _run_pairing(prototype, first_path, second_path)
 
 	print("")
@@ -107,7 +107,7 @@ func _run_probe() -> void:
 	quit(1)
 
 
-func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int) -> void:
+func _run_pairing(prototype: RunRoot, first_path: int, second_path: int) -> void:
 	prototype.reset_run()
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(first_path, second_path)
@@ -118,7 +118,7 @@ func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int)
 	)
 	# Every line of every owned Path maxed, so the build is the worst case of
 	# itself rather than an average one that happens to hold the relics.
-	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+	for upgrade_id in range(Progression.UpgradeId.size()):
 		var path_id := prototype.progression._get_upgrade_path(upgrade_id)
 		if prototype.progression.has_path(path_id):
 			prototype.progression._upgrade_levels[upgrade_id] = (
@@ -131,7 +131,7 @@ func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int)
 
 	# Campaign, at the end of the timeline: the spawn scaling every enemy below is
 	# built with is the late-run one rather than the opening one.
-	prototype.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	prototype.wave_director.configure_mode(RunMode.Id.CAMPAIGN)
 	prototype.wave_director.reset_director()
 	prototype.wave_director.debug_advance_time(
 		prototype.wave_director.final_invasion_time_seconds
@@ -164,8 +164,8 @@ func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int)
 		enemy.maximum_health = 1000000000.0
 		enemy.health = enemy.maximum_health
 	var holds_vine := (
-		first_path == PhaseBProgression.PathId.VINE
-		or second_path == PhaseBProgression.PathId.VINE
+		first_path == Progression.PathId.VINE
+		or second_path == Progression.PathId.VINE
 	)
 	if holds_vine and prototype.combat.vine_whip != null:
 		prototype.combat.vine_whip.build(origin, prototype.combat.get_cane_reach())
@@ -216,8 +216,8 @@ func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int)
 		total.append(_since(frame_began))
 
 	var label := "%s+%s" % [
-		PhaseBProgression.get_path_name(first_path),
-		PhaseBProgression.get_path_name(second_path),
+		Progression.get_path_name(first_path),
+		Progression.get_path_name(second_path),
 	]
 	var total_sorted := total.duplicate()
 	total_sorted.sort()
@@ -250,15 +250,15 @@ func _run_pairing(prototype: PhaseBPrototype, first_path: int, second_path: int)
 func _support_path_for(first_path: int, second_path: int) -> int:
 	# The evolved run's third Path. Deterministic rather than chosen, so a pairing
 	# measures the same build every time it is run.
-	for path_id in range(PhaseBProgression.PathId.size()):
+	for path_id in range(Progression.PathId.size()):
 		if path_id != first_path and path_id != second_path:
 			return path_id
-	return PhaseBProgression.PathId.SPORE
+	return Progression.PathId.SPORE
 
 
 func _relics_for(first_path: int, second_path: int) -> Array[int]:
 	var chosen: Array[int] = []
-	_append_pool_relics(chosen, PhaseBRelicCatalog.Pool.PLANT, PLANT_RELIC_COUNT)
+	_append_pool_relics(chosen, RelicCatalog.Pool.PLANT, PLANT_RELIC_COUNT)
 	_append_pool_relics(chosen, _pool_for_path(first_path), PRIMARY_RELIC_COUNT)
 	_append_pool_relics(chosen, _pool_for_path(second_path), SECONDARY_RELIC_COUNT)
 	return chosen
@@ -266,10 +266,10 @@ func _relics_for(first_path: int, second_path: int) -> Array[int]:
 
 func _append_pool_relics(chosen: Array[int], pool: int, wanted: int) -> void:
 	var taken := 0
-	for relic_id in range(PhaseBRelicCatalog.get_count()):
+	for relic_id in range(RelicCatalog.get_count()):
 		if taken >= wanted:
 			return
-		if PhaseBRelicCatalog.get_pool(relic_id) != pool:
+		if RelicCatalog.get_pool(relic_id) != pool:
 			continue
 		chosen.append(relic_id)
 		taken += 1
@@ -277,23 +277,23 @@ func _append_pool_relics(chosen: Array[int], pool: int, wanted: int) -> void:
 
 func _pool_for_path(path_id: int) -> int:
 	match path_id:
-		PhaseBProgression.PathId.SPORE:
-			return PhaseBRelicCatalog.Pool.SPORE
-		PhaseBProgression.PathId.BLOOM:
-			return PhaseBRelicCatalog.Pool.BLOOM
-		PhaseBProgression.PathId.BRAMBLE:
-			return PhaseBRelicCatalog.Pool.BRAMBLE
-		PhaseBProgression.PathId.ROOT:
-			return PhaseBRelicCatalog.Pool.ROOT
-		PhaseBProgression.PathId.PRUNING:
-			return PhaseBRelicCatalog.Pool.PRUNING
-		PhaseBProgression.PathId.THISTLE:
-			return PhaseBRelicCatalog.Pool.THISTLE
-		PhaseBProgression.PathId.VINE:
-			return PhaseBRelicCatalog.Pool.VINE
-		PhaseBProgression.PathId.FRUIT:
-			return PhaseBRelicCatalog.Pool.FRUIT
-	return PhaseBRelicCatalog.Pool.PLANT
+		Progression.PathId.SPORE:
+			return RelicCatalog.Pool.SPORE
+		Progression.PathId.BLOOM:
+			return RelicCatalog.Pool.BLOOM
+		Progression.PathId.BRAMBLE:
+			return RelicCatalog.Pool.BRAMBLE
+		Progression.PathId.ROOT:
+			return RelicCatalog.Pool.ROOT
+		Progression.PathId.PRUNING:
+			return RelicCatalog.Pool.PRUNING
+		Progression.PathId.THISTLE:
+			return RelicCatalog.Pool.THISTLE
+		Progression.PathId.VINE:
+			return RelicCatalog.Pool.VINE
+		Progression.PathId.FRUIT:
+			return RelicCatalog.Pool.FRUIT
+	return RelicCatalog.Pool.PLANT
 
 
 func _since(began_usec: int) -> float:

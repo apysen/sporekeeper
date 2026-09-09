@@ -39,16 +39,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -126,7 +126,7 @@ func _run() -> void:
 	quit(1)
 
 
-func _reference_selection(combat: PhaseBCombatDirector) -> int:
+func _reference_selection(combat: CombatDirector) -> int:
 	## The rule exactly as it was written before: the first inactive slot by index,
 	## otherwise the slot with the greatest age, ties going to the lowest index.
 	var selected := -1
@@ -141,14 +141,14 @@ func _reference_selection(combat: PhaseBCombatDirector) -> int:
 	return selected
 
 
-func _pool_is_full(combat: PhaseBCombatDirector) -> bool:
+func _pool_is_full(combat: CombatDirector) -> bool:
 	for damage_number in combat._damage_numbers:
 		if not damage_number.active:
 			return false
 	return true
 
 
-func _slot_holding(combat: PhaseBCombatDirector, marker: Vector2) -> int:
+func _slot_holding(combat: CombatDirector, marker: Vector2) -> int:
 	## Which slot the spawn landed in, found by the impact position it was given.
 	for index in range(combat._damage_numbers.size()):
 		var damage_number: Object = combat._damage_numbers[index]
@@ -157,7 +157,7 @@ func _slot_holding(combat: PhaseBCombatDirector, marker: Vector2) -> int:
 	return -1
 
 
-func _check_invariants(combat: PhaseBCombatDirector, spawn_index: int) -> void:
+func _check_invariants(combat: CombatDirector, spawn_index: int) -> void:
 	if _invariant_failures.size() >= 6:
 		return
 	# Everything below the cursor must be active, or the free-slot search can skip

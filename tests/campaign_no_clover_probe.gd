@@ -19,21 +19,21 @@ func _check(condition: bool, description: String) -> void:
 	push_error("FAIL: %s" % description)
 
 
-func _load_run(mode: int) -> PhaseBPrototype:
-	PhaseBRunMode.set_selected(mode)
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
+func _load_run(mode: int) -> RunRoot:
+	RunMode.set_selected(mode)
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
 		push_error("FAIL: the run scene did not load")
 		quit(1)
 		return null
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.player.input_enabled = false
 	return prototype
 
 
 func _run() -> void:
-	var campaign: PhaseBPrototype = await _load_run(PhaseBRunMode.Id.CAMPAIGN)
+	var campaign: RunRoot = await _load_run(RunMode.Id.CAMPAIGN)
 	var cabinet_top := campaign.slot_panel.position.y
 	_check(not campaign.slot_panel.visible, "Campaign hides the Clover cabinet")
 	_check(
@@ -54,7 +54,7 @@ func _run() -> void:
 		"Campaign commits no ground to the machine",
 	)
 
-	var quick: PhaseBPrototype = await _load_run(PhaseBRunMode.Id.QUICK)
+	var quick: RunRoot = await _load_run(RunMode.Id.QUICK)
 	_check(quick.slot_panel.visible, "Quick still has the Clover cabinet")
 	_check(
 		quick.get_node("%UpgradeSection").position.y > quick.slot_panel.position.y,

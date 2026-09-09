@@ -28,16 +28,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	# Only the prototype's own _process is disabled, so the fixture controls the
@@ -54,14 +54,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"2 thistle",
-		[PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.SPORE],
+		[Progression.PathId.THISTLE, Progression.PathId.SPORE],
 		[
-			PhaseBRelicCatalog.Id.CROWN_OF_THORNS,
-			PhaseBRelicCatalog.Id.FORKING_PATTERN,
-			PhaseBRelicCatalog.Id.PHYLLOTAXIS,
-			PhaseBRelicCatalog.Id.THORN_RELAY,
-			PhaseBRelicCatalog.Id.PINCUSHION,
-			PhaseBRelicCatalog.Id.ANSWERING_THORN,
+			RelicCatalog.Id.CROWN_OF_THORNS,
+			RelicCatalog.Id.FORKING_PATTERN,
+			RelicCatalog.Id.PHYLLOTAXIS,
+			RelicCatalog.Id.THORN_RELAY,
+			RelicCatalog.Id.PINCUSHION,
+			RelicCatalog.Id.ANSWERING_THORN,
 		],
 		80,
 		0.0
@@ -69,14 +69,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"3 spore",
-		[PhaseBProgression.PathId.SPORE, PhaseBProgression.PathId.BLOOM],
+		[Progression.PathId.SPORE, Progression.PathId.BLOOM],
 		[
-			PhaseBRelicCatalog.Id.DOMINO_GERMINATION,
-			PhaseBRelicCatalog.Id.WINDBORNE,
-			PhaseBRelicCatalog.Id.VOLUNTEER,
-			PhaseBRelicCatalog.Id.PUFFBALL,
-			PhaseBRelicCatalog.Id.SPORE_BURST,
-			PhaseBRelicCatalog.Id.CROSS_POLLINATION,
+			RelicCatalog.Id.DOMINO_GERMINATION,
+			RelicCatalog.Id.WINDBORNE,
+			RelicCatalog.Id.VOLUNTEER,
+			RelicCatalog.Id.PUFFBALL,
+			RelicCatalog.Id.SPORE_BURST,
+			RelicCatalog.Id.CROSS_POLLINATION,
 		],
 		80,
 		0.0
@@ -84,14 +84,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"4 bloom",
-		[PhaseBProgression.PathId.BLOOM, PhaseBProgression.PathId.SPORE],
+		[Progression.PathId.BLOOM, Progression.PathId.SPORE],
 		[
-			PhaseBRelicCatalog.Id.FLOWERING_FRONT,
-			PhaseBRelicCatalog.Id.CHAIN_BLOOM,
-			PhaseBRelicCatalog.Id.SUPERBLOOM,
-			PhaseBRelicCatalog.Id.PETAL_SCATTER,
-			PhaseBRelicCatalog.Id.OVERKILL,
-			PhaseBRelicCatalog.Id.PERENNIAL,
+			RelicCatalog.Id.FLOWERING_FRONT,
+			RelicCatalog.Id.CHAIN_BLOOM,
+			RelicCatalog.Id.SUPERBLOOM,
+			RelicCatalog.Id.PETAL_SCATTER,
+			RelicCatalog.Id.OVERKILL,
+			RelicCatalog.Id.PERENNIAL,
 		],
 		90,
 		0.0
@@ -99,14 +99,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"5 pruning",
-		[PhaseBProgression.PathId.PRUNING, PhaseBProgression.PathId.SPORE],
+		[Progression.PathId.PRUNING, Progression.PathId.SPORE],
 		[
-			PhaseBRelicCatalog.Id.WATERSPROUTS,
-			PhaseBRelicCatalog.Id.RETURN_STROKE,
-			PhaseBRelicCatalog.Id.BRUSH_PILE,
-			PhaseBRelicCatalog.Id.STUBBLE,
-			PhaseBRelicCatalog.Id.SKIMMING_CUT,
-			PhaseBRelicCatalog.Id.GREEN_MANURE,
+			RelicCatalog.Id.WATERSPROUTS,
+			RelicCatalog.Id.RETURN_STROKE,
+			RelicCatalog.Id.BRUSH_PILE,
+			RelicCatalog.Id.STUBBLE,
+			RelicCatalog.Id.SKIMMING_CUT,
+			RelicCatalog.Id.GREEN_MANURE,
 		],
 		80,
 		0.0
@@ -114,14 +114,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"6 vine",
-		[PhaseBProgression.PathId.VINE, PhaseBProgression.PathId.SPORE],
+		[Progression.PathId.VINE, Progression.PathId.SPORE],
 		[
-			PhaseBRelicCatalog.Id.LIANA,
-			PhaseBRelicCatalog.Id.TWINING,
-			PhaseBRelicCatalog.Id.WHIPLASH,
-			PhaseBRelicCatalog.Id.CLIMBER,
-			PhaseBRelicCatalog.Id.GIRDLING,
-			PhaseBRelicCatalog.Id.TRELLIS,
+			RelicCatalog.Id.LIANA,
+			RelicCatalog.Id.TWINING,
+			RelicCatalog.Id.WHIPLASH,
+			RelicCatalog.Id.CLIMBER,
+			RelicCatalog.Id.GIRDLING,
+			RelicCatalog.Id.TRELLIS,
 		],
 		80,
 		184.0
@@ -129,14 +129,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"7 fruit",
-		[PhaseBProgression.PathId.FRUIT, PhaseBProgression.PathId.SPORE],
+		[Progression.PathId.FRUIT, Progression.PathId.SPORE],
 		[
-			PhaseBRelicCatalog.Id.NEWTONS_APPLE,
-			PhaseBRelicCatalog.Id.WINDFALL,
-			PhaseBRelicCatalog.Id.STEM_STEERING,
-			PhaseBRelicCatalog.Id.FRUIT_SALAD,
-			PhaseBRelicCatalog.Id.BRUISED_FRUIT,
-			PhaseBRelicCatalog.Id.BANK_SHOT,
+			RelicCatalog.Id.NEWTONS_APPLE,
+			RelicCatalog.Id.WINDFALL,
+			RelicCatalog.Id.STEM_STEERING,
+			RelicCatalog.Id.FRUIT_SALAD,
+			RelicCatalog.Id.BRUISED_FRUIT,
+			RelicCatalog.Id.BANK_SHOT,
 		],
 		100,
 		0.0
@@ -146,14 +146,14 @@ func _run() -> void:
 	_run_scenario(
 		prototype,
 		"8 hybrid",
-		[PhaseBProgression.PathId.BRAMBLE, PhaseBProgression.PathId.SPORE],
+		[Progression.PathId.BRAMBLE, Progression.PathId.SPORE],
 		[
-			PhaseBRelicCatalog.Id.HYBRID_VIGOR,
-			PhaseBRelicCatalog.Id.BRIARBALL,
-			PhaseBRelicCatalog.Id.SNARE_VINE,
-			PhaseBRelicCatalog.Id.HOOKTHORN,
-			PhaseBRelicCatalog.Id.THORNBACK,
-			PhaseBRelicCatalog.Id.COMPOST_HEAP,
+			RelicCatalog.Id.HYBRID_VIGOR,
+			RelicCatalog.Id.BRIARBALL,
+			RelicCatalog.Id.SNARE_VINE,
+			RelicCatalog.Id.HOOKTHORN,
+			RelicCatalog.Id.THORNBACK,
+			RelicCatalog.Id.COMPOST_HEAP,
 		],
 		100,
 		0.0
@@ -172,7 +172,7 @@ func _run() -> void:
 
 
 func _run_scenario(
-	prototype: PhaseBPrototype,
+	prototype: RunRoot,
 	label: String,
 	paths: Array,
 	relics: Array,
@@ -188,7 +188,7 @@ func _run_scenario(
 		prototype.progression._owned_relics[relic_id] = 1
 	# Every line maxed, so the build is the worst case of itself rather than an
 	# average one that happens to hold the relics.
-	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+	for upgrade_id in range(Progression.UpgradeId.size()):
 		if paths.size() == 2 and prototype.progression._get_upgrade_path(upgrade_id) in paths:
 			prototype.progression._upgrade_levels[upgrade_id] = (
 				prototype.progression.maximum_upgrade_level
@@ -207,7 +207,7 @@ func _run_scenario(
 	for index in range(enemies):
 		var ring := 26.0 + float(index % 5) * 16.0
 		prototype.combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
+			CombatDirector.EnemyRole.HUNTER,
 			origin + Vector2.from_angle(float(index) * 2.39996) * ring
 		)
 	prototype.combat.simulate_step(0.0)
@@ -229,21 +229,21 @@ func _run_scenario(
 	_report(prototype, label, samples)
 
 
-func _top_up(prototype: PhaseBPrototype, origin: Vector2, wanted: int) -> void:
+func _top_up(prototype: RunRoot, origin: Vector2, wanted: int) -> void:
 	var missing := wanted - prototype.combat.get_active_enemy_count()
 	# A few per frame rather than the whole shortfall at once, so the refill is not
 	# itself the spike being measured.
 	for index in range(mini(missing, 4)):
 		var ring := 26.0 + float((prototype.combat.get_active_enemy_count() + index) % 5) * 16.0
 		prototype.combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
+			CombatDirector.EnemyRole.HUNTER,
 			origin + Vector2.from_angle(
 				float(prototype.combat.get_active_enemy_count() + index) * 2.39996
 			) * ring
 		)
 
 
-func _report(prototype: PhaseBPrototype, label: String, samples: PackedFloat32Array) -> void:
+func _report(prototype: RunRoot, label: String, samples: PackedFloat32Array) -> void:
 	var sorted := samples.duplicate()
 	sorted.sort()
 	var total := 0.0

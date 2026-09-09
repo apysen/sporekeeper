@@ -8,16 +8,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -28,8 +28,8 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	prototype.adaptation_director.reset_adaptations()
 	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.THISTLE,
-		PhaseBProgression.PathId.VINE
+		Progression.PathId.THISTLE,
+		Progression.PathId.VINE
 	)
 	prototype._apply_progression_modifiers()
 	prototype.adaptation_director.advance(1.0 / 60.0)
@@ -46,13 +46,13 @@ func _run() -> void:
 	var bare_carry := adaptations.get_thistle_carry_seconds()
 	var bare_cooldown := adaptations.get_thistle_stick_cooldown_seconds()
 	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING
+		Progression.UpgradeId.THISTLE_CLUSTERING
 	] = 1
 	var line_carry := adaptations.get_thistle_carry_seconds()
 	var line_cooldown := adaptations.get_thistle_stick_cooldown_seconds()
 	var capacity_held := adaptations._get_thistle_capacity() == 1
 	prototype.progression._upgrade_levels[
-		PhaseBProgression.UpgradeId.THISTLE_CLUSTERING
+		Progression.UpgradeId.THISTLE_CLUSTERING
 	] = 0
 	_check(
 		line_carry > bare_carry and line_cooldown < bare_cooldown and capacity_held,
@@ -87,7 +87,7 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	prototype._apply_progression_modifiers()
 	adaptations.advance(1.0 / 60.0)
-	var carried_turret: PhaseBAdaptationDirector.ThistleState = null
+	var carried_turret: AdaptationDirector.ThistleState = null
 	for thistle in adaptations._thistles:
 		if thistle.active and thistle.permanent:
 			carried_turret = thistle

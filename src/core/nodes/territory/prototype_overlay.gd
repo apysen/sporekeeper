@@ -276,7 +276,7 @@ var _overgrow_aim_radius := 0.0
 @export_group("Presentation")
 ## Presentation options. Optional: without it everything is drawn at full strength,
 ## which is what this did before the settings existed.
-@export var display_settings: PhaseBDisplaySettings
+@export var display_settings: DisplaySettings
 
 @export_group("Splatter Flight")
 ## Body colour of a glob in flight. Opaque on purpose: a translucent glob against

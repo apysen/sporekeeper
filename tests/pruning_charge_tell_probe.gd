@@ -13,15 +13,15 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
-		push_error("Unable to load Phase B prototype")
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
+		push_error("Unable to load Sporekeeper run")
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -29,8 +29,8 @@ func _run() -> void:
 	prototype._set_simulation_paused(true)
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.PRUNING,
-		PhaseBProgression.PathId.ROOT
+		Progression.PathId.PRUNING,
+		Progression.PathId.ROOT
 	)
 	prototype._apply_progression_modifiers()
 	prototype.territory_field.reset_field()

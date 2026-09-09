@@ -13,10 +13,10 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	prototype._open_pause_menu()
@@ -51,7 +51,7 @@ func _run() -> void:
 			])
 	# And again with what the editor shows: the authored template, in the same box.
 	var declared := {}
-	var packed: PackedScene = load("res://scenes/run/phase_b_prototype.tscn")
+	var packed: PackedScene = load("res://scenes/run/run.tscn")
 	var state := packed.get_state()
 	for node_index in range(state.get_node_count()):
 		for property_index in range(state.get_node_property_count(node_index)):

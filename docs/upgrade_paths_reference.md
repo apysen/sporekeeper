@@ -16,7 +16,7 @@ which Evolution the run can reach, and the pairing is frozen once claimed.
    once all eight slots are occupied, only lines already started are offered.
 2. **Master one line in each of the two paths.** Taking any single line of the
    primary and any single line of the secondary to rank 5 sets the Evolution to
-   READY (`_has_maxed_path_line`, `phase_b_progression.gd:1285`).
+   READY (`_has_maxed_path_line`, `progression.gd:1285`).
 3. **Claim the Evolution.** It appears in the draft as its own option. Claiming it
    immediately grants rank 1 of that Evolution's line and grants **+5 upgrade slots**
    (`evolution_bonus_upgrade_slots`), so all 13 Adaptation positions can run at once:
@@ -218,7 +218,7 @@ amplify compatible effects beyond its own cells.
 
 | Amplified | Path | Site |
 |---|---|---|
-| Seed inherited growth mass | Spore | `phase_b_spore_director.gd` |
+| Seed inherited growth mass | Spore | `spore_director.gd` |
 | Germination speed (Seed charge time) | Spore | `get_germination_seconds_at` |
 | Spore accumulation rate | Spore | `_update_enemy_spore` |
 | Fruiting Body cloud and rupture Spore | Spore | `_get_fruiting_body_spore` |

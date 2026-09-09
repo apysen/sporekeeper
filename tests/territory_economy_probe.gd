@@ -56,7 +56,7 @@ func _run() -> void:
 
 	# Deliberately left out of the tree: tick_biomass is pure arithmetic over its
 	# arguments, and _ready() asserts on collaborators this has no reason to build.
-	var progression := PhaseBProgression.new()
+	var progression := Progression.new()
 	progression.tick_biomass(1.0, green, arena, 1.0)
 	var corrected := progression.biomass_per_second
 	progression.tick_biomass(1.0, green, fraction, 1.0)

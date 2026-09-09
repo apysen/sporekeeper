@@ -1,7 +1,7 @@
 # Clover Gambling System
 ## Master Design and Implementation Guide
 
-**Project:** Elemental  
+**Project:** Sporekeeper  
 **Element:** Plant  
 **Status:** Current master specification  
 **Engine:** Godot 4.x  

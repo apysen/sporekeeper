@@ -28,15 +28,15 @@ const SAMPLE_FRAMES := 180
 const HEAVY_ENEMIES := 200
 
 const STRESS_ROLES := [
-	PhaseBCombatDirector.EnemyRole.HUNTER,
-	PhaseBCombatDirector.EnemyRole.GRAZER,
-	PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-	PhaseBCombatDirector.EnemyRole.RUSHER,
-	PhaseBCombatDirector.EnemyRole.SABOTEUR,
-	PhaseBCombatDirector.EnemyRole.CORRUPTOR,
-	PhaseBCombatDirector.EnemyRole.COLONIZER,
-	PhaseBCombatDirector.EnemyRole.WARDEN,
-	PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	CombatDirector.EnemyRole.HUNTER,
+	CombatDirector.EnemyRole.GRAZER,
+	CombatDirector.EnemyRole.HEAVY_GRAZER,
+	CombatDirector.EnemyRole.RUSHER,
+	CombatDirector.EnemyRole.SABOTEUR,
+	CombatDirector.EnemyRole.CORRUPTOR,
+	CombatDirector.EnemyRole.COLONIZER,
+	CombatDirector.EnemyRole.WARDEN,
+	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
 ]
 
 var _viewport_rid: RID
@@ -47,16 +47,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.player.input_enabled = false
@@ -94,7 +94,7 @@ func _run() -> void:
 	quit(0)
 
 
-func _sample(prototype: PhaseBPrototype, density: int, label: String) -> Dictionary:
+func _sample(prototype: RunRoot, density: int, label: String) -> Dictionary:
 	var combat := prototype.combat
 	if density > combat.enemy_pool_size:
 		combat.enemy_pool_size = density

@@ -2023,9 +2023,10 @@ Current authored Thistle behavior includes:
 - Maximum Attack Speed bonus at rank 5: **+75%**
 - Burr: **+1 ricochet per rank**
 - Maximum Burr ricochets at rank 5: **5**
-- Needlepoint: **+10 percentage points critical chance per rank**
-- Maximum Needlepoint crit chance at rank 5: **50%**
-- Each ricochet independently rolls Needlepoint crit.
+- Critical chance: **10%**, flat, and not bought by any line
+- Needlepoint: **+1x critical damage per rank**
+- Maximum Needlepoint crit multiplier at rank 5: **7x**
+- Each ricochet independently rolls its own crit.
 - Root Potency can add effective ranks to owned Thistle upgrades when the firing origin qualifies.
 
 Unless a relic says otherwise, Thistle relics use the current stat-scaled thorn damage, projectile count, targeting, crit, and ricochet behavior.
@@ -2192,7 +2193,7 @@ The dying turret fires one final empowered volley.
 - Rank-0 thorn reference damage: **12**; the 1.50× final volley therefore deals **18** before other modifiers
 - Inherits current Clustering projectile count
 - Inherits current Burr ricochets
-- Inherits current Needlepoint critical chance
+- Inherits current Needlepoint critical damage
 - Inherits eligible Root Potency effective ranks
 - Temporary Thistles qualify
 - Uses per turret life: **1**

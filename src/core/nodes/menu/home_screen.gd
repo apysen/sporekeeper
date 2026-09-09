@@ -1,17 +1,17 @@
 class_name HomeScreen
 extends Control
 
-const RUN_MODE := preload("res://src/core/models/run/phase_b_run_mode.gd")
+const RUN_MODE := preload("res://src/core/models/run/run_mode.gd")
 
 ## The title screen: the game's name, and the three things you can do from a cold start.
 ##
-## It owns its own PhaseBDisplaySettings rather than reaching into the run's, because
+## It owns its own DisplaySettings rather than reaching into the run's, because
 ## the run does not exist yet. The two agree because both read and write the same
 ## user://settings.cfg: a choice made here is on disk before the run is loaded, and the
 ## run's own settings node picks it up when it readies. Without that the settings button
 ## on this screen would be a menu that changes nothing.
 
-const RUN_SCENE := "res://scenes/run/phase_b_prototype.tscn"
+const RUN_SCENE := "res://scenes/run/run.tscn"
 
 @export_group("Development")
 ## Skips straight into the run on startup, so iterating on the game does not mean
@@ -22,9 +22,9 @@ const RUN_SCENE := "res://scenes/run/phase_b_prototype.tscn"
 
 @export_group("Collaborators")
 ## Presentation options this screen edits. Its own instance, saved to disk on change.
-@export var display_settings: PhaseBDisplaySettings
+@export var display_settings: DisplaySettings
 ## Bus names, so the volume sliders here move the same buses the run does.
-@export var audio_settings: PhaseBAudioSettings
+@export var audio_settings: AudioSettings
 
 @export_group("Pages")
 ## The title and the three menu buttons.
@@ -68,10 +68,10 @@ func _ready() -> void:
 		# still being readied.
 		get_tree().change_scene_to_file.call_deferred(RUN_SCENE)
 		return
-	PhaseBNinePatchButtonBorder.install_under(self)
-	PhaseBNinePatchPanelBorder.install_under(self)
-	assert(display_settings != null, "HomeScreen requires PhaseBDisplaySettings")
-	assert(audio_settings != null, "HomeScreen requires PhaseBAudioSettings")
+	NinePatchButtonBorder.install_under(self)
+	NinePatchPanelBorder.install_under(self)
+	assert(display_settings != null, "HomeScreen requires DisplaySettings")
+	assert(audio_settings != null, "HomeScreen requires AudioSettings")
 	if play_button != null:
 		play_button.pressed.connect(_on_quick_pressed)
 	if campaign_button != null:
@@ -214,13 +214,13 @@ func _configure_audio() -> void:
 		sfx_slider.value_changed.connect(_on_sfx_changed)
 		sfx_slider.editable = _sfx_bus >= 0
 		sfx_slider.set_value_no_signal(
-			PhaseBDisplaySettings.load_volume("sfx", 1.0) * 100.0
+			DisplaySettings.load_volume("sfx", 1.0) * 100.0
 		)
 	if music_slider != null:
 		music_slider.value_changed.connect(_on_music_changed)
 		music_slider.editable = _music_bus >= 0
 		music_slider.set_value_no_signal(
-			PhaseBDisplaySettings.load_volume("music", 1.0) * 100.0
+			DisplaySettings.load_volume("music", 1.0) * 100.0
 		)
 	# Applied on ready as well as on change, so the volumes a player set last session
 	# are in force before they press Play rather than only after they touch a slider.
@@ -232,13 +232,13 @@ func _configure_audio() -> void:
 
 func _on_sfx_changed(value: float) -> void:
 	_apply_volume(_sfx_bus, value, audio_settings.sfx_max_linear_volume)
-	PhaseBDisplaySettings.save_volume("sfx", clampf(value / 100.0, 0.0, 1.0))
+	DisplaySettings.save_volume("sfx", clampf(value / 100.0, 0.0, 1.0))
 	_refresh()
 
 
 func _on_music_changed(value: float) -> void:
 	_apply_volume(_music_bus, value, audio_settings.music_max_linear_volume)
-	PhaseBDisplaySettings.save_volume("music", clampf(value / 100.0, 0.0, 1.0))
+	DisplaySettings.save_volume("music", clampf(value / 100.0, 0.0, 1.0))
 	_refresh()
 
 
@@ -258,13 +258,13 @@ func _refresh() -> void:
 		if button == null:
 			continue
 		button.text = "%s   %s" % [
-			PhaseBDisplaySettings.get_option_name(option_id),
-			PhaseBDisplaySettings.get_choice_name(
+			DisplaySettings.get_option_name(option_id),
+			DisplaySettings.get_choice_name(
 				option_id,
 				display_settings.get_choice(option_id)
 			),
 		]
-		button.tooltip_text = PhaseBDisplaySettings.get_option_description(option_id)
+		button.tooltip_text = DisplaySettings.get_option_description(option_id)
 	if fullscreen_button != null:
 		fullscreen_button.text = (
 			fullscreen_exit_text

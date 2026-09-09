@@ -6,12 +6,12 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
 		quit(1)
 		return
@@ -19,10 +19,10 @@ func _run() -> void:
 	prototype.player.input_enabled = false
 	prototype._set_simulation_paused(true)
 	prototype._show_choice(
-		PhaseBPrototype.ChoiceKind.UPGRADE,
-		PackedInt32Array([PhaseBProgression.UpgradeId.SEED_PRODUCTION])
+		RunRoot.ChoiceKind.UPGRADE,
+		PackedInt32Array([Progression.UpgradeId.SEED_PRODUCTION])
 	)
-	prototype._on_reward_hovered(prototype.choice_button_one)
+	prototype._on_reward_hovered(0, prototype.choice_panel.button_one)
 	await process_frame
 	await process_frame
 	prototype._mechanics_help.source_exited()
@@ -39,7 +39,7 @@ func _run() -> void:
 		prototype._mechanics_help._stack.position.x
 		- prototype.choice_panel.get_global_rect().end.x
 	)
-	if not is_equal_approx(reward_gap, PhaseBMechanicsHelp.REWARD_GAP):
+	if not is_equal_approx(reward_gap, MechanicsHelp.REWARD_GAP):
 		push_error("Reward definitions are not tucked against the reward panel")
 		quit(1)
 		return
@@ -62,7 +62,7 @@ func _run() -> void:
 		quit(1)
 		return
 	prototype.choice_panel.visible = false
-	prototype._choice_kind = PhaseBPrototype.ChoiceKind.NONE
+	prototype._choice_kind = RunRoot.ChoiceKind.NONE
 	prototype._choice_ids.clear()
 	prototype._mechanics_help.hide_tooltip()
 	prototype.relic_slots.set_slot(
@@ -70,7 +70,7 @@ func _run() -> void:
 		"RB",
 		"",
 		"ROOTED BARK\nGain defense while standing on Mature Green. Root Potency improves the effect.",
-		PhaseBUpgradeSlots.SlotState.FILLED
+		UpgradeSlots.SlotState.FILLED
 	)
 	Input.warp_mouse(prototype.relic_slots.get_slot_global_rect(0).get_center() * 2.0)
 	prototype._on_hud_slot_hovered(0, prototype.relic_slots)
@@ -78,7 +78,7 @@ func _run() -> void:
 	await process_frame
 	var relic_source := prototype.relic_slots.get_slot_global_rect(0)
 	var relic_card := prototype._mechanics_help._stack.get_rect()
-	if absf(relic_source.position.y - relic_card.end.y - PhaseBMechanicsHelp.HUD_GAP) > 1.0:
+	if absf(relic_source.position.y - relic_card.end.y - MechanicsHelp.HUD_GAP) > 1.0:
 		push_error("Relic tooltip is not directly above its bottom-tray slot")
 		quit(1)
 		return
@@ -118,7 +118,7 @@ func _run() -> void:
 		quit(1)
 		return
 	if prototype._mechanics_help._linkify(
-		PhaseBMechanicsHelp.ENTRIES["METABOLISM"], PackedStringArray(["GREEN"])
+		MechanicsHelp.ENTRIES["METABOLISM"], PackedStringArray(["GREEN"])
 	).contains("[url=GREEN]"):
 		push_error("An open ancestor mechanic remains clickable in a nested tooltip")
 		quit(1)
@@ -137,7 +137,7 @@ func _run() -> void:
 		"RB",
 		"",
 		"ROOTED BARK\nGain defense while standing on Mature Green.",
-		PhaseBUpgradeSlots.SlotState.FILLED
+		UpgradeSlots.SlotState.FILLED
 	)
 	Input.warp_mouse(prototype.upgrade_slots.get_slot_global_rect(0).get_center() * 2.0)
 	prototype._on_hud_slot_hovered(0, prototype.upgrade_slots)
@@ -145,7 +145,7 @@ func _run() -> void:
 	await process_frame
 	var adaptation_source := prototype.upgrade_slots.get_slot_global_rect(0)
 	var adaptation_card := prototype._mechanics_help._stack.get_rect()
-	if absf(adaptation_source.position.x - adaptation_card.end.x - PhaseBMechanicsHelp.HUD_GAP) > 1.0:
+	if absf(adaptation_source.position.x - adaptation_card.end.x - MechanicsHelp.HUD_GAP) > 1.0:
 		push_error(
 			"Adaptation tooltip is not directly beside its right-side slot: source=%s card=%s"
 			% [adaptation_source, adaptation_card]

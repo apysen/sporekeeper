@@ -19,16 +19,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
-	var slider := prototype.wager_slider as PhaseBWagerSlider
+	var slider := prototype.slot_panel.wager_slider as WagerSlider
 	var failures := PackedStringArray()
 	if slider == null:
-		print("WAGER_SLIDER: the stake selector is not a PhaseBWagerSlider")
+		print("WAGER_SLIDER: the stake selector is not a WagerSlider")
 		quit(1)
 		return
 
@@ -87,7 +87,7 @@ func _run() -> void:
 	quit(0 if failures.is_empty() else 1)
 
 
-func _track_height(slider: PhaseBWagerSlider) -> float:
+func _track_height(slider: WagerSlider) -> float:
 	# What the slider actually draws, which is its own business now rather than
 	# something the theme decides.
 	return slider.bar_rect().size.y

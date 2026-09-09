@@ -27,15 +27,15 @@ const SAMPLE_FRAMES := 300
 const WARMUP_FRAMES := 45
 
 const STRESS_ROLES := [
-	PhaseBCombatDirector.EnemyRole.HUNTER,
-	PhaseBCombatDirector.EnemyRole.GRAZER,
-	PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-	PhaseBCombatDirector.EnemyRole.RUSHER,
-	PhaseBCombatDirector.EnemyRole.SABOTEUR,
-	PhaseBCombatDirector.EnemyRole.CORRUPTOR,
-	PhaseBCombatDirector.EnemyRole.COLONIZER,
-	PhaseBCombatDirector.EnemyRole.WARDEN,
-	PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	CombatDirector.EnemyRole.HUNTER,
+	CombatDirector.EnemyRole.GRAZER,
+	CombatDirector.EnemyRole.HEAVY_GRAZER,
+	CombatDirector.EnemyRole.RUSHER,
+	CombatDirector.EnemyRole.SABOTEUR,
+	CombatDirector.EnemyRole.CORRUPTOR,
+	CombatDirector.EnemyRole.COLONIZER,
+	CombatDirector.EnemyRole.WARDEN,
+	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
 ]
 
 var _densities := PackedInt32Array([130, 200])
@@ -57,16 +57,16 @@ func _run() -> void:
 			if not wanted.is_empty():
 				_densities = wanted
 
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	# The scene runs itself here. That is the point: this measures the frame the
@@ -110,7 +110,7 @@ func _run() -> void:
 	quit(0)
 
 
-func _run_density(prototype: PhaseBPrototype, density: int) -> void:
+func _run_density(prototype: RunRoot, density: int) -> void:
 	var combat := prototype.combat
 	if density > combat.enemy_pool_size:
 		combat.enemy_pool_size = density
@@ -124,11 +124,11 @@ func _run_density(prototype: PhaseBPrototype, density: int) -> void:
 	# fixture draws a still life and the damage-number layer reads zero.
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.THISTLE, PhaseBProgression.PathId.FRUIT
+		Progression.PathId.THISTLE, Progression.PathId.FRUIT
 	)
 	prototype.progression.debug_complete_evolution_requirements()
 	prototype.progression.grant_evolution_if_ready()
-	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+	for upgrade_id in range(Progression.UpgradeId.size()):
 		var path_id := prototype.progression._get_upgrade_path(upgrade_id)
 		if prototype.progression.has_path(path_id):
 			prototype.progression._upgrade_levels[upgrade_id] = (
@@ -166,21 +166,21 @@ func _run_density(prototype: PhaseBPrototype, density: int) -> void:
 	var draw_call_samples := PackedInt32Array()
 	var primitive_samples := PackedInt32Array()
 
-	PhaseBPerfCounters.begin_session()
+	PerfCounters.begin_session()
 	for _frame in range(SAMPLE_FRAMES):
-		PhaseBPerfCounters.reset_frame()
+		PerfCounters.reset_frame()
 		var began := Time.get_ticks_usec()
 		await process_frame
 		frame_samples.append(float(Time.get_ticks_usec() - began) / 1000.0)
 		draw_samples.append(
-			PhaseBPerfCounters.get_timer_ms(PhaseBPerfCounters.TIMER_COMBAT_DRAW)
+			PerfCounters.get_timer_ms(PerfCounters.TIMER_COMBAT_DRAW)
 		)
 		enemy_samples.append(
-			PhaseBPerfCounters.get_timer_ms(PhaseBPerfCounters.TIMER_ENEMY_DRAW)
+			PerfCounters.get_timer_ms(PerfCounters.TIMER_ENEMY_DRAW)
 		)
 		damage_number_samples.append(
-			PhaseBPerfCounters.get_timer_ms(
-				PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_DRAW
+			PerfCounters.get_timer_ms(
+				PerfCounters.TIMER_DAMAGE_NUMBER_DRAW
 			)
 		)
 		render_cpu_samples.append(
@@ -203,7 +203,7 @@ func _run_density(prototype: PhaseBPrototype, density: int) -> void:
 				RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME
 			)
 		)
-	PhaseBPerfCounters.end_session()
+	PerfCounters.end_session()
 
 	var frame_median := _percentile_of(frame_samples, 0.50)
 	var render_cpu_median := _percentile_of(render_cpu_samples, 0.50)

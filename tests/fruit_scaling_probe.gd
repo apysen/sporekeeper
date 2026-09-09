@@ -15,35 +15,35 @@ const TARGET_FRAME_MS := 16.67
 
 ## The exact relic load the peak-density sweep gives a Root+Fruit run.
 const PLANT_RELICS: Array[int] = [
-	PhaseBRelicCatalog.Id.GARDEN_HOSE,
-	PhaseBRelicCatalog.Id.MULCH,
-	PhaseBRelicCatalog.Id.MIMOSA,
-	PhaseBRelicCatalog.Id.COMPOST_HEAP,
-	PhaseBRelicCatalog.Id.MAN_EATER,
+	RelicCatalog.Id.GARDEN_HOSE,
+	RelicCatalog.Id.MULCH,
+	RelicCatalog.Id.MIMOSA,
+	RelicCatalog.Id.COMPOST_HEAP,
+	RelicCatalog.Id.MAN_EATER,
 ]
 const ROOT_RELICS: Array[int] = [
-	PhaseBRelicCatalog.Id.ROOTBOUND,
-	PhaseBRelicCatalog.Id.SUCKERS,
-	PhaseBRelicCatalog.Id.FEEDER_ROOTS,
-	PhaseBRelicCatalog.Id.TAPROOT,
-	PhaseBRelicCatalog.Id.GRAFT_UNION,
+	RelicCatalog.Id.ROOTBOUND,
+	RelicCatalog.Id.SUCKERS,
+	RelicCatalog.Id.FEEDER_ROOTS,
+	RelicCatalog.Id.TAPROOT,
+	RelicCatalog.Id.GRAFT_UNION,
 ]
 const FRUIT_RELICS: Array[int] = [
-	PhaseBRelicCatalog.Id.THICK_RIND,
-	PhaseBRelicCatalog.Id.STEM_STEERING,
-	PhaseBRelicCatalog.Id.BRUISED_FRUIT,
-	PhaseBRelicCatalog.Id.BANK_SHOT,
+	RelicCatalog.Id.THICK_RIND,
+	RelicCatalog.Id.STEM_STEERING,
+	RelicCatalog.Id.BRUISED_FRUIT,
+	RelicCatalog.Id.BANK_SHOT,
 ]
 const STRESS_ROLES: Array[int] = [
-	PhaseBCombatDirector.EnemyRole.HUNTER,
-	PhaseBCombatDirector.EnemyRole.GRAZER,
-	PhaseBCombatDirector.EnemyRole.HEAVY_GRAZER,
-	PhaseBCombatDirector.EnemyRole.RUSHER,
-	PhaseBCombatDirector.EnemyRole.SABOTEUR,
-	PhaseBCombatDirector.EnemyRole.CORRUPTOR,
-	PhaseBCombatDirector.EnemyRole.COLONIZER,
-	PhaseBCombatDirector.EnemyRole.WARDEN,
-	PhaseBCombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	CombatDirector.EnemyRole.HUNTER,
+	CombatDirector.EnemyRole.GRAZER,
+	CombatDirector.EnemyRole.HEAVY_GRAZER,
+	CombatDirector.EnemyRole.RUSHER,
+	CombatDirector.EnemyRole.SABOTEUR,
+	CombatDirector.EnemyRole.CORRUPTOR,
+	CombatDirector.EnemyRole.COLONIZER,
+	CombatDirector.EnemyRole.WARDEN,
+	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
 ]
 
 var _rows: Array[String] = []
@@ -55,16 +55,16 @@ func _initialize() -> void:
 
 
 func _run_probe() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.set_process(false)
@@ -83,9 +83,9 @@ func _run_probe() -> void:
 	# The count is only half the question. The sweep's Root+Fruit row carried a
 	# 14-relic load and the full role mix, and that is the row that spiked, so the
 	# relics are bisected here by pool against the same crowd.
-	var root_fruit := [PhaseBProgression.PathId.ROOT, PhaseBProgression.PathId.FRUIT]
-	var root_spore := [PhaseBProgression.PathId.ROOT, PhaseBProgression.PathId.SPORE]
-	var fruit_spore := [PhaseBProgression.PathId.FRUIT, PhaseBProgression.PathId.SPORE]
+	var root_fruit := [Progression.PathId.ROOT, Progression.PathId.FRUIT]
+	var root_spore := [Progression.PathId.ROOT, Progression.PathId.SPORE]
+	var fruit_spore := [Progression.PathId.FRUIT, Progression.PathId.SPORE]
 	await _run_bisect(prototype, "root+fruit, no relic", root_fruit, [], true)
 	await _run_bisect(prototype, "root+fruit, all 14", root_fruit, PLANT_RELICS + ROOT_RELICS + FRUIT_RELICS, true)
 	await _run_bisect(prototype, "root+fruit, no evo", root_fruit, [], false)
@@ -114,7 +114,7 @@ func _run_probe() -> void:
 
 
 func _run_case(
-	prototype: PhaseBPrototype,
+	prototype: RunRoot,
 	label: String,
 	with_root: bool,
 	mature_ground: bool,
@@ -124,12 +124,12 @@ func _run_case(
 	prototype.progression.reset_progression()
 	prototype.progression.clear_casino_paths()
 	var support := (
-		PhaseBProgression.PathId.ROOT
+		Progression.PathId.ROOT
 		if with_root
-		else PhaseBProgression.PathId.SPORE
+		else Progression.PathId.SPORE
 	)
-	prototype.progression.debug_select_paths(PhaseBProgression.PathId.FRUIT, support)
-	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+	prototype.progression.debug_select_paths(Progression.PathId.FRUIT, support)
+	for upgrade_id in range(Progression.UpgradeId.size()):
 		var path_id := prototype.progression._get_upgrade_path(upgrade_id)
 		if prototype.progression.has_path(path_id):
 			prototype.progression._upgrade_levels[upgrade_id] = (
@@ -137,7 +137,7 @@ func _run_case(
 			)
 	if casino:
 		prototype.progression.set_casino_path_active(
-			PhaseBProgression.PathId.FRUIT,
+			Progression.PathId.FRUIT,
 			true
 		)
 	prototype._apply_progression_modifiers()
@@ -155,7 +155,7 @@ func _run_case(
 	for index in range(prototype.combat.maximum_active_enemies):
 		var ring := 30.0 + float(index % 7) * 22.0
 		prototype.combat.spawn_enemy(
-			PhaseBCombatDirector.EnemyRole.HUNTER,
+			CombatDirector.EnemyRole.HUNTER,
 			origin + Vector2.from_angle(float(index) * 2.39996) * ring
 		)
 	for enemy in prototype.combat._enemies:
@@ -169,9 +169,9 @@ func _run_case(
 	# release itself reads it.
 	var released := (
 		1
-		+ prototype.progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUIT_SET)
+		+ prototype.progression.get_upgrade_level(Progression.UpgradeId.FRUIT_SET)
 		+ prototype.adaptation_director._root_count_step(
-			PhaseBProgression.UpgradeId.FRUIT_SET,
+			Progression.UpgradeId.FRUIT_SET,
 			origin
 		)
 	)
@@ -201,7 +201,7 @@ func _run_case(
 
 
 func _run_bisect(
-	prototype: PhaseBPrototype,
+	prototype: RunRoot,
 	label: String,
 	paths: Array,
 	relics: Array[int],
@@ -215,7 +215,7 @@ func _run_bisect(
 		prototype.progression.debug_complete_evolution_requirements()
 		prototype.progression.grant_evolution_if_ready()
 		prototype.progression.debug_select_tertiary_path(_third_path(paths))
-	for upgrade_id in range(PhaseBProgression.UpgradeId.size()):
+	for upgrade_id in range(Progression.UpgradeId.size()):
 		var path_id := prototype.progression._get_upgrade_path(upgrade_id)
 		if prototype.progression.has_path(path_id):
 			prototype.progression._upgrade_levels[upgrade_id] = (
@@ -226,7 +226,7 @@ func _run_bisect(
 	prototype._apply_progression_modifiers()
 	prototype.relic_director.apply_relics()
 
-	prototype.wave_director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	prototype.wave_director.configure_mode(RunMode.Id.CAMPAIGN)
 	prototype.wave_director.reset_director()
 	prototype.wave_director.debug_advance_time(
 		prototype.wave_director.final_invasion_time_seconds
@@ -257,9 +257,9 @@ func _run_bisect(
 
 	var released := (
 		1
-		+ prototype.progression.get_upgrade_level(PhaseBProgression.UpgradeId.FRUIT_SET)
+		+ prototype.progression.get_upgrade_level(Progression.UpgradeId.FRUIT_SET)
 		+ prototype.adaptation_director._root_count_step(
-			PhaseBProgression.UpgradeId.FRUIT_SET,
+			Progression.UpgradeId.FRUIT_SET,
 			origin
 		)
 	)
@@ -340,7 +340,7 @@ func _run_bisect(
 	await process_frame
 
 
-func _count_overgrown(prototype: PhaseBPrototype) -> int:
+func _count_overgrown(prototype: RunRoot) -> int:
 	var count := 0
 	for enemy in prototype.combat._enemies:
 		if enemy.active and enemy.overgrown:
@@ -349,10 +349,10 @@ func _count_overgrown(prototype: PhaseBPrototype) -> int:
 
 
 func _third_path(paths: Array) -> int:
-	for path_id in range(PhaseBProgression.PathId.size()):
+	for path_id in range(Progression.PathId.size()):
 		if path_id != paths[0] and path_id != paths[1]:
 			return path_id
-	return PhaseBProgression.PathId.SPORE
+	return Progression.PathId.SPORE
 
 
 func _force_mature_ground(field: TerritoryField, origin: Vector2, radius: float) -> void:

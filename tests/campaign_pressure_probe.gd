@@ -16,18 +16,18 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.combat.set_process(false)
 	var director := prototype.wave_director
-	director.configure_mode(PhaseBRunMode.Id.CAMPAIGN)
+	director.configure_mode(RunMode.Id.CAMPAIGN)
 	print("wave  identity              hp    dmg    move   terr   act    cc    mod   break  int   pattern      packs  relic")
-	for wave_number in range(1, PhaseBCampaignWaves.WAVE_COUNT + 1):
+	for wave_number in range(1, CampaignWaves.WAVE_COUNT + 1):
 		var spec := director.get_wave_spec(wave_number)
-		var pattern := PhaseBCampaignWaves.get_pack_pattern(spec.pack_pattern)
+		var pattern := CampaignWaves.get_pack_pattern(spec.pack_pattern)
 		var average_pack := 0.0
 		for size in pattern:
 			average_pack += float(size)
@@ -61,12 +61,12 @@ func _report_role_scaling() -> void:
 	## taking the whole movement curve and one taking half of it are different
 	## enemies at Wave 25 even though the wave hands them the same number.
 	print("role scaling at Wave 25 (movement x%.3f, action x%.3f):" % [
-		PhaseBCampaignWaves.get_movement_speed_multiplier(PhaseBCampaignWaves.WAVE_COUNT),
-		PhaseBCampaignWaves.get_territory_action_speed_multiplier(PhaseBCampaignWaves.WAVE_COUNT),
+		CampaignWaves.get_movement_speed_multiplier(CampaignWaves.WAVE_COUNT),
+		CampaignWaves.get_territory_action_speed_multiplier(CampaignWaves.WAVE_COUNT),
 	])
-	var profiles := PhaseBCampaignWaves.build_role_scaling_profiles()
-	var wave_move := PhaseBCampaignWaves.get_movement_speed_multiplier(
-		PhaseBCampaignWaves.WAVE_COUNT
+	var profiles := CampaignWaves.build_role_scaling_profiles()
+	var wave_move := CampaignWaves.get_movement_speed_multiplier(
+		CampaignWaves.WAVE_COUNT
 	)
 	var role_ids := profiles.keys()
 	role_ids.sort()
@@ -81,7 +81,7 @@ func _report_role_scaling() -> void:
 		])
 
 
-func _report_composition(director: PhaseBWaveDirector) -> void:
+func _report_composition(director: WaveDirector) -> void:
 	## Whether a wave's shuffled leader deck really delivers its authored weights.
 	## The deck exists so it does, and a probe that never checks it is a probe that
 	## would not notice the day it stopped.
@@ -89,8 +89,8 @@ func _report_composition(director: PhaseBWaveDirector) -> void:
 	print("leader deck check (100 draws per wave, authored vs drawn):")
 	for wave_number in [1, 6, 13, 18, 25]:
 		var spec := director.get_wave_spec(wave_number)
-		var deck := PhaseBCampaignWaves.shuffle_deck(
-			PhaseBCampaignWaves.build_leader_deck(spec),
+		var deck := CampaignWaves.shuffle_deck(
+			CampaignWaves.build_leader_deck(spec),
 			12345,
 			wave_number,
 			0

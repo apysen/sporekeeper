@@ -17,17 +17,17 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	change_scene_to_file("res://scenes/run/run.tscn")
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	# Both rows need something in them to be measured, and a relic slot only fills
 	# when the run actually holds a relic.
 	prototype.progression.debug_select_paths(
-		PhaseBProgression.PathId.BRAMBLE,
-		PhaseBProgression.PathId.SPORE
+		Progression.PathId.BRAMBLE,
+		Progression.PathId.SPORE
 	)
 	for _draw in range(3):
 		prototype.progression.request_relic_choice()
@@ -39,7 +39,7 @@ func _run() -> void:
 	await process_frame
 
 	var offenders := 0
-	for row: PhaseBUpgradeSlots in [prototype.relic_slots, prototype.upgrade_slots]:
+	for row: UpgradeSlots in [prototype.relic_slots, prototype.upgrade_slots]:
 		if row == null:
 			continue
 		for index in range(row.get_slot_count()):

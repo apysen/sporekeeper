@@ -40,11 +40,11 @@ extends Resource
 @export_range(0.05, 5.0, 0.01) var pack_interval_seconds := 0.80
 ## Pack-size sequence consumed one entry per pack, reset at the wave boundary.
 @export var pack_pattern: StringName = &"ONE"
-## Role id (PhaseBCombatDirector.EnemyRole) to leader-deck percentage.
+## Role id (CombatDirector.EnemyRole) to leader-deck percentage.
 @export var role_weights: Dictionary = {}
 ## Topology profile governing where this wave's packs enter the arena.
 @export var spawn_topology: StringName = &"EVEN_RING"
-## Which modifier unlock stage this wave draws from; see PhaseBCampaignWaves.
+## Which modifier unlock stage this wave draws from; see CampaignWaves.
 @export_range(0, 4, 1) var modifier_pool_stage := 0
 
 @export_group("Milestones")

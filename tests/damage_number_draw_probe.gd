@@ -19,16 +19,16 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var load_error := change_scene_to_file("res://scenes/run/phase_b_prototype.tscn")
+	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	if load_error != OK:
-		push_error("Unable to load Phase B prototype: %s" % error_string(load_error))
+		push_error("Unable to load Sporekeeper run: %s" % error_string(load_error))
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	if prototype == null:
-		push_error("Phase B prototype scene did not become current")
+		push_error("Sporekeeper run scene did not become current")
 		quit(1)
 		return
 	prototype.player.input_enabled = false
@@ -55,8 +55,8 @@ func _run() -> void:
 
 
 func _measure_pass(
-	prototype: PhaseBPrototype,
-	combat: PhaseBCombatDirector,
+	prototype: RunRoot,
+	combat: CombatDirector,
 	random: RandomNumberGenerator,
 	pool_size: int,
 	label: String,
@@ -67,9 +67,9 @@ func _measure_pass(
 	var measure_samples := PackedFloat32Array()
 	var frame_samples := PackedFloat32Array()
 
-	PhaseBPerfCounters.begin_session()
+	PerfCounters.begin_session()
 	for frame_index in range(RENDER_FRAMES):
-		PhaseBPerfCounters.reset_frame()
+		PerfCounters.reset_frame()
 		# Replace only what expired. Spawning the whole pool every frame would make
 		# spawn and draw happen equally often, which is not how these behave: a number
 		# lives for damage_number_lifetime_seconds, so it is spawned once and drawn for
@@ -103,16 +103,16 @@ func _measure_pass(
 		await process_frame
 		frame_samples.append(float(Time.get_ticks_usec() - began) / 1000.0)
 		draw_samples.append(
-			PhaseBPerfCounters.get_timer_ms(
-				PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_DRAW
+			PerfCounters.get_timer_ms(
+				PerfCounters.TIMER_DAMAGE_NUMBER_DRAW
 			)
 		)
 		measure_samples.append(
-			PhaseBPerfCounters.get_timer_ms(
-				PhaseBPerfCounters.TIMER_DAMAGE_NUMBER_MEASURE
+			PerfCounters.get_timer_ms(
+				PerfCounters.TIMER_DAMAGE_NUMBER_MEASURE
 			)
 		)
-	PhaseBPerfCounters.end_session()
+	PerfCounters.end_session()
 
 	var active := 0
 	for damage_number in combat._damage_numbers:

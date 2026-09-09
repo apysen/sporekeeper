@@ -27,7 +27,7 @@ const AFTERGROWTH_SHADER := preload("res://assets/shaders/aftergrowth_field.gdsh
 @export var territory_field: TerritoryField
 ## Presentation options. Optional: without it the sheet is drawn at full strength,
 ## which is what this did before the settings existed.
-@export var display_settings: PhaseBDisplaySettings
+@export var display_settings: DisplaySettings
 
 @export_group("Appearance")
 ## Pale growth laid over shielded Green. Bright enough to read against the run's own

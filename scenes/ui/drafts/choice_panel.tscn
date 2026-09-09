@@ -1,0 +1,110 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="StyleBox" path="res://assets/ui/panel_style.tres" id="30_panel_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
+[ext_resource type="Script" path="res://src/core/nodes/ui/choice_panel.gd" id="1_root"]
+
+[node name="ChoicePanel" type="Panel" node_paths=PackedStringArray("header", "button_one", "button_two", "button_three", "button_four", "reroll_button")]
+visible = false
+offset_left = 186.0
+offset_top = 176.0
+offset_right = 822.0
+offset_bottom = 619.0
+theme_override_styles/panel = ExtResource("30_panel_style")
+script = ExtResource("1_root")
+header = NodePath("Header")
+button_one = NodePath("Choice1")
+button_two = NodePath("Choice2")
+button_three = NodePath("Choice3")
+button_four = NodePath("Choice4")
+reroll_button = NodePath("Reroll")
+
+[node name="Header" type="Label" parent="." unique_id=941029981]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 15.0
+offset_right = 612.0
+offset_bottom = 46.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 22
+text = "CHOOSE ONE"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Choice1" type="Button" parent="." unique_id=1801632138]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 54.0
+offset_right = 605.0
+offset_bottom = 130.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Seed Production  1/3
+1 Seed per kill threshold"
+autowrap_mode = 2
+
+[node name="Choice2" type="Button" parent="." unique_id=1706058646]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 135.0
+offset_right = 605.0
+offset_bottom = 211.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Growth Mass  1/3
++24% Seed growth mass"
+autowrap_mode = 2
+
+[node name="Choice3" type="Button" parent="." unique_id=178445218]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 218.0
+offset_right = 605.0
+offset_bottom = 294.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Seed Production  1/3
+One fewer kill required per Seed
+ROOTED 1.74x → Seeds germinate in 0.78s instead of 1.35s"
+autowrap_mode = 2
+
+[node name="Choice4" type="Button" parent="." unique_id=612884907]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 300.0
+offset_right = 605.0
+offset_bottom = 376.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "Momentum  2/5
++20% maximum Fruit roll distance
+ROOTED 1.74x → 543 px unobstructed stopping distance"
+autowrap_mode = 2
+
+
+[node name="Reroll" type="Button" parent="." unique_id=884213770]
+layout_mode = 0
+offset_left = 31.0
+offset_top = 378.0
+offset_right = 605.0
+offset_bottom = 417.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+text = "REROLL  ({left} LEFT)"
+

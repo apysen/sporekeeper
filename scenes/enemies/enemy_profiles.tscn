@@ -1,0 +1,193 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" uid="uid://yqxu5w6nnq7v" path="res://src/core/nodes/enemies/enemy_profile.gd" id="14_enemy_profile"]
+[ext_resource type="Script" path="res://src/core/nodes/enemies/enemy_profiles.gd" id="1_root"]
+
+[node name="EnemyProfiles" type="Node"]
+
+script = ExtResource("1_root")
+
+[node name="Hunter" type="Node" parent="." unique_id=466288190]
+script = ExtResource("14_enemy_profile")
+
+[node name="Grazer" type="Node" parent="." unique_id=339508640]
+script = ExtResource("14_enemy_profile")
+role = 1
+maximum_health = 42.0
+movement_speed = 52.0
+contact_damage = 4.0
+contact_interval_seconds = 0.95
+xp_reward = 3
+body_radius_pixels = 11.0
+territory_behavior = 1
+territory_action_interval_seconds = 0.14
+territory_action_strength = 1.0
+territory_action_radius_multiplier = 1.6
+territory_actions_before_recovery = 14
+territory_recovery_seconds = 2.5
+require_player_territory = true
+
+[node name="Saboteur" type="Node" parent="." unique_id=1216931022]
+script = ExtResource("14_enemy_profile")
+role = 4
+maximum_health = 34.0
+movement_speed = 78.0
+contact_damage = 3.0
+contact_interval_seconds = 0.9
+xp_reward = 4
+target_priority_multiplier = 0.65
+movement_behavior = 1
+territory_behavior = 3
+first_territory_action_delay_seconds = 0.35
+territory_action_interval_seconds = 0.55
+territory_action_strength = 1.0
+territory_action_radius_multiplier = 0.75
+catalyst_search_range_pixels = 520.0
+fresh_maturity_threshold = 0.38
+
+[node name="Corruptor" type="Node" parent="." unique_id=1854604109]
+script = ExtResource("14_enemy_profile")
+role = 5
+maximum_health = 58.0
+movement_speed = 46.0
+contact_damage = 4.0
+contact_interval_seconds = 1.0
+xp_reward = 6
+body_radius_pixels = 12.0
+target_priority_multiplier = 0.8
+territory_behavior = 4
+first_territory_action_delay_seconds = 1.25
+territory_action_interval_seconds = 2.4
+territory_action_strength = 2.5
+territory_action_radius_multiplier = 1.15
+require_player_territory = true
+
+[node name="HeavyGrazer" type="Node" parent="." unique_id=339508701]
+script = ExtResource("14_enemy_profile")
+role = 9
+maximum_health = 148.0
+movement_speed = 31.0
+contact_damage = 7.0
+contact_interval_seconds = 1.05
+xp_reward = 11
+body_radius_pixels = 17.0
+target_priority_multiplier = 0.75
+knockback_resistance = 0.92
+territory_behavior = 1
+territory_action_interval_seconds = 0.14
+territory_action_strength = 2.1
+territory_action_radius_multiplier = 2.3
+territory_actions_before_recovery = 18
+territory_recovery_seconds = 2.2
+require_player_territory = true
+
+[node name="Rusher" type="Node" parent="." unique_id=466288251]
+script = ExtResource("14_enemy_profile")
+role = 10
+maximum_health = 24.0
+movement_speed = 143.0
+contact_damage = 5.0
+contact_interval_seconds = 0.7
+xp_reward = 6
+body_radius_pixels = 8.0
+target_priority_multiplier = 0.7
+
+[node name="SiegeCorruptor" type="Node" parent="." unique_id=1854604201]
+script = ExtResource("14_enemy_profile")
+role = 11
+maximum_health = 96.0
+movement_speed = 38.0
+contact_damage = 4.0
+contact_interval_seconds = 1.0
+xp_reward = 12
+body_radius_pixels = 14.0
+target_priority_multiplier = 0.6
+territory_behavior = 4
+first_territory_action_delay_seconds = 1.25
+territory_action_interval_seconds = 2.0
+territory_action_strength = 2.2
+territory_action_radius_multiplier = 1.25
+territory_action_escalation = 1.22
+territory_action_escalation_cap = 6.0
+require_player_territory = true
+
+[node name="Colonizer" type="Node" parent="." unique_id=756900572]
+script = ExtResource("14_enemy_profile")
+role = 6
+maximum_health = 74.0
+movement_speed = 40.0
+contact_damage = 2.0
+contact_interval_seconds = 1.1
+xp_reward = 8
+body_radius_pixels = 13.0
+target_priority_multiplier = 0.7
+movement_behavior = 2
+preferred_distance_pixels = 185.0
+territory_behavior = 5
+first_territory_action_delay_seconds = 3.0
+territory_action_interval_seconds = 7.5
+maximum_active_summons = 5
+summon_spacing_pixels = 120.0
+
+[node name="Warden" type="Node" parent="." unique_id=249205415]
+script = ExtResource("14_enemy_profile")
+role = 7
+maximum_health = 96.0
+movement_speed = 38.0
+contact_damage = 4.5
+contact_interval_seconds = 0.95
+xp_reward = 10
+body_radius_pixels = 14.0
+target_priority_multiplier = 0.55
+territory_behavior = 7
+first_territory_action_delay_seconds = 0.75
+territory_action_interval_seconds = 0.85
+territory_action_strength = 0.5
+territory_action_radius_multiplier = 3.0
+
+[node name="ColonyCore" type="Node" parent="." unique_id=406885890]
+script = ExtResource("14_enemy_profile")
+role = 8
+maximum_health = 90.0
+movement_speed = 1.0
+contact_damage = 0.0
+contact_interval_seconds = 1.0
+xp_reward = 7
+body_radius_pixels = 15.0
+target_priority_multiplier = 0.45
+movement_behavior = 3
+territory_behavior = 6
+first_territory_action_delay_seconds = 0.8
+territory_action_interval_seconds = 1.7
+territory_action_strength = 1.0
+territory_action_radius_multiplier = 1.55
+
+[node name="EliteRootbreaker" type="Node" parent="." unique_id=2014301322]
+script = ExtResource("14_enemy_profile")
+role = 2
+maximum_health = 180.0
+movement_speed = 55.0
+contact_damage = 9.0
+contact_interval_seconds = 0.72
+xp_reward = 28
+body_radius_pixels = 16.0
+target_priority_multiplier = 0.55
+
+[node name="BurrowerBoss" type="Node" parent="." unique_id=1490018136]
+script = ExtResource("14_enemy_profile")
+role = 3
+maximum_health = 780.0
+movement_speed = 34.0
+contact_damage = 12.0
+contact_interval_seconds = 0.85
+xp_reward = 100
+body_radius_pixels = 28.0
+target_priority_multiplier = 0.25
+use_boss_navigation = true
+territory_behavior = 2
+first_territory_action_delay_seconds = 4.5
+territory_action_interval_seconds = 4.5
+territory_action_strength = 2.6
+territory_action_radius_multiplier = 2.8
+emit_eruption_signal = true
+

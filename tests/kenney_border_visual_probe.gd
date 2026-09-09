@@ -40,12 +40,12 @@ func _run() -> void:
 	_check_border(campaign, 24, "hovered campaign button")
 	_save("res://.godot/kenney_borders_title.png")
 
-	if change_scene_to_file("res://scenes/run/phase_b_prototype.tscn") != OK:
+	if change_scene_to_file("res://scenes/run/run.tscn") != OK:
 		quit(1)
 		return
 	await process_frame
 	await process_frame
-	var prototype := current_scene as PhaseBPrototype
+	var prototype := current_scene as RunRoot
 	prototype.set_process(false)
 	prototype.player.input_enabled = false
 	prototype._set_simulation_paused(true)
@@ -53,15 +53,15 @@ func _run() -> void:
 	_check_border(prototype.get_node("Interface/UpgradeTray") as Control, 4, "relic tray")
 	_check_border(prototype.relic_slots.get_node("Slot1") as Control, 8, "relic slot")
 	_check_border(prototype.upgrade_slots.get_node("Slot1") as Control, 8, "adaptation slot")
-	_check_border(prototype.pause_resume_button, 12, "pause button")
-	prototype.pause_resume_button.disabled = true
+	_check_border(prototype.pause_menu.resume_button, 12, "pause button")
+	prototype.pause_menu.resume_button.disabled = true
 	await process_frame
-	_check_border(prototype.pause_resume_button, 4, "disabled pause button")
-	prototype.pause_resume_button.disabled = false
-	Input.warp_mouse(prototype.pause_resume_button.get_global_rect().get_center() * 2.0)
+	_check_border(prototype.pause_menu.resume_button, 4, "disabled pause button")
+	prototype.pause_menu.resume_button.disabled = false
+	Input.warp_mouse(prototype.pause_menu.resume_button.get_global_rect().get_center() * 2.0)
 	await process_frame
 	await process_frame
-	_check_border(prototype.pause_resume_button, 12, "hovered pause button")
+	_check_border(prototype.pause_menu.resume_button, 12, "hovered pause button")
 	_save("res://.godot/kenney_borders_run_hud.png")
 	if _failed:
 		quit(1)

@@ -1,7 +1,7 @@
 # Root Metabolism & HUD Redesign
 ## Research-Backed Implementation Guide
 
-**Project:** Territory roguelike / Elemental  
+**Project:** Territory roguelike / Sporekeeper  
 **Status:** Prototype specification  
 **Purpose:** Replace the old Root Path and Mass / Pressure / Cohesion purchase system with an interactive, physical incremental layer, then redesign the HUD around that system without cluttering the battlefield.
 

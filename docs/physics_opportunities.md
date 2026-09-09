@@ -194,7 +194,7 @@ decides who can move* — falls out of one inequality.
 
 ## Implementation sketch
 Give each enemy profile a `push_force` (mass × speed is a reasonable proxy from
-existing data). In `phase_b_combat_director`, replace the slow multiplier with the
+existing data). In `combat_director`, replace the slow multiplier with the
 Bingham solve, using `τ_y = base_yield · entanglement · bramble_development`. Cost:
 moderate — it touches every enemy's movement. Risk: **this is the one on this list
 that changes combat balance globally.** Worth prototyping behind a flag.
@@ -303,7 +303,7 @@ Track `_angular_momentum` instead of `_orbit_angle` velocity. On raising a spike
 add its `m·r²` to `I` and recompute `ω = L/I`. Charge adds `L`. On release, set the
 cutting's velocity to `ω·r` tangential plus the existing outward component. Replace
 the hold-end timer with a hoop-stress check. Cost: moderate, contained entirely in
-`phase_b_pruning_director`. Risk: low — the path is self-contained and well tested.
+`pruning_director`. Risk: low — the path is self-contained and well tested.
 
 ---
 

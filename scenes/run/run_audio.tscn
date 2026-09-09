@@ -1,0 +1,36 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="AudioStream" uid="uid://devviiastanh0" path="res://assets/music/forest.wav" id="10_forest_music"]
+[ext_resource type="AudioStream" uid="uid://ccskaego25mxw" path="res://assets/sfx/lever_pull.wav" id="114_lever_sfx"]
+[ext_resource type="AudioStream" uid="uid://d4b547i831715" path="res://assets/sfx/reel_click.wav" id="115_reel_sfx"]
+[ext_resource type="AudioStream" uid="uid://claxf5xw710a3" path="res://assets/sfx/jackpot.wav" id="116_jackpot_sfx"]
+[ext_resource type="Script" path="res://src/core/nodes/run/run_audio.gd" id="1_run_audio"]
+
+[node name="RunAudio" type="Node" node_paths=PackedStringArray("ambient_music", "slot_lever", "slot_reel", "slot_jackpot")]
+script = ExtResource("1_run_audio")
+ambient_music = NodePath("AmbientMusic")
+slot_lever = NodePath("SlotLeverSfx")
+slot_reel = NodePath("SlotReelSfx")
+slot_jackpot = NodePath("SlotJackpotSfx")
+
+[node name="AmbientMusic" type="AudioStreamPlayer" parent="." unique_id=418357875]
+stream = ExtResource("10_forest_music")
+autoplay = true
+bus = &"Music"
+
+[node name="SlotLeverSfx" type="AudioStreamPlayer" parent="." unique_id=418357876]
+stream = ExtResource("114_lever_sfx")
+volume_db = -6.0
+bus = &"SFX"
+
+[node name="SlotReelSfx" type="AudioStreamPlayer" parent="." unique_id=418357877]
+stream = ExtResource("115_reel_sfx")
+volume_db = -6.0
+max_polyphony = 3
+bus = &"SFX"
+
+[node name="SlotJackpotSfx" type="AudioStreamPlayer" parent="." unique_id=418357878]
+stream = ExtResource("116_jackpot_sfx")
+volume_db = -6.0
+bus = &"SFX"
+

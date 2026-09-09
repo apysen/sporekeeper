@@ -720,8 +720,8 @@ func step_simulation() -> void:
 	# anything cached from the half-written field midway surviving the step.
 	_mark_field_changed()
 	var elapsed_ms := float(Time.get_ticks_usec() - started_at) / 1000.0
-	PhaseBPerfCounters.timer_add_since(
-		PhaseBPerfCounters.TIMER_TERRITORY_TOTAL, started_at
+	PerfCounters.timer_add_since(
+		PerfCounters.TIMER_TERRITORY_TOTAL, started_at
 	)
 	_measured_steps += 1
 	_average_step_ms = elapsed_ms if _measured_steps == 1 else lerpf(_average_step_ms, elapsed_ms, 0.08)
@@ -1955,8 +1955,8 @@ func refresh_visuals_now() -> void:
 	queue_redraw()
 
 	var elapsed_ms := float(Time.get_ticks_usec() - started_at) / 1000.0
-	PhaseBPerfCounters.timer_add_since(
-		PhaseBPerfCounters.TIMER_TERRITORY_VISUAL_PAINT, started_at
+	PerfCounters.timer_add_since(
+		PerfCounters.TIMER_TERRITORY_VISUAL_PAINT, started_at
 	)
 	_measured_renders += 1
 	_average_render_ms = elapsed_ms if _measured_renders == 1 else lerpf(_average_render_ms, elapsed_ms, 0.08)
@@ -3074,8 +3074,8 @@ func _wash_aspect_of(wash: Texture2D) -> float:
 
 
 func _apply_pending_commands() -> void:
-	PhaseBPerfCounters.timer_begin(PhaseBPerfCounters.TIMER_TERRITORY_BATCH)
-	if PhaseBPerfCounters.enabled:
+	PerfCounters.timer_begin(PerfCounters.TIMER_TERRITORY_BATCH)
+	if PerfCounters.enabled:
 		for touched_index in _batch_touched_indices:
 			_batch_touched_mask[touched_index] = 0
 		_batch_touched_indices.clear()
@@ -3096,11 +3096,11 @@ func _apply_pending_commands() -> void:
 			TerritoryCommand.Kind.MATURITY_SUPPRESSION:
 				_stamp_maturity_suppression(command)
 	_commands.clear()
-	PhaseBPerfCounters.count(
-		PhaseBPerfCounters.COUNT_TERRITORY_UNIQUE_CELLS_CHANGED,
+	PerfCounters.count(
+		PerfCounters.COUNT_TERRITORY_UNIQUE_CELLS_CHANGED,
 		_batch_touched_indices.size()
 	)
-	PhaseBPerfCounters.timer_end(PhaseBPerfCounters.TIMER_TERRITORY_BATCH)
+	PerfCounters.timer_end(PerfCounters.TIMER_TERRITORY_BATCH)
 
 
 func _stamp_growth(command: TerritoryCommand) -> void:
@@ -3146,7 +3146,7 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 	var obstruction_falloff := tuning.obstruction_falloff_per_cell
 	var max_pressure := tuning.max_pressure_cells
 	var ownership_threshold := tuning.ownership_threshold
-	var measuring := PhaseBPerfCounters.enabled
+	var measuring := PerfCounters.enabled
 
 	for y in range(minimum_y, maximum_y + 1):
 		for x in range(minimum_x, maximum_x + 1):
@@ -3198,15 +3198,15 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 				# Touched counts every write the batch performs; the mask separates
 				# out the first write to each cell. The gap between them is the
 				# duplicate work a coalesced batch would not have to do.
-				PhaseBPerfCounters.count(
-					PhaseBPerfCounters.COUNT_TERRITORY_CELLS_TOUCHED
+				PerfCounters.count(
+					PerfCounters.COUNT_TERRITORY_CELLS_TOUCHED
 				)
 				if _batch_touched_mask[index] == 0:
 					_batch_touched_mask[index] = 1
 					_batch_touched_indices.append(index)
 				else:
-					PhaseBPerfCounters.count(
-						PhaseBPerfCounters.COUNT_TERRITORY_DUPLICATE_CELL_WRITES
+					PerfCounters.count(
+						PerfCounters.COUNT_TERRITORY_DUPLICATE_CELL_WRITES
 					)
 			var new_control := clampf(old_control + mass_delta, -1.0, 1.0)
 			_control[index] = new_control
@@ -3285,7 +3285,7 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 	var obstruction_falloff := tuning.obstruction_falloff_per_cell
 	var max_pressure := tuning.max_pressure_cells
 	var ownership_threshold := tuning.ownership_threshold
-	var measuring := PhaseBPerfCounters.enabled
+	var measuring := PerfCounters.enabled
 
 	for y in range(minimum_y, maximum_y + 1):
 		for x in range(minimum_x, maximum_x + 1):
@@ -3334,15 +3334,15 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 				# Touched counts every write the batch performs; the mask separates
 				# out the first write to each cell. The gap between them is the
 				# duplicate work a coalesced batch would not have to do.
-				PhaseBPerfCounters.count(
-					PhaseBPerfCounters.COUNT_TERRITORY_CELLS_TOUCHED
+				PerfCounters.count(
+					PerfCounters.COUNT_TERRITORY_CELLS_TOUCHED
 				)
 				if _batch_touched_mask[index] == 0:
 					_batch_touched_mask[index] = 1
 					_batch_touched_indices.append(index)
 				else:
-					PhaseBPerfCounters.count(
-						PhaseBPerfCounters.COUNT_TERRITORY_DUPLICATE_CELL_WRITES
+					PerfCounters.count(
+						PerfCounters.COUNT_TERRITORY_DUPLICATE_CELL_WRITES
 					)
 			var new_control := clampf(old_control + mass_delta, -1.0, 1.0)
 			_control[index] = new_control

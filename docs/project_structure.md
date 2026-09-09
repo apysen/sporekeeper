@@ -1,13 +1,13 @@
-# Elemental project structure
+# Sporekeeper project structure
 
-This guide defines the intended layout for Elemental, the Godot implementation
+This guide defines the intended layout for Sporekeeper, the Godot implementation
 of the fixed-screen territory-control survivor game in the Territory Survivor
 GDD. Create folders when their first files are added rather than committing
 empty directories. Choose a location by responsibility, data lifetime, and
 dependency direction—not by the first screen that happens to use a file.
 
 The repository currently contains the design baseline, the preserved Phase A
-territory lab, and a playable Phase B Godot 4.7 prototype using the GL
+territory lab, and a playable Sporekeeper Godot 4.7 prototype using the GL
 Compatibility renderer. The structure below remains the target for production
 growth; some prototype responsibilities are intentionally consolidated while
 their contracts are being validated.
@@ -85,7 +85,7 @@ src/core/
     elements/                   Element, path, territorial mechanic, and stat schemas
     enemies/                    Role, variant, elite, and boss definitions
     progression/               Upgrade, relic, evolution, unlock, and reward schemas
-                              (`phase_b_relic_catalog.gd` is the authored relic table)
+                              (`relic_catalog.gd` is the authored relic table)
     territory/                 Field tuning, effect shapes, and material profiles
     waves/                      Wave, objective, composition, and timeline schemas
   nodes/                        Scene-bound typed components
@@ -97,8 +97,8 @@ src/core/
     enemies/                    Agents, roles, spawning, elites, and bosses
     player/                     Movement intent, health, and automatic weapon adapters
     progression/               XP draft, paths, relics, evolution, meta adapters
-                              (`phase_b_relic_director.gd` runs triggered relics,
-                              `phase_b_evolutions.gd` owns every Evolution and its tuning)
+                              (`relic_director.gd` runs triggered relics,
+                              `evolutions.gd` owns every Evolution and its tuning)
     run/                        Run root, outcome, event routing, and orchestration
     territory/                  Field, command queue, metrics, topology, and renderer
     ui/                         HUD, menus, drafts, objectives, and view models
@@ -264,7 +264,7 @@ Run the repeatable headless behavior and performance suites with:
 powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1
 ```
 
-The current Phase B composition is `scenes/run/phase_b_prototype.tscn`. Its
+The current Sporekeeper composition is `scenes/run/run.tscn`. Its
 visible `GameplayComponents` children own audio settings, progression, the
 Ecosystem Metabolism economy, wave direction, and Plant behavior; `CombatDirector/EnemyProfiles` owns nine
 Inspector-editable profiles: all six core roles, the Colonizer's Colony Core,
@@ -276,12 +276,12 @@ frontier, thorn development, and resistance remain authoritative in
 `TerritoryField`, while `CombatDirector` resolves contact damage, slow,
 repulsion, and pooled Briar Pod boundaries.
 The Phase A comparison fixture remains available at
-`scenes/run/territory_prototype.tscn`. See `docs/phase_b_prototype.md` for the
+`scenes/run/territory_prototype.tscn`. See `docs/run_composition.md` for the
 complete node tree, editing guide, controls, implemented scope, and verification.
 
 ## Adding to the game
 
-Start with `docs/elemental_composition_conventions.md` to identify the owner,
+Start with `docs/sporekeeper_composition_conventions.md` to identify the owner,
 then use this guide to place its definition, state, rule, adapter, scene, assets,
 and tests. Consult `docs/Territory_Survivor_Game_Design_Document.docx` for locked
 game rules and `docs/territory_simulation_architecture.md` for spatial behavior.
