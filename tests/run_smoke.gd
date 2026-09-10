@@ -64,18 +64,43 @@ func _run() -> void:
 	# The Button keeps ownership of input and text, while only each border's center
 	# edge strips stretch. Every raster botanical painting shares the deliberately strong
 	# watercolor material rather than relying on per-asset treatment.
+	# A border exists to stop a StyleBoxTexture being stretched. Once one is installed
+	# the Button's own texture style is replaced by a StyleBoxEmpty, so a Button still
+	# holding a StyleBoxTexture is one the border never reached - which is the actual
+	# failure, and is checked as such. A Button drawing the engine's own StyleBoxFlat
+	# has nothing to slice and correctly has no border: the glossary builds thirteen of
+	# those at runtime, and demanding one of them was this check asking for an
+	# invisible node rather than for the thing it is named after.
 	var ui_buttons := prototype.find_children("*", "Button", true, false)
-	var button_borders_are_sliced := not ui_buttons.is_empty()
+	var bordered_buttons := 0
+	var button_borders_are_sliced := true
 	for button_node in ui_buttons:
 		var button := button_node as Button
+		var normal_style := button.get_theme_stylebox(&"normal")
+		if normal_style is StyleBoxTexture:
+			button_borders_are_sliced = false
+			continue
 		var border := button.get_node_or_null("NinePatchBorder") as NinePatchRect
+		if border == null:
+			# A StyleBoxEmpty here is the fingerprint the border leaves when it captures
+			# a texture style - and no Button is authored with one - so finding it
+			# without a border means the border went away and the Button is now drawing
+			# no background at all. Anything else is the engine's own flat style, which
+			# is a Button that never had a border and correctly still has none.
+			button_borders_are_sliced = (
+				button_borders_are_sliced and not (normal_style is StyleBoxEmpty)
+			)
+			continue
+		bordered_buttons += 1
 		button_borders_are_sliced = (
 			button_borders_are_sliced
-			and border != null
 			and border.axis_stretch_horizontal == NinePatchRect.AXIS_STRETCH_MODE_STRETCH
 			and border.axis_stretch_vertical == NinePatchRect.AXIS_STRETCH_MODE_STRETCH
 			and border.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		)
+	# The same self-guard the wording check carries: a filter that matched nothing
+	# would pass silently and vouch for a surface it had stopped looking at.
+	button_borders_are_sliced = button_borders_are_sliced and bordered_buttons >= 10
 	var botanical_material := prototype.overlay.material as ShaderMaterial
 	var fruit_material := prototype.adaptation_director.material as ShaderMaterial
 	var fruit_art_loaded := AdaptationDirector.FRUIT_TEXTURES.size() == 6
@@ -5773,21 +5798,33 @@ func _run() -> void:
 		"Important Only keeps the hits that mean something and Off keeps none"
 	)
 
-	# UI Scale scales the interface and deliberately not the battlefield: scaling the
-	# HUD must not change how much arena the player can see.
+	# UI Scale is fixed. `get_ui_scale` says so in as many words - the HUD is authored
+	# around the space it has and shrinking it costs readability - and neither menu
+	# offers the option: `setting_buttons` stops at PLAYER_HIGHLIGHT, so UI_SCALE and
+	# HUD_DETAIL are past the end of it and no player can reach either.
+	#
+	# What is still worth guarding is the consequence. The interface layer must stay
+	# unscaled whatever is written into that setting, and the battlefield must be
+	# untouched either way, because scaling the HUD must never change how much arena
+	# the player can see.
 	settings.reset_settings()
 	var arena_transform := prototype.territory_field.transform
+	var interface_scale_at_rest := prototype.interface_layer.transform.get_scale()
 	settings.set_choice(DisplaySettings.OptionId.UI_SCALE, 4)
 	prototype._on_display_settings_changed()
 	_check(
-		is_equal_approx(prototype.interface_layer.transform.get_scale().x, 1.25)
+		is_equal_approx(settings.get_ui_scale(), 1.0)
+		and prototype.interface_layer.transform.get_scale().is_equal_approx(
+			interface_scale_at_rest
+		)
+		and is_equal_approx(prototype.interface_layer.transform.get_scale().x, 1.0)
 		and prototype.territory_field.transform == arena_transform,
-		"UI Scale scales the interface and leaves the battlefield alone"
+		"UI Scale is fixed, and the interface and battlefield are both left alone"
 	)
 
-	# HUD Detail reveals more of the same layout rather than a second design, so the
-	# same label carries more. The status line says nothing at rest now that the run
-	# clock is gone, so Compact is silence and Detailed is the metabolism readout.
+	# The same, for HUD Detail: Compact is the single supported presentation, the doc
+	# having ruled out a second design. The status line says nothing at rest now that
+	# the run clock is gone, and choosing Detailed must not resurrect a second one.
 	settings.reset_settings()
 	prototype._update_hud()
 	var compact_status := prototype.status_label.text
@@ -5798,9 +5835,9 @@ func _run() -> void:
 	prototype._update_hud()
 	_check(
 		compact_status.is_empty()
-		and prototype.status_label.text.contains("MASS")
-		and prototype.status_label.text.contains("HOLD"),
-		"Detailed reveals more on the line Compact already had"
+		and not settings.is_hud_detailed()
+		and prototype.status_label.text == compact_status,
+		"HUD Detail is compact-only and the status line stays silent at rest"
 	)
 
 	# Every option cycles through its own list and wraps, which is what makes one

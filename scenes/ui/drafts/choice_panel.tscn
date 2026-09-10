@@ -3,6 +3,7 @@
 [ext_resource type="StyleBox" path="res://assets/ui/panel_style.tres" id="30_panel_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
 [ext_resource type="Script" path="res://src/core/nodes/ui/choice_panel.gd" id="1_root"]
 
 [node name="ChoicePanel" type="Panel" node_paths=PackedStringArray("header", "button_one", "button_two", "button_three", "button_four", "reroll_button")]
@@ -43,6 +44,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "Seed Production  1/3
 1 Seed per kill threshold"
 autowrap_mode = 2
@@ -58,6 +60,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "Growth Mass  1/3
 +24% Seed growth mass"
 autowrap_mode = 2
@@ -73,6 +76,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "Seed Production  1/3
 One fewer kill required per Seed
 ROOTED 1.74x → Seeds germinate in 0.78s instead of 1.35s"
@@ -89,6 +93,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "Momentum  2/5
 +20% maximum Fruit roll distance
 ROOTED 1.74x → 543 px unobstructed stopping distance"
@@ -106,5 +111,6 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "REROLL  ({left} LEFT)"
 

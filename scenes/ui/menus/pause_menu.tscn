@@ -1,6 +1,7 @@
 [gd_scene load_steps=17 format=3]
 
 [ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/divider_style.tres" id="36_divider_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/empty_style.tres" id="113_empty_style"]
@@ -204,6 +205,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "RESUME  [ESC]"
 
 [node name="FullscreenButton" type="Button" parent="PausePanel" unique_id=151020111]
@@ -216,6 +218,7 @@ theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "ENTER FULLSCREEN"
 
 [node name="SettingsButton" type="Button" parent="PausePanel" unique_id=349622253]
@@ -229,6 +232,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "SETTINGS"
 
 [node name="GlossaryButton" type="Button" parent="PausePanel" unique_id=1139312943]
@@ -241,6 +245,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "GLOSSARY"
 
 [node name="MainMenuButton" type="Button" parent="PausePanel" unique_id=651669993]
@@ -253,6 +258,7 @@ theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "MAIN MENU"
 
 [node name="QuitButton" type="Button" parent="PausePanel" unique_id=651669992]
@@ -265,6 +271,7 @@ theme_override_colors/font_color = Color(0.643, 0.373, 0.424, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = ExtResource("32_button_style")
 theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
 text = "QUIT TO DESKTOP"
 
 [node name="PauseSettingsPanel" type="Panel" parent="." unique_id=349622251]
