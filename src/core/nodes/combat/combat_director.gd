@@ -759,6 +759,9 @@ var _mass_entanglement_boss_share := 0.2
 ## set_campaign_wave_scaling. The numbers live in the rules module; the bodies they
 ## are written onto stay here.
 var _scaling := WaveScaling.new()
+## What thorns do to a body, and how fast that body tangles. Configured once from the
+## authored tuning below; everything that moves during a run is passed per call.
+var _bramble := BrambleDamage.new()
 var _navigation_width := 0
 var _navigation_height := 0
 var _navigation_cell_count := 0
@@ -841,6 +844,19 @@ func _ready() -> void:
 	assert(elite_profile != null, "CombatDirector requires an Elite profile")
 	assert(boss_profile != null, "CombatDirector requires a Boss profile")
 	assert(saboteur_profile != null, "CombatDirector requires a Saboteur profile")
+	# The authored thorn tuning, handed over once. The scene is the design surface and
+	# nothing writes these during a run, so the rules module holds a copy rather than
+	# reaching back through the node for every tick of every enemy standing in Bramble.
+	_bramble.configure(
+		bramble_contact_damage,
+		bramble_max_health_damage_fraction,
+		bramble_entangled_damage_multiplier,
+		bramble_frontier_damage_bonus,
+		bramble_horde_damage_per_attacker,
+		bramble_horde_damage_maximum_bonus,
+		bramble_entanglement_per_second,
+		bramble_frontier_entanglement_bonus
+	)
 	_sfx_random.randomize()
 	# Started rather than awaited: the run must not wait on a render pass to begin,
 	# and until it finishes the art draws directly exactly as it always did.
@@ -3095,16 +3111,12 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 
 
 func _get_entanglement_rate(enemy: EnemyState, contact_strength: float) -> float:
-	var frontier_bonus := (
-		1.0 + bramble_frontier_entanglement_bonus * enemy.bramble_frontier_strength
-	)
-	return (
-		bramble_entanglement_per_second
-		* _bramble_entanglement_rate_multiplier
-		* contact_strength
-		* frontier_bonus
-		* (1.0 + _get_entanglement_rate_zone_bonus(enemy.position))
-		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
+	return _bramble.get_entanglement_rate(
+		enemy,
+		contact_strength,
+		_bramble_entanglement_rate_multiplier,
+		_get_entanglement_rate_zone_bonus(enemy.position),
+		_get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
 	)
 
 
@@ -3789,33 +3801,12 @@ func collapse_overgrown_enemy(
 
 
 func get_bramble_tick_damage(enemy: EnemyState, contact_strength: float) -> float:
-	# Every enemy resolves its own full calculation from its own Entanglement.
-	# Thorn damage is never divided between the enemies sharing a stretch of Green.
-	# Chip damage only. There is no Thorn Damage line: the flat and max-health parts
-	# are fixed, and everything that grows comes from control and the Evolutions.
-	var base_damage := (
-		bramble_contact_damage
-		+ enemy.maximum_health * bramble_max_health_damage_fraction
-	)
-	var entanglement_multiplier := lerpf(
-		1.0,
-		bramble_entangled_damage_multiplier,
-		clampf(enemy.entanglement, 0.0, 1.0)
-	)
-	var frontier_multiplier := (
-		1.0 + bramble_frontier_damage_bonus * enemy.bramble_frontier_strength
-	)
-	var horde_multiplier := 1.0 + minf(
-		float(enemy.bramble_horde_count) * bramble_horde_damage_per_attacker,
-		bramble_horde_damage_maximum_bonus
-	)
-	return (
-		base_damage
-		* contact_strength
-		* entanglement_multiplier
-		* frontier_multiplier
-		* horde_multiplier
-		* _get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
+	# The Root Network multiplier is resolved here rather than in the rules module,
+	# because reading it means reading the territory field and the Root director.
+	return _bramble.get_tick_damage(
+		enemy,
+		contact_strength,
+		_get_root_network_multiplier(enemy.position, enemy.bramble_ground_maturity)
 	)
 
 

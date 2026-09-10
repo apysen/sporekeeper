@@ -72,7 +72,9 @@ func _run() -> void:
 		"ROOTED BARK\nGain defense while standing on Mature Green. Root Potency improves the effect.",
 		UpgradeSlots.SlotState.FILLED
 	)
-	Input.warp_mouse(prototype.relic_tray.slots.get_slot_global_rect(0).get_center() * 2.0)
+	Input.warp_mouse(_to_window(
+		prototype, prototype.relic_tray.slots.get_slot_global_rect(0).get_center()
+	))
 	prototype.relic_tray._on_slot_hovered(0)
 	await process_frame
 	await process_frame
@@ -82,7 +84,9 @@ func _run() -> void:
 		push_error("Relic tooltip is not directly above its bottom-tray slot")
 		quit(1)
 		return
-	Input.warp_mouse(prototype._mechanics_help._stack.get_rect().get_center() * 2.0)
+	Input.warp_mouse(_to_window(
+		prototype, prototype._mechanics_help._stack.get_rect().get_center()
+	))
 	await process_frame
 	if not prototype._mechanics_help._stack.visible:
 		push_error("HUD tooltip disappeared while moving from its slot into the card")
@@ -139,7 +143,9 @@ func _run() -> void:
 		"ROOTED BARK\nGain defense while standing on Mature Green.",
 		UpgradeSlots.SlotState.FILLED
 	)
-	Input.warp_mouse(prototype.adaptation_tree.core_one_slots.get_slot_global_rect(0).get_center() * 2.0)
+	Input.warp_mouse(_to_window(
+		prototype, prototype.adaptation_tree.core_one_slots.get_slot_global_rect(0).get_center()
+	))
 	prototype.adaptation_tree._on_slot_hovered(0, prototype.adaptation_tree.core_one_slots)
 	await process_frame
 	await process_frame
@@ -155,7 +161,9 @@ func _run() -> void:
 	_save("res://.godot/mechanics_adaptation_tooltip.png")
 	prototype._mechanics_help.hide_tooltip()
 	prototype._open_pause_menu()
-	Input.warp_mouse(prototype.relic_tray.slots.get_slot_global_rect(0).get_center() * 2.0)
+	Input.warp_mouse(_to_window(
+		prototype, prototype.relic_tray.slots.get_slot_global_rect(0).get_center()
+	))
 	prototype.relic_tray._on_slot_hovered(0)
 	await process_frame
 	await process_frame
@@ -173,3 +181,16 @@ func _save(path: String) -> void:
 	var image := root.get_texture().get_image()
 	if image == null or image.save_png(path) != OK:
 		push_error("Unable to save %s" % path)
+
+
+## Where a point inside the interface actually is on the window, so the pointer can
+## be put on it.
+##
+## This was `point * 2.0` in four places - the window happening to be twice the
+## interface's own size on the machine it was written on. `MechanicsHelp` dismisses a
+## HUD tooltip spatially, by asking where the pointer is, so when that factor was wrong
+## the cursor landed off the slot and the card vanished before the check could look at
+## it. That is what made this probe fail differently on different runs. The viewport
+## knows the real transform; nothing needs to assume it.
+func _to_window(node: Node, point: Vector2) -> Vector2:
+	return node.get_viewport().get_screen_transform() * point

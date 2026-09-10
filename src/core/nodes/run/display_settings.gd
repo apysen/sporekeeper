@@ -338,6 +338,28 @@ func get_player_highlight_alpha() -> float:
 	return _scale_from(player_highlight_alphas, get_choice(OptionId.PLAYER_HIGHLIGHT), 0.0)
 
 
+## What a settings row prints when the scene leaves its wording blank: the option's
+## name beside its current value, and the name over its description.
+##
+## Both menus draw the same rows. Writing the composition out in each of them is how
+## the home screen's tooltip came to be the bare description while the pause menu's
+## named the option first - the same row, saying two different things depending on
+## which screen you opened it from.
+const ROW_TEXT_FALLBACK := "{name}   {value}"
+const ROW_TOOLTIP_FALLBACK := "{name}
+
+{detail}"
+
+
+## The values a row's wording is rendered with, whichever menu is drawing it.
+static func get_row_values(option_id: int, choice: int) -> Dictionary:
+	return {
+		"name": get_option_name(option_id),
+		"value": get_choice_name(option_id, choice),
+		"detail": get_option_description(option_id),
+	}
+
+
 func get_ui_scale() -> float:
 	# UI scale is intentionally fixed: the HUD is authored around the available
 	# screen space and cannot be safely shrunk without harming readability.

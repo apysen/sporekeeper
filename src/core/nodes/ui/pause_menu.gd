@@ -261,19 +261,16 @@ func refresh_setting_buttons() -> void:
 			continue
 		# The name and the current value on one line, because a settings row that only
 		# says its value makes the player remember which row is which.
-		var option_values := {
-			"name": DisplaySettings.get_option_name(option_id),
-			"value": DisplaySettings.get_choice_name(
-				option_id,
-				_display_settings.get_choice(option_id)
-			),
-			"detail": DisplaySettings.get_option_description(option_id),
-		}
+		# What that line is made of is shared with the home screen, which draws the
+		# same rows from the same options.
+		var option_values := DisplaySettings.get_row_values(
+			option_id, _display_settings.get_choice(option_id)
+		)
 		# Each row names itself on its own node, so a row can be renamed, reordered
 		# or reworded without this loop knowing anything about it.
-		_authored.write(button, option_values, "{name}   {value}")
+		_authored.write(button, option_values, DisplaySettings.ROW_TEXT_FALLBACK)
 		_authored.write(
-			button, option_values, "{name}\n\n{detail}", "tooltip_text"
+			button, option_values, DisplaySettings.ROW_TOOLTIP_FALLBACK, "tooltip_text"
 		)
 
 

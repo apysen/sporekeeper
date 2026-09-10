@@ -31,16 +31,31 @@ func _run() -> void:
 	await process_frame
 	var offenders := 0
 	for panel in _panels(prototype.interface_layer):
-		# Each panel's own frame, read off the style it actually uses rather than assumed:
-		# the tray wears a slimmer one than the panels do.
+		# Each panel's own frame, read off the frame it actually wears rather than
+		# assumed: the tray wears a slimmer one than the panels do.
+		#
+		# It has to be read off the NinePatchBorder now. `NinePatchPanelBorder` copies
+		# the texture margins onto itself and then replaces the panel's stylebox with a
+		# StyleBoxEmpty, so asking the panel for a StyleBoxTexture returns null and this
+		# quietly fell back to the assumed 14 for every panel - including the tray,
+		# whose real frame is 4, which is why its label and slot row were being called
+		# intruders for sitting where they were authored to sit.
+		var border := panel.get_node_or_null("NinePatchBorder") as NinePatchRect
 		var style := panel.get_theme_stylebox("panel") as StyleBoxTexture
 		var band := FRAME_MARGIN
-		if style != null:
+		if border != null:
+			band = maxf(border.patch_margin_top, border.patch_margin_bottom)
+		elif style != null:
 			band = maxf(style.texture_margin_top, style.texture_margin_bottom)
 		var inner: Rect2 = panel.get_global_rect().grow(-band)
 		for child in panel.get_children():
 			var control := child as Control
 			if control == null or not control.visible:
+				continue
+			# The border is the frame, not something the frame contains. It is sized to
+			# the panel exactly, so measuring it against the panel's inner rect reports
+			# the width of the band every single time.
+			if control is NinePatchRect and control.name == "NinePatchBorder":
 				continue
 			var rect := control.get_global_rect()
 			# Some labels are parented to a panel but deliberately live outside it - the

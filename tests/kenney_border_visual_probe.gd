@@ -34,7 +34,7 @@ func _run() -> void:
 	]:
 		_check_border(home.get_node(path) as Control, 24, path)
 	var campaign := home.get_node("MenuPage/CampaignButton") as Button
-	Input.warp_mouse(campaign.get_global_rect().get_center() * 2.0)
+	Input.warp_mouse(_to_window(campaign, campaign.get_global_rect().get_center()))
 	await process_frame
 	await process_frame
 	_check_border(campaign, 24, "hovered campaign button")
@@ -58,7 +58,9 @@ func _run() -> void:
 	await process_frame
 	_check_border(prototype.pause_menu.resume_button, 4, "disabled pause button")
 	prototype.pause_menu.resume_button.disabled = false
-	Input.warp_mouse(prototype.pause_menu.resume_button.get_global_rect().get_center() * 2.0)
+	Input.warp_mouse(_to_window(
+		prototype, prototype.pause_menu.resume_button.get_global_rect().get_center()
+	))
 	await process_frame
 	await process_frame
 	_check_border(prototype.pause_menu.resume_button, 12, "hovered pause button")
@@ -130,3 +132,16 @@ func _save(path: String) -> void:
 	if image == null or image.save_png(path) != OK:
 		push_error("Unable to save %s" % path)
 		_failed = true
+
+
+## Where a point inside the interface actually is on the window, so the pointer can
+## be put on it.
+##
+## This was `point * 2.0` in four places - the window happening to be twice the
+## interface's own size on the machine it was written on. `MechanicsHelp` dismisses a
+## HUD tooltip spatially, by asking where the pointer is, so when that factor was wrong
+## the cursor landed off the slot and the card vanished before the check could look at
+## it. That is what made this probe fail differently on different runs. The viewport
+## knows the real transform; nothing needs to assume it.
+func _to_window(node: Node, point: Vector2) -> Vector2:
+	return node.get_viewport().get_screen_transform() * point

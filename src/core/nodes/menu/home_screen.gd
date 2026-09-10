@@ -57,6 +57,7 @@ var _sfx_bus := -1
 var _music_bus := -1
 var _run_load_started := false
 var _run_scene: PackedScene
+var _authored := AuthoredText.new()
 var _launch_requested := false
 var _loading_overlay: ColorRect
 var _loading_label: Label
@@ -84,6 +85,11 @@ func _ready() -> void:
 		quit_button.pressed.connect(_on_quit_pressed)
 	if fullscreen_button != null:
 		fullscreen_button.pressed.connect(_on_fullscreen_pressed)
+	# Captured before the first refresh, so from here on the scene owns the wording
+	# of a settings row and this script only fills in the values - the same rule the
+	# pause menu follows for the same rows.
+	_authored.capture(setting_buttons)
+	_authored.capture(setting_buttons, "tooltip_text")
 	for option_id in range(setting_buttons.size()):
 		var button := setting_buttons[option_id]
 		if button != null:
@@ -257,14 +263,13 @@ func _refresh() -> void:
 		var button := setting_buttons[option_id]
 		if button == null:
 			continue
-		button.text = "%s   %s" % [
-			DisplaySettings.get_option_name(option_id),
-			DisplaySettings.get_choice_name(
-				option_id,
-				display_settings.get_choice(option_id)
-			),
-		]
-		button.tooltip_text = DisplaySettings.get_option_description(option_id)
+		var option_values := DisplaySettings.get_row_values(
+			option_id, display_settings.get_choice(option_id)
+		)
+		_authored.write(button, option_values, DisplaySettings.ROW_TEXT_FALLBACK)
+		_authored.write(
+			button, option_values, DisplaySettings.ROW_TOOLTIP_FALLBACK, "tooltip_text"
+		)
 	if fullscreen_button != null:
 		fullscreen_button.text = (
 			fullscreen_exit_text

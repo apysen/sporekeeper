@@ -273,7 +273,7 @@ theme_override_styles/normal = ExtResource("15_btn")
 theme_override_styles/pressed = ExtResource("17_btn_pressed")
 theme_override_styles/hover = ExtResource("16_btn_hover")
 theme_override_styles/focus = ExtResource("15_btn")
-text = "FRIENDLY EFFECTS   FULL"
+text = "FRIENDLY EFFECTS   {value}"
 
 [node name="Option1" type="Button" parent="SettingsPage" unique_id=1031737181]
 layout_mode = 0
@@ -288,7 +288,7 @@ theme_override_styles/normal = ExtResource("15_btn")
 theme_override_styles/pressed = ExtResource("17_btn_pressed")
 theme_override_styles/hover = ExtResource("16_btn_hover")
 theme_override_styles/focus = ExtResource("15_btn")
-text = "ENEMY TELEGRAPHS   FULL"
+text = "ENEMY TELEGRAPHS   {value}"
 
 [node name="Option2" type="Button" parent="SettingsPage" unique_id=1344543773]
 layout_mode = 0
@@ -303,7 +303,7 @@ theme_override_styles/normal = ExtResource("15_btn")
 theme_override_styles/pressed = ExtResource("17_btn_pressed")
 theme_override_styles/hover = ExtResource("16_btn_hover")
 theme_override_styles/focus = ExtResource("15_btn")
-text = "TERRITORY DETAIL   FULL"
+text = "TERRITORY DETAIL   {value}"
 
 [node name="Option3" type="Button" parent="SettingsPage" unique_id=1426669601]
 layout_mode = 0
@@ -318,7 +318,7 @@ theme_override_styles/normal = ExtResource("15_btn")
 theme_override_styles/pressed = ExtResource("17_btn_pressed")
 theme_override_styles/hover = ExtResource("16_btn_hover")
 theme_override_styles/focus = ExtResource("15_btn")
-text = "DAMAGE NUMBERS   ALL"
+text = "DAMAGE NUMBERS   {value}"
 
 [node name="Option4" type="Button" parent="SettingsPage" unique_id=1366813396]
 layout_mode = 0
@@ -333,7 +333,7 @@ theme_override_styles/normal = ExtResource("15_btn")
 theme_override_styles/pressed = ExtResource("17_btn_pressed")
 theme_override_styles/hover = ExtResource("16_btn_hover")
 theme_override_styles/focus = ExtResource("15_btn")
-text = "PLAYER HIGHLIGHT   SUBTLE"
+text = "PLAYER HIGHLIGHT   {value}"
 
 [node name="FullscreenButton" type="Button" parent="SettingsPage" unique_id=63855232]
 layout_mode = 0
