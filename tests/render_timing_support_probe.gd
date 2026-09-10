@@ -28,15 +28,15 @@ const SAMPLE_FRAMES := 180
 const HEAVY_ENEMIES := 200
 
 const STRESS_ROLES := [
-	CombatDirector.EnemyRole.HUNTER,
-	CombatDirector.EnemyRole.GRAZER,
-	CombatDirector.EnemyRole.HEAVY_GRAZER,
-	CombatDirector.EnemyRole.RUSHER,
-	CombatDirector.EnemyRole.SABOTEUR,
-	CombatDirector.EnemyRole.CORRUPTOR,
-	CombatDirector.EnemyRole.COLONIZER,
-	CombatDirector.EnemyRole.WARDEN,
-	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	EnemyKinds.Role.HUNTER,
+	EnemyKinds.Role.GRAZER,
+	EnemyKinds.Role.HEAVY_GRAZER,
+	EnemyKinds.Role.RUSHER,
+	EnemyKinds.Role.SABOTEUR,
+	EnemyKinds.Role.CORRUPTOR,
+	EnemyKinds.Role.COLONIZER,
+	EnemyKinds.Role.WARDEN,
+	EnemyKinds.Role.SIEGE_CORRUPTOR,
 ]
 
 var _viewport_rid: RID

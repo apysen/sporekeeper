@@ -3284,10 +3284,10 @@ func _resolve_falling_body(body: Array) -> void:
 	var knockback := float(body[5])
 	var target_position := combat.get_enemy_position(target_id)
 	match combat.get_enemy_role(target_id):
-		CombatDirector.EnemyRole.BOSS:
+		EnemyKinds.Role.BOSS:
 			damage *= newton_boss_damage_share
 			knockback = 0.0
-		CombatDirector.EnemyRole.ELITE:
+		EnemyKinds.Role.ELITE:
 			damage *= newton_elite_damage_share
 			knockback *= newton_elite_knockback_share
 	# Falling Body damage is relic damage: it may kill and it may activate generic
@@ -3305,7 +3305,7 @@ func _resolve_falling_body(body: Array) -> void:
 	# and the global budget still has room.
 	if not combat.is_enemy_active(target_id):
 		return
-	if combat.get_enemy_role(target_id) != CombatDirector.EnemyRole.HUNTER:
+	if combat.get_enemy_role(target_id) != EnemyKinds.Role.HUNTER:
 		return
 	_launch_falling_body(
 		target_id,
@@ -3487,7 +3487,7 @@ func _try_newtons_apple(fruit: FruitState, enemy_id: int) -> void:
 		return
 	# Only an ordinary enemy becomes a projectile. An elite or a boss can be struck
 	# by one and is never launched.
-	if combat.get_enemy_role(enemy_id) != CombatDirector.EnemyRole.HUNTER:
+	if combat.get_enemy_role(enemy_id) != EnemyKinds.Role.HUNTER:
 		return
 	if _launch_falling_body(
 		enemy_id,
@@ -3502,15 +3502,15 @@ func _try_newtons_apple(fruit: FruitState, enemy_id: int) -> void:
 
 func _get_enemy_momentum_weight(enemy_id: int) -> float:
 	match combat.get_enemy_role(enemy_id):
-		CombatDirector.EnemyRole.HUNTER, CombatDirector.EnemyRole.RUSHER:
+		EnemyKinds.Role.HUNTER, EnemyKinds.Role.RUSHER:
 			return 0.35
-		CombatDirector.EnemyRole.GRAZER, CombatDirector.EnemyRole.SABOTEUR:
+		EnemyKinds.Role.GRAZER, EnemyKinds.Role.SABOTEUR:
 			return 0.65
-		CombatDirector.EnemyRole.CORRUPTOR, CombatDirector.EnemyRole.COLONIZER:
+		EnemyKinds.Role.CORRUPTOR, EnemyKinds.Role.COLONIZER:
 			return 0.72
-		CombatDirector.EnemyRole.BOSS:
+		EnemyKinds.Role.BOSS:
 			return 1.35
-		CombatDirector.EnemyRole.HEAVY_GRAZER, CombatDirector.EnemyRole.SIEGE_CORRUPTOR:
+		EnemyKinds.Role.HEAVY_GRAZER, EnemyKinds.Role.SIEGE_CORRUPTOR:
 			return 1.10
 		_:
 			return 1.0

@@ -40,7 +40,7 @@ extends Resource
 @export_range(0.05, 5.0, 0.01) var pack_interval_seconds := 0.80
 ## Pack-size sequence consumed one entry per pack, reset at the wave boundary.
 @export var pack_pattern: StringName = &"ONE"
-## Role id (CombatDirector.EnemyRole) to leader-deck percentage.
+## Role id (EnemyKinds.Role) to leader-deck percentage.
 @export var role_weights: Dictionary = {}
 ## Topology profile governing where this wave's packs enter the arena.
 @export var spawn_topology: StringName = &"EVEN_RING"

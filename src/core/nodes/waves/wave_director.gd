@@ -337,7 +337,7 @@ func debug_spawn_boss() -> bool:
 	if combat.has_active_boss():
 		return false
 	_apply_enemy_spawn_scaling()
-	if combat.spawn_enemy(CombatDirector.EnemyRole.BOSS) == -1:
+	if combat.spawn_enemy(EnemyKinds.Role.BOSS) == -1:
 		return false
 	boss_spawned = true
 	return true
@@ -490,11 +490,11 @@ func _on_wave_boundary_crossed(wave_number: int) -> void:
 func _update_quick_milestones() -> void:
 	var milestone_spawn_allowed := not is_grace_period_active()
 	if not elite_spawned and elapsed_seconds >= elite_time_seconds and milestone_spawn_allowed:
-		if combat.spawn_enemy(CombatDirector.EnemyRole.ELITE) != -1:
+		if combat.spawn_enemy(EnemyKinds.Role.ELITE) != -1:
 			elite_spawned = true
 			elite_arrived.emit()
 	if not boss_spawned and elapsed_seconds >= boss_time_seconds and milestone_spawn_allowed:
-		if combat.spawn_enemy(CombatDirector.EnemyRole.BOSS) != -1:
+		if combat.spawn_enemy(EnemyKinds.Role.BOSS) != -1:
 			boss_spawned = true
 			boss_arrived.emit()
 
@@ -513,7 +513,7 @@ func _update_campaign_milestones() -> void:
 		and spec.elite_spawn_second >= 0.0
 		and second >= spec.elite_spawn_second
 	):
-		if _spawn_milestone(CombatDirector.EnemyRole.ELITE):
+		if _spawn_milestone(EnemyKinds.Role.ELITE):
 			elite_spawned = true
 			elite_arrived.emit()
 	if (
@@ -521,17 +521,17 @@ func _update_campaign_milestones() -> void:
 		and spec.boss_spawn_second >= 0.0
 		and second >= spec.boss_spawn_second
 	):
-		if _spawn_milestone(CombatDirector.EnemyRole.BOSS):
+		if _spawn_milestone(EnemyKinds.Role.BOSS):
 			boss_spawned = true
 			boss_arrived.emit()
 	# A milestone whose wave has passed is still owed. Retrying it here is what
 	# turns a rejected entrance into a delay rather than into a lost reward.
 	if not elite_spawned and wave_number > CampaignWaves.ELITE_WAVE:
-		if _spawn_milestone(CombatDirector.EnemyRole.ELITE):
+		if _spawn_milestone(EnemyKinds.Role.ELITE):
 			elite_spawned = true
 			elite_arrived.emit()
 	if not boss_spawned and wave_number > CampaignWaves.BOSS_WAVE:
-		if _spawn_milestone(CombatDirector.EnemyRole.BOSS):
+		if _spawn_milestone(EnemyKinds.Role.BOSS):
 			boss_spawned = true
 			boss_arrived.emit()
 
@@ -541,7 +541,7 @@ func _spawn_milestone(role: int) -> bool:
 	# into Wave 8 still fights as the Wave 6 Elite it was authored as.
 	var milestone_wave := (
 		CampaignWaves.ELITE_WAVE
-		if role == CombatDirector.EnemyRole.ELITE
+		if role == EnemyKinds.Role.ELITE
 		else CampaignWaves.BOSS_WAVE
 	)
 	_apply_wave_scaling(get_wave_spec(milestone_wave))
@@ -710,11 +710,11 @@ func _update_enemy_spawning(delta: float) -> void:
 	var grazer_cycle := grazer_pack_cycle
 	if is_grazer_surge_wave():
 		grazer_cycle = grazer_surge_pack_cycle
-	var role := CombatDirector.EnemyRole.HUNTER
+	var role := EnemyKinds.Role.HUNTER
 	if _grazer_pack_sequence % maxi(1, grazer_cycle) == 0:
-		role = CombatDirector.EnemyRole.GRAZER
+		role = EnemyKinds.Role.GRAZER
 		if _use_late_variant(heavy_grazer_intro_seconds, heavy_grazer_share):
-			role = CombatDirector.EnemyRole.HEAVY_GRAZER
+			role = EnemyKinds.Role.HEAVY_GRAZER
 	elif (
 		elapsed_seconds >= rusher_intro_seconds
 		and _grazer_pack_sequence % maxi(2, rusher_pack_cycle) == 0
@@ -722,7 +722,7 @@ func _update_enemy_spawning(delta: float) -> void:
 		# The Rusher replaces the Hunter rather than accompanying it. A pack that is
 		# a Hunter plus a faster Hunter is the same pack; a pack that arrives sooner
 		# than the player expected is a different fight.
-		role = CombatDirector.EnemyRole.RUSHER
+		role = EnemyKinds.Role.RUSHER
 	_grazer_pack_sequence += 1
 	var pressure_role := role
 	role = _select_regular_role(pressure_role)
@@ -753,24 +753,24 @@ func _select_regular_role(pressure_role: int) -> int:
 		elapsed_seconds >= warden_intro_seconds
 		and _spawn_pack_sequence % maxi(2, warden_pack_cycle) == 0
 	):
-		return CombatDirector.EnemyRole.WARDEN
+		return EnemyKinds.Role.WARDEN
 	if (
 		elapsed_seconds >= colonizer_intro_seconds
 		and _spawn_pack_sequence % maxi(2, colonizer_pack_cycle) == 0
 	):
-		return CombatDirector.EnemyRole.COLONIZER
+		return EnemyKinds.Role.COLONIZER
 	if (
 		elapsed_seconds >= corruptor_intro_seconds
 		and _spawn_pack_sequence % maxi(2, corruptor_pack_cycle) == 0
 	):
 		if _use_late_variant(siege_corruptor_intro_seconds, siege_corruptor_share):
-			return CombatDirector.EnemyRole.SIEGE_CORRUPTOR
-		return CombatDirector.EnemyRole.CORRUPTOR
+			return EnemyKinds.Role.SIEGE_CORRUPTOR
+		return EnemyKinds.Role.CORRUPTOR
 	if (
 		elapsed_seconds >= saboteur_intro_seconds
 		and _spawn_pack_sequence % maxi(2, saboteur_pack_cycle) == 0
 	):
-		return CombatDirector.EnemyRole.SABOTEUR
+		return EnemyKinds.Role.SABOTEUR
 	return pressure_role
 
 

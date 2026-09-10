@@ -165,7 +165,7 @@ func _run_case(
 func _fill(combat: CombatDirector, origin: Vector2, killable: bool) -> void:
 	for index in range(ENEMIES):
 		var spawned := combat.spawn_enemy(
-			CombatDirector.EnemyRole.GRAZER,
+			EnemyKinds.Role.GRAZER,
 			origin
 			+ Vector2.from_angle(float(index) * 2.39996)
 			* (30.0 + float(index % 6) * 20.0)

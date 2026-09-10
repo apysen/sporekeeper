@@ -11,7 +11,7 @@ extends Resource
 ## the enemy scripts.
 
 @export_group("Identity")
-## Role id from CombatDirector.EnemyRole this profile scales.
+## Role id from EnemyKinds.Role this profile scales.
 @export_range(0, 15, 1) var role_id := 0
 
 @export_group("Scaling Shares")

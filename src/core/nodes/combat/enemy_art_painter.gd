@@ -18,7 +18,7 @@ var centre := Vector2.ZERO
 func _draw() -> void:
 	if director == null:
 		return
-	var subject := CombatDirector.EnemyState.new()
+	var subject := EnemyState.new()
 	subject.active = true
 	subject.role = role
 	# The id is what the art reads for its per-enemy variation, so the variant

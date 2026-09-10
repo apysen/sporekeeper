@@ -79,51 +79,6 @@ signal cane_sweep_finished(
 	is_bonus: bool
 )
 
-enum EnemyRole {
-	HUNTER,
-	GRAZER,
-	ELITE,
-	BOSS,
-	SABOTEUR,
-	CORRUPTOR,
-	COLONIZER,
-	WARDEN,
-	COLONY_CORE,
-	HEAVY_GRAZER,
-	RUSHER,
-	SIEGE_CORRUPTOR,
-}
-
-## Rule changes an elite can carry. The design note is explicit that a late elite
-## should increasingly change the rules rather than only its stat line, so each of
-## these makes the fight different rather than longer. One per elite, never stacked:
-## two rule changes on one body is a fight the player cannot read.
-enum EliteModifier {
-	NONE,
-	## Cannot be Ensnared or shoved. Still fully vulnerable to being slowed, which is
-	## what keeps it a rule change rather than an immunity to Bramble.
-	UNSTOPPABLE,
-	## Leaves Hostile territory in its wake, so its path through the organism has to
-	## be fought back through afterwards.
-	BLIGHTED,
-	## Its territory work accelerates for as long as it is left alone.
-	RAVENOUS,
-	## Heals unless the player has damaged it recently. Anything else the run does -
-	## thorns, Blooms, the ring - is deliberately not enough on its own.
-	REGENERATIVE,
-	## Suppresses the maturity of the Green around it, weakening everything the run's
-	## territory effects are read from while it is standing there.
-	DISRUPTIVE,
-	## Detonates on death, damaging nearby enemies and the Green it dies on.
-	VOLATILE,
-}
-
-enum EnemyStateKind {
-	INACTIVE,
-	ADVANCING,
-	CONTACT,
-}
-
 enum DeathSource {
 	CANE,
 	BLOOM,
@@ -168,110 +123,6 @@ class DamageNumberLayer:
 		if director != null:
 			director.draw_damage_numbers(self)
 
-
-class EnemyState:
-	var active := false
-	## Damage waiting to be shown as one number. Ordinary hits accumulate here and
-	## flush together; a critical never waits, so it is never part of this.
-	var pending_number_damage := 0.0
-	var pending_number_remaining := 0.0
-	var pending_number_color := Color.WHITE
-	var state := EnemyStateKind.INACTIVE
-	var id := 0
-	var role := EnemyRole.HUNTER
-	var position := Vector2.ZERO
-	var health := 0.0
-	var maximum_health := 0.0
-	var speed := 0.0
-	var contact_damage := 0.0
-	var contact_interval := 0.8
-	var contact_remaining := 0.0
-	var movement_behavior := EnemyProfile.MovementBehavior.CHASE_PLAYER
-	var preferred_distance_pixels := 0.0
-	var territory_behavior := EnemyProfile.TerritoryBehavior.NONE
-	var territory_action_remaining := 0.0
-	var territory_action_interval := 1.0
-	var territory_action_strength := 0.0
-	var territory_action_radius_multiplier := 1.0
-	var require_player_territory := false
-	var territory_actions_before_recovery := 0
-	var territory_recovery_seconds := 0.0
-	var territory_actions_taken := 0
-	var emit_eruption_signal := false
-	var catalyst_search_range_pixels := 0.0
-	var fresh_maturity_threshold := 0.35
-	var maximum_active_summons := 0
-	var summon_spacing_pixels := 0.0
-	var radius := 10.0
-	var collision_radius := 6.0
-	var xp_value := 1
-	var spawn_wave_number := 1
-	var territory_erosion_scale := 1.0
-	## Share of an incoming Ensnare duration, shove distance or slow this body ignores,
-	## resolved once at spawn from the wave's curve and this role's own resistance.
-	## Stored on the body rather than read live so an enemy fights at the wave it
-	## entered in, which is the same rule its health and damage already follow.
-	var cc_resistance := 0.0
-	var target_priority_multiplier := 1.0
-	var use_boss_navigation := false
-	var direct_path_clear := false
-	var path_check_remaining := 0.0
-	var hit_flash_remaining := 0.0
-	var hit_flash_color := Color.WHITE
-	var bramble_damage_remaining := 0.0
-	var bramble_repulsion_remaining := 0.0
-	var bramble_crossing_remaining := 0.0
-	var bramble_eruption_remaining := 0.0
-	## Seconds left of a Grasping Thorns Ensnare, during which the enemy cannot move.
-	var bramble_ensnare_remaining := 0.0
-	## Full length of the current hold, so the indicator can show what is left of it.
-	var bramble_ensnare_duration := 0.0
-	## Seconds left before this enemy may be Ensnared again.
-	var bramble_ensnare_immunity_remaining := 0.0
-	## Direction of a repulsion shove currently playing out.
-	var knockback_direction := Vector2.ZERO
-	## Seconds left of that shove, which travels over time rather than teleporting.
-	var knockback_remaining := 0.0
-	## Opening speed of the shove; it eases to zero across the duration.
-	var knockback_speed := 0.0
-	## Suppressed: seconds left of the window in which this enemy is worse at eating
-	## Green, and the share of its territory damage the window takes away. It touches
-	## the territory layer and nothing else - not what it does to the player, not how
-	## fast it moves, not what it can take.
-	var suppression_remaining := 0.0
-	var suppression_share := 0.0
-	## 0-to-1 Spore accumulated by standing on owned Green. Unlike Entanglement it
-	## never decays: an infection the enemy walks away from is still an infection.
-	var spore := 0.0
-	## Set the moment Spore reaches 1.0, and never cleared while the enemy lives.
-	var overgrown := false
-	## Seconds until the next tick of Overgrown max-health damage.
-	var spore_damage_remaining := 0.0
-	## 0-to-1 Entanglement accumulated by standing on Bramble-covered Green.
-	var entanglement := 0.0
-	## Frontier hedge strength sampled where the enemy stands, as a damage bonus.
-	var bramble_frontier_strength := 0.0
-	## Maturity of the ground under the enemy, which the Root Network amplifies.
-	var bramble_ground_maturity := 0.0
-	var bramble_horde_count := 0
-	var was_on_bramble := false
-	var movement_speed_multiplier := 1.0
-	## Share of an incoming shove this enemy ignores.
-	var knockback_resistance := 0.0
-	## What each uninterrupted territory action multiplies the next one by, and the
-	## ceiling on the running total.
-	var territory_action_escalation := 1.0
-	var territory_action_escalation_cap := 1.0
-	## The running multiplier itself. It is reset by being hit, which is what makes
-	## "if ignored" the actual condition rather than a timer.
-	var territory_escalation := 1.0
-	## The rule this elite changes, or NONE for everything that changes none.
-	var elite_modifier := EliteModifier.NONE
-	## Seconds left of the window in which Regenerative refuses to heal.
-	var regeneration_block_remaining := 0.0
-	## Where Blighted last soured the ground, so it leaves a trail rather than a
-	## smear: the wake is stamped at intervals along the path, not every frame.
-	var blight_last_position := Vector2.ZERO
 
 class ProjectileState:
 	var active := false
@@ -903,23 +754,11 @@ var _entanglement_rate_zones: Array = []
 var _spore_rate_zones: Array = []
 var _mass_entanglement_elite_share := 0.5
 var _mass_entanglement_boss_share := 0.2
-var _enemy_health_scale := 1.0
-var _enemy_damage_scale := 1.0
-var _enemy_territory_erosion_scale := 1.0
-var _enemy_spawn_wave_number := 1
-var _enemy_xp_growth_per_wave := 0.10
-var _enemy_xp_minimum_bonus_per_wave := 1
-## Campaign scaling. Quick leaves all of this at its neutral value and keeps
-## driving health, damage and erosion through set_enemy_scaling; the Campaign hands
-## over one authored wave at a time through set_campaign_wave_scaling.
-var _campaign_scaling_active := false
-var _enemy_movement_scale := 1.0
-var _enemy_action_speed_scale := 1.0
-var _enemy_cc_resistance := 0.0
-var _enemy_xp_multiplier := 1.0
-## Role id to EnemyRoleScalingProfile, so a Rusher takes half the movement curve
-## and a Grazer's bite cadence is never touched.
-var _role_scaling_profiles := {}
+## This wave's curves. Quick keeps driving health, damage and erosion through
+## set_enemy_scaling; the Campaign hands over one authored wave at a time through
+## set_campaign_wave_scaling. The numbers live in the rules module; the bodies they
+## are written onto stay here.
+var _scaling := WaveScaling.new()
 var _navigation_width := 0
 var _navigation_height := 0
 var _navigation_cell_count := 0
@@ -927,7 +766,7 @@ var _navigation_small_target_index := -1
 ## Chance an eligible spawn carries a rule change, driven by the wave director.
 var _elite_modifier_chance := 0.0
 ## A modifier pinned for the next eligible spawn, for tests and debug keys.
-var _forced_elite_modifier := EliteModifier.NONE
+var _forced_elite_modifier := EnemyKinds.EliteModifier.NONE
 ## Which rule changes this wave may hand out. Empty means the Quick behaviour of
 ## drawing from every authored modifier.
 var _modifier_pool := PackedInt32Array()
@@ -1273,7 +1112,7 @@ func is_enemy_resistant(enemy_id: int) -> bool:
 	var enemy := _find_enemy(enemy_id)
 	if enemy == null:
 		return false
-	return enemy.role == EnemyRole.ELITE or enemy.role == EnemyRole.BOSS
+	return enemy.role == EnemyKinds.Role.ELITE or enemy.role == EnemyKinds.Role.BOSS
 
 
 func get_enemy_maximum_health(enemy_id: int) -> float:
@@ -1308,20 +1147,16 @@ func _find_enemy(enemy_id: int) -> EnemyState:
 
 func reset_combat() -> void:
 	_elite_modifier_chance = elite_modifier_base_chance
-	_forced_elite_modifier = EliteModifier.NONE
+	_forced_elite_modifier = EnemyKinds.EliteModifier.NONE
 	_modifier_pool = PackedInt32Array()
 	_modifier_wave_number = 0
 	_showcase_modifiers = PackedInt32Array()
 	_showcase_eligible_spawns = 0
-	_campaign_scaling_active = false
-	_enemy_movement_scale = 1.0
-	_enemy_action_speed_scale = 1.0
-	_enemy_cc_resistance = 0.0
-	_enemy_xp_multiplier = 1.0
+	_scaling.reset_campaign()
 	for enemy in _enemies:
 		enemy.active = false
-		enemy.state = EnemyStateKind.INACTIVE
-		enemy.elite_modifier = EliteModifier.NONE
+		enemy.state = EnemyKinds.StateKind.INACTIVE
+		enemy.elite_modifier = EnemyKinds.EliteModifier.NONE
 		enemy.territory_escalation = 1.0
 		enemy.pending_number_damage = 0.0
 		enemy.pending_number_remaining = 0.0
@@ -1415,7 +1250,7 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 		local_position = _choose_spawn_position(enemy.collision_radius, exclusion)
 
 	enemy.active = true
-	enemy.state = EnemyStateKind.ADVANCING
+	enemy.state = EnemyKinds.StateKind.ADVANCING
 	# The slot is about to carry a different enemy, so whatever id used to point at
 	# it must stop doing so. Retiring the old key here is what keeps the map bounded
 	# by the pool rather than by everything ever spawned.
@@ -1459,7 +1294,7 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	enemy.regeneration_block_remaining = 0.0
 	enemy.blight_last_position = local_position
 	enemy.elite_modifier = _roll_elite_modifier(role)
-	if enemy.elite_modifier != EliteModifier.NONE:
+	if enemy.elite_modifier != EnemyKinds.EliteModifier.NONE:
 		elite_modifier_assigned.emit(enemy.id, enemy.elite_modifier)
 	if enemy.use_boss_navigation:
 		_navigation_boss_target_index = -1
@@ -1473,9 +1308,9 @@ func _get_spawn_exclusion(role: int) -> float:
 	# The Colony Core is placed by its Colonizer at a site that was already
 	# validated, and the milestone actors are authored entrances. Only ordinary
 	# reinforcements are held away from Grandma.
-	if role == EnemyRole.COLONY_CORE or role == EnemyRole.ELITE or role == EnemyRole.BOSS:
+	if role == EnemyKinds.Role.COLONY_CORE or role == EnemyKinds.Role.ELITE or role == EnemyKinds.Role.BOSS:
 		return 0.0
-	if role == EnemyRole.RUSHER:
+	if role == EnemyKinds.Role.RUSHER:
 		return rusher_spawn_exclusion_pixels
 	return normal_spawn_exclusion_pixels
 
@@ -1507,7 +1342,7 @@ func _find_perimeter_placement(role: int, wanted: Vector2) -> Vector2:
 	# a short entrance turns that into damage nothing could have answered.
 	var exclusion := (
 		rusher_spawn_exclusion_pixels
-		if role == EnemyRole.RUSHER
+		if role == EnemyKinds.Role.RUSHER
 		else normal_spawn_exclusion_pixels
 	)
 	var player_position := player.get_arena_position()
@@ -1616,9 +1451,9 @@ func blast_enemies_in_radius(
 		report.kill_positions.append(position_before)
 		var excess := maxf(0.0, applied - health_before)
 		var cap := normal_overkill_cap
-		if role == EnemyRole.BOSS:
+		if role == EnemyKinds.Role.BOSS:
 			cap = boss_overkill_cap
-		elif role == EnemyRole.ELITE:
+		elif role == EnemyKinds.Role.ELITE:
 			cap = elite_overkill_cap
 		if cap > 0.0:
 			report.overkill += minf(excess, cap)
@@ -1774,7 +1609,7 @@ func get_last_explosion_pitch_scale() -> float:
 
 func has_active_boss() -> bool:
 	for enemy in _enemies:
-		if enemy.active and enemy.role == EnemyRole.BOSS:
+		if enemy.active and enemy.role == EnemyKinds.Role.BOSS:
 			return true
 	return false
 
@@ -2373,13 +2208,14 @@ func set_enemy_scaling(
 	xp_growth_per_wave: float = 0.10,
 	xp_minimum_bonus_per_wave: int = 1
 ) -> void:
-	_enemy_health_scale = maxf(0.1, health_scale)
-	_enemy_damage_scale = maxf(0.1, damage_scale)
-	_enemy_territory_erosion_scale = maxf(0.1, territory_erosion_scale)
-	_enemy_spawn_wave_number = maxi(1, spawn_wave_number)
-	_enemy_xp_growth_per_wave = maxf(0.0, xp_growth_per_wave)
-	_enemy_xp_minimum_bonus_per_wave = maxi(0, xp_minimum_bonus_per_wave)
-	_campaign_scaling_active = false
+	_scaling.set_quick(
+		health_scale,
+		damage_scale,
+		territory_erosion_scale,
+		spawn_wave_number,
+		xp_growth_per_wave,
+		xp_minimum_bonus_per_wave
+	)
 
 
 func set_campaign_wave_scaling(
@@ -2400,16 +2236,17 @@ func set_campaign_wave_scaling(
 	## that is longer instead of harder: what actually threatens a built organism is
 	## enemies that arrive sooner, work on the Green faster, take the territory apart
 	## harder, and shrug off part of the control that used to hold them.
-	_campaign_scaling_active = true
-	_enemy_health_scale = maxf(0.1, health_scale)
-	_enemy_damage_scale = maxf(0.1, damage_scale)
-	_enemy_territory_erosion_scale = maxf(0.1, territory_strength_scale)
-	_enemy_movement_scale = maxf(0.1, movement_scale)
-	_enemy_action_speed_scale = maxf(0.1, action_speed_scale)
-	_enemy_cc_resistance = clampf(cc_resistance, 0.0, 1.0)
-	_enemy_xp_multiplier = maxf(0.1, xp_multiplier)
-	_enemy_spawn_wave_number = maxi(1, wave_number)
-	_role_scaling_profiles = role_profiles
+	_scaling.set_campaign(
+		wave_number,
+		health_scale,
+		damage_scale,
+		movement_scale,
+		territory_strength_scale,
+		action_speed_scale,
+		cc_resistance,
+		xp_multiplier,
+		role_profiles
+	)
 
 
 func set_modifier_stage(
@@ -2486,12 +2323,12 @@ func debug_damage_enemy(enemy_id: int, damage: float) -> bool:
 
 func debug_fill_stress(enemy_count: int, projectile_count: int, pickup_count: int) -> void:
 	var stress_roles := PackedInt32Array([
-		EnemyRole.HUNTER,
-		EnemyRole.GRAZER,
-		EnemyRole.SABOTEUR,
-		EnemyRole.CORRUPTOR,
-		EnemyRole.COLONIZER,
-		EnemyRole.WARDEN,
+		EnemyKinds.Role.HUNTER,
+		EnemyKinds.Role.GRAZER,
+		EnemyKinds.Role.SABOTEUR,
+		EnemyKinds.Role.CORRUPTOR,
+		EnemyKinds.Role.COLONIZER,
+		EnemyKinds.Role.WARDEN,
 	])
 	for index in range(enemy_count):
 		var role := stress_roles[index % stress_roles.size()]
@@ -3067,20 +2904,20 @@ func _update_enemies(delta: float) -> void:
 		if enemy.knockback_remaining > 0.0:
 			# A repelled enemy is staggered: it slides out and does not chase, act on
 			# territory, or land contact damage until the shove finishes.
-			enemy.state = EnemyStateKind.ADVANCING
+			enemy.state = EnemyKinds.StateKind.ADVANCING
 			_advance_knockback(enemy, delta)
 			continue
 
 		var contact_distance := enemy.radius + player.body_radius_pixels
 		if enemy.position.distance_squared_to(player_position) <= contact_distance * contact_distance:
-			enemy.state = EnemyStateKind.CONTACT
+			enemy.state = EnemyKinds.StateKind.CONTACT
 			if enemy.contact_remaining <= 0.0:
 				player.apply_damage(enemy.contact_damage)
 				enemy.contact_remaining = enemy.contact_interval
 			if enemy.movement_behavior == EnemyProfile.MovementBehavior.KEEP_DISTANCE:
 				_move_enemy_keep_distance(enemy, player_position, delta)
 		else:
-			enemy.state = EnemyStateKind.ADVANCING
+			enemy.state = EnemyKinds.StateKind.ADVANCING
 			_advance_enemy_for_behavior(enemy, player_position, delta)
 
 		if (
@@ -3385,7 +3222,7 @@ func get_standard_enemy_health() -> float:
 	# keeps its meaning as the waves harden instead of decaying into a scratch.
 	if hunter_profile == null:
 		return 1.0
-	return maxf(1.0, hunter_profile.maximum_health * _enemy_health_scale)
+	return maxf(1.0, hunter_profile.maximum_health * _scaling.get_health_scale())
 
 
 func find_infection_targets(wanted: int) -> PackedVector2Array:
@@ -3470,14 +3307,14 @@ func _fungal_collapse(enemy: EnemyState) -> void:
 	# outbreak into whatever was standing beside it. Elites and bosses are the fights
 	# the run is meant to have, so they take a large hit and keep rotting instead.
 	match enemy.role:
-		EnemyRole.ELITE:
+		EnemyKinds.Role.ELITE:
 			_damage_enemy(
 				enemy,
 				enemy.maximum_health * fungal_collapse_elite_health_share,
 				DeathSource.SPORE,
 				0
 			)
-		EnemyRole.BOSS:
+		EnemyKinds.Role.BOSS:
 			_damage_enemy(
 				enemy,
 				enemy.maximum_health * fungal_collapse_boss_health_share,
@@ -3863,9 +3700,9 @@ func apply_mass_entanglement(center: Vector2, radius: float) -> int:
 		if not territory_field.is_growth_path_clear(center, enemy.position):
 			continue
 		var share := 1.0
-		if enemy.role == EnemyRole.BOSS:
+		if enemy.role == EnemyKinds.Role.BOSS:
 			share = _mass_entanglement_boss_share
-		elif enemy.role == EnemyRole.ELITE:
+		elif enemy.role == EnemyKinds.Role.ELITE:
 			share = _mass_entanglement_elite_share
 		enemy.entanglement = minf(1.0, enemy.entanglement + share)
 		caught += 1
@@ -3943,9 +3780,9 @@ func collapse_overgrown_enemy(
 	if enemy == null or not enemy.overgrown:
 		return false
 	var damage := enemy.health + 1.0
-	if enemy.role == EnemyRole.ELITE:
+	if enemy.role == EnemyKinds.Role.ELITE:
 		damage = enemy.maximum_health * clampf(elite_max_health_share, 0.0, 1.0)
-	elif enemy.role == EnemyRole.BOSS:
+	elif enemy.role == EnemyKinds.Role.BOSS:
 		damage = enemy.maximum_health * clampf(boss_max_health_share, 0.0, 1.0)
 	_damage_enemy(enemy, damage, death_source, 0)
 	return true
@@ -4399,7 +4236,7 @@ func _perform_enemy_territory_action(enemy: EnemyState) -> void:
 	# Ravenous grants it to any elite, so "if ignored" is one mechanic with two owners
 	# rather than two mechanics that happen to look alike.
 	var escalation := enemy.territory_action_escalation
-	if enemy.elite_modifier == EliteModifier.RAVENOUS:
+	if enemy.elite_modifier == EnemyKinds.EliteModifier.RAVENOUS:
 		escalation = maxf(escalation, ravenous_escalation)
 	if escalation > 1.0:
 		enemy.territory_escalation = minf(
@@ -4484,13 +4321,13 @@ func _try_establish_colony_core(colonizer: EnemyState) -> bool:
 	# give one of them up, because a milestone that cannot enter is a reward and a
 	# wave identity the run silently loses.
 	var core_cap := colonizer.maximum_active_summons
-	if has_active_boss() or get_active_enemy_count_by_role(EnemyRole.ELITE) > 0:
+	if has_active_boss() or get_active_enemy_count_by_role(EnemyKinds.Role.ELITE) > 0:
 		core_cap = mini(core_cap, milestone_reserved_colony_cores)
-	if get_active_enemy_count_by_role(EnemyRole.COLONY_CORE) >= core_cap:
+	if get_active_enemy_count_by_role(EnemyKinds.Role.COLONY_CORE) >= core_cap:
 		return false
 	var minimum_spacing_squared := colonizer.summon_spacing_pixels * colonizer.summon_spacing_pixels
 	for enemy in _enemies:
-		if not enemy.active or enemy.role != EnemyRole.COLONY_CORE:
+		if not enemy.active or enemy.role != EnemyKinds.Role.COLONY_CORE:
 			continue
 		if enemy.position.distance_squared_to(colonizer.position) < minimum_spacing_squared:
 			return false
@@ -4502,7 +4339,7 @@ func _try_establish_colony_core(colonizer: EnemyState) -> bool:
 	var site := _find_colony_core_site(colonizer.position)
 	if site == Vector2.INF:
 		return false
-	return spawn_enemy(EnemyRole.COLONY_CORE, site) != -1
+	return spawn_enemy(EnemyKinds.Role.COLONY_CORE, site) != -1
 
 
 func _find_colony_core_site(wanted: Vector2) -> Vector2:
@@ -4757,7 +4594,7 @@ func _update_navigation(player_position: Vector2, delta: float) -> void:
 	var catalyst_position := Vector2(-99999.0, -99999.0)
 	var catalyst_distance_squared := INF
 	for enemy in _enemies:
-		if not enemy.active or enemy.role != EnemyRole.SABOTEUR:
+		if not enemy.active or enemy.role != EnemyKinds.Role.SABOTEUR:
 			continue
 		var candidate := overlay.get_nearest_catalyst_position(
 			enemy.position,
@@ -5037,7 +4874,7 @@ func _damage_enemy(
 	var death_entanglement := enemy.entanglement
 	_last_killed_enemy_id = enemy.id
 	enemy.active = false
-	enemy.state = EnemyStateKind.INACTIVE
+	enemy.state = EnemyKinds.StateKind.INACTIVE
 	_active_enemy_count = maxi(0, _active_enemy_count - 1)
 	_spawn_xp_pickup(death_position, xp_value)
 	if was_overgrown:
@@ -5051,14 +4888,14 @@ func _damage_enemy(
 		)
 	if death_source == DeathSource.ROOT_ERUPTION and _ancient_fury_chains_enabled:
 		_queue_chained_eruption(death_position, chain_depth + 1)
-	if enemy.elite_modifier == EliteModifier.VOLATILE:
+	if enemy.elite_modifier == EnemyKinds.EliteModifier.VOLATILE:
 		_detonate_volatile(death_position)
 	if death_entanglement > 0.0:
 		enemy_died_entangled.emit(death_position, death_entanglement, role)
 	enemy_killed.emit(death_position, xp_value, role, death_source, chain_depth)
-	if role == EnemyRole.ELITE:
+	if role == EnemyKinds.Role.ELITE:
 		elite_defeated.emit()
-	elif role == EnemyRole.BOSS:
+	elif role == EnemyKinds.Role.BOSS:
 		boss_defeated.emit()
 	active_enemy_count_changed.emit(_active_enemy_count)
 	if measuring:
@@ -5143,9 +4980,9 @@ func _should_show_damage_number(
 		return true
 	var is_important := (
 		critical
-		or enemy.role == EnemyRole.ELITE
-		or enemy.role == EnemyRole.BOSS
-		or enemy.elite_modifier != EliteModifier.NONE
+		or enemy.role == EnemyKinds.Role.ELITE
+		or enemy.role == EnemyKinds.Role.BOSS
+		or enemy.elite_modifier != EnemyKinds.EliteModifier.NONE
 		or shown_damage >= important_damage_number_threshold
 	)
 	return display_settings.should_show_damage_number(is_important)
@@ -5177,9 +5014,17 @@ func _spawn_damage_number(
 	enemy_radius: float,
 	damage: float,
 	color: Color,
-	critical: bool = false
+	critical: bool = false,
+	is_enemy_damage: bool = true
 ) -> void:
-	if debug_damage_accounting:
+	# The ledger this feeds is about damage dealt *to enemies*: it is checked against
+	# the damage this director applied to them, so that merging can be proven never to
+	# drop any. Damage taken by Grandma is a different subject entirely and was being
+	# counted here, which showed up as damage shown that had never been applied - the
+	# exact shape of the discrepancy the ledger exists to catch, from the one source
+	# that was never a discrepancy. It defaults to counting, so a new way for an enemy
+	# to take damage is counted without having to remember this.
+	if debug_damage_accounting and is_enemy_damage:
 		debug_damage_number_total += damage
 	var spawn_began := Time.get_ticks_usec() if PerfCounters.enabled else 0
 	# This used to scan the whole pool for a free slot, and then scan it again for
@@ -5282,7 +5127,8 @@ func spawn_player_damage_number(local_position: Vector2, damage: float) -> void:
 		player_damage_number_offset_pixels,
 		damage,
 		player_damage_number_color,
-		true
+		true,
+		false
 	)
 
 
@@ -5325,7 +5171,7 @@ func get_elite_modifier_chance() -> float:
 
 func get_enemy_elite_modifier(enemy_id: int) -> int:
 	var enemy := _find_enemy(enemy_id)
-	return enemy.elite_modifier if enemy != null else EliteModifier.NONE
+	return enemy.elite_modifier if enemy != null else EnemyKinds.EliteModifier.NONE
 
 
 func debug_force_elite_modifier(modifier: int) -> void:
@@ -5335,32 +5181,32 @@ func debug_force_elite_modifier(modifier: int) -> void:
 
 
 func _roll_elite_modifier(role: int) -> int:
-	if _forced_elite_modifier != EliteModifier.NONE:
+	if _forced_elite_modifier != EnemyKinds.EliteModifier.NONE:
 		var forced := _forced_elite_modifier
-		_forced_elite_modifier = EliteModifier.NONE
+		_forced_elite_modifier = EnemyKinds.EliteModifier.NONE
 		return forced
 	if not _is_modifier_eligible(role):
-		return EliteModifier.NONE
-	if _campaign_scaling_active:
+		return EnemyKinds.EliteModifier.NONE
+	if _scaling.is_campaign_active():
 		return _roll_campaign_modifier()
 	if _elite_modifier_chance <= 0.0:
-		return EliteModifier.NONE
+		return EnemyKinds.EliteModifier.NONE
 	if randf() > _elite_modifier_chance:
-		return EliteModifier.NONE
+		return EnemyKinds.EliteModifier.NONE
 	# One modifier, never two. Two rule changes on one body is a fight the player
 	# cannot read, and the point of these is that they are legible.
-	return randi_range(EliteModifier.UNSTOPPABLE, EliteModifier.VOLATILE)
+	return randi_range(EnemyKinds.EliteModifier.UNSTOPPABLE, EnemyKinds.EliteModifier.VOLATILE)
 
 
 func _roll_campaign_modifier() -> int:
 	if _modifier_pool.is_empty():
-		return EliteModifier.NONE
+		return EnemyKinds.EliteModifier.NONE
 	if _modifier_wave_number == MODIFIER_SHOWCASE_WAVE:
 		var showcased := _draw_showcase_modifier()
-		if showcased != EliteModifier.NONE:
+		if showcased != EnemyKinds.EliteModifier.NONE:
 			return showcased
 	if _elite_modifier_chance <= 0.0 or randf() > _elite_modifier_chance:
-		return EliteModifier.NONE
+		return EnemyKinds.EliteModifier.NONE
 	return _modifier_pool[randi() % _modifier_pool.size()]
 
 
@@ -5374,7 +5220,7 @@ func _draw_showcase_modifier() -> int:
 		_showcase_eligible_spawns > MODIFIER_SHOWCASE_SPAWNS
 		or _showcase_modifiers.size() >= MODIFIER_SHOWCASE_TYPES
 	):
-		return EliteModifier.NONE
+		return EnemyKinds.EliteModifier.NONE
 	for offset in range(_modifier_pool.size()):
 		var candidate := _modifier_pool[
 			(_showcase_eligible_spawns + offset) % _modifier_pool.size()
@@ -5382,26 +5228,20 @@ func _draw_showcase_modifier() -> int:
 		if not _showcase_modifiers.has(candidate):
 			_showcase_modifiers.append(candidate)
 			return candidate
-	return EliteModifier.NONE
+	return EnemyKinds.EliteModifier.NONE
 
 
 func _is_modifier_eligible(role: int) -> bool:
 	# The Elite is always eligible - it is what the modifiers are named for. The
 	# Boss is excluded: it already changes the rules by itself, and a Colony Core
 	# cannot use any of them, nor may it inherit its Colonizer's.
-	if role == EnemyRole.ELITE:
+	if role == EnemyKinds.Role.ELITE:
 		return true
-	if role == EnemyRole.BOSS or role == EnemyRole.COLONY_CORE:
+	if role == EnemyKinds.Role.BOSS or role == EnemyKinds.Role.COLONY_CORE:
 		return false
-	if not _campaign_scaling_active:
+	if not _scaling.is_campaign_active():
 		return modifier_eligible_late_roles.has(role)
-	# Campaign gates each role on the wave its profile names, so the objective
-	# specialists join the system at the Boss rather than alongside the first
-	# Heavy Grazer.
-	var profile: EnemyRoleScalingProfile = _role_scaling_profiles.get(role)
-	if profile == null:
-		return false
-	return _modifier_wave_number >= profile.modifier_eligible_from_wave
+	return _scaling.is_role_modifier_eligible(role, _modifier_wave_number)
 
 
 func _is_player_damage_source(death_source: int) -> bool:
@@ -5417,21 +5257,21 @@ func _is_player_damage_source(death_source: int) -> bool:
 func _advance_elite_modifier(enemy: EnemyState, delta: float) -> void:
 	# Everything a modifier does per frame, in one place, so a body carrying none pays
 	# a single comparison for the whole system.
-	if enemy.elite_modifier == EliteModifier.NONE:
+	if enemy.elite_modifier == EnemyKinds.EliteModifier.NONE:
 		return
 	enemy.regeneration_block_remaining = maxf(
 		0.0,
 		enemy.regeneration_block_remaining - delta
 	)
 	match enemy.elite_modifier:
-		EliteModifier.UNSTOPPABLE:
+		EnemyKinds.EliteModifier.UNSTOPPABLE:
 			# Rooted is the one state it refuses. Slowed is deliberately left alone:
 			# the note says it can still be slowed, and an Unstoppable that ignored
 			# Bramble entirely would read as immunity rather than as a rule change.
 			enemy.bramble_ensnare_remaining = 0.0
 			enemy.bramble_ensnare_duration = 0.0
 			enemy.knockback_remaining = 0.0
-		EliteModifier.REGENERATIVE:
+		EnemyKinds.EliteModifier.REGENERATIVE:
 			if (
 				enemy.regeneration_block_remaining <= 0.0
 				and enemy.health < enemy.maximum_health
@@ -5440,7 +5280,7 @@ func _advance_elite_modifier(enemy: EnemyState, delta: float) -> void:
 					enemy.maximum_health,
 					enemy.health + regenerative_health_per_second * delta
 				)
-		EliteModifier.BLIGHTED:
+		EnemyKinds.EliteModifier.BLIGHTED:
 			# Stamped along the path rather than every frame, so the wake is a trail
 			# with gaps in it instead of a solid smear whose width is the frame rate.
 			if (
@@ -5453,7 +5293,7 @@ func _advance_elite_modifier(enemy: EnemyState, delta: float) -> void:
 					blighted_trail_strength * enemy.territory_erosion_scale,
 					1.0
 				)
-		EliteModifier.DISRUPTIVE:
+		EnemyKinds.EliteModifier.DISRUPTIVE:
 			# Everything the run reads off its territory is read off maturity, so
 			# suppressing it nearby weakens Green-territory effects without this
 			# needing to know what any of those effects are.
@@ -5482,11 +5322,11 @@ func _detonate_volatile(local_position: Vector2) -> void:
 func _configure_enemy_stats(enemy: EnemyState) -> void:
 	var profile := _profile_for_role(enemy.role)
 	assert(profile != null, "Every Sporekeeper enemy role requires an authored profile")
-	enemy.spawn_wave_number = _enemy_spawn_wave_number
-	enemy.territory_erosion_scale = _enemy_territory_erosion_scale
-	enemy.maximum_health = profile.maximum_health * _enemy_health_scale
+	enemy.spawn_wave_number = _scaling.get_spawn_wave_number()
+	enemy.territory_erosion_scale = _scaling.get_territory_erosion_scale()
+	enemy.maximum_health = profile.maximum_health * _scaling.get_health_scale()
 	enemy.speed = profile.movement_speed
-	enemy.contact_damage = profile.contact_damage * _enemy_damage_scale
+	enemy.contact_damage = profile.contact_damage * _scaling.get_damage_scale()
 	enemy.contact_interval = profile.contact_interval_seconds
 	enemy.radius = profile.body_radius_pixels
 	enemy.xp_value = profile.xp_reward
@@ -5511,28 +5351,21 @@ func _configure_enemy_stats(enemy: EnemyState) -> void:
 	enemy.maximum_active_summons = profile.maximum_active_summons
 	enemy.summon_spacing_pixels = profile.summon_spacing_pixels
 	enemy.cc_resistance = 0.0
-	if _campaign_scaling_active:
+	if _scaling.is_campaign_active():
 		_apply_campaign_role_scaling(enemy)
-	enemy.xp_value = _get_scaled_xp_reward(enemy.xp_value, enemy.spawn_wave_number)
+	enemy.xp_value = _scaling.get_scaled_xp_reward(enemy.xp_value, enemy.spawn_wave_number)
 	enemy.collision_radius = enemy.radius * enemy_collision_radius_multiplier
 	enemy.health = enemy.maximum_health
 
 
 func _apply_campaign_role_scaling(enemy: EnemyState) -> void:
-	## The share of the wave's movement, action-speed and control curves this role
-	## actually receives.
-	##
-	## Contact intervals are deliberately never touched. Faster movement and higher
-	## contact damage already increase the pressure a body applies; shortening the
-	## interval as well would stack a third multiplier the player cannot read off
-	## the screen.
-	var profile: EnemyRoleScalingProfile = _role_scaling_profiles.get(enemy.role)
-	var movement_factor := profile.movement_scaling_factor if profile != null else 1.0
-	var action_factor := profile.action_speed_scaling_factor if profile != null else 1.0
-	enemy.speed *= 1.0 + (_enemy_movement_scale - 1.0) * movement_factor
-	var action_multiplier := 1.0 + (_enemy_action_speed_scale - 1.0) * action_factor
-	if action_multiplier > 0.0 and (profile == null or profile.scales_action_interval):
-		if profile != null and profile.scales_rest_interval_only:
+	## Writes this role's share of the wave's curves onto one pooled body. What that
+	## share *is* belongs to `WaveScaling`; which fields it lands on is this pool's
+	## own layout, and stays here.
+	enemy.speed *= _scaling.get_movement_multiplier(enemy.role)
+	var action_multiplier := _scaling.get_action_speed_multiplier(enemy.role)
+	if not is_equal_approx(action_multiplier, 1.0):
+		if _scaling.scales_rest_interval_only(enemy.role):
 			# A grazing burst keeps its authored bite cadence; only the recovery
 			# between bursts shortens, so faster waves mean more bursts rather than
 			# a tick nothing in the simulation was built to run at.
@@ -5543,61 +5376,34 @@ func _apply_campaign_role_scaling(enemy: EnemyState) -> void:
 	# a whole number of hit points the telemetry and a fixture can both talk about.
 	# Damage stays a float until the presentation layer rounds it for display.
 	enemy.maximum_health = maxf(1.0, round(enemy.maximum_health))
-	var role_resistance := profile.role_cc_resistance if profile != null else 0.0
-	var receives_global := profile == null or profile.receives_global_cc_resistance
-	# Role resistance first, then the wave curve on what is left, so a Boss stays
-	# visibly affectable rather than compounding into immunity.
-	var remaining := 1.0 - clampf(role_resistance, 0.0, 0.9)
-	if receives_global:
-		remaining *= 1.0 - _enemy_cc_resistance
-	enemy.cc_resistance = clampf(1.0 - remaining, 0.0, 0.95)
-
-
-func _get_scaled_xp_reward(base_xp: int, spawn_wave_number: int) -> int:
-	# The Campaign's XP curve is deliberately far flatter than its health curve.
-	# More durable enemies already reduce the kill rate, so an XP reward that grew
-	# at the same pace would make dense late waves fund themselves and hand a
-	# finished build the ranks the pacing targets say it should not have.
-	if _campaign_scaling_active:
-		return maxi(base_xp, roundi(float(base_xp) * _enemy_xp_multiplier))
-	var wave_index := maxi(0, spawn_wave_number - 1)
-	var proportional_reward := ceili(
-		snappedf(
-			float(base_xp) * (
-				1.0 + float(wave_index) * _enemy_xp_growth_per_wave
-			),
-			0.0001
-		)
-	)
-	var minimum_reward := base_xp + wave_index * _enemy_xp_minimum_bonus_per_wave
-	return maxi(base_xp, maxi(proportional_reward, minimum_reward))
+	enemy.cc_resistance = _scaling.get_cc_resistance(enemy.role)
 
 
 func _profile_for_role(role: int) -> EnemyProfile:
 	match role:
-		EnemyRole.HUNTER:
+		EnemyKinds.Role.HUNTER:
 			return hunter_profile
-		EnemyRole.GRAZER:
+		EnemyKinds.Role.GRAZER:
 			return grazer_profile
-		EnemyRole.ELITE:
+		EnemyKinds.Role.ELITE:
 			return elite_profile
-		EnemyRole.BOSS:
+		EnemyKinds.Role.BOSS:
 			return boss_profile
-		EnemyRole.SABOTEUR:
+		EnemyKinds.Role.SABOTEUR:
 			return saboteur_profile
-		EnemyRole.CORRUPTOR:
+		EnemyKinds.Role.CORRUPTOR:
 			return corruptor_profile
-		EnemyRole.COLONIZER:
+		EnemyKinds.Role.COLONIZER:
 			return colonizer_profile
-		EnemyRole.WARDEN:
+		EnemyKinds.Role.WARDEN:
 			return warden_profile
-		EnemyRole.COLONY_CORE:
+		EnemyKinds.Role.COLONY_CORE:
 			return colony_core_profile
-		EnemyRole.HEAVY_GRAZER:
+		EnemyKinds.Role.HEAVY_GRAZER:
 			return heavy_grazer_profile
-		EnemyRole.RUSHER:
+		EnemyKinds.Role.RUSHER:
 			return rusher_profile
-		EnemyRole.SIEGE_CORRUPTOR:
+		EnemyKinds.Role.SIEGE_CORRUPTOR:
 			return siege_corruptor_profile
 	return null
 
@@ -5772,7 +5578,7 @@ func _enemy_requires_full_detail(enemy: EnemyState) -> bool:
 	# These bodies carry radial or escalation telegraphs that affect decisions. Crowd
 	# LOD only removes ornamental detail from ordinary enemies.
 	match enemy.role:
-		EnemyRole.ELITE, EnemyRole.BOSS, EnemyRole.WARDEN, EnemyRole.COLONY_CORE, EnemyRole.SIEGE_CORRUPTOR:
+		EnemyKinds.Role.ELITE, EnemyKinds.Role.BOSS, EnemyKinds.Role.WARDEN, EnemyKinds.Role.COLONY_CORE, EnemyKinds.Role.SIEGE_CORRUPTOR:
 			return true
 	return false
 
@@ -5796,13 +5602,13 @@ func bake_enemy_art() -> void:
 		return
 	_enemy_art_baking = true
 	var roles := [
-		EnemyRole.HUNTER,
-		EnemyRole.RUSHER,
-		EnemyRole.GRAZER,
-		EnemyRole.HEAVY_GRAZER,
-		EnemyRole.SABOTEUR,
-		EnemyRole.CORRUPTOR,
-		EnemyRole.COLONIZER,
+		EnemyKinds.Role.HUNTER,
+		EnemyKinds.Role.RUSHER,
+		EnemyKinds.Role.GRAZER,
+		EnemyKinds.Role.HEAVY_GRAZER,
+		EnemyKinds.Role.SABOTEUR,
+		EnemyKinds.Role.CORRUPTOR,
+		EnemyKinds.Role.COLONIZER,
 	]
 	for role in roles:
 		var radius := _get_role_bake_radius(role)
@@ -5868,7 +5674,7 @@ func _draw_enemy_baked(enemy: EnemyState) -> bool:
 	# Directional roles were baked facing +X, so the quad is turned rather than the
 	# art being redrawn at a new angle.
 	var art_rotation := 0.0
-	if enemy.role == EnemyRole.RUSHER and player != null:
+	if enemy.role == EnemyKinds.Role.RUSHER and player != null:
 		var heading := enemy.position.direction_to(player.get_arena_position())
 		if heading.length_squared() > 0.01:
 			art_rotation = heading.angle()
@@ -5887,10 +5693,10 @@ func _draw_enemy(
 	heading_override: Vector2 = Vector2.ZERO
 ) -> void:
 	match enemy.role:
-		EnemyRole.HUNTER:
+		EnemyKinds.Role.HUNTER:
 			canvas.draw_circle(enemy.position, enemy.radius + 2.0, Color(0.08, 0.02, 0.03, 0.92))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("ff625b"))
-		EnemyRole.RUSHER:
+		EnemyKinds.Role.RUSHER:
 			# A Hunter that arrives before Bramble can take hold, so it is drawn as one
 			# that is already moving: the same red, swept into a wedge that points where
 			# it is going, with the streaks of its own speed trailing behind it. A player
@@ -5945,7 +5751,7 @@ func _draw_enemy(
 				2.0,
 				true
 			)
-		EnemyRole.GRAZER:
+		EnemyKinds.Role.GRAZER:
 			canvas.draw_circle(enemy.position, enemy.radius + 3.0, Color(0.08, 0.04, 0.01, 0.95))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("ff9d45"))
 			for axis in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
@@ -5956,7 +5762,7 @@ func _draw_enemy(
 					2.0,
 					true
 				)
-		EnemyRole.HEAVY_GRAZER:
+		EnemyKinds.Role.HEAVY_GRAZER:
 			# The Grazer's orange, plated. It eats the same ground and cannot be shoved off
 			# it, so what it says about itself is weight: a hide too thick to move, blunt
 			# tusks rather than the ordinary Grazer's fine ones, and a body that fills its
@@ -5983,7 +5789,7 @@ func _draw_enemy(
 					true
 				)
 			canvas.draw_circle(enemy.position, 4.5, Color("40190a"))
-		EnemyRole.SABOTEUR:
+		EnemyKinds.Role.SABOTEUR:
 			var top := enemy.position + Vector2(0.0, -enemy.radius)
 			var right := enemy.position + Vector2(enemy.radius, 0.0)
 			var bottom := enemy.position + Vector2(0.0, enemy.radius)
@@ -6007,7 +5813,7 @@ func _draw_enemy(
 				2.0,
 				true
 			)
-		EnemyRole.CORRUPTOR:
+		EnemyKinds.Role.CORRUPTOR:
 			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.30, 0.02, 0.38, 0.48))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("a338c7"))
 			canvas.draw_circle(enemy.position, enemy.radius - 5.0, Color("42114f"))
@@ -6021,7 +5827,7 @@ func _draw_enemy(
 				2.5,
 				true
 			)
-		EnemyRole.SIEGE_CORRUPTOR:
+		EnemyKinds.Role.SIEGE_CORRUPTOR:
 			# A Corruptor that gets worse the longer it is left alone, so the one thing it
 			# has to show is how far along it already is. The ring closes as its conversion
 			# compounds toward the cap and springs open again the moment it is hit, which
@@ -6068,7 +5874,7 @@ func _draw_enemy(
 					2.5,
 					true
 				)
-		EnemyRole.COLONIZER:
+		EnemyKinds.Role.COLONIZER:
 			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.02, 0.26, 0.30, 0.46))
 			for pod_index in range(3):
 				var direction := Vector2.from_angle(TAU * float(pod_index) / 3.0)
@@ -6079,7 +5885,7 @@ func _draw_enemy(
 				)
 			canvas.draw_circle(enemy.position, enemy.radius - 3.0, Color("155b67"))
 			canvas.draw_circle(enemy.position, 4.0, Color("b8fff2"))
-		EnemyRole.WARDEN:
+		EnemyKinds.Role.WARDEN:
 			var pixels_per_cell := (
 				territory_field.tuning.arena_size.x
 				/ float(territory_field.tuning.field_size.x)
@@ -6120,7 +5926,7 @@ func _draw_enemy(
 				true
 			)
 			canvas.draw_circle(enemy.position, 4.0, Color("c8d5ff"))
-		EnemyRole.COLONY_CORE:
+		EnemyKinds.Role.COLONY_CORE:
 			canvas.draw_circle(enemy.position, enemy.radius + 7.0, Color(0.38, 0.02, 0.14, 0.30))
 			for spine_index in range(6):
 				var direction := Vector2.from_angle(TAU * float(spine_index) / 6.0)
@@ -6134,12 +5940,12 @@ func _draw_enemy(
 			canvas.draw_circle(enemy.position, enemy.radius, Color("781b3e"))
 			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("2d1029"))
 			canvas.draw_circle(enemy.position, 4.0, Color("ff9bb0"))
-		EnemyRole.ELITE:
+		EnemyKinds.Role.ELITE:
 			canvas.draw_circle(enemy.position, enemy.radius + 5.0, Color(0.35, 0.09, 0.42, 0.55))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("d85cff"))
 			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("4a153e"))
 			canvas.draw_arc(enemy.position, enemy.radius + 4.0, 0.0, TAU, 24, Color("f5c4ff"), 2.0, true)
-		EnemyRole.BOSS:
+		EnemyKinds.Role.BOSS:
 			canvas.draw_circle(enemy.position, enemy.radius + 8.0, Color(0.45, 0.02, 0.12, 0.38))
 			for petal_index in range(6):
 				var direction := Vector2.from_angle(TAU * float(petal_index) / 6.0)
@@ -6208,9 +6014,9 @@ func _draw_enemy_state_overlay(canvas: CanvasItem, enemy: EnemyState) -> void:
 		)
 
 	if (
-		enemy.role == EnemyRole.ELITE
-		or enemy.role == EnemyRole.BOSS
-		or enemy.role == EnemyRole.COLONY_CORE
+		enemy.role == EnemyKinds.Role.ELITE
+		or enemy.role == EnemyKinds.Role.BOSS
+		or enemy.role == EnemyKinds.Role.COLONY_CORE
 		or enemy.health < enemy.maximum_health
 	):
 		var bar_width := enemy.radius * 2.2

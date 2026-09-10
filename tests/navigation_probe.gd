@@ -30,7 +30,7 @@ func _run() -> void:
 		Vector2(310.0, 70.0),
 		Vector2(650.0, 70.0),
 		18.0,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		21.5
 	)
 	_run_navigation_fixture(
@@ -39,7 +39,7 @@ func _run() -> void:
 		Vector2(245.0, 128.0),
 		Vector2(430.0, 128.0),
 		12.0,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		21.5
 	)
 	_run_navigation_fixture(
@@ -48,7 +48,7 @@ func _run() -> void:
 		Vector2(505.0, 455.0),
 		Vector2(705.0, 455.0),
 		12.0,
-		CombatDirector.EnemyRole.GRAZER,
+		EnemyKinds.Role.GRAZER,
 		23.5
 	)
 	_run_navigation_fixture(
@@ -57,7 +57,7 @@ func _run() -> void:
 		Vector2(430.0, 265.0),
 		Vector2(545.0, 185.0),
 		12.0,
-		CombatDirector.EnemyRole.ELITE,
+		EnemyKinds.Role.ELITE,
 		28.5
 	)
 	_run_navigation_fixture(
@@ -66,7 +66,7 @@ func _run() -> void:
 		Vector2(430.0, 295.0),
 		Vector2(545.0, 370.0),
 		12.0,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		21.5
 	)
 	_run_navigation_fixture(
@@ -75,7 +75,7 @@ func _run() -> void:
 		Vector2(430.0, 295.0),
 		Vector2(545.0, 370.0),
 		15.0,
-		CombatDirector.EnemyRole.CORRUPTOR,
+		EnemyKinds.Role.CORRUPTOR,
 		24.5
 	)
 	_run_navigation_fixture(
@@ -84,7 +84,7 @@ func _run() -> void:
 		Vector2(250.0, 70.0),
 		Vector2(650.0, 70.0),
 		24.0,
-		CombatDirector.EnemyRole.WARDEN,
+		EnemyKinds.Role.WARDEN,
 		26.0
 	)
 	_run_navigation_fixture(
@@ -93,7 +93,7 @@ func _run() -> void:
 		Vector2(310.0, 70.0),
 		Vector2(650.0, 70.0),
 		30.0,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		40.5
 	)
 	_run_saboteur_catalyst_fixture(prototype)
@@ -104,7 +104,7 @@ func _run() -> void:
 		Vector2(505.0, 455.0),
 		Vector2(705.0, 455.0),
 		18.0,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		40.5
 	)
 
@@ -170,7 +170,7 @@ func _run_saboteur_catalyst_fixture(prototype: RunRoot) -> void:
 	prototype.combat._cane_remaining = 999.0
 	prototype.overlay.spawn_seed(catalyst_target, 60.0, 0, 1.0)
 	var enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.SABOTEUR,
+		EnemyKinds.Role.SABOTEUR,
 		start
 	)
 	var maximum_y := start.y
@@ -209,7 +209,7 @@ func _run_colonizer_spacing_fixture(prototype: RunRoot) -> void:
 	prototype.overlay.clear_effects()
 	prototype.combat._cane_remaining = 999.0
 	var enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.COLONIZER,
+		EnemyKinds.Role.COLONIZER,
 		start
 	)
 	var maximum_y := start.y

@@ -1319,9 +1319,9 @@ func _snap_mimosa(origin: Vector2, strength: float) -> void:
 			continue
 		var share := 1.0
 		match combat.get_enemy_role(enemy_id):
-			CombatDirector.EnemyRole.BOSS:
+			EnemyKinds.Role.BOSS:
 				share = mimosa_boss_share
-			CombatDirector.EnemyRole.ELITE:
+			EnemyKinds.Role.ELITE:
 				share = mimosa_elite_share
 		combat.knockback_enemy_from(
 			enemy_id, origin, mimosa_knockback_pixels * share * strength
@@ -1514,9 +1514,9 @@ func _on_enemy_killed(
 ) -> void:
 	_release_mulch(combat.get_last_killed_enemy_id(), local_position)
 	var compost := 1
-	if role == CombatDirector.EnemyRole.BOSS:
+	if role == EnemyKinds.Role.BOSS:
 		compost = 5
-	elif role == CombatDirector.EnemyRole.ELITE:
+	elif role == EnemyKinds.Role.ELITE:
 		compost = 2
 	_add_compost(local_position, compost)
 	_try_trigger_hedge()

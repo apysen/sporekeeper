@@ -186,7 +186,7 @@ func _check_grace_holds_while_enemies_live(prototype: RunRoot) -> void:
 	_checks += 1
 
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.GRAZER, Vector2(320.0, 300.0)
+		EnemyKinds.Role.GRAZER, Vector2(320.0, 300.0)
 	)
 	if prototype.combat.get_active_enemy_count() == 0:
 		_failures.append("WAVE_CADENCE: could not spawn the enemy this case needs")

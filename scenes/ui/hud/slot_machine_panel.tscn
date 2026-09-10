@@ -231,9 +231,9 @@ vertical_alignment = 1
 
 [node name="Wager" type="HSlider" parent="." unique_id=7710008]
 layout_mode = 0
-offset_top = 260.0
+offset_top = 257.0
 offset_right = 201.0
-offset_bottom = 270.0
+offset_bottom = 273.0
 theme_override_icons/grabber = ExtResource("112_wager_knob_footprint")
 theme_override_icons/grabber_highlight = ExtResource("112_wager_knob_footprint")
 theme_override_icons/grabber_disabled = ExtResource("112_wager_knob_footprint")

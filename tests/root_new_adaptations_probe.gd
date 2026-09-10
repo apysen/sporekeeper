@@ -203,7 +203,7 @@ func _test_thistle_outputs(
 	## bonus it grants the same way it scaled the odds it used to grant.
 	var adaptations := prototype.adaptation_director
 	var enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		origin + Vector2(48.0, 0.0)
 	)
 	adaptations._spawn_thorn(origin, enemy_id, 1.0, 0, false, false, 0.0)

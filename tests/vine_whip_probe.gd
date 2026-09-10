@@ -243,7 +243,7 @@ func _run() -> void:
 	whip.build(origin, 184.0)
 	for stress_index in range(90):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			origin + Vector2(
 				-120.0 + float(stress_index % 12) * 22.0,
 				-90.0 + float(stress_index / 12) * 24.0

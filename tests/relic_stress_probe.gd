@@ -207,7 +207,7 @@ func _run_scenario(
 	for index in range(enemies):
 		var ring := 26.0 + float(index % 5) * 16.0
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			origin + Vector2.from_angle(float(index) * 2.39996) * ring
 		)
 	prototype.combat.simulate_step(0.0)
@@ -236,7 +236,7 @@ func _top_up(prototype: RunRoot, origin: Vector2, wanted: int) -> void:
 	for index in range(mini(missing, 4)):
 		var ring := 26.0 + float((prototype.combat.get_active_enemy_count() + index) % 5) * 16.0
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			origin + Vector2.from_angle(
 				float(prototype.combat.get_active_enemy_count() + index) * 2.39996
 			) * ring

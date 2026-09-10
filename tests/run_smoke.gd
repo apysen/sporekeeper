@@ -106,7 +106,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.combat.set_enemy_scaling(1.0, 1.0)
 	var inspector_authored_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER
+		EnemyKinds.Role.HUNTER
 	)
 	_check(
 		is_equal_approx(
@@ -143,15 +143,15 @@ func _run() -> void:
 		"established Green restores one health per second"
 	)
 	var contact_roles := PackedInt32Array([
-		CombatDirector.EnemyRole.HUNTER,
-		CombatDirector.EnemyRole.GRAZER,
-		CombatDirector.EnemyRole.SABOTEUR,
-		CombatDirector.EnemyRole.CORRUPTOR,
-		CombatDirector.EnemyRole.COLONIZER,
-		CombatDirector.EnemyRole.WARDEN,
-		CombatDirector.EnemyRole.COLONY_CORE,
-		CombatDirector.EnemyRole.ELITE,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.HUNTER,
+		EnemyKinds.Role.GRAZER,
+		EnemyKinds.Role.SABOTEUR,
+		EnemyKinds.Role.CORRUPTOR,
+		EnemyKinds.Role.COLONIZER,
+		EnemyKinds.Role.WARDEN,
+		EnemyKinds.Role.COLONY_CORE,
+		EnemyKinds.Role.ELITE,
+		EnemyKinds.Role.BOSS,
 	])
 	var expected_contact_damage := PackedFloat32Array([
 		5.5,
@@ -247,10 +247,10 @@ func _run() -> void:
 	prototype.player.input_enabled = false
 	prototype._set_simulation_paused(true)
 	var wave_one_hunter_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER
+		EnemyKinds.Role.HUNTER
 	)
 	var wave_one_grazer_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.GRAZER
+		EnemyKinds.Role.GRAZER
 	)
 	_check(
 		prototype.get_current_wave_number() == 1
@@ -263,13 +263,13 @@ func _run() -> void:
 	)
 	prototype.debug_advance_time(prototype.wave_director.wave_duration_seconds)
 	var wave_two_hunter_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER
+		EnemyKinds.Role.HUNTER
 	)
 	var wave_two_grazer_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.GRAZER
+		EnemyKinds.Role.GRAZER
 	)
 	var wave_two_boss_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS
+		EnemyKinds.Role.BOSS
 	)
 	_check(
 		prototype.get_current_wave_number() == 2
@@ -291,13 +291,13 @@ func _run() -> void:
 	)
 	prototype.debug_advance_time(prototype.wave_director.wave_duration_seconds)
 	var wave_three_hunter_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER
+		EnemyKinds.Role.HUNTER
 	)
 	var wave_three_grazer_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.GRAZER
+		EnemyKinds.Role.GRAZER
 	)
 	var wave_three_boss_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS
+		EnemyKinds.Role.BOSS
 	)
 	_check(
 		prototype.get_current_wave_number() == 3
@@ -491,7 +491,7 @@ func _run() -> void:
 	prototype._set_simulation_paused(true)
 	var hunter_position := prototype.player.get_arena_position() + Vector2(90.0, 0.0)
 	var hunter_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		hunter_position
 	)
 	# Cane's intentional 24-damage baseline now exactly kills the ordinary Hunter.
@@ -582,7 +582,7 @@ func _run() -> void:
 		+ Vector2(prototype.combat.cane_reach_pixels + 150.0, 0.0)
 	)
 	var outside_range_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		outside_range_position
 	)
 	prototype.combat.simulate_step(0.20)
@@ -608,11 +608,11 @@ func _run() -> void:
 	)
 	prototype.player.global_position = prototype.territory_field.to_global(cane_wall_source)
 	var blocked_target_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		cane_blocked_target
 	)
 	var visible_target_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		cane_visible_target
 	)
 	var dense_visible_direction := prototype.combat.get_densest_target_direction(
@@ -663,15 +663,15 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	var sweep_origin := prototype.player.get_arena_position()
 	var upper_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		sweep_origin + Vector2(58.0, -18.0)
 	)
 	var lower_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		sweep_origin + Vector2(68.0, 20.0)
 	)
 	var beyond_reach_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		sweep_origin + Vector2(prototype.combat.cane_reach_pixels + 80.0, 0.0)
 	)
 	var sector_hits := prototype.combat.perform_bonus_cane_sweep(Vector2.RIGHT, true)
@@ -695,7 +695,7 @@ func _run() -> void:
 	prototype.player.global_position = prototype.territory_field.to_global(navigation_target)
 	prototype.combat._cane_remaining = 999.0
 	var navigating_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		navigation_start
 	)
 	var maximum_navigation_y := navigation_start.y
@@ -732,7 +732,7 @@ func _run() -> void:
 	prototype.combat.saboteur_profile.first_territory_action_delay_seconds = 0.0
 	prototype.overlay.spawn_seed(catalyst_position, 10.0, 0, 1.0)
 	var saboteur_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.SABOTEUR,
+		EnemyKinds.Role.SABOTEUR,
 		catalyst_position
 	)
 	prototype.combat.simulate_step(0.0)
@@ -758,7 +758,7 @@ func _run() -> void:
 	)
 	prototype.combat.corruptor_profile.first_territory_action_delay_seconds = 0.0
 	var corruptor_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.CORRUPTOR,
+		EnemyKinds.Role.CORRUPTOR,
 		mature_green_position
 	)
 	prototype.combat.simulate_step(0.0)
@@ -789,7 +789,7 @@ func _run() -> void:
 		prototype.territory_field.get_control_at_local(mature_green_position)
 	)
 	var warden_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.WARDEN,
+		EnemyKinds.Role.WARDEN,
 		mature_green_position
 	)
 	prototype.combat.simulate_step(0.0)
@@ -812,7 +812,7 @@ func _run() -> void:
 	)
 	prototype.combat.colonizer_profile.first_territory_action_delay_seconds = 0.0
 	var colonizer_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.COLONIZER,
+		EnemyKinds.Role.COLONIZER,
 		Vector2(700.0, 360.0)
 	)
 	prototype.combat.simulate_step(0.0)
@@ -822,7 +822,7 @@ func _run() -> void:
 	_check(
 		colonizer_id != -1
 		and prototype.combat.get_active_enemy_count_by_role(
-			CombatDirector.EnemyRole.COLONY_CORE
+			EnemyKinds.Role.COLONY_CORE
 		) == 1,
 		"a Colonizer establishes one destructible hostile Colony Core"
 	)
@@ -835,7 +835,7 @@ func _run() -> void:
 	)
 	prototype.combat.colony_core_profile.first_territory_action_delay_seconds = 0.0
 	var colony_core_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.COLONY_CORE,
+		EnemyKinds.Role.COLONY_CORE,
 		mature_green_position
 	)
 	prototype.combat.simulate_step(0.0)
@@ -856,7 +856,7 @@ func _run() -> void:
 	var kill_position := Vector2(700.0, 360.0)
 	for index in range(prototype.spore_director.get_seed_kill_threshold()):
 		var enemy_id := prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			kill_position + Vector2(float(index) * 3.0, 0.0)
 		)
 		prototype.combat.debug_damage_enemy(enemy_id, 10000.0)
@@ -943,7 +943,7 @@ func _run() -> void:
 	prototype.overlay.clear_effects()
 	prototype.combat.reset_combat()
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		Vector2(
 			prototype.territory_field.tuning.arena_size.x * 0.86,
 			prototype.territory_field.tuning.arena_size.y * 0.5
@@ -1526,7 +1526,7 @@ func _run() -> void:
 	prototype.territory_field._territory_age[interior_index] = 0.0
 	var fresh_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		interior_spot
 	)
 	fresh_enemy.entanglement = 1.0
@@ -1547,7 +1547,7 @@ func _run() -> void:
 	)
 	var mature_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		interior_spot
 	)
 	mature_enemy.entanglement = 0.0
@@ -1573,9 +1573,9 @@ func _run() -> void:
 	# A kill inside the Root Network wakes the ground under the next enemy.
 	prototype.combat.reset_combat()
 	prototype.combat._cane_remaining = 999.0
-	var cascade_enemy: CombatDirector.EnemyState = _spawn_bramble_contact_enemy(
+	var cascade_enemy: EnemyState = _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		interior_spot
 	)
 	cascade_enemy.health = 1.0
@@ -1599,7 +1599,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	cascade_enemy = _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		interior_spot
 	)
 	cascade_enemy.health = 1.0
@@ -1638,7 +1638,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	var disabled_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		interior_spot
 	)
 	disabled_enemy.entanglement = 1.0
@@ -1771,11 +1771,11 @@ func _run() -> void:
 	prototype.player._facing = Vector2.RIGHT
 	var cane_target_origin := prototype.player.get_arena_position()
 	var base_right_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		cane_target_origin + Vector2(62.0, 0.0)
 	)
 	var base_up_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		cane_target_origin + Vector2(0.0, -62.0)
 	)
 	prototype.combat._cane_remaining = 0.0
@@ -1795,13 +1795,13 @@ func _run() -> void:
 	)
 	prototype._apply_progression_modifiers()
 	var vine_down_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		cane_target_origin + Vector2(0.0, 62.0)
 	)
 	var vine_cluster_ids := PackedInt32Array()
 	for vine_index in range(3):
 		vine_cluster_ids.append(prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			cane_target_origin + Vector2(-14.0 + 14.0 * float(vine_index), -66.0)
 		))
 	prototype.combat._cane_remaining = 0.0
@@ -1844,12 +1844,12 @@ func _run() -> void:
 	adaptations.reset_adaptations()
 	var fruit_origin := prototype.player.get_arena_position()
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		fruit_origin + Vector2(0.0, 92.0)
 	)
 	for fruit_cluster_index in range(3):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			fruit_origin + Vector2(-14.0 + 14.0 * float(fruit_cluster_index), -92.0)
 		)
 	adaptations._begin_normal_fruit_release()
@@ -1937,7 +1937,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	var terminal_position := fruit_origin + Vector2(48.0, 0.0)
 	var terminal_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		terminal_position
 	)
 	var terminal_health_before := prototype.combat.get_enemy_health(terminal_enemy_id)
@@ -2117,7 +2117,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	var burst_seat := prototype.player.get_arena_position()
 	var burst_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		burst_seat + Vector2(18.0, 0.0)
 	)
 	var burst_full := prototype.combat.get_enemy_health(burst_id)
@@ -2890,7 +2890,7 @@ func _run() -> void:
 	prototype.overlay.clear_effects()
 	var tether_spot := _find_owned_cell_position(prototype)
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		tether_spot
 	)
 	prototype.combat.apply_entanglement_in_radius(tether_spot, 40.0, 1.0)
@@ -2921,7 +2921,7 @@ func _run() -> void:
 
 	# Without the relic, grazing marks nobody.
 	var grazer_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.GRAZER, green_spot
+		EnemyKinds.Role.GRAZER, green_spot
 	)
 	prototype.combat.enemy_ate_green.emit(
 		grazer_id, 1.0, man_eater.required_consumption_seconds * 2.0
@@ -2950,7 +2950,7 @@ func _run() -> void:
 
 	# An unmarked corpse sprouts nothing; a marked one does, after its delay.
 	var plain_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, green_spot + Vector2(60.0, 0.0)
+		EnemyKinds.Role.HUNTER, green_spot + Vector2(60.0, 0.0)
 	)
 	prototype.combat.damage_enemy_by_id(
 		plain_id, 100000.0, CombatDirector.DeathSource.DEBUG
@@ -2976,7 +2976,7 @@ func _run() -> void:
 	var prey := PackedInt32Array()
 	for prey_index in range(man_eater.maximum_bite_targets + 3):
 		prey.append(prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HEAVY_GRAZER,
+			EnemyKinds.Role.HEAVY_GRAZER,
 			green_spot + Vector2(-20.0 + float(prey_index) * 6.0, 0.0)
 		))
 	var healthy_before := 0
@@ -3008,7 +3008,7 @@ func _run() -> void:
 	var marked_pack := PackedInt32Array()
 	for _pack_index in range(5):
 		var packed_id := prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.GRAZER, green_spot
+			EnemyKinds.Role.GRAZER, green_spot
 		)
 		marked_pack.append(packed_id)
 		prototype.combat.enemy_ate_green.emit(
@@ -3197,7 +3197,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 9999.0
 	var cutting_target := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		prototype.player.get_arena_position() + Vector2(60.0, 0.0)
 	)
 	var cutting_health_before := cutting_target.health
@@ -3230,7 +3230,7 @@ func _run() -> void:
 		prototype.territory_field.step_simulation()
 	var ring_victim := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		prototype.combat.player.get_arena_position()
 			+ Vector2(pruning.get_orbit_radius(), 0.0)
 	)
@@ -3318,7 +3318,7 @@ func _run() -> void:
 		prototype.territory_field.step_simulation()
 	var inside_victim := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		prototype.combat.player.get_arena_position()
 	)
 	var inside_health_before := inside_victim.health
@@ -3757,7 +3757,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	var grazing_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.GRAZER,
+		EnemyKinds.Role.GRAZER,
 		prototype.territory_field.cell_to_local(
 			Vector2(_find_player_frontier_cells(prototype.territory_field, 1)[0])
 		)
@@ -3813,7 +3813,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	var bramble_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		frontier_position
 	)
 	var untangled_tick := prototype.combat.get_bramble_tick_damage(bramble_enemy, 1.0)
@@ -3880,7 +3880,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	var repelled_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.ELITE,
+		EnemyKinds.Role.ELITE,
 		frontier_position
 	)
 	var repulsion_health_before := repelled_enemy.health
@@ -3926,9 +3926,9 @@ func _run() -> void:
 	var repelled_behaviours := true
 	var checked_behaviours := 0
 	for weakening_role in [
-		CombatDirector.EnemyRole.GRAZER,
-		CombatDirector.EnemyRole.CORRUPTOR,
-		CombatDirector.EnemyRole.WARDEN,
+		EnemyKinds.Role.GRAZER,
+		EnemyKinds.Role.CORRUPTOR,
+		EnemyKinds.Role.WARDEN,
 	]:
 		prototype.combat.reset_combat()
 		prototype.combat._cane_remaining = 999.0
@@ -3962,7 +3962,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	var rooted_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.ELITE,
+		EnemyKinds.Role.ELITE,
 		frontier_position
 	)
 	rooted_enemy.entanglement = 0.5
@@ -4320,7 +4320,7 @@ func _run() -> void:
 	var single_tick_frontier := _find_player_frontier(prototype.territory_field)
 	var single_tick_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		single_tick_frontier
 	)
 	# Already inside the hedge, so only the repeating tick is measured.
@@ -4341,7 +4341,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	var crossing_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		single_tick_frontier
 	)
 	var crossing_health_before := crossing_enemy.health
@@ -4360,7 +4360,7 @@ func _run() -> void:
 	prototype.combat._cane_remaining = 999.0
 	var fresh_crossing_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		_find_player_frontier(prototype.territory_field)
 	)
 	var fresh_crossing_health := fresh_crossing_enemy.health
@@ -4383,12 +4383,12 @@ func _run() -> void:
 	prototype.combat.set_enemy_scaling(1.0, 1.0)
 	var small_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		thorn_frontier
 	)
 	var large_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		thorn_frontier
 	)
 	var small_tick := prototype.combat.get_bramble_tick_damage(small_enemy, 1.0)
@@ -4505,12 +4505,12 @@ func _run() -> void:
 
 	prototype.combat.reset_combat()
 	prototype.combat._cane_remaining = 999.0
-	var shared_enemies: Array[CombatDirector.EnemyState] = []
+	var shared_enemies: Array[EnemyState] = []
 	var shared_health_before := PackedFloat32Array()
 	for _shared_index in range(4):
 		var shared_enemy := _spawn_bramble_contact_enemy(
 			prototype,
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			thorn_frontier
 		)
 		shared_enemy.was_on_bramble = true
@@ -4590,7 +4590,7 @@ func _run() -> void:
 	)
 	var briar_enemy := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		briar_ring_position
 	)
 	var briar_enemy_health_before := briar_enemy.health
@@ -4620,7 +4620,7 @@ func _run() -> void:
 		prototype.evolutions.briar_pod_contact_multiplier
 	)
 	var briar_shadow_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.ELITE,
+		EnemyKinds.Role.ELITE,
 		briar_wall_shadow
 	)
 	var briar_shadow_health_before := prototype.combat.get_enemy_health(briar_shadow_enemy_id)
@@ -4688,7 +4688,7 @@ func _run() -> void:
 	var idle_traps := prototype.combat.get_active_briar_trap_count()
 	var trap_victim := _spawn_bramble_contact_enemy(
 		prototype,
-		CombatDirector.EnemyRole.ELITE,
+		EnemyKinds.Role.ELITE,
 		trap_position
 	)
 	var trap_victim_health_before := trap_victim.health
@@ -5263,7 +5263,7 @@ func _run() -> void:
 	prototype._apply_progression_modifiers()
 	var adaptation_jackpot_origin := prototype.player.get_arena_position()
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		adaptation_jackpot_origin + Vector2(96.0, 0.0)
 	)
 	prototype._on_path_jackpot(CloverSlot.Symbol.THISTLE, 1.0)
@@ -5286,7 +5286,7 @@ func _run() -> void:
 	adaptations.reset_adaptations()
 	prototype._apply_progression_modifiers()
 	var vine_jackpot_enemy := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		adaptation_jackpot_origin + Vector2(96.0, 0.0)
 	)
 	var vine_jackpot_health := prototype.combat.get_enemy_health(vine_jackpot_enemy)
@@ -5594,7 +5594,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype._update_hud()
 	var quiet_hostiles_shown := prototype.hostile_label.visible
-	prototype.combat.spawn_pack(CombatDirector.EnemyRole.HUNTER, 3)
+	prototype.combat.spawn_pack(EnemyKinds.Role.HUNTER, 3)
 	prototype._update_hud()
 	var threatened_hostiles_shown := prototype.hostile_label.visible
 	prototype.combat.reset_combat()
@@ -6462,7 +6462,7 @@ func _run() -> void:
 	# A crowd well outside the blast for the child to aim at.
 	for chain_index in range(6):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			bloom_spot + Vector2(150.0 + float(chain_index) * 6.0, 0.0)
 		)
 	var chain_report := CombatDirector.BlastReport.new()
@@ -6526,11 +6526,11 @@ func _run() -> void:
 	prototype.progression._owned_relics[RelicCatalog.Id.PETAL_SCATTER] = 1
 	# One enemy inside the blast radius and two outside it.
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, bloom_spot + Vector2(20.0, 0.0)
+		EnemyKinds.Role.HUNTER, bloom_spot + Vector2(20.0, 0.0)
 	)
 	for petal_index in range(2):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			bloom_spot + Vector2(120.0, float(petal_index) * 30.0)
 		)
 	var petal_report := CombatDirector.BlastReport.new()
@@ -6560,10 +6560,10 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.HOOKTHORN] = 1
 	var shoved_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, bramble_spot
+		EnemyKinds.Role.HUNTER, bramble_spot
 	)
 	var struck_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		bramble_spot + Vector2(bramble.hookthorn_collision_pixels * 0.5, 0.0)
 	)
 	prototype.combat.enemy_repelled.emit(shoved_id, bramble_spot, Vector2.RIGHT)
@@ -6587,10 +6587,10 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.THORNBACK] = 1
 	var thorn_source := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, bramble_spot
+		EnemyKinds.Role.HUNTER, bramble_spot
 	)
 	var thorn_target := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, bramble_spot + Vector2(90.0, 0.0)
+		EnemyKinds.Role.HUNTER, bramble_spot + Vector2(90.0, 0.0)
 	)
 	var thorn_health_before := prototype.combat.get_enemy_health(thorn_target)
 	prototype.combat.enemy_repelled.emit(thorn_source, bramble_spot, Vector2.RIGHT)
@@ -6614,7 +6614,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.COCKLEBUR] = 1
 	var carrier_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, bramble_spot
+		EnemyKinds.Role.HUNTER, bramble_spot
 	)
 	prototype.combat.enemy_left_green.emit(
 		carrier_id, bramble_spot, bramble.cocklebur_minimum_entanglement - 0.1
@@ -6627,7 +6627,7 @@ func _run() -> void:
 	# A carrier spreads Entanglement by touch, and only to bodies it has not
 	# already burred.
 	var burr_target := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		bramble_spot + Vector2(bramble.cocklebur_contact_pixels * 0.5, 0.0)
 	)
 	bramble.advance_relics(1.0 / 60.0)
@@ -6650,23 +6650,23 @@ func _run() -> void:
 	prototype.combat.enemy_died_entangled.emit(
 		bramble_spot,
 		bramble.briar_knot_required_entanglement - 0.1,
-		CombatDirector.EnemyRole.HUNTER
+		EnemyKinds.Role.HUNTER
 	)
 	var knot_under_threshold := bramble.get_knot_count()
 	for knot_index in range(bramble.briar_knot_maximum + 3):
 		prototype.combat.enemy_died_entangled.emit(
 			bramble_spot + Vector2(float(knot_index) * 400.0, 0.0),
 			1.0,
-			CombatDirector.EnemyRole.HUNTER
+			EnemyKinds.Role.HUNTER
 		)
 	var knots_capped := bramble.get_knot_count()
 	# One use: an enemy walking into a Knot springs it and the Knot is gone.
 	bramble.reset_director()
 	prototype.combat.enemy_died_entangled.emit(
-		bramble_spot, 1.0, CombatDirector.EnemyRole.HUNTER
+		bramble_spot, 1.0, EnemyKinds.Role.HUNTER
 	)
 	var caught_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, bramble_spot
+		EnemyKinds.Role.HUNTER, bramble_spot
 	)
 	for _knot_tick in range(30):
 		bramble.advance_relics(1.0 / 60.0)
@@ -6686,16 +6686,16 @@ func _run() -> void:
 	prototype.progression._owned_relics[RelicCatalog.Id.BRIARBALL] = 1
 	for _ball_death in range(bramble.briarball_deaths_required - 1):
 		prototype.combat.enemy_died_entangled.emit(
-			bramble_spot, 1.0, CombatDirector.EnemyRole.HUNTER
+			bramble_spot, 1.0, EnemyKinds.Role.HUNTER
 		)
 	var ball_under_charge := bramble.get_briarball_count()
 	prototype.combat.enemy_died_entangled.emit(
-		bramble_spot, 1.0, CombatDirector.EnemyRole.HUNTER
+		bramble_spot, 1.0, EnemyKinds.Role.HUNTER
 	)
 	var ball_rolled := bramble.get_briarball_count()
 	# A ball damages and tangles what it rolls over.
 	var rolled_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		bramble_spot + Vector2(bramble.briarball_contact_pixels * 0.5, 0.0)
 	)
 	var rolled_health := prototype.combat.get_enemy_health(rolled_id)
@@ -6800,7 +6800,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.SKIMMING_CUT] = 1
 	prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, prune_spot + Vector2(60.0, 0.0)
+		EnemyKinds.Role.HUNTER, prune_spot + Vector2(60.0, 0.0)
 	)
 	var skimmer := pruning_relics._get_inactive_cutting()
 	skimmer.position = prune_spot
@@ -6831,7 +6831,7 @@ func _run() -> void:
 	prototype.progression._owned_relics[RelicCatalog.Id.WATERSPROUTS] = 1
 	for sprout_index in range(8):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			prune_spot + Vector2(40.0 + float(sprout_index) * 12.0, 0.0)
 		)
 	var parent := pruning_relics._get_inactive_cutting()
@@ -6933,7 +6933,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.PINCUSHION] = 1
 	var pincushion_victim := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, thistle_spot
+		EnemyKinds.Role.HUNTER, thistle_spot
 	)
 	var ineligible_thorn := AdaptationDirector.ThornState.new()
 	ineligible_thorn.source_tag = AdaptationDirector.ThornSource.PHYLLOTAXIS
@@ -7014,7 +7014,7 @@ func _run() -> void:
 	steered.last_direction = Vector2.RIGHT
 	steered.velocity = Vector2.RIGHT * 300.0
 	var steer_victim := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, fruit_spot + Vector2(40.0, 90.0)
+		EnemyKinds.Role.HUNTER, fruit_spot + Vector2(40.0, 90.0)
 	)
 	adaptation._try_stem_steering(steered, -1)
 	var steer_turned := not steered.last_direction.is_equal_approx(Vector2.RIGHT)
@@ -7060,7 +7060,7 @@ func _run() -> void:
 	prototype.progression._owned_relics[RelicCatalog.Id.FRUIT_SALAD] = 1
 	adaptation._fruit_salad_marks.clear()
 	var salad_victim := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HEAVY_GRAZER, fruit_spot
+		EnemyKinds.Role.HEAVY_GRAZER, fruit_spot
 	)
 	var first_fruit := AdaptationDirector.FruitState.new()
 	first_fruit.release_id = 7
@@ -7094,11 +7094,11 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	for newton_index in range(12):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			fruit_spot + Vector2(float(newton_index) * 18.0, 0.0)
 		)
 	var newton_boss_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS, fruit_spot + Vector2(0.0, 60.0)
+		EnemyKinds.Role.BOSS, fruit_spot + Vector2(0.0, 60.0)
 	)
 	var thrower := AdaptationDirector.FruitState.new()
 	thrower.position = fruit_spot
@@ -7607,7 +7607,7 @@ func _run() -> void:
 	vine.reset_adaptations()
 	prototype.progression._owned_relics[RelicCatalog.Id.GIRDLING] = 1
 	var girdled_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HEAVY_GRAZER, vine_spot + Vector2(40.0, 0.0)
+		EnemyKinds.Role.HEAVY_GRAZER, vine_spot + Vector2(40.0, 0.0)
 	)
 	vine._natural_sweep_index = 1
 	vine._note_vine_apical_hit(girdled_id, 30.0)
@@ -7644,7 +7644,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.RUNNER] = 1
 	var runner_victim := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER, vine_spot + Vector2(30.0, 0.0)
+		EnemyKinds.Role.HUNTER, vine_spot + Vector2(30.0, 0.0)
 	)
 	vine._runners.append([vine_spot, 0.0, 25.0])
 	var runner_health := prototype.combat.get_enemy_health(runner_victim)
@@ -7662,10 +7662,10 @@ func _run() -> void:
 	prototype.progression._owned_relics[RelicCatalog.Id.WHIPLASH] = 1
 	vine._current_sweep_reach = 60.0
 	var beyond_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HEAVY_GRAZER, vine_spot + Vector2(90.0, 0.0)
+		EnemyKinds.Role.HEAVY_GRAZER, vine_spot + Vector2(90.0, 0.0)
 	)
 	var already_hit_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HEAVY_GRAZER, vine_spot + Vector2(100.0, 0.0)
+		EnemyKinds.Role.HEAVY_GRAZER, vine_spot + Vector2(100.0, 0.0)
 	)
 	vine._cane_sweep_hits.append(already_hit_id)
 	var beyond_health := prototype.combat.get_enemy_health(beyond_id)
@@ -7686,7 +7686,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.progression._owned_relics[RelicCatalog.Id.CLIMBER] = 1
 	var climber_victim := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HEAVY_GRAZER, vine_spot + Vector2(20.0, 0.0)
+		EnemyKinds.Role.HEAVY_GRAZER, vine_spot + Vector2(20.0, 0.0)
 	)
 	var climber_health := prototype.combat.get_enemy_health(climber_victim)
 	vine._sweep_bend_index = -1
@@ -7839,7 +7839,7 @@ func _run() -> void:
 	var snare_ids := PackedInt32Array()
 	for snare_index in range(4):
 		snare_ids.append(prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			lone_spot + Vector2.from_angle(float(snare_index) * 1.2) * 30.0
 		))
 	prototype.combat.enemy_ensnared.emit(lone_spot)
@@ -8002,7 +8002,7 @@ func _run() -> void:
 	# under test is the relic, so the pool is restocked first.
 	prototype.progression._owned_relics.fill(0)
 	var boss_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		Vector2(760.0, 330.0)
 	)
 	prototype.combat.debug_damage_enemy(boss_id, 100000.0)
@@ -8023,7 +8023,7 @@ func _run() -> void:
 	var chain_center := Vector2(735.0, 350.0)
 	for index in range(prototype.evolutions.secondary_kills_per_seed):
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			chain_center + Vector2(float(index) * 2.0, 0.0)
 		)
 	var explosion_count_before_bloom := prototype.combat.get_plant_explosion_sfx_play_count()
@@ -8058,11 +8058,11 @@ func _run() -> void:
 		"combat occlusion fixture has an open target and a target behind basalt"
 	)
 	var open_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		wall_open_side
 	)
 	var shadow_enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		wall_shadow
 	)
 	prototype.combat.damage_enemies_in_radius(
@@ -8083,7 +8083,7 @@ func _run() -> void:
 	prototype.debug_advance_time(prototype.wave_director.elite_time_seconds)
 	_check(
 		prototype.combat.get_active_enemy_count_by_role(
-			CombatDirector.EnemyRole.ELITE
+			EnemyKinds.Role.ELITE
 		) == 1,
 		"the shortened timeline introduces its elite milestone"
 	)
@@ -8113,22 +8113,22 @@ func _run() -> void:
 		[
 			prototype.wave_director.saboteur_intro_seconds,
 			prototype.wave_director.saboteur_pack_cycle,
-			CombatDirector.EnemyRole.SABOTEUR,
+			EnemyKinds.Role.SABOTEUR,
 		],
 		[
 			prototype.wave_director.corruptor_intro_seconds,
 			prototype.wave_director.corruptor_pack_cycle,
-			CombatDirector.EnemyRole.CORRUPTOR,
+			EnemyKinds.Role.CORRUPTOR,
 		],
 		[
 			prototype.wave_director.colonizer_intro_seconds,
 			prototype.wave_director.colonizer_pack_cycle,
-			CombatDirector.EnemyRole.COLONIZER,
+			EnemyKinds.Role.COLONIZER,
 		],
 		[
 			prototype.wave_director.warden_intro_seconds,
 			prototype.wave_director.warden_pack_cycle,
-			CombatDirector.EnemyRole.WARDEN,
+			EnemyKinds.Role.WARDEN,
 		],
 	]
 	for specialist_entry in specialist_schedule:
@@ -8137,7 +8137,7 @@ func _run() -> void:
 		specialist_schedule_is_authored = (
 			specialist_schedule_is_authored
 			and prototype.wave_director._select_regular_role(
-				CombatDirector.EnemyRole.HUNTER
+				EnemyKinds.Role.HUNTER
 			) == specialist_entry[2]
 		)
 	_check(
@@ -8153,8 +8153,8 @@ func _run() -> void:
 	waves._spawn_pack_sequence = waves.corruptor_pack_cycle - 1
 	waves._variant_sequence = maxi(2, int(round(1.0 / waves.siege_corruptor_share))) - 1
 	var siege_scheduled := waves._select_regular_role(
-		CombatDirector.EnemyRole.HUNTER
-	) == CombatDirector.EnemyRole.SIEGE_CORRUPTOR
+		EnemyKinds.Role.HUNTER
+	) == EnemyKinds.Role.SIEGE_CORRUPTOR
 	_check(
 		siege_scheduled
 		and waves.heavy_grazer_intro_seconds > waves.saboteur_intro_seconds
@@ -8167,7 +8167,7 @@ func _run() -> void:
 	# Bramble rather than immune to being moved.
 	prototype.combat.reset_combat()
 	var heavy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HEAVY_GRAZER
+		EnemyKinds.Role.HEAVY_GRAZER
 	)
 	var heavy := prototype.combat._enemies[0]
 	for candidate in prototype.combat._enemies:
@@ -8177,7 +8177,7 @@ func _run() -> void:
 	prototype.combat._begin_knockback(heavy, Vector2.RIGHT, 60.0)
 	var heavy_shove := heavy.knockback_speed
 	prototype.combat.reset_combat()
-	var light_id := prototype.combat.spawn_enemy(CombatDirector.EnemyRole.GRAZER)
+	var light_id := prototype.combat.spawn_enemy(EnemyKinds.Role.GRAZER)
 	var light := prototype.combat._enemies[0]
 	for candidate in prototype.combat._enemies:
 		if candidate.active and candidate.id == light_id:
@@ -8197,7 +8197,7 @@ func _run() -> void:
 	# condition is genuinely "if ignored" rather than a timer.
 	prototype.combat.reset_combat()
 	var siege_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.SIEGE_CORRUPTOR
+		EnemyKinds.Role.SIEGE_CORRUPTOR
 	)
 	var siege := prototype.combat._enemies[0]
 	for candidate in prototype.combat._enemies:
@@ -8225,7 +8225,7 @@ func _run() -> void:
 	prototype.combat.reset_combat()
 	prototype.combat.set_elite_modifier_pressure(0.0)
 	var unmodified := prototype.combat._roll_elite_modifier(
-		CombatDirector.EnemyRole.ELITE
+		EnemyKinds.Role.ELITE
 	)
 	# Read at the final invasion, which is where the escalation curve tops out.
 	waves.elapsed_seconds = waves.final_invasion_time_seconds
@@ -8233,14 +8233,14 @@ func _run() -> void:
 	var modified_rolls := 0
 	for _roll in range(40):
 		if prototype.combat._roll_elite_modifier(
-			CombatDirector.EnemyRole.ELITE
-		) != CombatDirector.EliteModifier.NONE:
+			EnemyKinds.Role.ELITE
+		) != EnemyKinds.EliteModifier.NONE:
 			modified_rolls += 1
 	var hunter_never_modified := prototype.combat._roll_elite_modifier(
-		CombatDirector.EnemyRole.HUNTER
-	) == CombatDirector.EliteModifier.NONE
+		EnemyKinds.Role.HUNTER
+	) == EnemyKinds.EliteModifier.NONE
 	_check(
-		unmodified == CombatDirector.EliteModifier.NONE
+		unmodified == EnemyKinds.EliteModifier.NONE
 		and modified_rolls > 20
 		and hunter_never_modified
 		and is_equal_approx(waves.get_escalation_progress(), 1.0),
@@ -8251,10 +8251,10 @@ func _run() -> void:
 	# Unstoppable: cannot be held, can still be slowed.
 	prototype.combat.reset_combat()
 	prototype.combat.debug_force_elite_modifier(
-		CombatDirector.EliteModifier.UNSTOPPABLE
+		EnemyKinds.EliteModifier.UNSTOPPABLE
 	)
 	var unstoppable_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.ELITE
+		EnemyKinds.Role.ELITE
 	)
 	var unstoppable := prototype.combat._enemies[0]
 	for candidate in prototype.combat._enemies:
@@ -8264,7 +8264,7 @@ func _run() -> void:
 	unstoppable.movement_speed_multiplier = 0.4
 	prototype.combat._advance_elite_modifier(unstoppable, 1.0 / 60.0)
 	_check(
-		unstoppable.elite_modifier == CombatDirector.EliteModifier.UNSTOPPABLE
+		unstoppable.elite_modifier == EnemyKinds.EliteModifier.UNSTOPPABLE
 		and is_equal_approx(unstoppable.bramble_ensnare_remaining, 0.0)
 		and is_equal_approx(unstoppable.movement_speed_multiplier, 0.4),
 		"an Unstoppable elite breaks a hold and stays slowed"
@@ -8274,9 +8274,9 @@ func _run() -> void:
 	# deliberately not enough, which is what makes it a change to a build.
 	prototype.combat.reset_combat()
 	prototype.combat.debug_force_elite_modifier(
-		CombatDirector.EliteModifier.REGENERATIVE
+		EnemyKinds.EliteModifier.REGENERATIVE
 	)
-	var regen_id := prototype.combat.spawn_enemy(CombatDirector.EnemyRole.ELITE)
+	var regen_id := prototype.combat.spawn_enemy(EnemyKinds.Role.ELITE)
 	var regen := prototype.combat._enemies[0]
 	for candidate in prototype.combat._enemies:
 		if candidate.active and candidate.id == regen_id:
@@ -8314,15 +8314,15 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	_grow_test_ecosystem(prototype)
 	prototype.combat.debug_force_elite_modifier(
-		CombatDirector.EliteModifier.VOLATILE
+		EnemyKinds.EliteModifier.VOLATILE
 	)
-	var volatile_id := prototype.combat.spawn_enemy(CombatDirector.EnemyRole.ELITE)
+	var volatile_id := prototype.combat.spawn_enemy(EnemyKinds.Role.ELITE)
 	var volatile := prototype.combat._enemies[0]
 	for candidate in prototype.combat._enemies:
 		if candidate.active and candidate.id == volatile_id:
 			volatile = candidate
 	var bystander_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.HUNTER,
+		EnemyKinds.Role.HUNTER,
 		volatile.position + Vector2(10.0, 0.0)
 	)
 	var bystander := prototype.combat._enemies[0]
@@ -8358,7 +8358,7 @@ func _run() -> void:
 	)
 	# Leave a hostile standing as the clock runs out: the timeline ending must not
 	# hand the player a win while anything is still alive.
-	prototype.combat.spawn_enemy(CombatDirector.EnemyRole.HUNTER)
+	prototype.combat.spawn_enemy(EnemyKinds.Role.HUNTER)
 	prototype.advance_run(
 		prototype.wave_director.run_duration_seconds
 		- prototype.wave_director.cleanup_time_seconds
@@ -8589,7 +8589,7 @@ func _spawn_bramble_contact_enemy(
 	prototype: RunRoot,
 	role: int,
 	local_position: Vector2
-) -> CombatDirector.EnemyState:
+) -> EnemyState:
 	var enemy_id := prototype.combat.spawn_enemy(role, local_position)
 	for enemy in prototype.combat._enemies:
 		if enemy.id == enemy_id:

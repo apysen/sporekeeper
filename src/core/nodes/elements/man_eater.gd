@@ -182,9 +182,9 @@ func _bite(site: Vector2) -> void:
 			)
 		var damage := bite_damage
 		match combat.get_enemy_role(enemy_id):
-			CombatDirector.EnemyRole.BOSS:
+			EnemyKinds.Role.BOSS:
 				damage *= boss_damage_share
-			CombatDirector.EnemyRole.ELITE:
+			EnemyKinds.Role.ELITE:
 				damage *= elite_damage_share
 		# Relic damage: a Maw's kill may feed generic kill relics, and can never
 		# mark anybody, because marking only comes from eating Green.

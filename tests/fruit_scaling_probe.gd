@@ -35,15 +35,15 @@ const FRUIT_RELICS: Array[int] = [
 	RelicCatalog.Id.BANK_SHOT,
 ]
 const STRESS_ROLES: Array[int] = [
-	CombatDirector.EnemyRole.HUNTER,
-	CombatDirector.EnemyRole.GRAZER,
-	CombatDirector.EnemyRole.HEAVY_GRAZER,
-	CombatDirector.EnemyRole.RUSHER,
-	CombatDirector.EnemyRole.SABOTEUR,
-	CombatDirector.EnemyRole.CORRUPTOR,
-	CombatDirector.EnemyRole.COLONIZER,
-	CombatDirector.EnemyRole.WARDEN,
-	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	EnemyKinds.Role.HUNTER,
+	EnemyKinds.Role.GRAZER,
+	EnemyKinds.Role.HEAVY_GRAZER,
+	EnemyKinds.Role.RUSHER,
+	EnemyKinds.Role.SABOTEUR,
+	EnemyKinds.Role.CORRUPTOR,
+	EnemyKinds.Role.COLONIZER,
+	EnemyKinds.Role.WARDEN,
+	EnemyKinds.Role.SIEGE_CORRUPTOR,
 ]
 
 var _rows: Array[String] = []
@@ -155,7 +155,7 @@ func _run_case(
 	for index in range(prototype.combat.maximum_active_enemies):
 		var ring := 30.0 + float(index % 7) * 22.0
 		prototype.combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			origin + Vector2.from_angle(float(index) * 2.39996) * ring
 		)
 	for enemy in prototype.combat._enemies:

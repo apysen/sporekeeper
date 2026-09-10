@@ -27,7 +27,7 @@ func _run() -> void:
 	combat.reset_combat()
 	for i in range(120):
 		combat.spawn_enemy(
-			CombatDirector.EnemyRole.HUNTER,
+			EnemyKinds.Role.HUNTER,
 			Vector2(300.0, 280.0) + Vector2.from_angle(float(i)) * (30.0 + float(i % 6) * 14.0)
 		)
 	combat.queue_redraw()

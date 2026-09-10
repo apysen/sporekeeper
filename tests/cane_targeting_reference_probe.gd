@@ -264,7 +264,7 @@ func _place_enemies(
 				radius = random.randf_range(10.0, maxf(24.0, reach * 1.4))
 		var position := origin + Vector2.from_angle(angle) * radius
 		combat.spawn_enemy(
-			CombatDirector.EnemyRole.GRAZER if index % 2 == 0
-			else CombatDirector.EnemyRole.RUSHER,
+			EnemyKinds.Role.GRAZER if index % 2 == 0
+			else EnemyKinds.Role.RUSHER,
 			position
 		)

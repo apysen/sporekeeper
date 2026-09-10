@@ -24,15 +24,15 @@ const TARGET_FRAME_MS := 16.67
 ## expensive ones. Warden and Siege Corruptor matter most: they are excluded from
 ## the baked enemy art and always draw in full detail.
 const STRESS_ROLES := [
-	CombatDirector.EnemyRole.HUNTER,
-	CombatDirector.EnemyRole.GRAZER,
-	CombatDirector.EnemyRole.HEAVY_GRAZER,
-	CombatDirector.EnemyRole.RUSHER,
-	CombatDirector.EnemyRole.SABOTEUR,
-	CombatDirector.EnemyRole.CORRUPTOR,
-	CombatDirector.EnemyRole.COLONIZER,
-	CombatDirector.EnemyRole.WARDEN,
-	CombatDirector.EnemyRole.SIEGE_CORRUPTOR,
+	EnemyKinds.Role.HUNTER,
+	EnemyKinds.Role.GRAZER,
+	EnemyKinds.Role.HEAVY_GRAZER,
+	EnemyKinds.Role.RUSHER,
+	EnemyKinds.Role.SABOTEUR,
+	EnemyKinds.Role.CORRUPTOR,
+	EnemyKinds.Role.COLONIZER,
+	EnemyKinds.Role.WARDEN,
+	EnemyKinds.Role.SIEGE_CORRUPTOR,
 ]
 
 ## Fourteen relics -- the top of the document's 10-14 per run -- drawn from the

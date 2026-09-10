@@ -66,7 +66,7 @@ func _test_cutting_stops_at_ridge(prototype: RunRoot) -> void:
 	prototype.combat.reset_combat()
 	prototype.combat._cane_remaining = 9999.0
 	var enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		RIDGE_RIGHT
 	)
 	var health_before := prototype.combat.get_enemy_health(enemy_id)
@@ -94,7 +94,7 @@ func _test_vine_wraps_around_ridge(prototype: RunRoot) -> void:
 	prototype.player.global_position = prototype.territory_field.to_global(RIDGE_LEFT)
 	prototype.combat._cane_remaining = 9999.0
 	var enemy_id := prototype.combat.spawn_enemy(
-		CombatDirector.EnemyRole.BOSS,
+		EnemyKinds.Role.BOSS,
 		RIDGE_RIGHT
 	)
 	var route := prototype.territory_field.get_growth_path(RIDGE_LEFT, RIDGE_RIGHT)

@@ -21,30 +21,32 @@ const CAMPAIGN_DURATION_SECONDS := 1500.0
 ## Reinforcements stop here so the final quarter-minute is fought, not spawned into.
 const FINAL_REINFORCEMENT_CUTOFF_SECONDS := 1485.0
 
-## Enemy role ids, mirrored from CombatDirector.EnemyRole. Duplicated as
-## constants so the authored table below reads as a table rather than as a column
-## of fully qualified enum paths, and so this model never depends on a node script.
-const ROLE_HUNTER := 0
-const ROLE_GRAZER := 1
-const ROLE_ELITE := 2
-const ROLE_BOSS := 3
-const ROLE_SABOTEUR := 4
-const ROLE_CORRUPTOR := 5
-const ROLE_COLONIZER := 6
-const ROLE_WARDEN := 7
-const ROLE_COLONY_CORE := 8
-const ROLE_HEAVY_GRAZER := 9
-const ROLE_RUSHER := 10
-const ROLE_SIEGE_CORRUPTOR := 11
+## Short names for the roles, so the authored table below reads as a table rather
+## than as a column of fully qualified enum paths. These were hand-copied integers
+## while the enum lived on `CombatDirector` and a model could not name a node; now
+## that the vocabulary is a model itself, they are the enum, and the table can no
+## longer drift from it.
+const ROLE_HUNTER := EnemyKinds.Role.HUNTER
+const ROLE_GRAZER := EnemyKinds.Role.GRAZER
+const ROLE_ELITE := EnemyKinds.Role.ELITE
+const ROLE_BOSS := EnemyKinds.Role.BOSS
+const ROLE_SABOTEUR := EnemyKinds.Role.SABOTEUR
+const ROLE_CORRUPTOR := EnemyKinds.Role.CORRUPTOR
+const ROLE_COLONIZER := EnemyKinds.Role.COLONIZER
+const ROLE_WARDEN := EnemyKinds.Role.WARDEN
+const ROLE_COLONY_CORE := EnemyKinds.Role.COLONY_CORE
+const ROLE_HEAVY_GRAZER := EnemyKinds.Role.HEAVY_GRAZER
+const ROLE_RUSHER := EnemyKinds.Role.RUSHER
+const ROLE_SIEGE_CORRUPTOR := EnemyKinds.Role.SIEGE_CORRUPTOR
 
-## Modifier ids, mirrored from CombatDirector.EliteModifier.
-const MODIFIER_NONE := 0
-const MODIFIER_UNSTOPPABLE := 1
-const MODIFIER_BLIGHTED := 2
-const MODIFIER_RAVENOUS := 3
-const MODIFIER_REGENERATIVE := 4
-const MODIFIER_DISRUPTIVE := 5
-const MODIFIER_VOLATILE := 6
+## The same, for the rule changes an elite can carry.
+const MODIFIER_NONE := EnemyKinds.EliteModifier.NONE
+const MODIFIER_UNSTOPPABLE := EnemyKinds.EliteModifier.UNSTOPPABLE
+const MODIFIER_BLIGHTED := EnemyKinds.EliteModifier.BLIGHTED
+const MODIFIER_RAVENOUS := EnemyKinds.EliteModifier.RAVENOUS
+const MODIFIER_REGENERATIVE := EnemyKinds.EliteModifier.REGENERATIVE
+const MODIFIER_DISRUPTIVE := EnemyKinds.EliteModifier.DISRUPTIVE
+const MODIFIER_VOLATILE := EnemyKinds.EliteModifier.VOLATILE
 
 ## Wave-25 end multipliers. Wave 25 is the top of each smooth curve and applies no
 ## extra final-wave spike: the last wave is brutal because everything has matured
