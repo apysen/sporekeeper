@@ -674,12 +674,16 @@ func _run() -> void:
 		1.0,
 		visible_reach_scale
 	)
+	# Each body is measured against its own maximum, never against the authored
+	# profile. By this point in the run the wave curve is live, so a Hunter spawns
+	# with 28.64 health where the profile says 28.0 - and an untouched enemy compared
+	# against the profile reads as damaged, which is the opposite of what is meant.
 	_check(
 		prototype.combat.get_enemy_health(visible_target_id)
-		< prototype.combat.hunter_profile.maximum_health
+		< prototype.combat.get_enemy_maximum_health(visible_target_id)
 		and is_equal_approx(
 			prototype.combat.get_enemy_health(blocked_target_id),
-			prototype.combat.hunter_profile.maximum_health
+			prototype.combat.get_enemy_maximum_health(blocked_target_id)
 		),
 		"Cane sectors damage an unobstructed enemy but never pass through basalt"
 	)
@@ -703,12 +707,12 @@ func _run() -> void:
 	_check(
 		sector_hits == 2
 		and prototype.combat.get_enemy_health(upper_enemy_id)
-		< prototype.combat.hunter_profile.maximum_health
+		< prototype.combat.get_enemy_maximum_health(upper_enemy_id)
 		and prototype.combat.get_enemy_health(lower_enemy_id)
-		< prototype.combat.hunter_profile.maximum_health
+		< prototype.combat.get_enemy_maximum_health(lower_enemy_id)
 		and is_equal_approx(
 			prototype.combat.get_enemy_health(beyond_reach_id),
-			prototype.combat.hunter_profile.maximum_health
+			prototype.combat.get_enemy_maximum_health(beyond_reach_id)
 		)
 		and prototype.combat.get_active_projectile_count() == 0,
 		"one Cane sector hits every in-reach enemy once and allocates no projectile"
@@ -1807,10 +1811,10 @@ func _run() -> void:
 	prototype.combat.simulate_step(0.0)
 	var base_follows_facing := (
 		prototype.combat.get_enemy_health(base_right_id)
-		< prototype.combat.hunter_profile.maximum_health
+		< prototype.combat.get_enemy_maximum_health(base_right_id)
 		and is_equal_approx(
 			prototype.combat.get_enemy_health(base_up_id),
-			prototype.combat.hunter_profile.maximum_health
+			prototype.combat.get_enemy_maximum_health(base_up_id)
 		)
 	)
 	prototype.combat.reset_combat()
@@ -1840,14 +1844,14 @@ func _run() -> void:
 		vine_cluster_hit = (
 			vine_cluster_hit
 			and prototype.combat.get_enemy_health(vine_enemy_id)
-			< prototype.combat.hunter_profile.maximum_health
+			< prototype.combat.get_enemy_maximum_health(vine_enemy_id)
 		)
 	_check(
 		base_follows_facing
 		and vine_cluster_hit
 		and is_equal_approx(
 			prototype.combat.get_enemy_health(vine_down_id),
-			prototype.combat.hunter_profile.maximum_health
+			prototype.combat.get_enemy_maximum_health(vine_down_id)
 		)
 		and absf(prototype.combat._cane_visual_facing.angle_to(Vector2.UP)) < 0.22
 		and prototype.combat.get_active_projectile_count() == 0,
@@ -3430,7 +3434,12 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	_grow_test_ecosystem(prototype)
 	pruning.reset_director()
-	var release_home := _stand_on_owned_ground(prototype)
+	# The whole ring is about to be measured, so it has to be somewhere the whole ring
+	# exists: clear of the field edge by more than the orbit radius it will spin at.
+	var release_home := _find_owned_cell_with_clearance(
+		prototype, pruning.get_orbit_radius() + 30.0
+	)
+	prototype.player.global_position = prototype.territory_field.to_global(release_home)
 	# Build only until the ring is loaded. Grazing on burned ground drops the ring on
 	# its own, so a fixture that keeps going past a full ring measures nothing.
 	for regather_step in range(600):
@@ -3441,7 +3450,10 @@ func _run() -> void:
 		prototype.territory_field.step_simulation()
 	var rings_before := pruning.get_rings_released()
 	var orbit_before_release := pruning.get_orbit_count()
-	var open_ground := _find_open_ground_position(prototype)
+	# Step off the Green, do not teleport off it. The ring orbits the player, so a
+	# jump to the far side of the arena releases it from wherever the player used to
+	# be and most of the spikes are culled before anything can look at them.
+	var open_ground := _find_open_ground_near(prototype, release_home)
 	prototype.player.global_position = prototype.territory_field.to_global(open_ground)
 	pruning.advance(1.0 / 60.0)
 	_check(
@@ -8458,6 +8470,30 @@ func _find_open_ground_position(prototype: RunRoot) -> Vector2:
 	return Vector2(-1.0, -1.0)
 
 
+## The nearest unowned ground to a given point, rather than the first one the scan
+## happens to reach. Stepping off your own Green is a step: a fixture that teleports
+## the player across the arena leaves whatever was orbiting them stranded behind,
+## which is not the situation any of this is designed for.
+func _find_open_ground_near(prototype: RunRoot, origin: Vector2) -> Vector2:
+	var field := prototype.territory_field
+	var width := field.tuning.field_size.x
+	var best := Vector2(-1.0, -1.0)
+	var best_distance := INF
+	for y in range(3, field.tuning.field_size.y - 3):
+		for x in range(3, width - 3):
+			var index := y * width + x
+			if field._claimable_mask[index] == 0:
+				continue
+			if field._control[index] > field.tuning.ownership_threshold:
+				continue
+			var candidate := field.cell_to_local(Vector2(x, y))
+			var distance := origin.distance_squared_to(candidate)
+			if distance < best_distance:
+				best_distance = distance
+				best = candidate
+	return best
+
+
 func _thorn_all_owned_ground(prototype: RunRoot) -> void:
 	# Thorns on every owned cell, not only the frontier, so a cycle that eats the
 	# interior still tears some out and Deadfall has something to convert.
@@ -8502,6 +8538,30 @@ func _stand_on_owned_ground(prototype: RunRoot) -> Vector2:
 	var spot := _find_owned_cell_position(prototype)
 	prototype.player.global_position = prototype.territory_field.to_global(spot)
 	return spot
+
+
+## Owned ground with room around it for a ring to orbit in. `_find_owned_cell_position`
+## scans from the corner and returns the first owned cell it meets, which puts the
+## player about 30px from the field edge - inside the 44-70px orbit radius, so a third
+## of the ring sits outside the arena and is culled the moment it launches. Anything
+## measuring the whole ring has to stand where the whole ring fits.
+func _find_owned_cell_with_clearance(prototype: RunRoot, clearance: float) -> Vector2:
+	var field := prototype.territory_field
+	var width := field.tuning.field_size.x
+	var extent := field.cell_to_local(Vector2(width, field.tuning.field_size.y))
+	for y in range(3, field.tuning.field_size.y - 3):
+		for x in range(3, width - 3):
+			if field._control[y * width + x] <= 0.5:
+				continue
+			var candidate := field.cell_to_local(Vector2(x, y))
+			if (
+				candidate.x >= clearance
+				and candidate.y >= clearance
+				and candidate.x <= extent.x - clearance
+				and candidate.y <= extent.y - clearance
+			):
+				return candidate
+	return Vector2(-1.0, -1.0)
 
 
 func _find_owned_cell_position(prototype: RunRoot) -> Vector2:
