@@ -9,7 +9,7 @@ extends SceneTree
 ## spawns: the 130-enemy cap and the 124-actor reinforcement reserve reject many
 ## late requests, which is exactly the number a late-wave tuning question is about.
 ##
-## Run: godot --headless --script tests/campaign_pressure_probe.gd
+## Run: godot --headless --script tests/integration/campaign_pressure_probe.gd
 
 func _initialize() -> void:
 	call_deferred("_run")

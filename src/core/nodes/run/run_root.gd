@@ -253,7 +253,6 @@ enum QueuedReward {
 ## nothing is printed as typed, which is how a misspelt name shows itself.
 @export var wave_grace_template := "WAVE {wave} IN {seconds}s"
 @export var status_complete_text := "CLEAR THE FIELD"
-@export var status_detailed_template := "MASS {mass}  PUSH {push}  HOLD {hold}"
 @export_multiline var metabolism_complete_template := (
 	"LIFETIME BIOMASS {lifetime}
 FULLY DEVELOPED"
@@ -1910,10 +1909,6 @@ func _update_hud() -> void:
 		# The last wave has been spawned: what remains between the player and victory
 		# is the hostiles still standing.
 		status_template = status_complete_text
-	elif display_settings.is_hud_detailed():
-		# Detailed reveals more of the same line rather than adding a second one: the
-		# doc rules out a separate design, so what changes is how much this says.
-		status_template = status_detailed_template
 	# Absence communicates zero: the hostile count is a warning, so it appears only
 	# while there is something to warn about.
 	var hostiles := combat.get_active_enemy_count()

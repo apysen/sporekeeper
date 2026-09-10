@@ -37,11 +37,6 @@ enum OptionId {
 	DAMAGE_NUMBERS,
 	## How hard the Gardener is marked out against a full battlefield.
 	PLAYER_HIGHLIGHT,
-	## Interface scale, as a preset percentage.
-	UI_SCALE,
-	## Whether the HUD shows the compact set or the fuller one. Same layout either
-	## way, with more revealed: the doc rules out a second design.
-	HUD_DETAIL,
 }
 
 enum FriendlyEffects {
@@ -74,15 +69,10 @@ enum PlayerHighlight {
 	STRONG,
 }
 
-enum HudDetail {
-	COMPACT,
-	DETAILED,
-}
-
 @export_group("Defaults")
 ## Starting index for each option, in OptionId order. Authored rather than hard
 ## coded so a playtest can ship with a different default without a code change.
-@export var default_choices := PackedInt32Array([0, 0, 0, 0, 1, 2, 0])
+@export var default_choices := PackedInt32Array([0, 0, 0, 0, 1])
 
 @export_group("Friendly Effects")
 ## Multiplier applied to friendly effect alpha and particle counts at each level.
@@ -227,10 +217,6 @@ static func get_choice_count(option_id: int) -> int:
 			return DamageNumbers.size()
 		OptionId.PLAYER_HIGHLIGHT:
 			return PlayerHighlight.size()
-		OptionId.UI_SCALE:
-			return 5
-		OptionId.HUD_DETAIL:
-			return HudDetail.size()
 	return 0
 
 
@@ -246,10 +232,6 @@ static func get_option_name(option_id: int) -> String:
 			return "DAMAGE NUMBERS"
 		OptionId.PLAYER_HIGHLIGHT:
 			return "PLAYER HIGHLIGHT"
-		OptionId.UI_SCALE:
-			return "UI SCALE"
-		OptionId.HUD_DETAIL:
-			return "HUD DETAIL"
 	return ""
 
 
@@ -265,10 +247,6 @@ static func get_choice_name(option_id: int, choice: int) -> String:
 			return ["FULL", "IMPORTANT ONLY", "OFF"][clampi(choice, 0, 2)]
 		OptionId.PLAYER_HIGHLIGHT:
 			return ["OFF", "OUTLINE", "STRONG"][clampi(choice, 0, 2)]
-		OptionId.UI_SCALE:
-			return ["80%", "90%", "100%", "110%", "125%"][clampi(choice, 0, 4)]
-		OptionId.HUD_DETAIL:
-			return ["COMPACT", "DETAILED"][clampi(choice, 0, 1)]
 	return ""
 
 
@@ -302,14 +280,6 @@ static func get_option_description(option_id: int) -> String:
 			return (
 				"How hard the Gardener is marked out. Worth raising once splatter, "
 				+ "vines, and an orbiting ring are all on screen at once."
-			)
-		OptionId.UI_SCALE:
-			return "Scales the whole interface. The battlefield is not scaled with it."
-		OptionId.HUD_DETAIL:
-			return (
-				"Detailed reveals more of the same layout - cooldown values, "
-				+ "subsystem ranks, relic trigger progress - rather than switching "
-				+ "to a second design."
 			)
 	return ""
 
@@ -358,17 +328,6 @@ static func get_row_values(option_id: int, choice: int) -> Dictionary:
 		"value": get_choice_name(option_id, choice),
 		"detail": get_option_description(option_id),
 	}
-
-
-func get_ui_scale() -> float:
-	# UI scale is intentionally fixed: the HUD is authored around the available
-	# screen space and cannot be safely shrunk without harming readability.
-	return 1.0
-
-
-func is_hud_detailed() -> bool:
-	# Compact is now the single supported HUD presentation.
-	return false
 
 
 func should_show_damage_number(is_important: bool) -> bool:

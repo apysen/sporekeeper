@@ -18,8 +18,8 @@ extends SceneTree
 ## read next to the headless table, not a pass/fail to be wired into CI.
 ##
 ## Needs a display. Run without --headless:
-##   godot --path . --script tests/rendered_density_probe.gd
-##   godot --path . --script tests/rendered_density_probe.gd -- --densities=130,200
+##   godot --path . --script tests/performance/rendered_density_probe.gd
+##   godot --path . --script tests/performance/rendered_density_probe.gd -- --densities=130,200
 
 const SAMPLE_FRAMES := 300
 ## Frames discarded before sampling, for the same reason the headless ladder does

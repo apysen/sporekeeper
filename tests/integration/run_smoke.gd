@@ -68,9 +68,12 @@ func _run() -> void:
 	# the Button's own texture style is replaced by a StyleBoxEmpty, so a Button still
 	# holding a StyleBoxTexture is one the border never reached - which is the actual
 	# failure, and is checked as such. A Button drawing the engine's own StyleBoxFlat
-	# has nothing to slice and correctly has no border: the glossary builds thirteen of
-	# those at runtime, and demanding one of them was this check asking for an
-	# invisible node rather than for the thing it is named after.
+	# has nothing to slice and correctly has no border, which is why this asks about
+	# the style rather than demanding a border from every Button it can find.
+	#
+	# Nothing in the run is in that state today - the glossary's thirteen runtime-built
+	# buttons wear the run's art like the rest - but the distinction is the point: the
+	# check is about texture styles being sliced, not about every Button owning a node.
 	var ui_buttons := prototype.find_children("*", "Button", true, false)
 	var bordered_buttons := 0
 	var button_borders_are_sliced := true
@@ -5810,46 +5813,22 @@ func _run() -> void:
 		"Important Only keeps the hits that mean something and Off keeps none"
 	)
 
-	# UI Scale is fixed. `get_ui_scale` says so in as many words - the HUD is authored
-	# around the space it has and shrinking it costs readability - and neither menu
-	# offers the option: `setting_buttons` stops at PLAYER_HIGHLIGHT, so UI_SCALE and
-	# HUD_DETAIL are past the end of it and no player can reach either.
+	# The interface is never scaled, and the battlefield is never scaled with it.
 	#
-	# What is still worth guarding is the consequence. The interface layer must stay
-	# unscaled whatever is written into that setting, and the battlefield must be
-	# untouched either way, because scaling the HUD must never change how much arena
-	# the player can see.
+	# UI Scale and HUD Detail used to be settings, and this guarded that they stayed
+	# retired. The vocabulary is gone now - no enum entry, no getter, no menu row - so
+	# a half-revival cannot compile, and what is left to check is the property that
+	# outlives the setting: the HUD is drawn at 1:1, and how much arena the player can
+	# see does not depend on it.
 	settings.reset_settings()
 	var arena_transform := prototype.territory_field.transform
-	var interface_scale_at_rest := prototype.interface_layer.transform.get_scale()
-	settings.set_choice(DisplaySettings.OptionId.UI_SCALE, 4)
 	prototype._on_display_settings_changed()
 	_check(
-		is_equal_approx(settings.get_ui_scale(), 1.0)
-		and prototype.interface_layer.transform.get_scale().is_equal_approx(
-			interface_scale_at_rest
-		)
-		and is_equal_approx(prototype.interface_layer.transform.get_scale().x, 1.0)
-		and prototype.territory_field.transform == arena_transform,
-		"UI Scale is fixed, and the interface and battlefield are both left alone"
-	)
-
-	# The same, for HUD Detail: Compact is the single supported presentation, the doc
-	# having ruled out a second design. The status line says nothing at rest now that
-	# the run clock is gone, and choosing Detailed must not resurrect a second one.
-	settings.reset_settings()
-	prototype._update_hud()
-	var compact_status := prototype.status_label.text
-	settings.set_choice(
-		DisplaySettings.OptionId.HUD_DETAIL,
-		DisplaySettings.HudDetail.DETAILED
-	)
-	prototype._update_hud()
-	_check(
-		compact_status.is_empty()
-		and not settings.is_hud_detailed()
-		and prototype.status_label.text == compact_status,
-		"HUD Detail is compact-only and the status line stays silent at rest"
+		is_equal_approx(prototype.interface_layer.transform.get_scale().x, 1.0)
+		and is_equal_approx(prototype.interface_layer.transform.get_scale().y, 1.0)
+		and prototype.territory_field.transform == arena_transform
+		and prototype.status_label.text.is_empty(),
+		"the interface is drawn unscaled and the battlefield is left alone"
 	)
 
 	# Every option cycles through its own list and wraps, which is what makes one
@@ -5900,28 +5879,19 @@ func _run() -> void:
 			)
 		):
 			every_option_reachable = false
-	# The interface scale has to leave the screen where it is. A CanvasLayer scales
-	# about its corner, so scaling the interface used to slide all of it toward one
-	# corner - and the pause menu, which is centred by its own anchors, went with it.
+	# The pause panel is centred on the screen, which is a property of its own anchors
+	# rather than of any setting. This used to walk five interface-scale choices; the
+	# scale is fixed at 1:1 now, so there is one placement to check and it is this one.
 	var pause_panel := prototype.pause_menu.resume_button.get_parent() as Control
 	var screen_centre := prototype.get_viewport().get_visible_rect().size * 0.5
-	var stays_centred := true
-	for scale_choice in range(
-		DisplaySettings.get_choice_count(DisplaySettings.OptionId.UI_SCALE)
-	):
-		settings.set_choice(DisplaySettings.OptionId.UI_SCALE, scale_choice)
-		var drawn_centre: Vector2 = (
-			prototype.interface_layer.transform * pause_panel.get_global_rect().get_center()
-		)
-		# Vertically the panel is authored a little below centre, and that offset scales
-		# with everything else; horizontally there is nothing to excuse a drift.
-		if absf(drawn_centre.x - screen_centre.x) > 1.0:
-			stays_centred = false
-		if absf(drawn_centre.y - screen_centre.y) > 20.0:
-			stays_centred = false
-	settings.set_choice(
-		DisplaySettings.OptionId.UI_SCALE,
-		DisplaySettings.get_choice_count(DisplaySettings.OptionId.UI_SCALE) / 2
+	var drawn_centre: Vector2 = (
+		prototype.interface_layer.transform * pause_panel.get_global_rect().get_center()
+	)
+	# Vertically the panel is authored a little below centre; horizontally there is
+	# nothing to excuse a drift.
+	var stays_centred := (
+		absf(drawn_centre.x - screen_centre.x) <= 1.0
+		and absf(drawn_centre.y - screen_centre.y) <= 20.0
 	)
 	prototype.pause_menu.settings_back_button.pressed.emit()
 	every_option_reachable = (
@@ -5932,7 +5902,7 @@ func _run() -> void:
 	prototype._close_pause_menu()
 	_check(
 		stays_centred,
-		"the pause menu stays centred at every interface scale"
+		"the pause menu is centred on the screen"
 	)
 
 	_check(

@@ -4,6 +4,12 @@ extends Control
 signal glossary_closed
 
 const BORDER_TEXTURE := preload("res://assets/ui/kenney/panel-border-008.png")
+## The run's own button art. The glossary builds its buttons in code rather than in a
+## scene, which is the only reason they were ever stock grey: nothing was authored for
+## them to inherit from.
+const BUTTON_STYLE := preload("res://assets/ui/button_style.tres")
+const BUTTON_HOVER_STYLE := preload("res://assets/ui/button_hover_style.tres")
+const BUTTON_DISABLED_STYLE := preload("res://assets/ui/button_disabled_style.tres")
 const GOLD := Color(0.769, 0.604, 0.314, 1.0)
 const GOLD_BRIGHT := Color(0.96, 0.83, 0.48, 1.0)
 const OLIVE := Color(0.09, 0.102, 0.082, 0.98)
@@ -326,6 +332,7 @@ func _build_glossary() -> void:
 	close.text = "CLOSE  [ESC]"
 	close.custom_minimum_size = Vector2(140.0, 38.0)
 	close.pressed.connect(close_glossary)
+	_style_glossary_button(close)
 	header_row.add_child(close)
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 5)
@@ -343,6 +350,7 @@ func _build_glossary() -> void:
 		tab.text = letter
 		tab.custom_minimum_size = Vector2(44.0 if letter != "ALL" else 58.0, 34.0)
 		tab.pressed.connect(_select_letter.bind(letter))
+		_style_glossary_button(tab)
 		tabs.add_child(tab)
 		_letter_tabs[letter] = tab
 	var divider := HSeparator.new()
@@ -356,6 +364,10 @@ func _build_glossary() -> void:
 	_glossary_entries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_glossary_entries.add_theme_constant_override("separation", 10)
 	scroll.add_child(_glossary_entries)
+	# After the page is built, so it reaches every button on it at once. The overlay is
+	# already in the tree, which is what lets each border run its own `_ready` and
+	# capture the style it is replacing.
+	NinePatchButtonBorder.install_under(_glossary_overlay)
 	_refresh_glossary()
 
 
@@ -391,6 +403,19 @@ func _refresh_glossary() -> void:
 		definition.add_theme_color_override("font_color", TEXT)
 		row.add_child(definition)
 		_glossary_entries.add_child(row)
+
+
+## Dresses a button the glossary built itself in the same art every other button in
+## the run wears. `NinePatchButtonBorder.install_under` is what actually draws it: a
+## StyleBoxTexture assigned straight to a Button is stretched, corners and all, which
+## is the whole reason that class exists.
+func _style_glossary_button(button: Button) -> void:
+	button.add_theme_stylebox_override("normal", BUTTON_STYLE)
+	button.add_theme_stylebox_override("hover", BUTTON_HOVER_STYLE)
+	button.add_theme_stylebox_override("pressed", BUTTON_HOVER_STYLE)
+	button.add_theme_stylebox_override("disabled", BUTTON_DISABLED_STYLE)
+	button.add_theme_color_override("font_color", TEXT)
+	button.add_theme_color_override("font_hover_color", GOLD_BRIGHT)
 
 
 func _make_framed_panel(minimum: Vector2) -> PanelContainer:

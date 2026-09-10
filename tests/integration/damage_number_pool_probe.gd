@@ -21,7 +21,7 @@ extends SceneTree
 ## same as age order. This probe disproved that under sustained saturation, so the
 ## full-pool case is still the original scan and this stands guard over it.
 ##
-## Run: godot --headless --script tests/damage_number_pool_probe.gd
+## Run: godot --headless --script tests/integration/damage_number_pool_probe.gd
 
 const SPAWNS := 4000
 ## Long enough that numbers expire mid-run and slots are genuinely recycled, rather

@@ -7,26 +7,26 @@ somebody's recollection of how fast it used to feel.
 
 ## Probes
 
-### `tests/peak_density_probe.gd` — the gate
+### `tests/performance/peak_density_probe.gd` — the gate
 
 All 28 Adaptation pairings at the shipping enemy cap. Asserts a p99 budget and
 exits non-zero when a pairing breaks it. This is the probe that decides whether a
 change may land.
 
 ```
-godot --headless --path . --script tests/peak_density_probe.gd
+godot --headless --path . --script tests/performance/peak_density_probe.gd
 ```
 
-### `tests/density_ladder_probe.gd` — the measurement
+### `tests/performance/density_ladder_probe.gd` — the measurement
 
 The guide's six named fixtures, run up a density ladder with the per-subsystem
 timing and volume counters. Answers "how does this scale" rather than "does this
 pass", so it never fails a build.
 
 ```
-godot --headless --path . --script tests/density_ladder_probe.gd
-godot --headless --path . --script tests/density_ladder_probe.gd -- --fixtures=D --densities=130,200
-godot --headless --path . --script tests/density_ladder_probe.gd -- --csv=res://docs/benchmarks/density_ladder_130.csv
+godot --headless --path . --script tests/performance/density_ladder_probe.gd
+godot --headless --path . --script tests/performance/density_ladder_probe.gd -- --fixtures=D --densities=130,200
+godot --headless --path . --script tests/performance/density_ladder_probe.gd -- --csv=res://docs/benchmarks/density_ladder_130.csv
 ```
 
 | flag | default | meaning |
@@ -496,7 +496,7 @@ rising to 12–16 ms almost exactly.
 
 **Fixture F is not where the guide's 3.95 ms Root + Fruit figure came from.** At
 23.56 ms p99 it is dominated by the same Fruit collision and territory cost as C.
-The 3.95 ms number is `tests/fruit_scaling_probe.gd`, whose fixture is far
+The 3.95 ms number is `tests/integration/fruit_scaling_probe.gd`, whose fixture is far
 lighter — a 6-Fruit release rather than a peak-density crowd — and that probe
 still reports 3.7–3.9 ms for root+fruit today, so the Root projection win is
 intact. Fixture F is built to the guide's spec and is a valid regression row, but

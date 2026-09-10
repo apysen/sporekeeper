@@ -14,7 +14,7 @@ extends SceneTree
 ## to elapse is the game withholding the next wave from a player who has already
 ## earned it, so an empty arena now ends the break early.
 ##
-## Run: godot --headless --script tests/wave_cadence_probe.gd
+## Run: godot --headless --script tests/integration/wave_cadence_probe.gd
 
 const STEP := 1.0 / 60.0
 

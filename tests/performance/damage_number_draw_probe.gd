@@ -9,7 +9,7 @@ extends SceneTree
 ## is recomputed every frame for text that never changes, and everything else.
 ##
 ## Needs a display. Run without --headless:
-##   godot --path . --script tests/damage_number_draw_probe.gd
+##   godot --path . --script tests/performance/damage_number_draw_probe.gd
 
 const RENDER_FRAMES := 240
 

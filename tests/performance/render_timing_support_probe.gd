@@ -18,9 +18,9 @@ extends SceneTree
 ## moved between them.
 ##
 ## Needs a display. Run without --headless, once per renderer:
-##   godot --path . --script tests/render_timing_support_probe.gd
-##   godot --path . --rendering-method forward_plus --script tests/render_timing_support_probe.gd
-##   godot --path . --rendering-method mobile --script tests/render_timing_support_probe.gd
+##   godot --path . --script tests/performance/render_timing_support_probe.gd
+##   godot --path . --rendering-method forward_plus --script tests/performance/render_timing_support_probe.gd
+##   godot --path . --rendering-method mobile --script tests/performance/render_timing_support_probe.gd
 
 const WARMUP_FRAMES := 60
 const SAMPLE_FRAMES := 180

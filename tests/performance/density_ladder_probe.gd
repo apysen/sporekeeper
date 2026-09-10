@@ -15,9 +15,9 @@ extends SceneTree
 ## in peak_density_probe.gd.
 ##
 ## Run:
-##   godot --headless --script tests/density_ladder_probe.gd
-##   godot --headless --script tests/density_ladder_probe.gd -- --densities=130,200 --fixtures=D
-##   godot --headless --script tests/density_ladder_probe.gd -- --csv=user://ladder.csv
+##   godot --headless --script tests/performance/density_ladder_probe.gd
+##   godot --headless --script tests/performance/density_ladder_probe.gd -- --densities=130,200 --fixtures=D
+##   godot --headless --script tests/performance/density_ladder_probe.gd -- --csv=user://ladder.csv
 
 ## Overridable with --frames=, because the churn fixture needs far longer than the
 ## others: it is the only one whose enemy count is an outcome rather than a setting,

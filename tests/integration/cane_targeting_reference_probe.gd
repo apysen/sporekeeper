@@ -20,7 +20,7 @@ extends SceneTree
 ## on the sector edge, clustered so ties are common, and spread so the rejection
 ## fires constantly.
 ##
-## Run: godot --headless --script tests/cane_targeting_reference_probe.gd
+## Run: godot --headless --script tests/integration/cane_targeting_reference_probe.gd
 
 const CASES_PER_LAYOUT := 220
 const SECTOR_DEGREES := [8.0, 24.0, 60.0, 90.0, 140.0, 200.0, 359.0]

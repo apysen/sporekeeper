@@ -27,6 +27,12 @@ func _run() -> void:
 
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	var prototype := current_scene as RunRoot
 	if prototype == null:
 		push_error("Sporekeeper scene did not become current")
@@ -46,6 +52,12 @@ func _run() -> void:
 	field.refresh_visuals_now()
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	var before := root.get_texture().get_image()
 	before.save_png("res://.godot/green_wash.png")
 
@@ -56,6 +68,12 @@ func _run() -> void:
 		field.cycle_debug_view()
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/green_wash_mask.png")
 	while field.debug_view != restore_view:
 		field.cycle_debug_view()
@@ -75,6 +93,12 @@ func _run() -> void:
 	field.refresh_visuals_now()
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	var after := root.get_texture().get_image()
 
 	# Screenshots come back at the window's own scale, and the field node is offset
@@ -116,6 +140,12 @@ func _run() -> void:
 	field.refresh_visuals_now()
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/green_wash_blended.png")
 
 	var wash_material := field.material as ShaderMaterial
@@ -123,6 +153,12 @@ func _run() -> void:
 	wash_material.set_shader_parameter("tertiary_weight", 0.0)
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/green_wash_single.png")
 	wash_material.set_shader_parameter("secondary_weight", field.wash_secondary_weight)
 	wash_material.set_shader_parameter("tertiary_weight", field.wash_tertiary_weight)
@@ -136,6 +172,12 @@ func _run() -> void:
 	field.refresh_visuals_now()
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/wash_paper.png")
 	# Read off unclaimed ground away from the starting island: paper is warm and light,
 	# which is the one thing that distinguishes it from every other layer here.
@@ -176,6 +218,12 @@ func _run() -> void:
 	field.refresh_visuals_now()
 	await process_frame
 	await process_frame
+	# Two frames is how long it usually takes, not a guarantee that it happened.
+	# `get_texture().get_image()` reads whatever the renderer last finished, so
+	# under load - another probe on the GPU, a busy machine - it can return a frame
+	# drawn before the wash was composited, and unclaimed Paper shows through ground
+	# the simulation says is owned. This is the signal that says the draw is done.
+	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/wash_front.png")
 	# Paper is the ground the board is made of, and Green and Rot are laid on top of it,
 	# so no owned ground may show it. Checked per screen pixel against the simulation's

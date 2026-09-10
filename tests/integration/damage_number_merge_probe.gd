@@ -16,7 +16,7 @@ extends SceneTree
 ## The setting is forced to FULL: the filtered modes are meant to drop numbers, and
 ## this probe is about the ones that should not be dropped.
 ##
-## Run: godot --headless --script tests/damage_number_merge_probe.gd
+## Run: godot --headless --script tests/integration/damage_number_merge_probe.gd
 
 const FRAMES := 900
 const STEP := 1.0 / 60.0
