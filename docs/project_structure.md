@@ -104,7 +104,7 @@ src/core/
     ui/                         HUD, menus, drafts, objectives, and view models
     waves/                      Wave timeline, previews, breaks, and objectives
   rules/                        Pure or scene-independent game rules
-    combat/                     Damage and targeting calculations
+    combat/                     Damage, targeting, and navigation calculations
     economy/                    Biomass income, costs, and reward settlement
     elements/                   Path mechanics that resolve without a node:
                               rate zones, standing regions, and amplification

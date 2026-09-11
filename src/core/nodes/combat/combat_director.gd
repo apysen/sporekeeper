@@ -1,12 +1,6 @@
 class_name CombatDirector
 extends Node2D
 
-const NAVIGATION_DIRECTIONS: Array[Vector2i] = [
-	Vector2i.LEFT,
-	Vector2i.RIGHT,
-	Vector2i.UP,
-	Vector2i.DOWN,
-]
 const STEERING_ANGLES: Array[float] = [0.0, 0.48, -0.48, 0.92, -0.92, 1.45, -1.45]
 const XP_COLLECT_AUDIO_VOICE_COUNT := 12
 const PLANT_EXPLOSION_MAX_POLYPHONY := 8
@@ -689,7 +683,8 @@ var _navigation_boss_walkable := PackedByteArray()
 var _navigation_small_distances := PackedInt32Array()
 var _navigation_boss_distances := PackedInt32Array()
 var _navigation_catalyst_distances := PackedInt32Array()
-var _navigation_queue := PackedInt32Array()
+## The breadth-first sweep that fills those distance arrays.
+var _navigation := NavigationFlowField.new()
 var _cane_audio: AudioStreamPlayer
 var _plant_explosion_audio: AudioStreamPlayer
 var _old_growth_audio: AudioStreamPlayer
@@ -2136,7 +2131,7 @@ func _configure_navigation() -> void:
 	_navigation_small_distances.resize(_navigation_cell_count)
 	_navigation_boss_distances.resize(_navigation_cell_count)
 	_navigation_catalyst_distances.resize(_navigation_cell_count)
-	_navigation_queue.resize(_navigation_cell_count)
+	_navigation.resize(_navigation_width, _navigation_height)
 	for y in range(_navigation_height):
 		for x in range(_navigation_width):
 			var index := y * _navigation_width + x
@@ -2361,29 +2356,7 @@ func _perform_cane_sweep(
 	_play_cane_sfx()
 	PerfCounters.timer_end(PerfCounters.TIMER_CANE_SFX)
 	if is_vine_driven():
-		# The rope resolves this sweep. Hits arrive over the driving window rather
-		# than all at once, so cane_sweep_finished is emitted when the stroke ends.
-		if _vine_sweep_active:
-			# A stroke arriving on top of one still running closes the old one first,
-			# so every started sweep is matched by exactly one finished.
-			cane_sweep_finished.emit(
-				_vine_sweep_origin,
-				_vine_sweep_facing,
-				_vine_sweep_left_to_right,
-				_vine_sweep_reach,
-				_vine_sweep_hits,
-				_vine_sweep_is_bonus
-			)
-		vine_whip.begin_sweep(facing, left_to_right, cane_cooldown_seconds)
-		_vine_sweep_active = true
-		_vine_sweep_damage = base_damage
-		_vine_sweep_is_bonus = is_bonus
-		_vine_sweep_facing = facing
-		_vine_sweep_left_to_right = left_to_right
-		_vine_sweep_reach = reach
-		_vine_sweep_origin = origin
-		_vine_sweep_hits = 0
-		_cane_route_cache.clear()
+		_hand_sweep_to_vine(origin, facing, left_to_right, reach, base_damage, is_bonus)
 		PerfCounters.timer_end(PerfCounters.TIMER_CANE_PERFORM)
 		return 0
 	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
@@ -2401,31 +2374,14 @@ func _perform_cane_sweep(
 	for enemy in _enemies:
 		if not enemy.active:
 			continue
+		if not _is_in_cane_arc(enemy, origin, facing, reach, half_angle):
+			continue
 		var to_enemy := enemy.position - origin
 		var direct_distance := to_enemy.length()
-		if direct_distance > reach + enemy.radius:
-			continue
-		if direct_distance > 0.001:
-			var edge_allowance := asin(clampf(enemy.radius / direct_distance, 0.0, 1.0))
-			if absf(facing.angle_to(to_enemy / direct_distance)) > half_angle + edge_allowance:
-				continue
 		var distance := direct_distance
 		var vine_route := PackedVector2Array()
 		if _cane_auto_targets:
-			vine_route = _cane_route_cache.get(enemy.id, PackedVector2Array())
-			if vine_route.is_empty():
-				PerfCounters.count(
-					PerfCounters.COUNT_CANE_ROUTE_CACHE_MISSES
-				)
-				var route_began := Time.get_ticks_usec() if PerfCounters.enabled else 0
-				vine_route = territory_field.get_growth_path(origin, enemy.position)
-				PerfCounters.timer_add_since(
-					PerfCounters.TIMER_CANE_PERFORM_ROUTES, route_began
-				)
-			else:
-				PerfCounters.count(
-					PerfCounters.COUNT_CANE_ROUTE_CACHE_HITS
-				)
+			vine_route = _cane_route_to(enemy, origin)
 			if vine_route.is_empty():
 				continue
 			distance = territory_field.get_growth_path_length(vine_route)
@@ -4201,14 +4157,14 @@ func _update_navigation(player_position: Vector2, delta: float) -> void:
 	var target_index := target_y * _navigation_width + target_x
 	if target_index != _navigation_small_target_index:
 		_navigation_small_target_index = target_index
-		_rebuild_navigation_distances(
+		_navigation.rebuild(
 			_navigation_small_distances,
 			_navigation_small_walkable,
 			target_index
 		)
 	if has_active_boss() and target_index != _navigation_boss_target_index:
 		_navigation_boss_target_index = target_index
-		_rebuild_navigation_distances(
+		_navigation.rebuild(
 			_navigation_boss_distances,
 			_navigation_boss_walkable,
 			target_index
@@ -4237,70 +4193,13 @@ func _update_navigation(player_position: Vector2, delta: float) -> void:
 	if catalyst_target_index != _navigation_catalyst_target_index:
 		_navigation_catalyst_target_index = catalyst_target_index
 		if catalyst_target_index >= 0:
-			_rebuild_navigation_distances(
+			_navigation.rebuild(
 				_navigation_catalyst_distances,
 				_navigation_small_walkable,
 				catalyst_target_index
 			)
 		else:
 			_navigation_catalyst_distances.fill(-1)
-
-
-func _rebuild_navigation_distances(
-	distances: PackedInt32Array,
-	walkable: PackedByteArray,
-	target_index: int
-) -> void:
-	distances.fill(-1)
-	var start_index := _find_nearest_walkable_index(target_index, walkable)
-	if start_index == -1:
-		return
-	var head := 0
-	var tail := 1
-	_navigation_queue[0] = start_index
-	distances[start_index] = 0
-	while head < tail:
-		var current_index := _navigation_queue[head]
-		head += 1
-		var current_x := current_index % _navigation_width
-		var current_y := current_index / _navigation_width
-		var next_distance := distances[current_index] + 1
-		for direction in NAVIGATION_DIRECTIONS:
-			var next_x := current_x + direction.x
-			var next_y := current_y + direction.y
-			if (
-				next_x < 0
-				or next_y < 0
-				or next_x >= _navigation_width
-				or next_y >= _navigation_height
-			):
-				continue
-			var next_index := next_y * _navigation_width + next_x
-			if walkable[next_index] == 0 or distances[next_index] != -1:
-				continue
-			distances[next_index] = next_distance
-			_navigation_queue[tail] = next_index
-			tail += 1
-
-
-func _find_nearest_walkable_index(target_index: int, walkable: PackedByteArray) -> int:
-	if walkable[target_index] != 0:
-		return target_index
-	var target_x := target_index % _navigation_width
-	var target_y := target_index / _navigation_width
-	for radius in range(1, 13):
-		for offset_y in range(-radius, radius + 1):
-			for offset_x in range(-radius, radius + 1):
-				if absi(offset_x) != radius and absi(offset_y) != radius:
-					continue
-				var x := target_x + offset_x
-				var y := target_y + offset_y
-				if x < 0 or y < 0 or x >= _navigation_width or y >= _navigation_height:
-					continue
-				var index := y * _navigation_width + x
-				if walkable[index] != 0:
-					return index
-	return -1
 
 
 func _local_to_navigation_cell(local_position: Vector2) -> Vector2i:
@@ -4354,7 +4253,7 @@ func _get_navigation_waypoint(
 		return _navigation_cell_to_local(Vector2i(reachable_x, reachable_y))
 	var best_index := current_index
 	var best_distance := current_distance
-	for direction in NAVIGATION_DIRECTIONS:
+	for direction in NavigationFlowField.DIRECTIONS:
 		var next_x := cell_x + direction.x
 		var next_y := cell_y + direction.y
 		if (
@@ -5256,60 +5155,7 @@ func _draw_enemy(
 			canvas.draw_circle(enemy.position, enemy.radius + 2.0, Color(0.08, 0.02, 0.03, 0.92))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("ff625b"))
 		EnemyKinds.Role.RUSHER:
-			# A Hunter that arrives before Bramble can take hold, so it is drawn as one
-			# that is already moving: the same red, swept into a wedge that points where
-			# it is going, with the streaks of its own speed trailing behind it. A player
-			# has to be able to tell at a glance which red body is the one that will not
-			# be slowed on the way in.
-			var heading := Vector2.RIGHT
-			if heading_override.length_squared() > 0.01:
-				heading = heading_override.normalized()
-			elif player != null:
-				var toward_player := enemy.position.direction_to(player.get_arena_position())
-				if toward_player.length_squared() > 0.01:
-					heading = toward_player
-			var flank := heading.orthogonal()
-			var nose := enemy.position + heading * (enemy.radius + 5.0)
-			var tail := enemy.position - heading * (enemy.radius * 0.7)
-			for streak_index in range(2):
-				var side := flank * (enemy.radius * (0.45 + 0.35 * float(streak_index)))
-				canvas.draw_line(
-					tail + side,
-					tail - heading * (7.0 + 5.0 * float(streak_index)) + side,
-					Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
-					2.0,
-					true
-				)
-				canvas.draw_line(
-					tail - side,
-					tail - heading * (7.0 + 5.0 * float(streak_index)) - side,
-					Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
-					2.0,
-					true
-				)
-			canvas.draw_colored_polygon(
-				PackedVector2Array([
-					nose,
-					tail + flank * enemy.radius,
-					tail - flank * enemy.radius,
-				]),
-				Color(0.09, 0.02, 0.03, 0.92)
-			)
-			canvas.draw_colored_polygon(
-				PackedVector2Array([
-					nose - heading * 2.5,
-					tail + flank * (enemy.radius - 2.5),
-					tail - flank * (enemy.radius - 2.5),
-				]),
-				Color("ff7a4a")
-			)
-			canvas.draw_line(
-				enemy.position + heading * (enemy.radius * 0.2),
-				nose - heading * 3.0,
-				Color("ffe1b8"),
-				2.0,
-				true
-			)
+			_draw_rusher(canvas, enemy, heading_override)
 		EnemyKinds.Role.GRAZER:
 			canvas.draw_circle(enemy.position, enemy.radius + 3.0, Color(0.08, 0.04, 0.01, 0.95))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("ff9d45"))
@@ -5322,56 +5168,9 @@ func _draw_enemy(
 					true
 				)
 		EnemyKinds.Role.HEAVY_GRAZER:
-			# The Grazer's orange, plated. It eats the same ground and cannot be shoved off
-			# it, so what it says about itself is weight: a hide too thick to move, blunt
-			# tusks rather than the ordinary Grazer's fine ones, and a body that fills its
-			# own outline instead of sitting inside it.
-			canvas.draw_circle(enemy.position, enemy.radius + 5.0, Color(0.10, 0.05, 0.01, 0.95))
-			canvas.draw_circle(enemy.position, enemy.radius + 2.0, Color("6b3312"))
-			canvas.draw_circle(enemy.position, enemy.radius - 1.0, Color("e07a2a"))
-			for plate_index in range(6):
-				var plate_angle := TAU * float(plate_index) / 6.0 + float(enemy.id % 6) * 0.18
-				var plate_direction := Vector2.from_angle(plate_angle)
-				canvas.draw_line(
-					enemy.position + plate_direction * (enemy.radius - 4.0),
-					enemy.position + plate_direction * (enemy.radius + 2.0),
-					Color("8f4a18"),
-					3.0,
-					true
-				)
-			for tusk in [Vector2.RIGHT, Vector2.LEFT]:
-				canvas.draw_line(
-					enemy.position + tusk * (enemy.radius - 2.0),
-					enemy.position + tusk * (enemy.radius + 8.0),
-					Color("ffd9a0"),
-					4.5,
-					true
-				)
-			canvas.draw_circle(enemy.position, 4.5, Color("40190a"))
+			_draw_heavy_grazer(canvas, enemy)
 		EnemyKinds.Role.SABOTEUR:
-			var top := enemy.position + Vector2(0.0, -enemy.radius)
-			var right := enemy.position + Vector2(enemy.radius, 0.0)
-			var bottom := enemy.position + Vector2(0.0, enemy.radius)
-			var left := enemy.position + Vector2(-enemy.radius, 0.0)
-			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.28, 0.02, 0.12, 0.42))
-			canvas.draw_line(top, right, Color("ff477e"), 4.0, true)
-			canvas.draw_line(right, bottom, Color("ff477e"), 4.0, true)
-			canvas.draw_line(bottom, left, Color("ff477e"), 4.0, true)
-			canvas.draw_line(left, top, Color("ff477e"), 4.0, true)
-			canvas.draw_line(
-				enemy.position + Vector2(-5.0, -5.0),
-				enemy.position + Vector2(6.0, 6.0),
-				Color("fff0a6"),
-				2.0,
-				true
-			)
-			canvas.draw_line(
-				enemy.position + Vector2(5.0, -5.0),
-				enemy.position + Vector2(-6.0, 6.0),
-				Color("fff0a6"),
-				2.0,
-				true
-			)
+			_draw_saboteur(canvas, enemy)
 		EnemyKinds.Role.CORRUPTOR:
 			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.30, 0.02, 0.38, 0.48))
 			canvas.draw_circle(enemy.position, enemy.radius, Color("a338c7"))
@@ -5387,52 +5186,7 @@ func _draw_enemy(
 				true
 			)
 		EnemyKinds.Role.SIEGE_CORRUPTOR:
-			# A Corruptor that gets worse the longer it is left alone, so the one thing it
-			# has to show is how far along it already is. The ring closes as its conversion
-			# compounds toward the cap and springs open again the moment it is hit, which
-			# makes 'deal with it now' a thing the player can see rather than infer.
-			var escalation_fraction := 0.0
-			if enemy.territory_action_escalation_cap > 1.0:
-				escalation_fraction = clampf(
-					(enemy.territory_escalation - 1.0)
-					/ (enemy.territory_action_escalation_cap - 1.0),
-					0.0,
-					1.0
-				)
-			canvas.draw_circle(
-				enemy.position,
-				enemy.radius + 6.0,
-				Color(0.34, 0.02, 0.30, 0.30 + 0.30 * escalation_fraction)
-			)
-			for siege_spike in range(8):
-				var spike_direction := Vector2.from_angle(TAU * float(siege_spike) / 8.0)
-				canvas.draw_line(
-					enemy.position + spike_direction * (enemy.radius - 2.0),
-					enemy.position + spike_direction * (
-						enemy.radius + 4.0 + 5.0 * escalation_fraction
-					),
-					Color(0.85, 0.30, 1.0, 0.55 + 0.40 * escalation_fraction),
-					2.5,
-					true
-				)
-			canvas.draw_circle(enemy.position, enemy.radius, Color("7a1f9c"))
-			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("2b0838"))
-			canvas.draw_circle(
-				enemy.position,
-				maxf(2.0, (enemy.radius - 6.0) * escalation_fraction),
-				Color(1.0, 0.52, 0.95, 0.85)
-			)
-			if escalation_fraction > 0.0:
-				canvas.draw_arc(
-					enemy.position,
-					enemy.radius + 3.0,
-					-PI * 0.5,
-					-PI * 0.5 + TAU * escalation_fraction,
-					28,
-					Color("ff86e8"),
-					2.5,
-					true
-				)
+			_draw_siege_corruptor(canvas, enemy)
 		EnemyKinds.Role.COLONIZER:
 			canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.02, 0.26, 0.30, 0.46))
 			for pod_index in range(3):
@@ -5445,46 +5199,7 @@ func _draw_enemy(
 			canvas.draw_circle(enemy.position, enemy.radius - 3.0, Color("155b67"))
 			canvas.draw_circle(enemy.position, 4.0, Color("b8fff2"))
 		EnemyKinds.Role.WARDEN:
-			var pixels_per_cell := (
-				territory_field.tuning.arena_size.x
-				/ float(territory_field.tuning.field_size.x)
-			)
-			var suppression_radius := (
-				territory_field.tuning.grazer_radius_cells
-				* pixels_per_cell
-				* enemy.territory_action_radius_multiplier
-			)
-			var pulse_progress := clampf(
-				1.0 - enemy.territory_action_remaining / maxf(enemy.territory_action_interval, 0.01),
-				0.0,
-				1.0
-			)
-			canvas.draw_circle(
-				enemy.position,
-				suppression_radius,
-				Color(0.25, 0.38, 1.0, 0.055 + pulse_progress * 0.035)
-			)
-			canvas.draw_arc(
-				enemy.position,
-				suppression_radius,
-				0.0,
-				TAU,
-				48,
-				Color(0.48, 0.62, 1.0, 0.42),
-				2.0,
-				true
-			)
-			canvas.draw_rect(
-				Rect2(enemy.position - Vector2.ONE * enemy.radius, Vector2.ONE * enemy.radius * 2.0),
-				Color("5267d8"),
-				true
-			)
-			canvas.draw_rect(
-				Rect2(enemy.position - Vector2.ONE * (enemy.radius - 5.0), Vector2.ONE * (enemy.radius - 5.0) * 2.0),
-				Color("172758"),
-				true
-			)
-			canvas.draw_circle(enemy.position, 4.0, Color("c8d5ff"))
+			_draw_warden(canvas, enemy)
 		EnemyKinds.Role.COLONY_CORE:
 			canvas.draw_circle(enemy.position, enemy.radius + 7.0, Color(0.38, 0.02, 0.14, 0.30))
 			for spine_index in range(6):
@@ -5754,3 +5469,292 @@ func _draw_damage_number(canvas: CanvasItem, damage_number: DamageNumberState) -
 		PerfCounters.timer_add_since(
 			PerfCounters.TIMER_DAMAGE_NUMBER_DRAW, draw_began
 		)
+
+
+func _draw_rusher(
+	canvas: CanvasItem,
+	enemy: EnemyState,
+	heading_override: Vector2
+) -> void:
+	# A Hunter that arrives before Bramble can take hold, so it is drawn as one
+	# that is already moving: the same red, swept into a wedge that points where
+	# it is going, with the streaks of its own speed trailing behind it. A player
+	# has to be able to tell at a glance which red body is the one that will not
+	# be slowed on the way in.
+	var heading := Vector2.RIGHT
+	if heading_override.length_squared() > 0.01:
+		heading = heading_override.normalized()
+	elif player != null:
+		var toward_player := enemy.position.direction_to(player.get_arena_position())
+		if toward_player.length_squared() > 0.01:
+			heading = toward_player
+	var flank := heading.orthogonal()
+	var nose := enemy.position + heading * (enemy.radius + 5.0)
+	var tail := enemy.position - heading * (enemy.radius * 0.7)
+	for streak_index in range(2):
+		var side := flank * (enemy.radius * (0.45 + 0.35 * float(streak_index)))
+		canvas.draw_line(
+			tail + side,
+			tail - heading * (7.0 + 5.0 * float(streak_index)) + side,
+			Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
+			2.0,
+			true
+		)
+		canvas.draw_line(
+			tail - side,
+			tail - heading * (7.0 + 5.0 * float(streak_index)) - side,
+			Color(1.0, 0.42, 0.32, 0.42 - 0.16 * float(streak_index)),
+			2.0,
+			true
+		)
+	canvas.draw_colored_polygon(
+		PackedVector2Array([
+			nose,
+			tail + flank * enemy.radius,
+			tail - flank * enemy.radius,
+		]),
+		Color(0.09, 0.02, 0.03, 0.92)
+	)
+	canvas.draw_colored_polygon(
+		PackedVector2Array([
+			nose - heading * 2.5,
+			tail + flank * (enemy.radius - 2.5),
+			tail - flank * (enemy.radius - 2.5),
+		]),
+		Color("ff7a4a")
+	)
+	canvas.draw_line(
+		enemy.position + heading * (enemy.radius * 0.2),
+		nose - heading * 3.0,
+		Color("ffe1b8"),
+		2.0,
+		true
+	)
+
+
+func _draw_heavy_grazer(canvas: CanvasItem, enemy: EnemyState) -> void:
+	# The Grazer's orange, plated. It eats the same ground and cannot be shoved off
+	# it, so what it says about itself is weight: a hide too thick to move, blunt
+	# tusks rather than the ordinary Grazer's fine ones, and a body that fills its
+	# own outline instead of sitting inside it.
+	canvas.draw_circle(enemy.position, enemy.radius + 5.0, Color(0.10, 0.05, 0.01, 0.95))
+	canvas.draw_circle(enemy.position, enemy.radius + 2.0, Color("6b3312"))
+	canvas.draw_circle(enemy.position, enemy.radius - 1.0, Color("e07a2a"))
+	for plate_index in range(6):
+		var plate_angle := TAU * float(plate_index) / 6.0 + float(enemy.id % 6) * 0.18
+		var plate_direction := Vector2.from_angle(plate_angle)
+		canvas.draw_line(
+			enemy.position + plate_direction * (enemy.radius - 4.0),
+			enemy.position + plate_direction * (enemy.radius + 2.0),
+			Color("8f4a18"),
+			3.0,
+			true
+		)
+	for tusk in [Vector2.RIGHT, Vector2.LEFT]:
+		canvas.draw_line(
+			enemy.position + tusk * (enemy.radius - 2.0),
+			enemy.position + tusk * (enemy.radius + 8.0),
+			Color("ffd9a0"),
+			4.5,
+			true
+		)
+	canvas.draw_circle(enemy.position, 4.5, Color("40190a"))
+
+
+func _draw_saboteur(canvas: CanvasItem, enemy: EnemyState) -> void:
+	var top := enemy.position + Vector2(0.0, -enemy.radius)
+	var right := enemy.position + Vector2(enemy.radius, 0.0)
+	var bottom := enemy.position + Vector2(0.0, enemy.radius)
+	var left := enemy.position + Vector2(-enemy.radius, 0.0)
+	canvas.draw_circle(enemy.position, enemy.radius + 4.0, Color(0.28, 0.02, 0.12, 0.42))
+	canvas.draw_line(top, right, Color("ff477e"), 4.0, true)
+	canvas.draw_line(right, bottom, Color("ff477e"), 4.0, true)
+	canvas.draw_line(bottom, left, Color("ff477e"), 4.0, true)
+	canvas.draw_line(left, top, Color("ff477e"), 4.0, true)
+	canvas.draw_line(
+		enemy.position + Vector2(-5.0, -5.0),
+		enemy.position + Vector2(6.0, 6.0),
+		Color("fff0a6"),
+		2.0,
+		true
+	)
+	canvas.draw_line(
+		enemy.position + Vector2(5.0, -5.0),
+		enemy.position + Vector2(-6.0, 6.0),
+		Color("fff0a6"),
+		2.0,
+		true
+	)
+
+
+func _draw_siege_corruptor(canvas: CanvasItem, enemy: EnemyState) -> void:
+	# A Corruptor that gets worse the longer it is left alone, so the one thing it
+	# has to show is how far along it already is. The ring closes as its conversion
+	# compounds toward the cap and springs open again the moment it is hit, which
+	# makes 'deal with it now' a thing the player can see rather than infer.
+	var escalation_fraction := 0.0
+	if enemy.territory_action_escalation_cap > 1.0:
+		escalation_fraction = clampf(
+			(enemy.territory_escalation - 1.0)
+			/ (enemy.territory_action_escalation_cap - 1.0),
+			0.0,
+			1.0
+		)
+	canvas.draw_circle(
+		enemy.position,
+		enemy.radius + 6.0,
+		Color(0.34, 0.02, 0.30, 0.30 + 0.30 * escalation_fraction)
+	)
+	for siege_spike in range(8):
+		var spike_direction := Vector2.from_angle(TAU * float(siege_spike) / 8.0)
+		canvas.draw_line(
+			enemy.position + spike_direction * (enemy.radius - 2.0),
+			enemy.position + spike_direction * (
+				enemy.radius + 4.0 + 5.0 * escalation_fraction
+			),
+			Color(0.85, 0.30, 1.0, 0.55 + 0.40 * escalation_fraction),
+			2.5,
+			true
+		)
+	canvas.draw_circle(enemy.position, enemy.radius, Color("7a1f9c"))
+	canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("2b0838"))
+	canvas.draw_circle(
+		enemy.position,
+		maxf(2.0, (enemy.radius - 6.0) * escalation_fraction),
+		Color(1.0, 0.52, 0.95, 0.85)
+	)
+	if escalation_fraction > 0.0:
+		canvas.draw_arc(
+			enemy.position,
+			enemy.radius + 3.0,
+			-PI * 0.5,
+			-PI * 0.5 + TAU * escalation_fraction,
+			28,
+			Color("ff86e8"),
+			2.5,
+			true
+		)
+
+
+func _draw_warden(canvas: CanvasItem, enemy: EnemyState) -> void:
+	var pixels_per_cell := (
+		territory_field.tuning.arena_size.x
+		/ float(territory_field.tuning.field_size.x)
+	)
+	var suppression_radius := (
+		territory_field.tuning.grazer_radius_cells
+		* pixels_per_cell
+		* enemy.territory_action_radius_multiplier
+	)
+	var pulse_progress := clampf(
+		1.0 - enemy.territory_action_remaining / maxf(enemy.territory_action_interval, 0.01),
+		0.0,
+		1.0
+	)
+	canvas.draw_circle(
+		enemy.position,
+		suppression_radius,
+		Color(0.25, 0.38, 1.0, 0.055 + pulse_progress * 0.035)
+	)
+	canvas.draw_arc(
+		enemy.position,
+		suppression_radius,
+		0.0,
+		TAU,
+		48,
+		Color(0.48, 0.62, 1.0, 0.42),
+		2.0,
+		true
+	)
+	canvas.draw_rect(
+		Rect2(enemy.position - Vector2.ONE * enemy.radius, Vector2.ONE * enemy.radius * 2.0),
+		Color("5267d8"),
+		true
+	)
+	canvas.draw_rect(
+		Rect2(enemy.position - Vector2.ONE * (enemy.radius - 5.0), Vector2.ONE * (enemy.radius - 5.0) * 2.0),
+		Color("172758"),
+		true
+	)
+	canvas.draw_circle(enemy.position, 4.0, Color("c8d5ff"))
+
+
+## The route a Vine-driven sweep takes to one enemy, or an empty path when the rope
+## cannot reach it. The cache is filled by the targeting gather a moment earlier, so
+## a miss here means this enemy was not one of the targets that decided the facing.
+func _cane_route_to(enemy: EnemyState, origin: Vector2) -> PackedVector2Array:
+	var vine_route: PackedVector2Array = _cane_route_cache.get(
+		enemy.id, PackedVector2Array()
+	)
+	if vine_route.is_empty():
+		PerfCounters.count(
+			PerfCounters.COUNT_CANE_ROUTE_CACHE_MISSES
+		)
+		var route_began := Time.get_ticks_usec() if PerfCounters.enabled else 0
+		vine_route = territory_field.get_growth_path(origin, enemy.position)
+		PerfCounters.timer_add_since(
+			PerfCounters.TIMER_CANE_PERFORM_ROUTES, route_began
+		)
+	else:
+		PerfCounters.count(
+			PerfCounters.COUNT_CANE_ROUTE_CACHE_HITS
+		)
+	return vine_route
+
+
+## Whether one enemy is inside the sector this sweep covers. The edge allowance is
+## what makes a body count when its centre is just outside the arc: the Cane hits
+## what it touches, not what its centre line crosses.
+func _is_in_cane_arc(
+	enemy: EnemyState,
+	origin: Vector2,
+	facing: Vector2,
+	reach: float,
+	half_angle: float
+) -> bool:
+	var to_enemy := enemy.position - origin
+	var direct_distance := to_enemy.length()
+	if direct_distance > reach + enemy.radius:
+		return false
+	if direct_distance > 0.001:
+		var edge_allowance := asin(clampf(enemy.radius / direct_distance, 0.0, 1.0))
+		if absf(facing.angle_to(to_enemy / direct_distance)) > half_angle + edge_allowance:
+			return false
+	return true
+
+
+## Hands this sweep to the rope. Vine resolves hits over the driving window rather
+## than all at once, so `cane_sweep_finished` is emitted when the stroke ends - and a
+## stroke arriving on top of one still running closes the old one first, so every
+## started sweep is matched by exactly one finished.
+func _hand_sweep_to_vine(
+	origin: Vector2,
+	facing: Vector2,
+	left_to_right: bool,
+	reach: float,
+	base_damage: float,
+	is_bonus: bool
+) -> void:
+	# The rope resolves this sweep. Hits arrive over the driving window rather
+	# than all at once, so cane_sweep_finished is emitted when the stroke ends.
+	if _vine_sweep_active:
+		# A stroke arriving on top of one still running closes the old one first,
+		# so every started sweep is matched by exactly one finished.
+		cane_sweep_finished.emit(
+			_vine_sweep_origin,
+			_vine_sweep_facing,
+			_vine_sweep_left_to_right,
+			_vine_sweep_reach,
+			_vine_sweep_hits,
+			_vine_sweep_is_bonus
+		)
+	vine_whip.begin_sweep(facing, left_to_right, cane_cooldown_seconds)
+	_vine_sweep_active = true
+	_vine_sweep_damage = base_damage
+	_vine_sweep_is_bonus = is_bonus
+	_vine_sweep_facing = facing
+	_vine_sweep_left_to_right = left_to_right
+	_vine_sweep_reach = reach
+	_vine_sweep_origin = origin
+	_vine_sweep_hits = 0
+	_cane_route_cache.clear()
