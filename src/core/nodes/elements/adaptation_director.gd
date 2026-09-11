@@ -21,216 +21,6 @@ const INVALID_POSITION := Vector2(-99999.0, -99999.0)
 ## What a lone Thistle keeps when it has to answer its own network event.
 const SOLO_NETWORK_SHARE := 0.65
 
-enum PendingKind {
-	THISTLE_VOLLEY,
-	CANE_SWEEP,
-	THORNWHIP_SECOND_HALF,
-	WISTERIA_SEQUENCE,
-	WISTERIA_BLOSSOM,
-	ESPALIER_CUTTINGS,
-}
-
-
-class RootedGlowState:
-	## One point's reading of the Root Network under it: whether it is standing on
-	## Mature player ground, how deep the Network is there, and how much of the
-	## transition flare is left. Kept per point rather than recomputed in _draw so a
-	## paused run holds its light still instead of breathing on a stopped clock.
-	var lit := false
-	var network := 1.0
-	var flare := 0.0
-	var _was_lit := false
-
-	func advance(
-		delta: float,
-		now_lit: bool,
-		now_network: float,
-		flare_seconds: float
-	) -> void:
-		# Both edges flare. Stepping on is when the whole unit is won and stepping
-		# off is when it is lost, and the second is the one a player misses.
-		if now_lit != _was_lit:
-			flare = 1.0
-		elif flare > 0.0:
-			flare = maxf(0.0, flare - delta / maxf(0.01, flare_seconds))
-		_was_lit = now_lit
-		lit = now_lit
-		network = now_network
-
-	func clear() -> void:
-		lit = false
-		network = 1.0
-		flare = 0.0
-		_was_lit = false
-
-
-class ThistleState:
-	var active := false
-	var permanent := true
-	var position := Vector2.ZERO
-	var attack_remaining := 0.0
-	var temporary_remaining := 0.0
-	var unsupported_remaining := -1.0
-	var collapse_volley_fired := false
-	var firing_cycles := 0
-	var heavy_thorns := 0
-	var bloom_charge_remaining := 0.0
-	var sequence := 0
-	var burdock_temporary := false
-	## A real thistle catches on whatever walks through it. While carried the turret
-	## rides Grandma, keeps firing from her position, and answers to no supporting
-	## Green: it is on her coat, not in the ground.
-	var carried := false
-	var carry_remaining := 0.0
-	## Time before this turret is willing to catch on Grandma again. Without it she
-	## would simply stand on the thing and never put it down.
-	var stick_cooldown_remaining := 0.0
-	## The Root Network under this turret, which is where Clustering and Burr are
-	## measured. A carried turret takes no light of its own: it is standing exactly
-	## where Grandma is and her own light already says so.
-	var rooted_glow := RootedGlowState.new()
-
-
-## What fired a thorn. Only NATURAL advances a network counter; every relic-made
-## thorn is tagged so it can hit, kill and ricochet normally without ever feeding
-## the counters that produced it.
-enum ThornSource {
-	NATURAL,
-	ROSETTE,
-	RELAY,
-	PINCUSHION,
-	SEEDHEAD,
-	ANSWERING,
-	PHYLLOTAXIS,
-	FORKING,
-	CROWN,
-}
-
-
-class ThornState:
-	var active := false
-	var position := Vector2.ZERO
-	var velocity := Vector2.ZERO
-	var remaining := 0.0
-	var damage := 0.0
-	var ricochets_remaining := 0
-	var pierce_remaining := 0
-	## ROOTSTOCK's Heavy Thorn may pass through ordinary enemies, but elites and
-	## bosses stop the punch-through and hand the packet off to Burr ricochets.
-	var pierces_normal_only := false
-	var critical_chance_bonus := 0.0
-	## Added to the critical multiplier, not to the odds of reaching it. Needlepoint
-	## is the whole of this; the chance above belongs to the effects that hand a
-	## single packet better odds.
-	var critical_damage_bonus := 0.0
-	var heavy := false
-	var bloomshot := false
-	var bloomshot_force := 0.0
-	var ricochet_depth := 0
-	var inherit_needlepoint := true
-	var source_thistle_sequence := -1
-	var source_tag := 0
-	var hit_ids := PackedInt32Array()
-
-
-class FruitState:
-	var active := false
-	var dropped_seed := false
-	var fragment := false
-	var position := Vector2.ZERO
-	var velocity := Vector2.ZERO
-	var speed := 0.0
-	var base_speed := 0.0
-	var deceleration := 0.0
-	## Seconds this Fruit may keep rolling before it bursts wherever it is. A Fruit
-	## is a roll and then a burst; nothing legitimately outlives its own roll, so
-	## this is the backstop that makes permanent scenery impossible.
-	var roll_deadline_remaining := 0.0
-	var last_direction := Vector2.RIGHT
-	var remaining_distance := 0.0
-	var maximum_distance := 1.0
-	var normal_roll_distance := 1.0
-	var damage := 0.0
-	var terminal_damage := 0.0
-	var knockback := 0.0
-	## Trail and terminal area are separate because GRAFT's Prize Fruit enlarges
-	## only the terminal foothold, while Germination/Fertile Union affect both.
-	var germination_multiplier := 1.0
-	var terminal_germination_multiplier := 1.0
-	var visual_scale := 1.0
-	var visual_index := 0
-	var rotation := 0.0
-	var trail_debt := 0.0
-	var hit_cooldowns := {}
-	var first_enemy_collision := true
-	var thick_rind_available := false
-	var first_obstacle_bounce := true
-	var bank_shot_armed := false
-	var first_collision_damage_multiplier := 1.0
-	var carried_thistle_remaining := 0.0
-	var burdock_reset_remaining := 0.0
-	var graft_cuttings := 0
-	var prize := false
-	var can_raise_sapling := true
-	## Which release threw this Fruit, and which Fruit of that release it is. Fruit
-	## Salad needs both: two hits from the same Fruit are not two Fruit.
-	var release_id := 0
-	var fruit_id := 0
-	## Stem Steering and Windfall each redirect the same Fruit, so each keeps its own
-	## budget rather than sharing one and quietly stealing from the other.
-	var steering_uses := 0
-	var windfall_uses := 0
-	var windfall_cooldown := 0.0
-	## Bruised Fruit is measured in travel rather than time, so a Fruit that has
-	## nearly stopped does not keep painting wide.
-	var juicy_remaining := 0.0
-	## Newton's Apple chain starters this Fruit has spent, and the clock between them.
-	var newton_starters := 0
-	var newton_cooldown := 0.0
-
-
-class FruitseedState:
-	var active := false
-	var position := Vector2.ZERO
-	var remaining := 0.0
-	var duration := 1.0
-	var area_multiplier := 1.0
-	var dropped_seed := false
-	var fragment := false
-	var rotation := 0.0
-	var direction := Vector2.RIGHT
-	var visual_index := 0
-	var visual_scale := 1.0
-	var damage := 0.0
-	var terminal_damage := 0.0
-	var knockback := 0.0
-	var normal_roll_distance := 1.0
-	var can_raise_sapling := true
-
-
-class SaplingState:
-	var active := false
-	var position := Vector2.ZERO
-	## Negative while rooted, positive while waiting for Green to return.
-	var dormant_remaining := -1.0
-	## Lets the queued terminal foothold resolve before support is evaluated.
-	var support_grace_remaining := 0.0
-	var release_toggle := false
-	var support_remaining := 0.0
-
-
-class PendingEvent:
-	var active := false
-	var kind := PendingKind.THISTLE_VOLLEY
-	var remaining := 0.0
-	var origin := Vector2.ZERO
-	var facing := Vector2.RIGHT
-	var left_to_right := true
-	var damage_scale := 1.0
-	var count := 0
-	var extra_pierce := 0
-	var reach := 0.0
-
 
 @export_group("Collaborators")
 @export var progression: Progression
@@ -490,7 +280,7 @@ var _thorns: Array[ThornState] = []
 var _fruits: Array[FruitState] = []
 var _fruitseeds: Array[FruitseedState] = []
 var _saplings: Array[SaplingState] = []
-var _pending_events: Array[PendingEvent] = []
+var _pending_events: Array[PendingAdaptationEvent] = []
 var _fruit_release_remaining := 0.0
 ## The light under Grandma, and the free-running clock its breath rides on.
 var _player_rooted_glow := RootedGlowState.new()
@@ -839,7 +629,7 @@ func _configure_pools() -> void:
 	for _index in range(sapling_pool_size):
 		_saplings.append(SaplingState.new())
 	for _index in range(pending_event_pool_size):
-		_pending_events.append(PendingEvent.new())
+		_pending_events.append(PendingAdaptationEvent.new())
 
 
 func _upgrade(upgrade_id: int) -> int:
@@ -1265,7 +1055,7 @@ func _fire_thistle(
 				thistle.sequence,
 				false,
 				launch_angle_offset,
-				ThornSource.PHYLLOTAXIS
+				ThornState.Source.PHYLLOTAXIS
 			)
 	if thistle.permanent:
 		_network_cycle_count += 1
@@ -1281,7 +1071,7 @@ func _fire_thistle(
 		if get_active_thistle_count() <= 1:
 			for volley in range(1, crown_solo_volleys):
 				_queue_pending_event(
-					PendingKind.THISTLE_VOLLEY,
+					PendingAdaptationEvent.Kind.THISTLE_VOLLEY,
 					crown_solo_interval * float(volley),
 					thistle.position,
 					Vector2.RIGHT,
@@ -1497,7 +1287,7 @@ func _find_thistle_by_sequence(sequence: int) -> ThistleState:
 func _count_active_forked_thorns() -> int:
 	var count := 0
 	for thorn in _thorns:
-		if thorn.active and thorn.source_tag == ThornSource.FORKING:
+		if thorn.active and thorn.source_tag == ThornState.Source.FORKING:
 			count += 1
 	return count
 
@@ -1540,7 +1330,7 @@ func _note_natural_thorn_impact(
 ) -> void:
 	## Every network counter advances from here, and only from here, so a bonus
 	## thorn can never advance the counter that produced it.
-	if thorn.source_tag != ThornSource.NATURAL:
+	if thorn.source_tag != ThornState.Source.NATURAL:
 		return
 	if _has_relic(RelicCatalog.Id.THORN_RELAY):
 		_relay_impacts += 1
@@ -1591,7 +1381,7 @@ func _fire_thorn_relay(thorn: ThornState, hit_position: Vector2) -> void:
 		responder.sequence,
 		false,
 		0.0,
-		ThornSource.RELAY
+		ThornState.Source.RELAY
 	)
 
 
@@ -1633,7 +1423,7 @@ func _fork_thorn(
 			thorn.source_thistle_sequence,
 			false,
 			0.0,
-			ThornSource.FORKING
+			ThornState.Source.FORKING
 		)
 
 
@@ -1643,8 +1433,8 @@ func _add_pincushion_stack(enemy_id: int, thorn: ThornState) -> void:
 	# Only the thorns the relic names may embed. A Pincushion burst embedding more
 	# stacks would let one corpse pay out forever.
 	match thorn.source_tag:
-		ThornSource.NATURAL, ThornSource.ROSETTE, ThornSource.SEEDHEAD, \
-		ThornSource.ANSWERING, ThornSource.CROWN:
+		ThornState.Source.NATURAL, ThornState.Source.ROSETTE, ThornState.Source.SEEDHEAD, \
+		ThornState.Source.ANSWERING, ThornState.Source.CROWN:
 			pass
 		_:
 			return
@@ -1684,7 +1474,7 @@ func _burst_pincushion(enemy_id: int, hit_position: Vector2) -> void:
 			-1,
 			false,
 			0.0,
-			ThornSource.PINCUSHION
+			ThornState.Source.PINCUSHION
 		)
 
 
@@ -1694,7 +1484,7 @@ func _answer_thorn(thorn: ThornState, hit_position: Vector2) -> void:
 	## happens when the sole Thistle is the only one there is.
 	if not _has_relic(RelicCatalog.Id.ANSWERING_THORN):
 		return
-	if thorn.source_tag != ThornSource.NATURAL or _answering_cooldown > 0.0:
+	if thorn.source_tag != ThornState.Source.NATURAL or _answering_cooldown > 0.0:
 		return
 	var responder := _find_network_responder(thorn.source_thistle_sequence, hit_position)
 	if responder == null:
@@ -1794,7 +1584,7 @@ func _spawn_thorn(
 	source_thistle_sequence: int = -1,
 	pierces_normal_only: bool = false,
 	launch_angle_offset: float = 0.0,
-	source_tag: int = ThornSource.NATURAL
+	source_tag: int = ThornState.Source.NATURAL
 ) -> bool:
 	var thorn: ThornState
 	for candidate in _thorns:
@@ -2195,7 +1985,7 @@ func _on_cane_sweep_started(
 		if twining_sweep_interval > 0 and _twining_progress >= twining_sweep_interval:
 			_twining_progress = 0
 			_queue_pending_event(
-				PendingKind.CANE_SWEEP,
+				PendingAdaptationEvent.Kind.CANE_SWEEP,
 				twining_delay_seconds,
 				origin,
 				facing,
@@ -2292,7 +2082,7 @@ func _on_cane_sweep_finished(
 				_liana_left_to_right = left_to_right
 		if _evolution_rank(Progression.EvolutionId.WISTERIA) >= 5:
 			_queue_pending_event(
-				PendingKind.WISTERIA_SEQUENCE,
+				PendingAdaptationEvent.Kind.WISTERIA_SEQUENCE,
 				0.75,
 				origin,
 				facing,
@@ -2424,7 +2214,7 @@ func _fire_thornwhip(
 		)
 	if rank >= 5 and not second_half:
 		var queued := _queue_pending_event(
-			PendingKind.THORNWHIP_SECOND_HALF,
+			PendingAdaptationEvent.Kind.THORNWHIP_SECOND_HALF,
 			combat.cane_sweep_seconds * 0.50,
 			origin,
 			facing,
@@ -2553,7 +2343,7 @@ func _fire_wisteria_sequence(
 			force = 0.70 * sequence_scale
 		var radius_scale := sqrt(maxf(force, 0.05)) * (1.35 if rank >= 3 and tip else 1.0)
 		if not _queue_pending_event(
-			PendingKind.WISTERIA_BLOSSOM,
+			PendingAdaptationEvent.Kind.WISTERIA_BLOSSOM,
 			0.10 * float(index),
 			position,
 			Vector2.RIGHT,
@@ -2657,20 +2447,20 @@ func _update_pending_events(delta: float) -> void:
 			continue
 		pending.active = false
 		match pending.kind:
-			PendingKind.THISTLE_VOLLEY:
+			PendingAdaptationEvent.Kind.THISTLE_VOLLEY:
 				_fire_all_thistles(
 					pending.damage_scale,
 					pending.extra_pierce,
 					false
 				)
-			PendingKind.CANE_SWEEP:
+			PendingAdaptationEvent.Kind.CANE_SWEEP:
 				combat.perform_bonus_cane_sweep(
 					pending.facing,
 					pending.left_to_right,
 					pending.damage_scale,
 					1.0
 				)
-			PendingKind.THORNWHIP_SECOND_HALF:
+			PendingAdaptationEvent.Kind.THORNWHIP_SECOND_HALF:
 				_fire_thornwhip(
 					pending.origin,
 					pending.facing,
@@ -2678,7 +2468,7 @@ func _update_pending_events(delta: float) -> void:
 					pending.reach,
 					true
 				)
-			PendingKind.WISTERIA_SEQUENCE:
+			PendingAdaptationEvent.Kind.WISTERIA_SEQUENCE:
 				_fire_wisteria_sequence(
 					pending.origin,
 					pending.facing,
@@ -2686,13 +2476,13 @@ func _update_pending_events(delta: float) -> void:
 					pending.reach,
 					pending.damage_scale
 				)
-			PendingKind.WISTERIA_BLOSSOM:
+			PendingAdaptationEvent.Kind.WISTERIA_BLOSSOM:
 				_detonate_wisteria_blossom(
 					pending.origin,
 					pending.damage_scale,
 					pending.reach
 				)
-			PendingKind.ESPALIER_CUTTINGS:
+			PendingAdaptationEvent.Kind.ESPALIER_CUTTINGS:
 				if pruning_director != null:
 					pruning_director.fire_espalier_fan(
 						pending.count,
@@ -4358,7 +4148,7 @@ func _on_pruning_ring_released(
 		_fire_all_thistles(damage_scale, extra_pierce, false)
 		if deadheading_rank >= 4 and charge >= 0.999:
 			_queue_pending_event(
-				PendingKind.THISTLE_VOLLEY,
+				PendingAdaptationEvent.Kind.THISTLE_VOLLEY,
 				0.40,
 				player.get_arena_position(),
 				facing,
@@ -4381,7 +4171,7 @@ func _on_pruning_ring_released(
 		if pruning_director != null:
 			release_scale += pruning_director.get_launch_charge_damage_bonus() * charge
 		_queue_pending_event(
-			PendingKind.ESPALIER_CUTTINGS,
+			PendingAdaptationEvent.Kind.ESPALIER_CUTTINGS,
 			0.50,
 			player.get_arena_position(),
 			facing,

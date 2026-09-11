@@ -87,7 +87,7 @@ func _run() -> void:
 	prototype.territory_field.reset_field()
 	prototype._apply_progression_modifiers()
 	adaptations.advance(1.0 / 60.0)
-	var carried_turret: AdaptationDirector.ThistleState = null
+	var carried_turret: ThistleState = null
 	for thistle in adaptations._thistles:
 		if thistle.active and thistle.permanent:
 			carried_turret = thistle

@@ -187,11 +187,11 @@ func _run_layout(prototype: RunRoot, layout: String, auto_targets: bool) -> void
 		# matters is how far apart the chosen directions ever get.
 		var pruned := combat.debug_densest_target_direction_mode(
 			origin, reach, sector, facing,
-			CombatDirector.DensestTargetMode.DOT_PRUNE
+			CaneTargeting.Mode.DOT_PRUNE
 		)
 		var sorted_result := combat.debug_densest_target_direction_mode(
 			origin, reach, sector, facing,
-			CombatDirector.DensestTargetMode.SORTED
+			CaneTargeting.Mode.SORTED
 		)
 		var reference := combat.debug_densest_target_direction_reference(
 			origin, reach, sector, facing

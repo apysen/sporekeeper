@@ -106,13 +106,16 @@ src/core/
   rules/                        Pure or scene-independent game rules
     combat/                     Damage and targeting calculations
     economy/                    Biomass income, costs, and reward settlement
+    elements/                   Path mechanics that resolve without a node:
+                              rate zones, standing regions, and amplification
     progression/               Draft pools, slot rules, eligibility, and unlocks
     territory/                 Field operations, ownership, maturity, and infection
     waves/                      Objective evaluation and composition selection
   persistence/                 Save schema, migrations, settings, and serialization
 tests/
-  fixtures/                     Small definitions, masks, command streams, and scenes
+  fixtures/                     Setup helpers and the shared pass/fail ledger
   integration/                  Headless scene, simulation, and complete-loop suites
+    smoke/                      One topic each of the run-wide smoke suite
   performance/                  Field, renderer-upload, query, and enemy-load probes
   unit/                         Pure rules, definitions, state, and schema tests
 ```

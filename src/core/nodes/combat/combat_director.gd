@@ -623,10 +623,7 @@ var _enemy_art := {}
 var _enemy_art_radius := {}
 var _enemy_art_ready := false
 var _enemy_art_baking := false
-var _rampart_center := Vector2(-1.0, -1.0)
-var _rampart_radius := 0.0
-var _rampart_entanglement_rate_bonus := 0.0
-var _rampart_repulsion_multiplier := 1.0
+var _rampart := Rampart.new()
 var _sporulation_enabled := false
 var _sporulation_rate_multiplier := 1.0
 var _fruiting_bodies: Array[FruitingBodyState] = []
@@ -660,11 +657,11 @@ var _ancient_fury_awakening_cooldown := 10.0
 var _ancient_fury_awakening_remaining := 0.0
 var _pending_eruptions: Array[PendingEruptionState] = []
 var _briar_heart_recharges: Array = []
-var _entanglement_rate_zones: Array = []
-## Short-lived local multipliers created by contaminated Fruit trails. Like the
-## Entanglement-rate zones, overlapping patches refresh/choose the strongest value
-## instead of stacking.
-var _spore_rate_zones: Array = []
+## Aggressive Growth's Entanglement patches and Contaminated Ground's Spore
+## patches. One rule, two instances: overlapping patches of either kind choose the
+## strongest value instead of stacking.
+var _entanglement_zones := RateZones.new()
+var _spore_zones := RateZones.new()
 var _mass_entanglement_elite_share := 0.5
 var _mass_entanglement_boss_share := 0.2
 ## This wave's curves. Quick keeps driving health, damage and erosion through
@@ -679,23 +676,10 @@ var _navigation_width := 0
 var _navigation_height := 0
 var _navigation_cell_count := 0
 var _navigation_small_target_index := -1
-## Chance an eligible spawn carries a rule change, driven by the wave director.
-var _elite_modifier_chance := 0.0
-## A modifier pinned for the next eligible spawn, for tests and debug keys.
-var _forced_elite_modifier := EnemyKinds.EliteModifier.NONE
-## Which rule changes this wave may hand out. Empty means the Quick behaviour of
-## drawing from every authored modifier.
-var _modifier_pool := PackedInt32Array()
-## The Campaign wave modifier eligibility is judged against; zero outside Campaign.
-var _modifier_wave_number := 0
-## Wave 18 is the modifier showcase: its first eligible spawns are steered to
-## demonstrate three different rule changes before the roll goes back to chance.
-## Tutorial shaping for one wave, deliberately not a permanent bias.
-const MODIFIER_SHOWCASE_WAVE := 18
-const MODIFIER_SHOWCASE_SPAWNS := 6
-const MODIFIER_SHOWCASE_TYPES := 3
-var _showcase_modifiers := PackedInt32Array()
-var _showcase_eligible_spawns := 0
+## What a spawn's rule change is, and when the run is allowed to hand one out.
+## Holds the chance, the wave's pool and the showcase quota; the director only
+## asks and writes the answer onto the enemy.
+var _elite_modifiers := EliteModifiers.new()
 var _navigation_boss_target_index := -1
 var _navigation_catalyst_target_index := -1
 var _navigation_catalyst_target_position := Vector2(-99999.0, -99999.0)
@@ -769,6 +753,13 @@ func _ready() -> void:
 		bramble_horde_damage_maximum_bonus,
 		bramble_entanglement_per_second,
 		bramble_frontier_entanglement_bonus
+	)
+	# The same handover for the rule changes an elite can carry: authored chances and
+	# the late-role list are design surface here and never move during a run.
+	_elite_modifiers.configure(
+		elite_modifier_base_chance,
+		elite_modifier_final_chance,
+		modifier_eligible_late_roles
 	)
 	_sfx_random.randomize()
 	# Started rather than awaited: the run must not wait on a render pass to begin,
@@ -846,8 +837,8 @@ func simulate_step(delta: float) -> void:
 	_update_briar_traps(delta)
 	_update_fruiting_bodies(delta)
 	_update_forest_awakening(delta)
-	_update_entanglement_rate_zones(delta)
-	_update_spore_rate_zones(delta)
+	_entanglement_zones.advance(delta)
+	_spore_zones.advance(delta)
 	_update_pending_eruptions(delta)
 	_update_root_eruptions(delta)
 	PerfCounters.timer_begin(PerfCounters.TIMER_ENEMY_MANAGER_TOTAL)
@@ -952,25 +943,17 @@ func set_rampart(
 	entanglement_rate_bonus: float,
 	repulsion_multiplier: float
 ) -> void:
-	_rampart_center = center
-	_rampart_radius = maxf(0.0, radius)
-	_rampart_entanglement_rate_bonus = maxf(0.0, entanglement_rate_bonus)
-	_rampart_repulsion_multiplier = clampf(repulsion_multiplier, 0.05, 1.0)
+	_rampart.raise_region(
+		center, radius, entanglement_rate_bonus, repulsion_multiplier
+	)
 
 
 func clear_rampart() -> void:
-	_rampart_center = Vector2(-1.0, -1.0)
-	_rampart_radius = 0.0
-	_rampart_entanglement_rate_bonus = 0.0
-	_rampart_repulsion_multiplier = 1.0
+	_rampart.clear()
 
 
 func is_in_rampart(local_position: Vector2) -> bool:
-	return (
-		_rampart_radius > 0.0
-		and _rampart_center.x >= 0.0
-		and local_position.distance_to(_rampart_center) <= _rampart_radius
-	)
+	return _rampart.contains(local_position)
 
 
 func spread_entanglement_from(
@@ -1075,12 +1058,7 @@ func _find_enemy(enemy_id: int) -> EnemyState:
 
 
 func reset_combat() -> void:
-	_elite_modifier_chance = elite_modifier_base_chance
-	_forced_elite_modifier = EnemyKinds.EliteModifier.NONE
-	_modifier_pool = PackedInt32Array()
-	_modifier_wave_number = 0
-	_showcase_modifiers = PackedInt32Array()
-	_showcase_eligible_spawns = 0
+	_elite_modifiers.reset()
 	_scaling.reset_campaign()
 	for enemy in _enemies:
 		enemy.active = false
@@ -1106,8 +1084,8 @@ func reset_combat() -> void:
 	for pending in _pending_eruptions:
 		pending.active = false
 	_briar_heart_recharges.clear()
-	_entanglement_rate_zones.clear()
-	_spore_rate_zones.clear()
+	_entanglement_zones.clear()
+	_spore_zones.clear()
 	_ancient_fury_awakening_remaining = 0.0
 	_root_eruption_sequence = 0
 	_briar_trap_sequence = 0
@@ -1561,44 +1539,6 @@ func set_cane_auto_targeting(enabled: bool) -> void:
 	_cane_auto_targets = enabled
 
 
-## How far below the sector's cosine a dot product must sit before the cheap test
-## is allowed to reject a target outright.
-##
-## `angle > threshold` and `dot < cos(threshold)` are the same condition for unit
-## vectors, because cosine decreases monotonically over [0, PI]. Only floating
-## point separates them, so backing the cut off by a margin far larger than the
-## error in a normalized dot product leaves a band around the boundary that is
-## still decided by `angle_to` exactly as before. Nothing inside the sector, or
-## near enough to be arguable, is ever rejected by arithmetic.
-const CANE_SECTOR_DOT_MARGIN := 1.0e-5
-
-## How the densest-target search evaluates each candidate sector.
-##
-## All three produce the same answer for any layout where the tie-breaker is not
-## being asked to separate two candidates that are equal to within its own
-## thresholds. They differ in cost and in how exactly they reproduce the original
-## arithmetic, which is why the slow one stays available to probes forever.
-enum DensestTargetMode {
-	## Every candidate/target pair decided by `angle_to`, as originally written.
-	REFERENCE,
-	## As REFERENCE, but a dot product may reject pairs that are plainly outside the
-	## sector. Bit-identical to REFERENCE: it only skips work whose outcome was
-	## already settled.
-	DOT_PRUNE,
-	## Angles sorted once, then each candidate's contained set found by binary
-	## search and summarised from prefix sums. Mathematically identical to
-	## REFERENCE, but NOT bit-identical: it forms the angular error as a difference
-	## of two `atan2` results rather than one `atan2` of a cross and a dot, and
-	## sums in sorted order rather than pool order. Both are exact to roughly 1e-7,
-	## against a tie-breaker with 1e-4 thresholds.
-	SORTED,
-}
-
-## Which mode ships. Kept as a constant rather than inlined so a regression can be
-## bisected by changing one line.
-const CANE_DENSEST_TARGET_MODE := DensestTargetMode.SORTED
-
-
 func get_densest_target_direction(
 	origin: Vector2,
 	maximum_range: float,
@@ -1613,7 +1553,7 @@ func get_densest_target_direction(
 		maximum_range,
 		sector_degrees,
 		fallback_direction,
-		CANE_DENSEST_TARGET_MODE
+		CaneTargeting.SHIPPING_MODE
 	)
 
 
@@ -1631,7 +1571,7 @@ func debug_densest_target_direction_reference(
 		maximum_range,
 		sector_degrees,
 		fallback_direction,
-		DensestTargetMode.REFERENCE
+		CaneTargeting.Mode.REFERENCE
 	)
 
 
@@ -1640,7 +1580,7 @@ func debug_densest_target_direction_mode(
 	maximum_range: float,
 	sector_degrees: float,
 	fallback_direction: Vector2,
-	mode: DensestTargetMode
+	mode: CaneTargeting.Mode
 ) -> Vector2:
 	## For probes that need to compare one specific mode against the reference.
 	return _densest_target_direction(
@@ -1653,7 +1593,7 @@ func _densest_target_direction(
 	maximum_range: float,
 	sector_degrees: float,
 	fallback_direction: Vector2,
-	mode: DensestTargetMode
+	mode: CaneTargeting.Mode
 ) -> Vector2:
 	var fallback := fallback_direction.normalized()
 	if fallback.length_squared() <= 0.0001:
@@ -1691,177 +1631,17 @@ func _densest_target_direction(
 	PerfCounters.count(
 		PerfCounters.COUNT_CANE_TARGETS, target_directions.size()
 	)
-	var half_angle := deg_to_rad(clampf(sector_degrees, 1.0, 359.0) * 0.5)
-	# The angular threshold the loop below tests against, and the dot product that
-	# corresponds to it. A sector wide enough that no angle can fall outside pushes
-	# this under -1, at which point nothing is ever rejected early -- which is the
-	# correct behaviour, not a special case.
-	var angle_threshold := half_angle + 0.0001
-	var rejection_dot := cos(angle_threshold) - CANE_SECTOR_DOT_MARGIN
-	var candidate_directions := PackedVector2Array()
-	# Unit copies, built once, used only by the cheap rejection.
-	#
-	# These entries are not unit vectors. Gathering divides the straight-line offset
-	# by `distance`, and with auto-targeting on `distance` has by then been replaced
-	# with the routed path length, which is longer -- so the "direction" comes out
-	# shorter than one. `angle_to` never noticed, because atan2 of cross over dot is
-	# scale invariant. A raw dot product is not: it returns |a||b|cos(angle), so
-	# against short vectors it reads as a wider angle than the real one and rejects
-	# targets that are actually inside the sector. Normalizing here costs one pass
-	# and keeps the arrays the tie-breaker reads untouched.
-	var target_units := PackedVector2Array()
-	var candidate_units := PackedVector2Array()
-	for direction in target_directions:
-		candidate_directions.append(direction)
-		candidate_directions.append(direction.rotated(-half_angle))
-		candidate_directions.append(direction.rotated(half_angle))
-		var unit := direction.normalized()
-		target_units.append(unit)
-		candidate_units.append(unit)
-		candidate_units.append(unit.rotated(-half_angle))
-		candidate_units.append(unit.rotated(half_angle))
-	# Sorted mode's one-off preparation. Angles are laid out three times -- shifted
-	# down a turn, as measured, and shifted up a turn -- so that a candidate's window
-	# is one contiguous run whatever it straddles, with no wrap-around case to get
-	# wrong. A window is narrower than a full turn (the widest legal sector is just
-	# under 360 degrees), so no target can appear in one twice.
-	var sorted_angles := PackedFloat64Array()
-	var prefix_distance := PackedFloat64Array()
-	var prefix_angle := PackedFloat64Array()
-	if mode == DensestTargetMode.SORTED:
-		var order: Array[int] = []
-		var raw_angles := PackedFloat64Array()
-		for index in range(target_directions.size()):
-			var target_vector := target_directions[index]
-			raw_angles.append(atan2(target_vector.y, target_vector.x))
-			order.append(index)
-		order.sort_custom(
-			func(first: int, second: int) -> bool:
-				return raw_angles[first] < raw_angles[second]
-		)
-		var turn := TAU
-		for copy in range(3):
-			var shift := float(copy - 1) * turn
-			for index in order:
-				sorted_angles.append(raw_angles[index] + shift)
-		prefix_distance.resize(sorted_angles.size() + 1)
-		prefix_angle.resize(sorted_angles.size() + 1)
-		prefix_distance[0] = 0.0
-		prefix_angle[0] = 0.0
-		for index in range(sorted_angles.size()):
-			var source_index: int = order[index % order.size()]
-			prefix_distance[index + 1] = (
-				prefix_distance[index] + float(target_distances[source_index])
-			)
-			prefix_angle[index + 1] = prefix_angle[index] + sorted_angles[index]
-
-	var best_direction := fallback
-	var best_count := -1
-	var best_distance_sum := INF
-	var best_alignment_error := INF
-	var best_facing_difference := INF
-	for candidate_index in range(candidate_directions.size()):
-		var candidate := candidate_directions[candidate_index]
-		var candidate_unit := candidate_units[candidate_index]
-		var contained := 0
-		var distance_sum := 0.0
-		var alignment_error := 0.0
-		if mode == DensestTargetMode.SORTED:
-			# The contained set is exactly the targets whose angle lies within the
-			# threshold of this candidate's, which after sorting is one run. Splitting
-			# that run at the candidate's own angle turns the sum of |candidate -
-			# target| into two prefix-sum differences, so a candidate costs three
-			# binary searches instead of a pass over every target.
-			var candidate_angle := atan2(candidate.y, candidate.x)
-			var low := _lower_bound_float(sorted_angles, candidate_angle - angle_threshold)
-			var high := _upper_bound_float(sorted_angles, candidate_angle + angle_threshold)
-			var split := _upper_bound_float(sorted_angles, candidate_angle)
-			split = clampi(split, low, high)
-			contained = high - low
-			distance_sum = prefix_distance[high] - prefix_distance[low]
-			var below := (
-				candidate_angle * float(split - low)
-				- (prefix_angle[split] - prefix_angle[low])
-			)
-			var above := (
-				(prefix_angle[high] - prefix_angle[split])
-				- candidate_angle * float(high - split)
-			)
-			alignment_error = below + above
-		else:
-			for index in range(target_directions.size()):
-				var target := target_directions[index]
-				# Most targets in a crowd are nowhere near any given candidate's
-				# sector, and rejecting those costs a multiply instead of an atan2.
-				# Anything that survives -- inside the sector, or close enough to the
-				# edge to be arguable -- still goes through `angle_to` and the
-				# identical test, and a contained target needs its true angular error
-				# anyway.
-				if (
-					mode == DensestTargetMode.DOT_PRUNE
-					and candidate_unit.dot(target_units[index]) < rejection_dot
-				):
-					continue
-				var angular_error := absf(candidate.angle_to(target))
-				if angular_error > angle_threshold:
-					continue
-				contained += 1
-				distance_sum += target_distances[index]
-				alignment_error += angular_error
-		var facing_difference := absf(fallback.angle_to(candidate))
-		if (
-			contained > best_count
-			or (
-				contained == best_count
-				and distance_sum < best_distance_sum - 0.001
-			)
-			or (
-				contained == best_count
-				and absf(distance_sum - best_distance_sum) <= 0.001
-				and alignment_error < best_alignment_error - 0.0001
-			)
-			or (
-				contained == best_count
-				and absf(distance_sum - best_distance_sum) <= 0.001
-				and absf(alignment_error - best_alignment_error) <= 0.0001
-				and facing_difference < best_facing_difference - 0.0001
-			)
-		):
-			best_direction = candidate
-			best_count = contained
-			best_distance_sum = distance_sum
-			best_alignment_error = alignment_error
-			best_facing_difference = facing_difference
+	var best_direction := CaneTargeting.densest_direction(
+		target_directions,
+		target_distances,
+		fallback,
+		sector_degrees,
+		mode
+	)
 	PerfCounters.timer_add_since(
 		PerfCounters.TIMER_CANE_TARGET_SWEEP, sweep_began
 	)
-	return best_direction.normalized()
-
-
-func _lower_bound_float(values: PackedFloat64Array, wanted: float) -> int:
-	## First index whose value is >= wanted.
-	var low := 0
-	var high := values.size()
-	while low < high:
-		var middle := (low + high) / 2
-		if values[middle] < wanted:
-			low = middle + 1
-		else:
-			high = middle
-	return low
-
-
-func _upper_bound_float(values: PackedFloat64Array, wanted: float) -> int:
-	## First index whose value is > wanted.
-	var low := 0
-	var high := values.size()
-	while low < high:
-		var middle := (low + high) / 2
-		if values[middle] <= wanted:
-			low = middle + 1
-		else:
-			high = middle
-	return low
+	return best_direction
 
 
 func set_heartwood_rank(rank: int) -> void:
@@ -2183,22 +1963,11 @@ func set_modifier_stage(
 	available_modifiers: PackedInt32Array,
 	wave_number: int
 ) -> void:
-	## What this wave's rule changes can be, and how often they land.
-	##
-	## A stage adds to the one before it rather than replacing it, so a modifier the
-	## player has learned to read never quietly disappears from the Campaign.
-	_elite_modifier_chance = clampf(chance, 0.0, 1.0)
-	_modifier_pool = available_modifiers.duplicate()
-	if wave_number != _modifier_wave_number:
-		_modifier_wave_number = wave_number
-		if wave_number == MODIFIER_SHOWCASE_WAVE:
-			_showcase_modifiers = PackedInt32Array()
-			_showcase_eligible_spawns = 0
+	_elite_modifiers.set_stage(chance, available_modifiers, wave_number)
 
 
 func get_modifier_showcase_types() -> int:
-	## How many different rule changes the showcase wave has demonstrated so far.
-	return _showcase_modifiers.size()
+	return _elite_modifiers.get_showcase_type_count()
 
 
 func set_simulation_paused(paused: bool) -> void:
@@ -3378,45 +3147,19 @@ func add_entanglement_rate_zone(
 	duration: float
 ) -> void:
 	# Aggressive Growth: freshly claimed ground ensnares faster for a few seconds.
-	if rate_bonus <= 0.0 or duration <= 0.0:
-		return
-	# Fruit stamps can arrive every few pixels. Merge nearby equal zones so a long
-	# trail remains one bounded gameplay region rather than hundreds of arrays.
-	for zone in _entanglement_rate_zones:
-		if (
-			Vector2(zone[0]).distance_to(center) <= maxf(8.0, radius * 0.55)
-			and is_equal_approx(float(zone[2]), rate_bonus)
-		):
-			zone[0] = center
-			zone[1] = maxf(float(zone[1]), radius)
-			zone[3] = maxf(float(zone[3]), duration)
-			return
-	_entanglement_rate_zones.append([center, radius, rate_bonus, duration])
-	if _entanglement_rate_zones.size() > 64:
-		_entanglement_rate_zones.pop_front()
+	_entanglement_zones.add(center, radius, rate_bonus, duration)
 
 
 func get_active_entanglement_rate_zone_count() -> int:
-	return _entanglement_rate_zones.size()
-
-
-func _update_entanglement_rate_zones(delta: float) -> void:
-	for index in range(_entanglement_rate_zones.size() - 1, -1, -1):
-		var zone: Array = _entanglement_rate_zones[index]
-		zone[3] = float(zone[3]) - delta
-		if zone[3] <= 0.0:
-			_entanglement_rate_zones.remove_at(index)
+	return _entanglement_zones.get_active_count()
 
 
 func _get_entanglement_rate_zone_bonus(local_position: Vector2) -> float:
-	var bonus := 0.0
-	for zone in _entanglement_rate_zones:
-		if local_position.distance_to(zone[0]) <= float(zone[1]):
-			bonus = maxf(bonus, float(zone[2]))
-	if is_in_rampart(local_position):
+	var bonus := _entanglement_zones.get_bonus_at(local_position)
+	if _rampart.contains(local_position):
 		# Living Rampart is a standing zone rather than a timed one, so it is read
 		# here beside the timed zones instead of being re-added every frame.
-		bonus = maxf(bonus, _rampart_entanglement_rate_bonus)
+		bonus = maxf(bonus, _rampart.get_entanglement_rate_bonus())
 	return bonus
 
 
@@ -3429,40 +3172,15 @@ func add_spore_rate_zone(
 	## Contaminated Ground: only owned-Green accumulation is accelerated. Direct
 	## Spore applications remain unchanged because this multiplier is read solely by
 	## `_update_enemy_spore`.
-	if rate_bonus <= 0.0 or duration <= 0.0:
-		return
-	for zone in _spore_rate_zones:
-		if (
-			Vector2(zone[0]).distance_to(center) <= maxf(8.0, radius * 0.55)
-			and is_equal_approx(float(zone[2]), rate_bonus)
-		):
-			zone[0] = center
-			zone[1] = maxf(float(zone[1]), radius)
-			zone[3] = maxf(float(zone[3]), duration)
-			return
-	_spore_rate_zones.append([center, radius, rate_bonus, duration])
-	if _spore_rate_zones.size() > 64:
-		_spore_rate_zones.pop_front()
+	_spore_zones.add(center, radius, rate_bonus, duration)
 
 
 func get_active_spore_rate_zone_count() -> int:
-	return _spore_rate_zones.size()
-
-
-func _update_spore_rate_zones(delta: float) -> void:
-	for index in range(_spore_rate_zones.size() - 1, -1, -1):
-		var zone: Array = _spore_rate_zones[index]
-		zone[3] = float(zone[3]) - delta
-		if zone[3] <= 0.0:
-			_spore_rate_zones.remove_at(index)
+	return _spore_zones.get_active_count()
 
 
 func _get_spore_rate_zone_bonus(local_position: Vector2) -> float:
-	var bonus := 0.0
-	for zone in _spore_rate_zones:
-		if local_position.distance_to(Vector2(zone[0])) <= float(zone[1]):
-			bonus = maxf(bonus, float(zone[2]))
-	return bonus
+	return _spore_zones.get_bonus_at(local_position)
 
 
 func damage_first_enemy_in_radius(
@@ -3740,7 +3458,7 @@ func repel_territory_attacker(enemy: EnemyState) -> void:
 	# whole of what a Rampart is: the same rule, on a shorter clock.
 	enemy.bramble_repulsion_remaining = bramble_repulsion_cooldown_seconds
 	if is_in_rampart(enemy.position):
-		enemy.bramble_repulsion_remaining *= _rampart_repulsion_multiplier
+		enemy.bramble_repulsion_remaining *= _rampart.get_repulsion_multiplier()
 	var distance := _bramble_repulsion_pixels * _get_root_network_multiplier(
 		enemy.position,
 		enemy.bramble_ground_maturity
@@ -5060,17 +4778,11 @@ func _get_damage_feedback_color(death_source: int) -> Color:
 
 
 func set_elite_modifier_pressure(progress: float) -> void:
-	# The wave director owns the run's escalation curve, so it says how far along the
-	# run is and this turns that into the chance an eligible spawn changes the rules.
-	_elite_modifier_chance = lerpf(
-		elite_modifier_base_chance,
-		elite_modifier_final_chance,
-		clampf(progress, 0.0, 1.0)
-	)
+	_elite_modifiers.set_pressure(progress)
 
 
 func get_elite_modifier_chance() -> float:
-	return _elite_modifier_chance
+	return _elite_modifiers.get_chance()
 
 
 func get_enemy_elite_modifier(enemy_id: int) -> int:
@@ -5081,71 +4793,14 @@ func get_enemy_elite_modifier(enemy_id: int) -> int:
 func debug_force_elite_modifier(modifier: int) -> void:
 	# Pins the next eligible spawn's rule change, because a one-in-six roll behind a
 	# probability gate is not something a check can wait for.
-	_forced_elite_modifier = modifier
+	_elite_modifiers.force_next(modifier)
 
 
 func _roll_elite_modifier(role: int) -> int:
-	if _forced_elite_modifier != EnemyKinds.EliteModifier.NONE:
-		var forced := _forced_elite_modifier
-		_forced_elite_modifier = EnemyKinds.EliteModifier.NONE
-		return forced
-	if not _is_modifier_eligible(role):
-		return EnemyKinds.EliteModifier.NONE
-	if _scaling.is_campaign_active():
-		return _roll_campaign_modifier()
-	if _elite_modifier_chance <= 0.0:
-		return EnemyKinds.EliteModifier.NONE
-	if randf() > _elite_modifier_chance:
-		return EnemyKinds.EliteModifier.NONE
-	# One modifier, never two. Two rule changes on one body is a fight the player
-	# cannot read, and the point of these is that they are legible.
-	return randi_range(EnemyKinds.EliteModifier.UNSTOPPABLE, EnemyKinds.EliteModifier.VOLATILE)
-
-
-func _roll_campaign_modifier() -> int:
-	if _modifier_pool.is_empty():
-		return EnemyKinds.EliteModifier.NONE
-	if _modifier_wave_number == MODIFIER_SHOWCASE_WAVE:
-		var showcased := _draw_showcase_modifier()
-		if showcased != EnemyKinds.EliteModifier.NONE:
-			return showcased
-	if _elite_modifier_chance <= 0.0 or randf() > _elite_modifier_chance:
-		return EnemyKinds.EliteModifier.NONE
-	return _modifier_pool[randi() % _modifier_pool.size()]
-
-
-func _draw_showcase_modifier() -> int:
-	## The modifier showcase. Wave 18's first eligible spawns are steered so the
-	## player meets three different rule changes rather than three copies of
-	## whichever one the dice picked first. Shaping for one wave only: once the
-	## quota is met the wave goes back to its authored chance.
-	_showcase_eligible_spawns += 1
-	if (
-		_showcase_eligible_spawns > MODIFIER_SHOWCASE_SPAWNS
-		or _showcase_modifiers.size() >= MODIFIER_SHOWCASE_TYPES
-	):
-		return EnemyKinds.EliteModifier.NONE
-	for offset in range(_modifier_pool.size()):
-		var candidate := _modifier_pool[
-			(_showcase_eligible_spawns + offset) % _modifier_pool.size()
-		]
-		if not _showcase_modifiers.has(candidate):
-			_showcase_modifiers.append(candidate)
-			return candidate
-	return EnemyKinds.EliteModifier.NONE
-
-
-func _is_modifier_eligible(role: int) -> bool:
-	# The Elite is always eligible - it is what the modifiers are named for. The
-	# Boss is excluded: it already changes the rules by itself, and a Colony Core
-	# cannot use any of them, nor may it inherit its Colonizer's.
-	if role == EnemyKinds.Role.ELITE:
-		return true
-	if role == EnemyKinds.Role.BOSS or role == EnemyKinds.Role.COLONY_CORE:
-		return false
-	if not _scaling.is_campaign_active():
-		return modifier_eligible_late_roles.has(role)
-	return _scaling.is_role_modifier_eligible(role, _modifier_wave_number)
+	## Named on the director because it is what a spawn asks, and because the suite
+	## drives it directly. The rule itself, and the state it rolls against, is
+	## `EliteModifiers`.
+	return _elite_modifiers.roll(role, _scaling)
 
 
 func _is_player_damage_source(death_source: int) -> bool:
