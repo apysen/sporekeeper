@@ -564,20 +564,11 @@ func get_axis_lifetime(system_id: int) -> float:
 
 
 func get_rank_cost(level: int) -> float:
-	# What the shop charged for this rank: 20, 35, 61, 107, 188, 328, 574. Kept so the
-	# automatic climb lands where buying in the best order would have.
-	if level <= 1:
-		return 0.0
-	return rank_cost_base * pow(rank_cost_growth, float(level - 2))
+	return RankCosts.rank_cost(rank_cost_base, rank_cost_growth, level)
 
 
 func get_cumulative_rank_cost(level: int) -> float:
-	# Everything the run would have had to earn to stand at this rank.
-	if level <= 1:
-		return 0.0
-	return rank_cost_base * (pow(rank_cost_growth, float(level - 1)) - 1.0) / (
-		rank_cost_growth - 1.0
-	)
+	return RankCosts.cumulative_cost(rank_cost_base, rank_cost_growth, level)
 
 
 func get_level(system_id: int) -> int:
@@ -588,30 +579,23 @@ func get_level(system_id: int) -> int:
 		return 0
 	if not is_system_unlocked(system_id):
 		return 1
-	var earned := get_axis_lifetime(system_id)
-	if earned <= 0.0 or rank_cost_base <= 0.0:
-		return 1
-	var ranks: float = floor(
-		log(1.0 + earned * (rank_cost_growth - 1.0) / rank_cost_base)
-		/ log(rank_cost_growth)
+	return RankCosts.level_for(
+		rank_cost_base, rank_cost_growth, get_axis_lifetime(system_id), maximum_level
 	)
-	return clampi(1 + int(ranks), 1, maximum_level)
 
 
 func get_axis_progress(system_id: int) -> float:
 	# How far this axis has come toward its next rank, for a meter that reports growth
-	# rather than a bar waiting on a button.
-	var level := get_level(system_id)
-	if level >= maximum_level or not is_system_unlocked(system_id):
-		return 1.0 if level >= maximum_level else 0.0
-	var floor_cost := get_cumulative_rank_cost(level)
-	var next_cost := get_cumulative_rank_cost(level + 1)
-	if next_cost <= floor_cost:
-		return 0.0
-	return clampf(
-		(get_axis_lifetime(system_id) - floor_cost) / (next_cost - floor_cost),
-		0.0,
-		1.0
+	# rather than a bar waiting on a button. An axis the run has not discovered is at
+	# zero rather than at the foot of a ladder it cannot climb yet.
+	if not is_system_unlocked(system_id):
+		return 1.0 if get_level(system_id) >= maximum_level else 0.0
+	return RankCosts.progress_toward_next(
+		rank_cost_base,
+		rank_cost_growth,
+		get_axis_lifetime(system_id),
+		get_level(system_id),
+		maximum_level
 	)
 
 
@@ -774,3 +758,51 @@ static func get_system_description(system_id: int) -> String:
 				+ "holds together, and rebounds."
 			)
 	return ""
+
+
+## What the organism has grown into, and what it is part way through.
+##
+## `_pending_injections` is not kept: an injection is a few seconds of in-flight
+## effect belonging to the moment it was started, and a save is taken at a wave break
+## where nothing should be mid-flight. Restoring one would resume a cast whose caster
+## is no longer where it was aimed.
+func capture_state() -> Dictionary:
+	return {
+		"announced_levels": _announced_levels,
+		"announced_unlocks": _announced_unlocks,
+		"elapsed_seconds": _elapsed_seconds,
+		"last_injection_mass": _last_injection_mass,
+		"injection_count": _injection_count,
+		"action_cooldowns": _action_cooldowns,
+		"milestones_reached": _milestones_reached,
+		"overgrow_count": _overgrow_count,
+	}
+
+
+func apply_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	_announced_levels = _fit_int_array(state.get("announced_levels"), _announced_levels.size())
+	_announced_unlocks = _fit_int_array(state.get("announced_unlocks"), _announced_unlocks.size())
+	_elapsed_seconds = float(state.get("elapsed_seconds", 0.0))
+	_last_injection_mass = float(state.get("last_injection_mass", 0.0))
+	_injection_count = int(state.get("injection_count", 0))
+	_action_cooldowns = _fit_float_array(state.get("action_cooldowns"), _action_cooldowns.size())
+	_milestones_reached = int(state.get("milestones_reached", 0))
+	_overgrow_count = int(state.get("overgrow_count", 0))
+	_pending_injections.clear()
+	levels_changed.emit()
+
+
+## Kept at the size this build uses rather than the size the file was written at, so
+## an axis or an action added since the save cannot be indexed past the end.
+func _fit_int_array(stored: Variant, size: int) -> PackedInt32Array:
+	var values: PackedInt32Array = stored if stored is PackedInt32Array else PackedInt32Array()
+	values.resize(size)
+	return values
+
+
+func _fit_float_array(stored: Variant, size: int) -> PackedFloat32Array:
+	var values: PackedFloat32Array = stored if stored is PackedFloat32Array else PackedFloat32Array()
+	values.resize(size)
+	return values

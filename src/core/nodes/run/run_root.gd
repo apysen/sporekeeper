@@ -5,7 +5,7 @@ const RUN_MODE := preload("res://src/core/models/run/run_mode.gd")
 
 ## The screen the pause menu leaves a run for. Loaded by path rather than preloaded:
 ## the home screen loads this scene in turn, and preloading both ways is a cycle.
-const HOME_SCENE := "res://scenes/menu/home_screen.tscn"
+const HOME_SCENE := "res://scenes/app/home_screen.tscn"
 
 ## Placeholder reel faces. Each stands for one Path, plus the Clover wild and the Bust.
 
@@ -95,6 +95,9 @@ enum QueuedReward {
 @export var pruning_director: PruningDirector
 ## Runtime for Thistle turrets, Vine pair effects, rolling Fruit, and their relics.
 @export var adaptation_director: AdaptationDirector
+## Territory component that grows Cankers on ground the run has stopped contesting,
+## and redirects a slice of ordinary reinforcements through them.
+@export var canker_director: CankerDirector
 ## Shared SFX and music bus names plus the pause-slider output caps.
 @export var audio_settings: AudioSettings
 
@@ -282,6 +285,11 @@ FULLY DEVELOPED"
 
 Time  {time}    Level  {level}    Green  {green}%"
 )
+## The line the result panel adds about the record. One for a run that beat the mode's
+## previous best and one for a run that did not, because "wave 9" means something
+## different when the best is 9 than when the best is 21.
+@export var result_new_best_template := "A NEW BEST: WAVE {wave} IN {mode}"
+@export var result_best_template := "YOUR BEST {mode} RUN REACHED WAVE {best}"
 @export var action_aiming_template := "{action}  CHOOSE TARGET"
 @export var action_cooldown_template := "{action}  {seconds}s"
 
@@ -339,11 +347,23 @@ var _base_small_fragment_decay := 0.0
 ## Campaign runs without the Clover machine. The run already asks for enough
 ## attention without a side game to gamble on, so Campaign hides the cabinet and
 ## advances none of it; Quick still keeps the whole machine.
+## Whether this run writes itself to `user://save.dat` at each wave boundary and
+## records itself when it ends.
+##
+## Off by default and turned on in `_ready` only for a run the player launched from
+## the menu. The suite loads this scene in forty-one places and drives wave boundaries
+## and finished runs on purpose; every one of those would otherwise write over the
+## save of whoever ran the tests. An opt-out switch would have to be remembered by
+## every probe written from here on, and the one that forgot would be the one that
+## cost someone their run - so a probe gets no save unless it deliberately asks for
+## one by setting this.
+var save_enabled := false
 var _clover_enabled := true
 var _mechanics_help: MechanicsHelp
 
 
 func _ready() -> void:
+	save_enabled = RunLaunch.consume_launched_from_menu()
 	var run_mode := RUN_MODE.get_selected()
 	_clover_enabled = run_mode != RUN_MODE.Id.CAMPAIGN
 	wave_director.configure_mode(run_mode)
@@ -441,6 +461,9 @@ func _ready() -> void:
 	bloom_director.status_requested.connect(_set_status)
 	combat.boss_erupted.connect(_on_boss_erupted)
 	man_eater.status_requested.connect(_set_status)
+	canker_director.canker_warning_started.connect(_on_canker_warning_started)
+	canker_director.canker_formed.connect(_on_canker_formed)
+	canker_director.canker_withered.connect(_on_canker_withered)
 	slot_machine.spin_started.connect(_on_reels_started)
 	slot_machine.reel_stopped.connect(_on_reel_stopped)
 	slot_machine.pair_tease_started.connect(_on_pair_tease_started)
@@ -515,6 +538,7 @@ func _ready() -> void:
 	overlay.show_annotations = false
 	_apply_clover_presence()
 	reset_run()
+	_resume_saved_run_if_requested()
 	_refresh_dev_controls()
 
 func _process(delta: float) -> void:
@@ -748,6 +772,7 @@ func advance_run(delta: float) -> void:
 	bramble_director.advance_relics(delta)
 	man_eater.advance(delta)
 	pruning_director.advance(delta)
+	canker_director.advance(delta)
 	_update_territory_failure(delta)
 	_advance_banner(delta)
 
@@ -810,6 +835,8 @@ func reset_run() -> void:
 	# seed replays the waves as well as the upgrades.
 	wave_director.set_run_seed(progression.run_seed)
 	wave_director.reset_director()
+	canker_director.set_run_seed(progression.run_seed)
+	canker_director.reset_director()
 	spore_director.reset_director()
 	bloom_director.reset_director()
 	bramble_director.reset_director()
@@ -886,6 +913,7 @@ func _on_wave_began(wave_number: int) -> void:
 		_owed_wave_relics += 1
 	_grant_owed_wave_relic()
 	_drain_reward_queue()
+	save_run()
 
 
 func _on_wave_relic_earned(_wave_number: int) -> void:
@@ -1622,6 +1650,24 @@ func _on_boss_erupted(local_position: Vector2) -> void:
 	_set_status("Burrower eruption: nearby Green is being stripped away.")
 
 
+func _on_canker_warning_started(local_position: Vector2) -> void:
+	# Localized rather than announced. Section 22.3 asks the region itself to say what
+	# is coming, and a pulse on the ground puts the warning where the player has to
+	# look anyway instead of at the top of the screen.
+	overlay.spawn_hostile_pulse(local_position, canker_director.sample_radius)
+	_set_status("ROT TAKING ROOT — hostile ground is entrenching.")
+
+
+func _on_canker_formed(local_position: Vector2) -> void:
+	overlay.spawn_hostile_pulse(local_position, canker_director.sample_radius * 1.25)
+	_set_status("CANKER FORMING — reinforcements are coming through the interior.")
+
+
+func _on_canker_withered(local_position: Vector2) -> void:
+	overlay.spawn_hostile_pulse(local_position, canker_director.knot_diameter * 0.6)
+	_set_status("The Canker withered. The ground under it is yours again.")
+
+
 func _on_health_changed(current: float, maximum: float) -> void:
 	if not is_node_ready():
 		return
@@ -1767,6 +1813,12 @@ func _finish_run(victory: bool, detail: String) -> void:
 		"green": "%.1f" % territory_field.get_player_percent(),
 	})
 	result_panel.visible = true
+	# The record is only kept for a run the player actually played, so a probe's run
+	# gets no line rather than a line about a record it did not change.
+	if save_enabled:
+		result_detail.text += "
+
+" + _record_finished_run(victory)
 
 
 func _refresh_dev_controls() -> void:
@@ -1856,13 +1908,25 @@ func _close_pause_menu() -> void:
 
 
 func _return_to_main_menu() -> void:
-	# The run is abandoned rather than saved: the home screen starts a fresh one.
+	# Saved on the way out rather than abandoned. Leaving is the most deliberate
+	# moment a player has, and a wave boundary may be minutes behind them.
+	save_run()
 	_close_pause_menu()
 	get_tree().change_scene_to_file.call_deferred(HOME_SCENE)
 
 
 func _quit_from_pause_menu() -> void:
+	save_run()
 	get_tree().quit()
+
+
+## Closing the window is quitting, and it is the exit a player takes without thinking
+## of it as one. It saves for the same reason the pause menu's quit does.
+##
+## Godot delivers this before it tears anything down, so the run is still whole here.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		save_run()
 
 
 func _refresh_simulation_pause() -> void:
@@ -1979,3 +2043,118 @@ func _set_status(_message: String) -> void:
 	# they did, so the signal stays available for a future surface without every
 	# caller having to know whether one exists.
 	pass
+
+
+## The run as it stands, ready to be written to disk.
+##
+## Each system captures its own state; this assembles them and records the identity a
+## menu needs to describe the save without loading it. Nothing alive on the
+## battlefield is captured - see `RunSnapshot` for why that is the design rather than
+## an omission.
+func capture_snapshot() -> RunSnapshot:
+	var snapshot := RunSnapshot.new()
+	snapshot.mode = RUN_MODE.get_selected()
+	snapshot.run_seed = progression.run_seed
+	snapshot.wave_number = wave_director.get_current_wave_number()
+	snapshot.elapsed_seconds = wave_director.elapsed_seconds
+	snapshot.saved_unix_time = int(Time.get_unix_time_from_system())
+	snapshot.set_system("progression", progression.capture_state())
+	snapshot.set_system("evolutions", evolutions.capture_state())
+	snapshot.set_system("metabolism", metabolism.capture_state())
+	snapshot.set_system("player", player.capture_state())
+	snapshot.set_system("waves", wave_director.capture_state())
+	snapshot.set_system("field", territory_field.capture_state())
+	return snapshot
+
+
+## Puts a saved run back on the board, or leaves a fresh run standing and reports
+## false when it cannot.
+##
+## `reset_run` runs first and is not an inefficiency: it is what puts every system
+## that is *not* in the save - the directors, the casino, the effect layers, the live
+## entity pools - into the state a run begins in, so what the snapshot restores lands
+## on a clean run rather than on whatever the last one left.
+##
+## The field is the one part that can refuse. A saved arena of a different size cannot
+## be mapped onto this build's, and a run resumed onto the wrong ground would be a
+## different run wearing the save's progress; when it refuses, so does this.
+func restore_snapshot(snapshot: RunSnapshot) -> bool:
+	reset_run()
+	if not territory_field.apply_state(snapshot.get_system("field")):
+		return false
+	progression.apply_state(snapshot.get_system("progression"))
+	evolutions.apply_state(snapshot.get_system("evolutions"))
+	metabolism.apply_state(snapshot.get_system("metabolism"))
+	player.apply_state(snapshot.get_system("player"))
+	wave_director.apply_state(snapshot.get_system("waves"))
+	# The build is restored as levels and relics; what those levels *do* to the field,
+	# the player and the directors is applied from them rather than saved alongside
+	# them, so a resumed run gets this build's tuning for the upgrades it owns.
+	_apply_progression_modifiers()
+	_refresh_simulation_pause()
+	_set_status("The frontier stands where you left it.")
+	_update_hud()
+	return true
+
+
+## Writes the run in progress over any previous save.
+##
+## Called at each wave boundary, and again on every way out of a run - the pause
+## menu's main menu and quit, and the window's close button. The boundary is where the
+## snapshot is cleanest: the arena is between pushes and what is not captured is at
+## its emptiest. The exits are where it matters most, because a player who quits eight
+## minutes into a wave should not be handed back the run as it stood eight minutes ago.
+##
+## A save taken mid-wave restores the clock exactly and restores no live enemies, so
+## the wave resumes spawning from where its schedule had reached. That hands back a
+## momentarily empty arena - a small mercy on the way in rather than a lost wave, and
+## the honest trade for not serializing a battlefield mid-fight.
+func save_run() -> void:
+	if not save_enabled or _run_state != RunState.RUNNING:
+		return
+	SaveStore.write_run(capture_snapshot().to_dictionary())
+
+
+## Folds the finished run into the record, drops the save, and says what the run was
+## worth against everything before it.
+##
+## The save is cleared on the way out, not left for a "continue" that would put the
+## player back into a run they have already lost or won.
+##
+## The previous best is read before this run is folded in, because afterwards there is
+## no previous best to compare against - `record_run` has already moved it.
+func _record_finished_run(victory: bool) -> String:
+	var record := MetaRecord.from_dictionary(SaveStore.read_meta())
+	var mode := RUN_MODE.get_selected()
+	var wave := wave_director.get_current_wave_number()
+	var previous_best := record.best_wave_by_mode[mode]
+	record.record_run(mode, victory, wave, progression.biomass_earned_total)
+	SaveStore.write_meta(record.to_dictionary())
+	SaveStore.clear_run()
+	if wave > previous_best:
+		return AuthoredText.render(result_new_best_template, {
+			"mode": RUN_MODE.mode_name(mode),
+			"wave": wave,
+		})
+	return AuthoredText.render(result_best_template, {
+		"mode": RUN_MODE.mode_name(mode),
+		"best": record.best_wave_by_mode[mode],
+	})
+
+
+## Continues the saved run when the menu asked for it, and otherwise leaves the fresh
+## run `reset_run` just built.
+##
+## The request is consumed whether or not it can be honored: a save that will not load
+## is a save that should stop being offered, and the player is left standing in a new
+## run rather than in a menu loop.
+func _resume_saved_run_if_requested() -> void:
+	if not RunLaunch.consume_resume():
+		return
+	var stored := SaveStore.read_run()
+	if stored.is_empty():
+		return
+	if not restore_snapshot(RunSnapshot.from_dictionary(stored)):
+		push_warning("RunRoot: the saved run could not be restored; starting a new one")
+		SaveStore.clear_run()
+		reset_run()

@@ -365,3 +365,34 @@ func _can_occupy(local_position: Vector2) -> bool:
 		and territory_field.is_claimable_at_local(local_position + Vector2(0.0, radius))
 		and territory_field.is_claimable_at_local(local_position + Vector2(0.0, -radius))
 	)
+
+
+## Where the player is and how hurt they are.
+##
+## Position is stored in the field's own space rather than as a global, because a
+## global is only meaningful against the scene's transform and a save outlives the
+## scene it was taken in.
+##
+## The timers are not kept - invulnerability, the damage flash, the absorption window.
+## Each is a fraction of a second of reaction to something that happened; restoring
+## one would hand the resumed run a shield it earned in a fight that is over.
+func capture_state() -> Dictionary:
+	return {
+		"health": _health,
+		"local_position": territory_field.to_local(global_position),
+		"facing": _facing,
+	}
+
+
+func apply_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	_health = clampf(float(state.get("health", maximum_health)), 0.0, maximum_health)
+	var local_position: Variant = state.get("local_position", Vector2.ZERO)
+	if local_position is Vector2:
+		global_position = territory_field.to_global(local_position)
+	var facing: Variant = state.get("facing", Vector2.RIGHT)
+	if facing is Vector2 and (facing as Vector2).length_squared() > 0.0:
+		_facing = (facing as Vector2).normalized()
+	health_changed.emit(_health, maximum_health)
+	queue_redraw()

@@ -749,42 +749,36 @@ func _update_enemy_spawning(delta: float) -> void:
 
 func _select_regular_role(pressure_role: int) -> int:
 	_spawn_pack_sequence += 1
-	if (
-		elapsed_seconds >= warden_intro_seconds
-		and _spawn_pack_sequence % maxi(2, warden_pack_cycle) == 0
-	):
-		return EnemyKinds.Role.WARDEN
-	if (
-		elapsed_seconds >= colonizer_intro_seconds
-		and _spawn_pack_sequence % maxi(2, colonizer_pack_cycle) == 0
-	):
-		return EnemyKinds.Role.COLONIZER
-	if (
-		elapsed_seconds >= corruptor_intro_seconds
-		and _spawn_pack_sequence % maxi(2, corruptor_pack_cycle) == 0
-	):
-		if _use_late_variant(siege_corruptor_intro_seconds, siege_corruptor_share):
-			return EnemyKinds.Role.SIEGE_CORRUPTOR
-		return EnemyKinds.Role.CORRUPTOR
-	if (
-		elapsed_seconds >= saboteur_intro_seconds
-		and _spawn_pack_sequence % maxi(2, saboteur_pack_cycle) == 0
-	):
-		return EnemyKinds.Role.SABOTEUR
-	return pressure_role
+	var selection := QuickComposition.select_role(
+		_quick_schedule(), elapsed_seconds, _spawn_pack_sequence, _variant_sequence, pressure_role
+	)
+	_variant_sequence = selection.variant_sequence
+	return selection.role
+
+
+## The authored schedule, read at the moment of the decision rather than kept, so a
+## cycle edited in the Inspector during a playtest is obeyed by the next pack.
+func _quick_schedule() -> QuickComposition.Schedule:
+	var schedule := QuickComposition.Schedule.new()
+	schedule.warden_intro_seconds = warden_intro_seconds
+	schedule.warden_pack_cycle = warden_pack_cycle
+	schedule.colonizer_intro_seconds = colonizer_intro_seconds
+	schedule.colonizer_pack_cycle = colonizer_pack_cycle
+	schedule.corruptor_intro_seconds = corruptor_intro_seconds
+	schedule.corruptor_pack_cycle = corruptor_pack_cycle
+	schedule.saboteur_intro_seconds = saboteur_intro_seconds
+	schedule.saboteur_pack_cycle = saboteur_pack_cycle
+	schedule.siege_corruptor_intro_seconds = siege_corruptor_intro_seconds
+	schedule.siege_corruptor_share = siege_corruptor_share
+	return schedule
 
 
 func _use_late_variant(intro_seconds: float, share: float) -> bool:
-	# Deterministic rather than rolled. The share is honoured across successive
-	# spawns without a run being able to draw the same variant eight times because
-	# the dice allowed it, which is the difference between a mix and a streak.
-	if elapsed_seconds < intro_seconds or share <= 0.0:
-		return false
-	if share >= 1.0:
-		return true
-	_variant_sequence += 1
-	var period := maxi(2, int(round(1.0 / share)))
-	return _variant_sequence % period == 0
+	var variant := QuickComposition.next_variant(
+		elapsed_seconds, intro_seconds, share, _variant_sequence
+	)
+	_variant_sequence = int(variant[1])
+	return bool(variant[0])
 
 
 func get_escalation_progress() -> float:
@@ -860,3 +854,67 @@ func _pressure_progress() -> float:
 		else final_invasion_time_seconds
 	)
 	return clampf(elapsed_seconds / maxf(1.0, ramp), 0.0, 1.0)
+
+
+## Where the run is on its timeline.
+##
+## The clock is the whole of it: `elapsed_seconds` decides the wave, the milestones,
+## the scaling and the composition, so restoring the clock restores the schedule.
+## What is captured alongside it is the state that cannot be derived from the clock -
+## the events that fire once and would otherwise fire a second time, and the cursors
+## that make a wave's packs deterministic within it.
+##
+## `_wave_specs`, `_role_scaling_profiles` and `_authored_mode_values` are not kept.
+## They come from `configure_mode` and the authored resources, which means a resumed
+## run gets this build's tuning rather than the tuning of the build that saved.
+func capture_state() -> Dictionary:
+	return {
+		"elapsed_seconds": elapsed_seconds,
+		"announced_wave_number": announced_wave_number,
+		"grace_skipped_wave": _grace_skipped_wave,
+		"elite_spawned": elite_spawned,
+		"boss_spawned": boss_spawned,
+		"final_invasion_started": final_invasion_started,
+		"cleanup_started": cleanup_started,
+		"spawn_remaining": _spawn_remaining,
+		"spawn_pack_sequence": _spawn_pack_sequence,
+		"grazer_pack_sequence": _grazer_pack_sequence,
+		"variant_sequence": _variant_sequence,
+		"run_seed": _run_seed,
+		"spawn_debt_seconds": _spawn_debt_seconds,
+		"pattern_index": _pattern_index,
+		"leader_deck": _leader_deck,
+		"leader_cursor": _leader_cursor,
+		"leader_cycle": _leader_cycle,
+		"deck_wave": _deck_wave,
+		"packs_requested": _packs_requested,
+		"packs_rejected": _packs_rejected,
+		"enemies_spawned": _enemies_spawned,
+	}
+
+
+func apply_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	set_run_seed(int(state.get("run_seed", _run_seed)))
+	elapsed_seconds = float(state.get("elapsed_seconds", 0.0))
+	announced_wave_number = maxi(1, int(state.get("announced_wave_number", 1)))
+	_grace_skipped_wave = int(state.get("grace_skipped_wave", 0))
+	elite_spawned = bool(state.get("elite_spawned", false))
+	boss_spawned = bool(state.get("boss_spawned", false))
+	final_invasion_started = bool(state.get("final_invasion_started", false))
+	cleanup_started = bool(state.get("cleanup_started", false))
+	_spawn_remaining = float(state.get("spawn_remaining", 0.0))
+	_spawn_pack_sequence = int(state.get("spawn_pack_sequence", 0))
+	_grazer_pack_sequence = int(state.get("grazer_pack_sequence", 0))
+	_variant_sequence = int(state.get("variant_sequence", 0))
+	_spawn_debt_seconds = float(state.get("spawn_debt_seconds", 0.0))
+	_pattern_index = int(state.get("pattern_index", 0))
+	var deck: Variant = state.get("leader_deck")
+	_leader_deck = deck as PackedInt32Array if deck is PackedInt32Array else PackedInt32Array()
+	_leader_cursor = int(state.get("leader_cursor", 0))
+	_leader_cycle = int(state.get("leader_cycle", 0))
+	_deck_wave = int(state.get("deck_wave", 0))
+	_packs_requested = int(state.get("packs_requested", 0))
+	_packs_rejected = int(state.get("packs_rejected", 0))
+	_enemies_spawned = int(state.get("enemies_spawned", 0))

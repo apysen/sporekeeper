@@ -145,9 +145,7 @@ func _check_mode_switch_restores(prototype: RunRoot) -> void:
 
 
 func _mode_name(mode: int) -> String:
-	## Spelled out here rather than through RunMode.get_name, whose name
-	## collides with a built-in and resolves to the wrong one.
-	return "CAMPAIGN" if mode == RunMode.Id.CAMPAIGN else "QUICK"
+	return RunMode.mode_name(mode)
 
 
 func _check_grace_skipped_when_clear(prototype: RunRoot) -> void:

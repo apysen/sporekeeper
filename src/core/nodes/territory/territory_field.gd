@@ -52,12 +52,10 @@ enum DebugView {
 ## its owner, decays while the cell is neutral, and resets when the owner flips,
 ## which is the establishment rule the doc specifies. These name the bands of it
 ## rather than introducing a second per-cell field to keep in step with the first.
-enum RootStage {
-	SHALLOW,
-	ESTABLISHED,
-	DEVELOPED,
-	LATE,
-}
+## The four bands of root development, owned by `RootStages` in `rules/territory`.
+## Aliased here because everything that asks a field about a stage asks it through the
+## field, and the names should not fork just because the rule moved out.
+const RootStage := RootStages.Stage
 
 class TerritoryCommand:
 	enum Kind {
@@ -1827,6 +1825,55 @@ func count_owned_cells_in_radius(local_position: Vector2, radius_pixels: float) 
 	return count
 
 
+func measure_rot_ratio_in_radius(
+	local_position: Vector2,
+	radius_pixels: float,
+	cell_stride: int = 1
+) -> float:
+	## What share of the claimable ground inside a circle the enemy holds.
+	##
+	## Hostile cells over claimable cells, not over every cell in the disc: a circle
+	## that overlaps an obstacle or the arena edge would otherwise read as contested
+	## ground the player could still take back, and a Canker would refuse to form
+	## against a wall it is perfectly happy to grow against.
+	##
+	## `cell_stride` samples every Nth cell on both axes. Over the hundreds of cells a
+	## Canker radius covers the sampled ratio and the exact one agree to well inside
+	## the dead band between the activation and cancel thresholds, and the caller runs
+	## this across dozens of sites a second.
+	if radius_pixels <= 0.0 or not contains_local_point(local_position):
+		return 0.0
+	var stride := maxi(1, cell_stride)
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var centre := local_to_cell(local_position)
+	var centre_x := clampi(int(round(centre.x)), 0, _width - 1)
+	var centre_y := clampi(int(round(centre.y)), 0, _height - 1)
+	var radius_x := maxi(1, ceili(radius_pixels / cell_width))
+	var radius_y := maxi(1, ceili(radius_pixels / cell_height))
+	var radius_squared := radius_pixels * radius_pixels
+	var threshold := tuning.ownership_threshold
+	var claimable := 0
+	var hostile := 0
+	for y in range(maxi(0, centre_y - radius_y), mini(_height - 1, centre_y + radius_y) + 1, stride):
+		var row := y * _width
+		var offset_y := (float(y) + 0.5) * cell_height - local_position.y
+		var offset_y_squared := offset_y * offset_y
+		for x in range(maxi(0, centre_x - radius_x), mini(_width - 1, centre_x + radius_x) + 1, stride):
+			var index := row + x
+			if _claimable_mask[index] == 0:
+				continue
+			var offset_x := (float(x) + 0.5) * cell_width - local_position.x
+			if offset_x * offset_x + offset_y_squared > radius_squared:
+				continue
+			claimable += 1
+			if _control[index] < -threshold:
+				hostile += 1
+	if claimable == 0:
+		return 0.0
+	return float(hostile) / float(claimable)
+
+
 func get_established_cell_count() -> int:
 	# Established-or-better, using the same threshold the root stages already read, so
 	# the gambling buy-in cannot drift into a second private definition of maturity.
@@ -2156,23 +2203,15 @@ func _count_support_contact(index: int) -> int:
 
 
 func _critical_radius(average_maturity: float, support_fraction: float) -> float:
-	# r* = 2y / dg. Cohesion is the surface tension: a cohesive ecosystem raises the
-	# cost of having a border at all, so it throws fewer surviving satellites and
-	# holds its main body harder. Mass is the bulk driving force and lowers r*, so a
-	# Mass build's scatter literally starts taking root - which is the fantasy that
-	# axis has always been selling and only ever approximated.
-	var gamma := tuning.nucleation_surface_tension * maxf(0.05, _cohesion_multiplier)
-	var driving := (
-		tuning.nucleation_driving_force
-		* maxf(0.05, _nucleation_driving_multiplier)
-		* lerpf(
-			1.0 - tuning.nucleation_maturity_share,
-			1.0,
-			clampf(average_maturity, 0.0, 1.0)
-		)
-		* (1.0 + tuning.nucleation_support_bonus * clampf(support_fraction, 0.0, 1.0))
+	# The rule is `Nucleation`'s; what the field adds is the two multipliers the run
+	# pushes in, which is the only part of it the field owns.
+	return Nucleation.critical_radius(
+		tuning,
+		_cohesion_multiplier,
+		_nucleation_driving_multiplier,
+		average_maturity,
+		support_fraction
 	)
-	return 2.0 * gamma / maxf(0.0001, driving)
 
 
 func get_critical_radius(average_maturity: float, support_fraction: float) -> float:
@@ -2390,6 +2429,32 @@ func get_debug_view_name() -> String:
 
 func contains_local_point(local_position: Vector2) -> bool:
 	return Rect2(Vector2.ZERO, tuning.arena_size).has_point(local_position)
+
+
+func get_playable_bounds_local() -> Rect2:
+	## The ground inside the outer wall, which is not the arena rect.
+	##
+	## The wall is built out of the field's own outermost cells rather than drawn around
+	## the outside, so `arena_size` includes it. Anything that wants to stay off the wall
+	## - a clip rect, a placement check - needs this instead, and it is derived from the
+	## same cell rule the mask is built from so the two cannot drift apart.
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var first_x := 0
+	while first_x < _width and _is_border_cell(first_x, _height / 2):
+		first_x += 1
+	var first_y := 0
+	while first_y < _height and _is_border_cell(_width / 2, first_y):
+		first_y += 1
+	var last_x := _width - 1
+	while last_x > first_x and _is_border_cell(last_x, _height / 2):
+		last_x -= 1
+	var last_y := _height - 1
+	while last_y > first_y and _is_border_cell(_width / 2, last_y):
+		last_y -= 1
+	var start := Vector2(float(first_x) * cell_width, float(first_y) * cell_height)
+	var end := Vector2(float(last_x + 1) * cell_width, float(last_y + 1) * cell_height)
+	return Rect2(start, end - start)
 
 
 func local_to_cell(local_position: Vector2) -> Vector2:
@@ -2911,20 +2976,11 @@ func get_deep_rooted_percent() -> float:
 
 
 func get_root_established_threshold() -> float:
-	# Where ground stops being fresh and starts carrying roots. Pruning already eats
-	# the ecosystem in bands split at this same point, so the stages read here and
-	# the order it harvests in cannot drift apart.
-	return tuning.mature_threshold * 0.5
+	return RootStages.established_threshold(tuning)
 
 
 func get_root_stage(maturity: float) -> int:
-	if maturity >= tuning.deep_root_threshold:
-		return RootStage.LATE
-	if maturity >= tuning.mature_threshold:
-		return RootStage.DEVELOPED
-	if maturity >= get_root_established_threshold():
-		return RootStage.ESTABLISHED
-	return RootStage.SHALLOW
+	return RootStages.stage_for(tuning, maturity)
 
 
 func get_root_stage_at_local(local_position: Vector2) -> int:
@@ -2932,15 +2988,7 @@ func get_root_stage_at_local(local_position: Vector2) -> int:
 
 
 static func get_root_stage_name(stage: int) -> String:
-	match stage:
-		RootStage.LATE:
-			return "Late"
-		RootStage.DEVELOPED:
-			return "Developed"
-		RootStage.ESTABLISHED:
-			return "Established"
-		_:
-			return "Shallow"
+	return RootStages.stage_name(stage)
 
 
 func get_fragment_count() -> int:
@@ -3756,3 +3804,75 @@ func _boundary_noise(x: int, y: int) -> float:
 		sin(float(x) * 0.145 + float(y) * 0.031) * 0.024
 		+ sin(float(y) * 0.173 - float(x) * 0.019) * 0.018
 	)
+
+
+## The per-cell arrays a save has to carry, keyed by name. The name is what the file
+## stores, so a field gained or lost between builds is a missing or ignored key rather
+## than an array read at the wrong offset.
+const SAVED_CELL_ARRAYS := [
+	"control", "maturity", "pressure_x", "pressure_y", "bramble_development",
+	"bramble_alert", "territory_age", "pruned_ground", "lost_memory",
+	"aftergrowth", "aftergrowth_remaining",
+]
+
+
+## The state of the ground itself.
+##
+## Only the arrays that carry history are kept. `_claimable_mask` and the growth path
+## grid come from authored tuning and are identical in every run, the `_next_` buffers
+## hold one half-finished step, and the topology, metrics, projection and pixel
+## buffers are all derived - `apply_state` recomputes them rather than storing
+## answers that could disagree with the cells they were computed from.
+func capture_state() -> Dictionary:
+	var state := {
+		"width": _width,
+		"height": _height,
+	}
+	for key in SAVED_CELL_ARRAYS:
+		state[key] = get("_" + key)
+	return state
+
+
+## Puts the ground back.
+##
+## `reset_field` runs first even though every saved array is about to be overwritten:
+## it is what sizes the buffers, authors the claimable mask and rebuilds the growth
+## path grid, none of which are in the save. The cells then land on top of a field
+## that is structurally correct for this build.
+##
+## A save whose grid is a different size is refused rather than stretched. It means
+## the arena was re-authored, and there is no honest mapping from one grid onto
+## another - the run resumes from a field it can actually be played on instead.
+func apply_state(state: Dictionary) -> bool:
+	if state.is_empty():
+		return false
+	reset_field()
+	if int(state.get("width", 0)) != _width or int(state.get("height", 0)) != _height:
+		push_warning(
+			"TerritoryField: saved field is %dx%d but this build's arena is %dx%d; starting fresh"
+				% [int(state.get("width", 0)), int(state.get("height", 0)), _width, _height]
+		)
+		return false
+	for key in SAVED_CELL_ARRAYS:
+		var stored: Variant = state.get(key)
+		if not (stored is PackedFloat32Array) or (stored as PackedFloat32Array).size() != _cell_count:
+			continue
+		set("_" + key, stored)
+	_rebuild_aftergrowth_index()
+	_mark_field_changed()
+	_rebuild_player_frontier_mask()
+	analyze_topology_now()
+	recalculate_metrics_now()
+	refresh_visuals_now()
+	return true
+
+
+## The shielded-cell list and its count, rebuilt from the shields themselves. Both are
+## an index over `_aftergrowth_remaining` rather than state of their own, so they are
+## derived on load instead of saved and risked falling out of step with it.
+func _rebuild_aftergrowth_index() -> void:
+	_aftergrowth_cells.clear()
+	for index in range(_cell_count):
+		if _aftergrowth_remaining[index] > 0.0:
+			_aftergrowth_cells.append(index)
+	_aftergrowth_active = _aftergrowth_cells.size()

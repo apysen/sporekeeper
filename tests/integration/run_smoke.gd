@@ -8,6 +8,18 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	# The one defect class `--import` cannot see: a declaration whose name loses to
+	# one every script already inherits parses, imports, and is unreachable at every
+	# call site. It is a file scan rather than a scene check, and it runs here because
+	# this is the suite that actually gets run - `tools/check_shadowed_names.gd` runs
+	# the same scan, and only when someone remembers to.
+	var shadowed_names := ShadowedNames.scan()
+	for collision in shadowed_names:
+		push_error("SHADOWED: %s" % collision)
+	_report.check(
+		shadowed_names.is_empty(),
+		"no declaration shadows a name every script already inherits"
+	)
 	var load_error := change_scene_to_file("res://scenes/run/run.tscn")
 	_report.check(load_error == OK, "Sporekeeper scene resource loads")
 	if load_error != OK:
@@ -39,6 +51,14 @@ func _run() -> void:
 	# be trusted when it fails. The seed is pinned here so every check below sees the
 	# same run; the block that covers the randomness clears it and rolls its own.
 	prototype.progression.authored_run_seed = 0x51DE0001
+	# The suite drives real settings controls, and a real control writes the player's
+	# choices to user://settings.cfg - `set_choice` and `cycle_choice` both save. Two
+	# modules do it and neither can put the file back on its own, because by the time
+	# the later one looks the earlier one has already changed what it would restore.
+	# So the machine's choices are taken once, here, before any module runs.
+	var authored_settings := PackedInt32Array()
+	for option_id in range(DisplaySettings.OptionId.size()):
+		authored_settings.append(prototype.display_settings.get_choice(option_id))
 	prototype.progression.set_run_seed(prototype.progression.authored_run_seed)
 	_report.check(
 		prototype.audio_settings.get_parent().name == &"GameplayComponents"
@@ -268,6 +288,16 @@ func _run() -> void:
 	SmokeMilestones.run(_report, prototype)
 
 	SmokeEndgame.run(_report, prototype)
+
+	# Last on purpose: it tears the run down to a fresh one and back twice, which is
+	# not a state to hand the next module.
+	SmokePersistence.run(_report, prototype)
+
+	# Handed back before the run is torn down. A test that leaves the game configured
+	# differently than it found it has changed the thing it was measuring.
+	for option_id in range(DisplaySettings.OptionId.size()):
+		prototype.display_settings.set_choice(option_id, authored_settings[option_id])
+	prototype.display_settings.save_settings()
 
 	prototype.queue_free()
 	await process_frame

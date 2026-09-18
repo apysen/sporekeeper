@@ -353,3 +353,4 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	)
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()
+

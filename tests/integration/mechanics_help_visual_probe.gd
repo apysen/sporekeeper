@@ -45,20 +45,20 @@ func _run() -> void:
 		return
 	_save("res://.godot/mechanics_reward_tooltip.png")
 	prototype._mechanics_help.show_reward_tooltips(
-		"Overgrow spends Biomass to add Mass, Pressure, and Cohesion.",
+		"Overgrow drives Mass and Pressure into Green.",
 		prototype.choice_panel.get_global_rect()
 	)
 	await process_frame
 	await process_frame
-	if prototype._mechanics_help._stack.get_child_count() != 5:
+	if prototype._mechanics_help._stack.get_child_count() != 4:
 		push_error("Reward side panel did not show every referenced mechanic")
 		quit(1)
 		return
-	var biomass_keys := prototype._mechanics_help._referenced_keys(
-		"Gain 20% more Biomass from Mature Green."
+	var boundary_keys := prototype._mechanics_help._referenced_keys(
+		"A massive surge of Pressure."
 	)
-	if biomass_keys.has("MASS") or not biomass_keys.has("BIOMASS"):
-		push_error("Biomass incorrectly opened the Mass mechanic: %s" % [biomass_keys])
+	if boundary_keys.has("MASS") or not boundary_keys.has("PRESSURE"):
+		push_error("A mechanic matched inside a longer word: %s" % [boundary_keys])
 		quit(1)
 		return
 	prototype.choice_panel.visible = false
@@ -100,11 +100,11 @@ func _run() -> void:
 	prototype._mechanics_help.hide_tooltip()
 	prototype._mechanics_help.set_process(false)
 	prototype._mechanics_help.show_hud_tooltip(
-		"GREEN", "Metabolism shapes Green.", relic_source
+		"GREEN", "Aftergrowth shapes Green.", relic_source
 	)
 	await process_frame
 	await process_frame
-	prototype._mechanics_help._on_keyword_hovered("METABOLISM", 0)
+	prototype._mechanics_help._on_keyword_hovered("AFTERGROWTH", 0)
 	await process_frame
 	await process_frame
 	var cycle_depth := prototype._mechanics_help._stack.get_child_count()
@@ -122,7 +122,7 @@ func _run() -> void:
 		quit(1)
 		return
 	if prototype._mechanics_help._linkify(
-		MechanicsHelp.ENTRIES["METABOLISM"], PackedStringArray(["GREEN"])
+		MechanicsHelp.ENTRIES["AFTERGROWTH"], PackedStringArray(["GREEN"])
 	).contains("[url=GREEN]"):
 		push_error("An open ancestor mechanic remains clickable in a nested tooltip")
 		quit(1)

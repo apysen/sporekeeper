@@ -27,12 +27,25 @@ const RUN_SCENE := "res://scenes/run/run.tscn"
 @export var audio_settings: AudioSettings
 
 @export_group("Pages")
+## The confirmation shown when starting a new run would overwrite a saved one. Its own
+## page rather than a popup, so it is shown the same way the settings page is.
+@export var overwrite_page: Control
+@export var overwrite_label: Label
+@export var overwrite_confirm_button: Button
+@export var overwrite_cancel_button: Button
 ## The title and the three menu buttons.
 @export var menu_page: Control
 ## The settings page, shown in place of the menu rather than on top of it.
 @export var settings_page: Control
 
 @export_group("Menu")
+## What the player's finished runs add up to. Hidden until there is a first one,
+## because a row of zeroes is a worse greeting than no row at all.
+@export var record_label: Label
+## Shown only when there is a saved run to go back to, and hidden the moment there is
+## not. A button that is always there and sometimes does nothing teaches the player to
+## distrust it.
+@export var continue_button: Button
 @export var play_button: Button
 @export var campaign_button: Button
 @export var settings_button: Button
@@ -52,6 +65,11 @@ const RUN_SCENE := "res://scenes/run/run.tscn"
 @export var fullscreen_enter_text := "FULLSCREEN"
 @export var fullscreen_exit_text := "EXIT FULLSCREEN"
 @export var volume_unavailable_text := "UNAVAILABLE"
+## Shown when starting a new run would overwrite a saved one. Names the run that would
+## be lost and the one that would replace it.
+@export_multiline var overwrite_message_template := "Your {saved} run reached wave {wave} and has not ended.
+
+Starting a new {new} run will overwrite it. There is one save, and it cannot be brought back."
 
 var _sfx_bus := -1
 var _music_bus := -1
@@ -59,6 +77,9 @@ var _run_load_started := false
 var _run_scene: PackedScene
 var _authored := AuthoredText.new()
 var _launch_requested := false
+## The mode the confirmation is asking about, so confirming starts the run that was
+## asked for rather than whichever button was pressed last.
+var _pending_new_run_mode := RUN_MODE.Id.QUICK
 var _loading_overlay: ColorRect
 var _loading_label: Label
 
@@ -67,12 +88,15 @@ func _ready() -> void:
 	if skip_home_screen and OS.is_debug_build():
 		# Deferred: changing scene from inside _ready tears down the node that is
 		# still being readied.
+		RunLaunch.mark_launched_from_menu()
 		get_tree().change_scene_to_file.call_deferred(RUN_SCENE)
 		return
 	NinePatchButtonBorder.install_under(self)
 	NinePatchPanelBorder.install_under(self)
 	assert(display_settings != null, "HomeScreen requires DisplaySettings")
 	assert(audio_settings != null, "HomeScreen requires AudioSettings")
+	if continue_button != null:
+		continue_button.pressed.connect(_on_continue_pressed)
 	if play_button != null:
 		play_button.pressed.connect(_on_quick_pressed)
 	if campaign_button != null:
@@ -83,6 +107,10 @@ func _ready() -> void:
 		settings_back_button.pressed.connect(_show_settings.bind(false))
 	if quit_button != null:
 		quit_button.pressed.connect(_on_quit_pressed)
+	if overwrite_confirm_button != null:
+		overwrite_confirm_button.pressed.connect(_on_overwrite_confirmed)
+	if overwrite_cancel_button != null:
+		overwrite_cancel_button.pressed.connect(_on_overwrite_cancelled)
 	if fullscreen_button != null:
 		fullscreen_button.pressed.connect(_on_fullscreen_pressed)
 	# Captured before the first refresh, so from here on the scene owns the wording
@@ -95,6 +123,9 @@ func _ready() -> void:
 		if button != null:
 			button.pressed.connect(_on_setting_pressed.bind(option_id))
 	_configure_audio()
+	_show_overwrite_confirmation(-1)
+	_refresh_continue_button()
+	_refresh_record_label()
 	_show_settings(false)
 	_refresh()
 	_begin_run_scene_load()
@@ -131,25 +162,100 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# Escape backs out of settings before it does anything else, so the key never
 	# closes the screen out from under a player who opened a page with it.
+	if overwrite_page != null and overwrite_page.visible:
+		# Escape is the cautious answer: it keeps the run.
+		_on_overwrite_cancelled()
+		get_viewport().set_input_as_handled()
+		return
 	if settings_page != null and settings_page.visible:
 		_show_settings(false)
 		get_viewport().set_input_as_handled()
 
 
-func _on_quick_pressed() -> void:
-	RUN_MODE.set_selected(RUN_MODE.Id.QUICK)
+## Continues the saved run in the mode it was saved in, rather than in whichever mode
+## was last picked from this screen: a Campaign resumed as Quick would be a different
+## game holding the same progress.
+func _on_continue_pressed() -> void:
+	var stored := SaveStore.read_run()
+	if stored.is_empty():
+		_refresh_continue_button()
+		return
+	RUN_MODE.set_selected(RunSnapshot.from_dictionary(stored).mode)
+	RunLaunch.request_resume()
 	_request_launch()
+
+
+func _on_quick_pressed() -> void:
+	_start_new_run(RUN_MODE.Id.QUICK)
 
 
 func _on_campaign_pressed() -> void:
-	RUN_MODE.set_selected(RUN_MODE.Id.CAMPAIGN)
+	_start_new_run(RUN_MODE.Id.CAMPAIGN)
+
+
+## Starts a new run, asking first if there is one it would destroy.
+##
+## There is exactly one save slot, so starting a new run is the one irreversible thing
+## on this screen: a player who wanted to continue and pressed QUICK by habit has lost
+## a run they could still have been playing. The mode is remembered rather than acted
+## on, so confirming starts the run that was actually asked for.
+func _start_new_run(mode: int) -> void:
+	if _launch_requested:
+		return
+	if not SaveStore.has_run():
+		_launch_new_run(mode)
+		return
+	_pending_new_run_mode = mode
+	_show_overwrite_confirmation(mode)
+
+
+func _launch_new_run(mode: int) -> void:
+	RunLaunch.request_new_run()
+	RUN_MODE.set_selected(mode)
 	_request_launch()
+
+
+func _on_overwrite_confirmed() -> void:
+	# The save is dropped here rather than left for the new run to write over, so a
+	# player who quits the new run in its first seconds is not offered the old one.
+	SaveStore.clear_run()
+	_show_overwrite_confirmation(-1)
+	_launch_new_run(_pending_new_run_mode)
+
+
+func _on_overwrite_cancelled() -> void:
+	_show_overwrite_confirmation(-1)
+	_refresh_continue_button()
+
+
+## Shows the confirmation for the given mode, or hides it when the mode is -1.
+##
+## The wording names both runs: the one that would be lost, with the wave it reached,
+## and the one that would replace it. "Are you sure" on its own asks the player to
+## remember what they have.
+func _show_overwrite_confirmation(mode: int) -> void:
+	if overwrite_page == null:
+		return
+	var showing := mode >= 0
+	overwrite_page.visible = showing
+	if menu_page != null:
+		menu_page.visible = not showing
+	if not showing:
+		return
+	var snapshot := RunSnapshot.from_dictionary(SaveStore.read_run())
+	if overwrite_label != null:
+		overwrite_label.text = AuthoredText.render(overwrite_message_template, {
+			"saved": RUN_MODE.mode_name(snapshot.mode),
+			"wave": snapshot.wave_number,
+			"new": RUN_MODE.mode_name(mode),
+		})
 
 
 func _request_launch() -> void:
 	if _launch_requested:
 		return
 	_launch_requested = true
+	RunLaunch.mark_launched_from_menu()
 	if menu_page != null:
 		menu_page.visible = false
 	if settings_page != null:
@@ -220,13 +326,13 @@ func _configure_audio() -> void:
 		sfx_slider.value_changed.connect(_on_sfx_changed)
 		sfx_slider.editable = _sfx_bus >= 0
 		sfx_slider.set_value_no_signal(
-			DisplaySettings.load_volume("sfx", 1.0) * 100.0
+			SettingsStore.read_volume("sfx", 1.0) * 100.0
 		)
 	if music_slider != null:
 		music_slider.value_changed.connect(_on_music_changed)
 		music_slider.editable = _music_bus >= 0
 		music_slider.set_value_no_signal(
-			DisplaySettings.load_volume("music", 1.0) * 100.0
+			SettingsStore.read_volume("music", 1.0) * 100.0
 		)
 	# Applied on ready as well as on change, so the volumes a player set last session
 	# are in force before they press Play rather than only after they touch a slider.
@@ -238,13 +344,13 @@ func _configure_audio() -> void:
 
 func _on_sfx_changed(value: float) -> void:
 	_apply_volume(_sfx_bus, value, audio_settings.sfx_max_linear_volume)
-	DisplaySettings.save_volume("sfx", clampf(value / 100.0, 0.0, 1.0))
+	SettingsStore.write_volume("sfx", clampf(value / 100.0, 0.0, 1.0))
 	_refresh()
 
 
 func _on_music_changed(value: float) -> void:
 	_apply_volume(_music_bus, value, audio_settings.music_max_linear_volume)
-	DisplaySettings.save_volume("music", clampf(value / 100.0, 0.0, 1.0))
+	SettingsStore.write_volume("music", clampf(value / 100.0, 0.0, 1.0))
 	_refresh()
 
 
@@ -286,3 +392,49 @@ func _refresh() -> void:
 			volume_unavailable_text if _music_bus < 0
 			else "%d%%" % roundi(music_slider.value if music_slider != null else 0.0)
 		)
+
+
+## Offers the saved run, and says which one it is.
+##
+## The wave and the mode come off the snapshot's own identity fields rather than out
+## of the systems it carries, which is what those fields are for: the screen can
+## describe the save without loading a run to ask.
+func _refresh_continue_button() -> void:
+	if continue_button == null:
+		return
+	var stored := SaveStore.read_run()
+	continue_button.visible = not stored.is_empty()
+	if stored.is_empty():
+		return
+	var snapshot := RunSnapshot.from_dictionary(stored)
+	continue_button.text = "CONTINUE  %s  WAVE %d" % [
+		RUN_MODE.mode_name(snapshot.mode), snapshot.wave_number
+	]
+
+
+## The record of finished runs, as one line.
+##
+## Read here and nowhere else: `MetaRecord` grants nothing and unlocks nothing, so the
+## only thing it owes anyone is a legible sentence about what they have done. A mode
+## nobody has finished a run in is left out rather than shown as a zero - the line is
+## about what happened, not about what has not.
+func _refresh_record_label() -> void:
+	if record_label == null:
+		return
+	var record := MetaRecord.from_dictionary(SaveStore.read_meta())
+	record_label.visible = record.runs_finished > 0
+	if record.runs_finished == 0:
+		return
+	var parts := PackedStringArray()
+	for mode in [RUN_MODE.Id.QUICK, RUN_MODE.Id.CAMPAIGN]:
+		if record.runs_by_mode[mode] <= 0:
+			continue
+		parts.append("%s BEST WAVE %d" % [
+			RUN_MODE.mode_name(mode), record.best_wave_by_mode[mode]
+		])
+	parts.append("%d RUN%s, %d HELD" % [
+		record.runs_finished,
+		"" if record.runs_finished == 1 else "S",
+		record.victories,
+	])
+	record_label.text = "   ".join(parts)

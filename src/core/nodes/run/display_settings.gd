@@ -103,13 +103,11 @@ enum PlayerHighlight {
 var _choices := PackedInt32Array()
 
 
-## Where the player's choices live between sessions. Presentation options and the two
-## volumes are chosen once and expected to stay chosen: without this, opening settings
-## from the home screen would change nothing about the run that follows it, because the
-## run builds its own settings node and would start from the authored defaults again.
-const SETTINGS_PATH := "user://settings.cfg"
-const SETTINGS_SECTION := "display"
-const AUDIO_SECTION := "audio"
+## The player's choices are expected to stay chosen: without persistence, opening
+## settings from the home screen would change nothing about the run that follows it,
+## because the run builds its own settings node and would start from the authored
+## defaults again. Where those choices are written is `SettingsStore`'s business; what
+## they mean is this node's.
 
 
 func _ready() -> void:
@@ -127,17 +125,17 @@ func reset_settings() -> void:
 
 
 func load_settings() -> void:
-	var config := ConfigFile.new()
-	if config.load(SETTINGS_PATH) != OK:
+	var stored := SettingsStore.read_display()
+	if stored.is_empty():
 		return
 	for option_id in range(OptionId.size()):
 		var key := get_option_key(option_id)
-		if not config.has_section_key(SETTINGS_SECTION, key):
+		if not stored.has(key):
 			continue
 		# Clamped on the way in: a config written by an older build can name a choice
 		# this one no longer has, and an out-of-range index is worse than a default.
 		_choices[option_id] = clampi(
-			int(config.get_value(SETTINGS_SECTION, key, _choices[option_id])),
+			int(stored[key]),
 			0,
 			maxi(0, get_choice_count(option_id) - 1)
 		)
@@ -145,33 +143,16 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
-	var config := ConfigFile.new()
-	# Loaded first so writing a display choice cannot discard the audio section, which
-	# is written by whoever owns the volume sliders rather than from here.
-	config.load(SETTINGS_PATH)
+	var values := {}
 	for option_id in range(OptionId.size()):
-		config.set_value(SETTINGS_SECTION, get_option_key(option_id), _choices[option_id])
-	config.save(SETTINGS_PATH)
+		values[get_option_key(option_id)] = _choices[option_id]
+	SettingsStore.write_display(values)
 
 
 static func get_option_key(option_id: int) -> String:
 	# The enum's own name, so a reordered enum cannot silently reassign saved choices
 	# to different options the way a numeric key would.
 	return OptionId.keys()[option_id] if option_id < OptionId.size() else "unknown"
-
-
-static func load_volume(key: String, fallback: float) -> float:
-	var config := ConfigFile.new()
-	if config.load(SETTINGS_PATH) != OK:
-		return fallback
-	return clampf(float(config.get_value(AUDIO_SECTION, key, fallback)), 0.0, 1.0)
-
-
-static func save_volume(key: String, value: float) -> void:
-	var config := ConfigFile.new()
-	config.load(SETTINGS_PATH)
-	config.set_value(AUDIO_SECTION, key, clampf(value, 0.0, 1.0))
-	config.save(SETTINGS_PATH)
 
 
 func get_choice(option_id: int) -> int:

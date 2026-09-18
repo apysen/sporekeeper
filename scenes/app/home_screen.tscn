@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cbsir45nitkf"]
 
-[ext_resource type="Script" uid="uid://bxemd8p8klwb3" path="res://src/core/nodes/menu/home_screen.gd" id="1_home"]
+[ext_resource type="Script" uid="uid://bxemd8p8klwb3" path="res://src/core/nodes/ui/home_screen.gd" id="1_home"]
 [ext_resource type="Script" uid="uid://ca800f7dbuwb1" path="res://src/core/nodes/run/display_settings.gd" id="2_display_settings"]
 [ext_resource type="Script" uid="uid://cwuy2wawxa2cl" path="res://src/core/nodes/run/audio_settings.gd" id="3_audio_settings"]
 [ext_resource type="StyleBox" uid="uid://dntud22nnvk3h" path="res://assets/ui/wx_panel_ornate.tres" id="4_panel_ornate"]
@@ -16,7 +16,7 @@
 [ext_resource type="StyleBox" uid="uid://bn7byuq70ndfl" path="res://assets/ui/wx_fantasy_button_hover.tres" id="16_btn_hover"]
 [ext_resource type="StyleBox" uid="uid://c4qacuvts2rif" path="res://assets/ui/wx_fantasy_button_pressed.tres" id="17_btn_pressed"]
 
-[node name="HomeScreen" type="Control" unique_id=1691155363 node_paths=PackedStringArray("display_settings", "audio_settings", "menu_page", "settings_page", "play_button", "campaign_button", "settings_button", "quit_button", "settings_back_button", "fullscreen_button", "sfx_slider", "sfx_value", "music_slider", "music_value", "setting_buttons")]
+[node name="HomeScreen" type="Control" unique_id=1691155363 node_paths=PackedStringArray("display_settings", "audio_settings", "menu_page", "settings_page", "overwrite_page", "overwrite_label", "overwrite_confirm_button", "overwrite_cancel_button", "record_label", "continue_button", "play_button", "campaign_button", "settings_button", "quit_button", "settings_back_button", "fullscreen_button", "sfx_slider", "sfx_value", "music_slider", "music_value", "setting_buttons")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -28,6 +28,12 @@ display_settings = NodePath("DisplaySettings")
 audio_settings = NodePath("AudioSettings")
 menu_page = NodePath("MenuPage")
 settings_page = NodePath("SettingsPage")
+overwrite_page = NodePath("OverwritePage")
+overwrite_label = NodePath("OverwritePage/Message")
+overwrite_confirm_button = NodePath("OverwritePage/ConfirmButton")
+overwrite_cancel_button = NodePath("OverwritePage/CancelButton")
+record_label = NodePath("MenuPage/RecordLabel")
+continue_button = NodePath("MenuPage/ContinueButton")
 play_button = NodePath("MenuPage/PlayButton")
 campaign_button = NodePath("MenuPage/CampaignButton")
 settings_button = NodePath("MenuPage/SettingsButton")
@@ -79,6 +85,34 @@ theme_override_font_sizes/font_size = 54
 text = "SPOREKEEPER"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="RecordLabel" type="Label" parent="MenuPage" unique_id=1588237159]
+layout_mode = 0
+offset_left = 430.0
+offset_top = 262.0
+offset_right = 850.0
+offset_bottom = 292.0
+theme_override_colors/font_color = Color(0.42, 0.45, 0.38, 1)
+theme_override_font_sizes/font_size = 12
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ContinueButton" type="Button" parent="MenuPage" unique_id=1239612253]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 300.0
+offset_right = 790.0
+offset_bottom = 357.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "CONTINUE"
 
 [node name="PlayButton" type="Button" parent="MenuPage" unique_id=1239612251]
 layout_mode = 0
@@ -150,6 +184,70 @@ theme_override_colors/font_color = Color(0.42, 0.45, 0.38, 1)
 theme_override_font_sizes/font_size = 11
 text = "UI borders by Kenney (CC0)"
 horizontal_alignment = 1
+
+[node name="OverwritePage" type="Panel" parent="." unique_id=2108359309]
+visible = false
+layout_mode = 0
+offset_left = 380.0
+offset_top = 232.0
+offset_right = 900.0
+offset_bottom = 488.0
+theme_override_styles/panel = ExtResource("4_panel_ornate")
+
+[node name="Header" type="Label" parent="OverwritePage" unique_id=1172898354]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 24.0
+offset_right = 490.0
+offset_bottom = 60.0
+theme_override_colors/font_color = Color(0.698, 0.796, 0.51, 1)
+theme_override_font_sizes/font_size = 22
+text = "A RUN IS STILL GROWING"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Message" type="Label" parent="OverwritePage" unique_id=1172898355]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 72.0
+offset_right = 490.0
+offset_bottom = 156.0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ConfirmButton" type="Button" parent="OverwritePage" unique_id=1239612254]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 172.0
+offset_right = 250.0
+offset_bottom = 224.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "START A NEW RUN"
+
+[node name="CancelButton" type="Button" parent="OverwritePage" unique_id=1239612255]
+layout_mode = 0
+offset_left = 270.0
+offset_top = 172.0
+offset_right = 490.0
+offset_bottom = 224.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "KEEP MY RUN"
 
 [node name="SettingsPage" type="Panel" parent="." unique_id=2108359308]
 visible = false

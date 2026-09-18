@@ -538,3 +538,150 @@ static func _format_multiplier(value: float) -> String:
 	if is_equal_approx(value, round(value)):
 		return "%d" % int(round(value))
 	return "%.2f" % value
+
+## The player-facing name of one upgrade line.
+static func get_upgrade_name(upgrade_id: int) -> String:
+	match upgrade_id:
+		Progression.UpgradeId.SEED_PRODUCTION:
+			return "Seed Production"
+		Progression.UpgradeId.GROWTH_MASS:
+			return "Growth Mass"
+		Progression.UpgradeId.SPORULATION:
+			return "Sporulation"
+		Progression.UpgradeId.FRUITING_BODIES:
+			return "Fruiting Bodies"
+		Progression.UpgradeId.BLOOM_FORCE:
+			return "Bloom Force"
+		Progression.UpgradeId.BLOOM_FREQUENCY:
+			return "Bloom Frequency"
+		Progression.UpgradeId.AFTERGROWTH:
+			return "Aftergrowth"
+		Progression.UpgradeId.SUPPRESSION:
+			return "Suppression"
+		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT:
+			return "Entanglement"
+		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
+			return "Entanglement Rate"
+		Progression.UpgradeId.BRAMBLE_GRASPING_THORNS:
+			return "Grasping Thorns"
+		Progression.UpgradeId.BRAMBLE_REPULSION:
+			return "Repulsion"
+		Progression.UpgradeId.ROOT_MATURATION:
+			return "Maturation Speed"
+		Progression.UpgradeId.ROOT_LATERAL_ROOTS:
+			return "Lateral Roots"
+		Progression.UpgradeId.ROOT_MATURE_STRENGTH:
+			return "Mature Strength"
+		Progression.UpgradeId.ROOT_POTENCY:
+			return "Root Potency"
+		Progression.UpgradeId.PRUNING_HARVEST_RATE:
+			return "Harvest Rate"
+		Progression.UpgradeId.PRUNING_CUTTING_YIELD:
+			return "Cutting Yield"
+		Progression.UpgradeId.PRUNING_CUTTING_DAMAGE:
+			return "Cutting Edge"
+		Progression.UpgradeId.PRUNING_CHARGE:
+			return "Charge"
+		Progression.UpgradeId.THISTLE_CLUSTERING:
+			return "Clustering"
+		Progression.UpgradeId.THISTLE_DEHISCENCE:
+			return "Dehiscence"
+		Progression.UpgradeId.THISTLE_BURR:
+			return "Burr"
+		Progression.UpgradeId.THISTLE_NEEDLEPOINT:
+			return "Needlepoint"
+		Progression.UpgradeId.VINE_ELONGATION:
+			return "Elongation"
+		Progression.UpgradeId.VINE_LIGNIFICATION:
+			return "Lignification"
+		Progression.UpgradeId.VINE_TURGOR:
+			return "Turgor"
+		Progression.UpgradeId.VINE_APICAL_DOMINANCE:
+			return "Apical Dominance"
+		Progression.UpgradeId.FRUIT_SET:
+			return "Fruit Set"
+		Progression.UpgradeId.FRUIT_RIPENING:
+			return "Ripening"
+		Progression.UpgradeId.FRUIT_MOMENTUM:
+			return "Momentum"
+		Progression.UpgradeId.FRUIT_GERMINATION:
+			return "Germination"
+		Progression.UpgradeId.EVOLUTION_FLORAL_CASCADE:
+			return "Floral Cascade"
+		Progression.UpgradeId.EVOLUTION_TANGLEBURST:
+			return "Tangleburst"
+		Progression.UpgradeId.EVOLUTION_SEED_RESERVE:
+			return "Seed Reserve"
+		Progression.UpgradeId.EVOLUTION_BRIAR_PAYLOAD:
+			return "Briar Payload"
+		Progression.UpgradeId.EVOLUTION_SEASONAL_SURGE:
+			return "Seasonal Surge"
+		Progression.UpgradeId.EVOLUTION_ANCIENT_FURY:
+			return "Ancient Fury"
+		Progression.UpgradeId.EVOLUTION_SECOND_FLUSH:
+			return "Second Flush"
+		Progression.UpgradeId.EVOLUTION_COMPRESSION:
+			return "Compression"
+		Progression.UpgradeId.EVOLUTION_SPLINTERSTORM:
+			return "Splinterstorm"
+		Progression.UpgradeId.EVOLUTION_STOOL_REGROWTH:
+			return "Stool Regrowth"
+		Progression.UpgradeId.EVOLUTION_INOCULATOR:
+			return "Inoculator"
+		Progression.UpgradeId.EVOLUTION_BURSTBLOOM:
+			return "Burstbloom"
+		Progression.UpgradeId.EVOLUTION_HEDGE_BATTERY:
+			return "Hedge Battery"
+		Progression.UpgradeId.EVOLUTION_ROOTSTOCK:
+			return "Rootstock"
+		Progression.UpgradeId.EVOLUTION_DEADHEADING:
+			return "Deadheading"
+		Progression.UpgradeId.EVOLUTION_THORNWHIP:
+			return "Thornwhip"
+		Progression.UpgradeId.EVOLUTION_BURDOCK:
+			return "Burdock"
+		Progression.UpgradeId.EVOLUTION_MYCELIAL_VINE:
+			return "Mycelial Vine"
+		Progression.UpgradeId.EVOLUTION_WISTERIA:
+			return "Wisteria"
+		Progression.UpgradeId.EVOLUTION_BRIAR_CANE:
+			return "Briar Cane"
+		Progression.UpgradeId.EVOLUTION_HEARTWOOD:
+			return "Heartwood"
+		Progression.UpgradeId.EVOLUTION_ESPALIER:
+			return "Espalier"
+		Progression.UpgradeId.EVOLUTION_GOURDVINE:
+			return "Gourdvine"
+		Progression.UpgradeId.EVOLUTION_ROT:
+			return "Rot"
+		Progression.UpgradeId.EVOLUTION_OVERRIPE:
+			return "Overripe"
+		Progression.UpgradeId.EVOLUTION_DURIAN:
+			return "Durian"
+		Progression.UpgradeId.EVOLUTION_ORCHARD:
+			return "Orchard"
+		Progression.UpgradeId.EVOLUTION_GRAFT:
+			return "Graft"
+	return "Unknown Upgrade"
+
+
+## The player-facing name of one Path.
+static func get_path_name(path_id: int) -> String:
+	match path_id:
+		Progression.PathId.SPORE:
+			return "Spore"
+		Progression.PathId.BLOOM:
+			return "Bloom"
+		Progression.PathId.BRAMBLE:
+			return "Bramble"
+		Progression.PathId.ROOT:
+			return "Root"
+		Progression.PathId.PRUNING:
+			return "Pruning"
+		Progression.PathId.THISTLE:
+			return "Thistle"
+		Progression.PathId.VINE:
+			return "Vine"
+		Progression.PathId.FRUIT:
+			return "Fruit"
+	return "Unchosen"

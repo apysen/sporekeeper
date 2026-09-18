@@ -315,7 +315,7 @@ func _configure_volume_control() -> void:
 			sfx_linear_volume = db_to_linear(AudioServer.get_bus_volume_db(_sfx_bus_index))
 		# The saved choice wins over whatever the bus happens to sit at, so a volume
 		# set on the home screen is still in force once the run loads.
-		var saved_sfx := DisplaySettings.load_volume(SFX_VOLUME_KEY, -1.0)
+		var saved_sfx := SettingsStore.read_volume(SFX_VOLUME_KEY, -1.0)
 		if saved_sfx >= 0.0:
 			sfx_linear_volume = saved_sfx * _audio_settings.sfx_max_linear_volume
 			_apply_bus_volume(_sfx_bus_index, sfx_linear_volume)
@@ -336,7 +336,7 @@ func _configure_volume_control() -> void:
 		var music_linear_volume := 0.0
 		if not AudioServer.is_bus_mute(_music_bus_index):
 			music_linear_volume = db_to_linear(AudioServer.get_bus_volume_db(_music_bus_index))
-		var saved_music := DisplaySettings.load_volume(MUSIC_VOLUME_KEY, -1.0)
+		var saved_music := SettingsStore.read_volume(MUSIC_VOLUME_KEY, -1.0)
 		if saved_music >= 0.0:
 			music_linear_volume = saved_music * _audio_settings.music_max_linear_volume
 			_apply_bus_volume(_music_bus_index, music_linear_volume)
@@ -362,7 +362,7 @@ func _on_sfx_volume_changed(value: float) -> void:
 	)
 	_apply_bus_volume(_sfx_bus_index, linear_volume)
 	_update_volume_label()
-	DisplaySettings.save_volume(SFX_VOLUME_KEY, clampf(value / 100.0, 0.0, 1.0))
+	SettingsStore.write_volume(SFX_VOLUME_KEY, clampf(value / 100.0, 0.0, 1.0))
 
 
 func _on_music_volume_changed(value: float) -> void:
@@ -374,7 +374,7 @@ func _on_music_volume_changed(value: float) -> void:
 	)
 	_apply_bus_volume(_music_bus_index, linear_volume)
 	_update_music_volume_label()
-	DisplaySettings.save_volume(MUSIC_VOLUME_KEY, clampf(value / 100.0, 0.0, 1.0))
+	SettingsStore.write_volume(MUSIC_VOLUME_KEY, clampf(value / 100.0, 0.0, 1.0))
 
 
 func _apply_bus_volume(bus_index: int, linear_volume: float) -> void:

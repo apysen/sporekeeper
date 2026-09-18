@@ -137,6 +137,10 @@ class DamageNumberLayer:
 ## The persistent Vine body. Optional: without it the Cane resolves through its
 ## authored sector exactly as it always has, for every build that lacks Vine.
 @export var vine_whip: VineWhip
+## Entrenched hostile ground, which ordinary reinforcements may enter through instead
+## of the perimeter. Optional: without it every spawn walks in from the edge, which is
+## what this did before Cankers existed.
+@export var canker_director: CankerDirector
 
 @export_group("Sporulation")
 ## Spore an enemy standing on owned Green gains per second before the Sporulation
@@ -1147,6 +1151,11 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	_configure_enemy_stats(enemy)
 	var exclusion := _get_spawn_exclusion(role)
 	if local_position.x < -90000.0:
+		# An established Canker gets first refusal on an ordinary reinforcement. The
+		# enemy, the budget and the cap are untouched: only the door it comes through
+		# changes, which is the one thing a Canker is allowed to do.
+		local_position = _request_canker_spawn(role, enemy.collision_radius)
+	if local_position.x < -90000.0:
 		local_position = _choose_spawn_position(enemy.collision_radius, exclusion)
 	if not _can_occupy_diamond(local_position, enemy.collision_radius):
 		local_position = _choose_spawn_position(enemy.collision_radius, exclusion)
@@ -1206,6 +1215,37 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	return enemy.id
 
 
+func _request_canker_spawn(role: int, collision_radius: float) -> Vector2:
+	## An interior entrance beside a Canker, or the invalid sentinel to stay outside.
+	##
+	## The ground is checked here rather than in the director because occupancy is this
+	## component's question and it already owns the answer. A point that fails goes
+	## straight back to the perimeter: section 19 would rather a redirected spawn become
+	## an ordinary one than have the request stall or vanish.
+	if canker_director == null or not _is_redirectable_role(role):
+		return Vector2(-99999.0, -99999.0)
+	var candidate := canker_director.request_interior_spawn()
+	if candidate.x < -90000.0:
+		return candidate
+	if not _can_occupy_diamond(candidate, collision_radius):
+		return Vector2(-99999.0, -99999.0)
+	canker_director.notify_spawn_redirected(candidate)
+	return candidate
+
+
+func _is_redirectable_role(role: int) -> bool:
+	# Ordinary reinforcements only. The milestone actors are authored entrances, the
+	# Colony Core is placed at a site its Colonizer already validated, and the Rusher's
+	# whole design is a telegraphed arrival from the edge - moving any of them inside
+	# breaks a promise the player has been taught to read.
+	return (
+		role != EnemyKinds.Role.BOSS
+		and role != EnemyKinds.Role.ELITE
+		and role != EnemyKinds.Role.COLONY_CORE
+		and role != EnemyKinds.Role.RUSHER
+	)
+
+
 func _get_spawn_exclusion(role: int) -> float:
 	# The Colony Core is placed by its Colonizer at a site that was already
 	# validated, and the milestone actors are authored entrances. Only ordinary
@@ -1224,6 +1264,18 @@ func spawn_enemy_near(role: int, wanted: Vector2) -> int:
 	## rather than being dropped: the weak side is still the weak side even when the
 	## exact metre the scorer chose is basalt, and losing the request would quietly
 	## turn an authored pincer back into an even ring.
+	## A Canker may answer this too. The topology request names which *side* the pack
+	## comes from, which stops mattering once the enemy owns ground in the middle; the
+	## sector it was drawn for is still what the pack falls back to.
+	var profile := _profile_for_role(role)
+	var radius := (
+		profile.body_radius_pixels * enemy_collision_radius_multiplier
+		if profile != null
+		else 6.0
+	)
+	var redirected := _request_canker_spawn(role, radius)
+	if redirected.x > -90000.0:
+		return spawn_enemy(role, redirected)
 	var placement := _find_perimeter_placement(role, wanted)
 	if placement.x < -90000.0:
 		return spawn_enemy(role)

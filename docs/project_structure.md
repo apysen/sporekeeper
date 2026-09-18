@@ -20,6 +20,18 @@ these architecture documents together.
 
 ## Intended layout
 
+**This tree is the target, not an inventory.** Roughly a third of the directories in it
+do not exist, because the content they are for does not: there is one arena, one boss,
+no pickup scenes and no authored objectives, and creating the folders early would put
+empty directories in the tree to satisfy a document. A folder here is a decision about
+where something goes *when it is built* - which is what makes it useful the day it is.
+
+What is built today is `src/core/` entire - `entities`, `models`, `nodes`, `rules` and
+`persistence`, with all six rule domains - along with `tests/`, `tools/`, `scripts/`,
+and the parts of `scenes/` and `data/` that have content. `tools/check_structure.gd`
+enforces the direction that matters: everything that exists must be described here, so
+a new folder cannot appear without a line saying what belongs in it.
+
 ```text
 assets/                         Imported source assets and shared presentation
   audio/                        Music, ambience, combat, territory, and UI cues
@@ -34,7 +46,9 @@ assets/                         Imported source assets and shared presentation
     enemies/                    Roles, elites, bosses, and hostile territory
     pickups/                    XP and reward presentation
     ui/                         HUD, draft, Biomass, objective, and menu art
-  ui/                           Shared Godot themes and style resources
+  ui/                           Imported UI art, shared Godot themes, and the
+                              StyleBoxTexture resources that dress the panels,
+                              buttons, slots and bars
 data/                           Authored Resource instances; no mutable run state
   arenas/                       Geometry, masks, spawn regions, and tuning
   elements/
@@ -43,8 +57,6 @@ data/                           Authored Resource instances; no mutable run stat
       paths/                    Spore, Bloom, Bramble, Root, Pruning
       upgrades/                 Four numeric stat lines per Plant path
       relics/                   Universal, path, cross-path, and legendary relics
-  assets/ui/                  Imported UI art and the StyleBoxTexture resources
-                              that dress the panels, buttons, slots and bars
       evolutions/               The fifteen Plant path-pair evolutions
       weapons/                  Cane and element-level combat definitions
   enemies/                      Roles, variants, elite modifiers, and bosses
@@ -73,19 +85,24 @@ scenes/                         Godot composition resources grouped by feature
     objectives/                 Optional objective status and rewards
   vfx/                          Non-authoritative reusable presentation scenes
 scripts/                        Maintenance, validation, import, and test runners
+                              (`run_tests.ps1` discovers and runs every test)
 src/core/
   entities/                     Serializable mutable state; no scene references
-    build/                      Slots, selected paths, relics, and evolution state
-    meta/                       Unlocks, discoveries, difficulty, and collection
-    run/                        Seed, elapsed time, outcome, and run configuration
-    territory/                  Field state or supported suspended-run snapshot
+    meta/                       What the player keeps when a run ends
+                              (`meta_record.gd`: finished runs, victories, bests)
+    run/                        A run in progress, as `run_snapshot.gd` - identity
+                              plus one state dictionary per system that owns some
   models/                       Resource classes for immutable authored definitions
     arenas/                     Bounds, masks, spawn regions, and arena metadata
     combat/                     Damage, weapon, projectile, and targeting definitions
+    economy/                    Biomass, wager, and Clover-machine vocabulary
     elements/                   Element, path, territorial mechanic, and stat schemas
     enemies/                    Role, variant, elite, and boss definitions
     progression/               Upgrade, relic, evolution, unlock, and reward schemas
                               (`relic_catalog.gd` is the authored relic table)
+    run/                        Mode, launch intent, authored text, and counters
+                              (`run_mode.gd` and `run_launch.gd` carry the menu's
+                              two choices into the run scene)
     territory/                 Field tuning, effect shapes, and material profiles
     waves/                      Wave, objective, composition, and timeline schemas
   nodes/                        Scene-bound typed components
@@ -108,16 +125,22 @@ src/core/
     economy/                    Biomass income, costs, and reward settlement
     elements/                   Path mechanics that resolve without a node:
                               rate zones, standing regions, and amplification
-    progression/               Draft pools, slot rules, eligibility, and unlocks
+    progression/               Draft pools, slot rules, eligibility, unlocks, and
+                              the text the interface prints about any of them
     territory/                 Field operations, ownership, maturity, and infection
     waves/                      Objective evaluation and composition selection
   persistence/                 Save schema, migrations, settings, and serialization
+                              (`settings_store.gd` owns `user://settings.cfg`,
+                              `save_store.gd` owns `user://save.dat`)
 tests/
   fixtures/                     Setup helpers and the shared pass/fail ledger
   integration/                  Headless scene, simulation, and complete-loop suites
     smoke/                      One topic each of the run-wide smoke suite
   performance/                  Field, renderer-upload, query, and enemy-load probes
   unit/                         Pure rules, definitions, state, and schema tests
+tools/                          Offline checks and asset bakes; no runtime code
+                              (`shadowed_names.gd` also runs inside the smoke suite;
+                              `check_structure.gd` enforces this document)
 ```
 
 ## Dependency direction
@@ -151,12 +174,17 @@ identifier. It does not find the player, subscribe to live signals, or mutate a
 run. A scene adapter resolves that identifier through an explicit effect
 registry owned by the relevant system.
 
-Mutable values that must survive scene replacement or supported run suspension
-belong in `src/core/entities/`. Entity state contains stable identifiers and
-serializable values, never nodes, callables, signals, textures, or direct
-Resource ownership. Examples include selected paths, 13 Adaptation-line slots,
-line levels, acquired relic IDs, evolution state, Biomass purchases, difficulty,
-and collection discoveries.
+Mutable values that must survive scene replacement or run suspension belong in
+`src/core/entities/`. Entity state contains stable identifiers and serializable
+values, never nodes, callables, signals, textures, or direct Resource ownership.
+
+The live owner of that state is still its node: `Progression` holds the selected
+paths, line levels, relic ids and evolution state while a run is being played,
+and hands them over through `capture_state` and `apply_state`. The entity is the
+*saved* form - `RunSnapshot` assembles one dictionary per system and knows what
+is in none of them. Each system stays the authority on which of its fields are
+the run and which are the build's authored tuning, which is a question only that
+system can answer.
 
 Rules that do not need the scene tree belong in `src/core/rules/`. This includes
 draft eligibility, weighted offers, upgrade-slot constraints, evolution
@@ -190,8 +218,11 @@ The continuous territory world deliberately spans several layers:
   detection at an appropriate cadence.
 - `nodes/territory/territory_renderer.gd` converts read-only field output into
   textures, continuous frontiers, element materials, and debug views.
-- `entities/territory/` stores only the serializable territory data needed if
-  suspended-run saving becomes a supported feature.
+- the field's saved state is the per-cell arrays that carry history, captured by
+  `territory_field.gd` itself into the `field` dictionary of a `RunSnapshot`.
+  Masks, topology, metrics and the projection are derived and recomputed on load
+  rather than stored, so a save cannot hold an answer that disagrees with the
+  cells it came from.
 
 Do not move territory ownership into shaders, collision bodies, arena code,
 enemy agents, the HUD, or an element controller. The complete design and
@@ -261,11 +292,20 @@ Mirror each architectural boundary under test:
 - Verify that changing visual material, particles, display resolution, or frame
   rate does not change authoritative area, maturity, damage, or rewards.
 
-Run the repeatable headless behavior and performance suites with:
+Run every test with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -Filter "save_*" -SkipPerformance
+powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -ListOnly
 ```
+
+The runner imports once, then runs the static checks and every script under `tests/`
+that `extends SceneTree` - so a new probe is picked up by existing, and a topic module
+or fixture is skipped without being listed anywhere. Probes that call `get_texture`,
+`save_png` or `Input.warp_mouse` are given a real window, because those block forever
+under `--headless`; the rest run headless. A hung probe is killed at
+`-TimeoutSeconds` and reported as a timeout rather than holding the run.
 
 The current Sporekeeper composition is `scenes/run/run.tscn`. Its
 visible `GameplayComponents` children own audio settings, progression, the

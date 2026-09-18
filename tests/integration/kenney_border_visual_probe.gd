@@ -19,7 +19,7 @@ func _run() -> void:
 	_check_style("res://assets/ui/wx_fantasy_button.tres", 24, "fantasy button style")
 	_check_style("res://assets/ui/wx_fantasy_button_hover.tres", 24, "fantasy hover style")
 	_check_style("res://assets/ui/wx_fantasy_button_pressed.tres", 24, "fantasy pressed style")
-	if change_scene_to_file("res://scenes/menu/home_screen.tscn") != OK:
+	if change_scene_to_file("res://scenes/app/home_screen.tscn") != OK:
 		quit(1)
 		return
 	await process_frame

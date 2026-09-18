@@ -1177,128 +1177,7 @@ func get_upgrade_summary() -> String:
 	return "\n".join(lines)
 
 static func get_upgrade_name(upgrade_id: int) -> String:
-	match upgrade_id:
-		UpgradeId.SEED_PRODUCTION:
-			return "Seed Production"
-		UpgradeId.GROWTH_MASS:
-			return "Growth Mass"
-		UpgradeId.SPORULATION:
-			return "Sporulation"
-		UpgradeId.FRUITING_BODIES:
-			return "Fruiting Bodies"
-		UpgradeId.BLOOM_FORCE:
-			return "Bloom Force"
-		UpgradeId.BLOOM_FREQUENCY:
-			return "Bloom Frequency"
-		UpgradeId.AFTERGROWTH:
-			return "Aftergrowth"
-		UpgradeId.SUPPRESSION:
-			return "Suppression"
-		UpgradeId.BRAMBLE_ENTANGLEMENT:
-			return "Entanglement"
-		UpgradeId.BRAMBLE_ENTANGLEMENT_RATE:
-			return "Entanglement Rate"
-		UpgradeId.BRAMBLE_GRASPING_THORNS:
-			return "Grasping Thorns"
-		UpgradeId.BRAMBLE_REPULSION:
-			return "Repulsion"
-		UpgradeId.ROOT_MATURATION:
-			return "Maturation Speed"
-		UpgradeId.ROOT_LATERAL_ROOTS:
-			return "Lateral Roots"
-		UpgradeId.ROOT_MATURE_STRENGTH:
-			return "Mature Strength"
-		UpgradeId.ROOT_POTENCY:
-			return "Root Potency"
-		UpgradeId.PRUNING_HARVEST_RATE:
-			return "Harvest Rate"
-		UpgradeId.PRUNING_CUTTING_YIELD:
-			return "Cutting Yield"
-		UpgradeId.PRUNING_CUTTING_DAMAGE:
-			return "Cutting Edge"
-		UpgradeId.PRUNING_CHARGE:
-			return "Charge"
-		UpgradeId.THISTLE_CLUSTERING:
-			return "Clustering"
-		UpgradeId.THISTLE_DEHISCENCE:
-			return "Dehiscence"
-		UpgradeId.THISTLE_BURR:
-			return "Burr"
-		UpgradeId.THISTLE_NEEDLEPOINT:
-			return "Needlepoint"
-		UpgradeId.VINE_ELONGATION:
-			return "Elongation"
-		UpgradeId.VINE_LIGNIFICATION:
-			return "Lignification"
-		UpgradeId.VINE_TURGOR:
-			return "Turgor"
-		UpgradeId.VINE_APICAL_DOMINANCE:
-			return "Apical Dominance"
-		UpgradeId.FRUIT_SET:
-			return "Fruit Set"
-		UpgradeId.FRUIT_RIPENING:
-			return "Ripening"
-		UpgradeId.FRUIT_MOMENTUM:
-			return "Momentum"
-		UpgradeId.FRUIT_GERMINATION:
-			return "Germination"
-		UpgradeId.EVOLUTION_FLORAL_CASCADE:
-			return "Floral Cascade"
-		UpgradeId.EVOLUTION_TANGLEBURST:
-			return "Tangleburst"
-		UpgradeId.EVOLUTION_SEED_RESERVE:
-			return "Seed Reserve"
-		UpgradeId.EVOLUTION_BRIAR_PAYLOAD:
-			return "Briar Payload"
-		UpgradeId.EVOLUTION_SEASONAL_SURGE:
-			return "Seasonal Surge"
-		UpgradeId.EVOLUTION_ANCIENT_FURY:
-			return "Ancient Fury"
-		UpgradeId.EVOLUTION_SECOND_FLUSH:
-			return "Second Flush"
-		UpgradeId.EVOLUTION_COMPRESSION:
-			return "Compression"
-		UpgradeId.EVOLUTION_SPLINTERSTORM:
-			return "Splinterstorm"
-		UpgradeId.EVOLUTION_STOOL_REGROWTH:
-			return "Stool Regrowth"
-		UpgradeId.EVOLUTION_INOCULATOR:
-			return "Inoculator"
-		UpgradeId.EVOLUTION_BURSTBLOOM:
-			return "Burstbloom"
-		UpgradeId.EVOLUTION_HEDGE_BATTERY:
-			return "Hedge Battery"
-		UpgradeId.EVOLUTION_ROOTSTOCK:
-			return "Rootstock"
-		UpgradeId.EVOLUTION_DEADHEADING:
-			return "Deadheading"
-		UpgradeId.EVOLUTION_THORNWHIP:
-			return "Thornwhip"
-		UpgradeId.EVOLUTION_BURDOCK:
-			return "Burdock"
-		UpgradeId.EVOLUTION_MYCELIAL_VINE:
-			return "Mycelial Vine"
-		UpgradeId.EVOLUTION_WISTERIA:
-			return "Wisteria"
-		UpgradeId.EVOLUTION_BRIAR_CANE:
-			return "Briar Cane"
-		UpgradeId.EVOLUTION_HEARTWOOD:
-			return "Heartwood"
-		UpgradeId.EVOLUTION_ESPALIER:
-			return "Espalier"
-		UpgradeId.EVOLUTION_GOURDVINE:
-			return "Gourdvine"
-		UpgradeId.EVOLUTION_ROT:
-			return "Rot"
-		UpgradeId.EVOLUTION_OVERRIPE:
-			return "Overripe"
-		UpgradeId.EVOLUTION_DURIAN:
-			return "Durian"
-		UpgradeId.EVOLUTION_ORCHARD:
-			return "Orchard"
-		UpgradeId.EVOLUTION_GRAFT:
-			return "Graft"
-	return "Unknown Upgrade"
+	return UpgradeDescriptions.get_upgrade_name(upgrade_id)
 
 func get_upgrade_description(upgrade_id: int) -> String:
 	if evolutions.get_upgrade_evolution(upgrade_id) != EvolutionId.NONE:
@@ -1418,24 +1297,7 @@ func get_upgrade_description(upgrade_id: int) -> String:
 	return ""
 
 static func get_path_name(path_id: int) -> String:
-	match path_id:
-		PathId.SPORE:
-			return "Spore"
-		PathId.BLOOM:
-			return "Bloom"
-		PathId.BRAMBLE:
-			return "Bramble"
-		PathId.ROOT:
-			return "Root"
-		PathId.PRUNING:
-			return "Pruning"
-		PathId.THISTLE:
-			return "Thistle"
-		PathId.VINE:
-			return "Vine"
-		PathId.FRUIT:
-			return "Fruit"
-	return "Unchosen"
+	return UpgradeDescriptions.get_path_name(path_id)
 
 static func get_relic_name(relic_id: int) -> String:
 	return RelicCatalog.get_relic_name(relic_id)
@@ -1719,3 +1581,130 @@ func _emit_all_state() -> void:
 	relics_changed.emit()
 	evolution_changed.emit(evolution_status)
 	rerolls_changed.emit(rerolls_remaining)
+
+
+## Everything about the run's progress that a save has to carry.
+##
+## Written out field by field rather than by walking the script's properties, because
+## half of what is on this node is authored tuning and scene wiring that belongs to
+## the scene rather than to the run: a save that carried `offer_spore_path` or the
+## exported director references would restore a run into the previous build's
+## authoring. What is here is what the player did.
+func capture_state() -> Dictionary:
+	return {
+		"run_seed": run_seed,
+		"core_adaptations": PackedInt32Array(core_adaptations),
+		"branch_adaptations": PackedInt32Array(branch_adaptations),
+		"unlocked_branch_slots": unlocked_branch_slots,
+		"current_level": current_level,
+		"current_xp": current_xp,
+		"rerolls_remaining": rerolls_remaining,
+		"biomass": biomass,
+		"biomass_per_second": biomass_per_second,
+		"biomass_earned_total": biomass_earned_total,
+		"upgrade_levels": _upgrade_levels,
+		"owned_relics": _owned_relics,
+		"casino_paths": _casino_paths.keys(),
+		"mastered_adaptations": _mastered_adaptations.keys(),
+		"screens_since_offered": _screens_since_offered.duplicate(),
+		"previous_offer": _previous_offer,
+		"pending_upgrade_options": _pending_upgrade_options,
+		"pending_upgrade_is_branch_choice": _pending_upgrade_is_branch_choice,
+		"pending_relic_options": _pending_relic_options,
+		"upgrade_slot_order": _upgrade_slot_order,
+		"upgrade_offer_cursor": _upgrade_offer_cursor,
+		"garden_complete_announced": _garden_complete_announced,
+		"relic_rerolls_remaining": _relic_rerolls_remaining,
+		"relic_reroll_used": _relic_reroll_used,
+		"last_rerolled_relic_rarity": _last_rerolled_relic_rarity,
+		# The seed alone is not enough to resume drafting: it says where the run's
+		# draws started, and the run is somewhere further along that stream. The
+		# generator's own position is what makes the next draft the one the run was
+		# going to be offered rather than the one it opened with.
+		"draft_random_state": _draft_random.state,
+		"relic_random_state": _relic_random.state,
+	}
+
+
+## Puts a captured run back.
+##
+## `set_run_seed` is called before the generator positions are restored and not after:
+## it reseeds both streams *and* moves the offer cursor, so restoring the positions
+## first would have them immediately overwritten by the opening draw.
+func apply_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	set_run_seed(int(state.get("run_seed", run_seed)))
+	_assign_slots(core_adaptations, state.get("core_adaptations"))
+	_assign_slots(branch_adaptations, state.get("branch_adaptations"))
+	unlocked_branch_slots = int(state.get("unlocked_branch_slots", 0))
+	current_level = maxi(1, int(state.get("current_level", 1)))
+	current_xp = int(state.get("current_xp", 0))
+	rerolls_remaining = int(state.get("rerolls_remaining", rerolls_per_run))
+	biomass = float(state.get("biomass", 0.0))
+	biomass_per_second = float(state.get("biomass_per_second", 0.0))
+	biomass_earned_total = float(state.get("biomass_earned_total", 0.0))
+	# Sized here rather than trusted from the file: a build that added an Upgrade or a
+	# Relic since the save was written must not end up with an array too short for the
+	# ids it is about to be asked about.
+	_upgrade_levels = _fit_int_array(state.get("upgrade_levels"), UpgradeId.size())
+	_owned_relics = _fit_byte_array(state.get("owned_relics"), RelicCatalog.get_count())
+	_casino_paths = _set_from(state.get("casino_paths"))
+	_mastered_adaptations = _set_from(state.get("mastered_adaptations"))
+	_screens_since_offered = _dictionary_from(state.get("screens_since_offered"))
+	_previous_offer = _int_array_from(state.get("previous_offer"))
+	_pending_upgrade_options = _int_array_from(state.get("pending_upgrade_options"))
+	_pending_upgrade_is_branch_choice = bool(state.get("pending_upgrade_is_branch_choice", false))
+	_pending_relic_options = _int_array_from(state.get("pending_relic_options"))
+	_upgrade_slot_order = _int_array_from(state.get("upgrade_slot_order"))
+	_upgrade_offer_cursor = int(state.get("upgrade_offer_cursor", _upgrade_offer_cursor))
+	_garden_complete_announced = bool(state.get("garden_complete_announced", false))
+	_relic_rerolls_remaining = int(state.get("relic_rerolls_remaining", relic_rerolls_per_run))
+	_relic_reroll_used = bool(state.get("relic_reroll_used", false))
+	_last_rerolled_relic_rarity = int(state.get("last_rerolled_relic_rarity", -1))
+	_draft_random.state = int(state.get("draft_random_state", _draft_random.state))
+	_relic_random.state = int(state.get("relic_random_state", _relic_random.state))
+	_emit_all_state()
+
+
+## The slot arrays are `Array[int]` rather than Packed so a helper handed one edits
+## the run's roster instead of a copy - which means they are filled in place here
+## rather than replaced, and a Packed value out of a file cannot simply be assigned.
+func _assign_slots(slots: Array[int], stored: Variant) -> void:
+	slots.clear()
+	if not (stored is PackedInt32Array):
+		return
+	for path_id in stored as PackedInt32Array:
+		slots.append(int(path_id))
+
+
+func _int_array_from(stored: Variant) -> PackedInt32Array:
+	return stored if stored is PackedInt32Array else PackedInt32Array()
+
+
+func _fit_int_array(stored: Variant, size: int) -> PackedInt32Array:
+	var values := _int_array_from(stored)
+	values.resize(size)
+	return values
+
+
+func _fit_byte_array(stored: Variant, size: int) -> PackedByteArray:
+	var values: PackedByteArray = stored if stored is PackedByteArray else PackedByteArray()
+	values.resize(size)
+	return values
+
+
+## A set stored as its keys. The three dictionaries this node keeps as sets hold no
+## values worth writing, and a list survives the round trip through a file without
+## depending on how a Dictionary's `true` is encoded.
+func _set_from(stored: Variant) -> Dictionary:
+	var set_values := {}
+	if not (stored is Array):
+		return set_values
+	for key in stored as Array:
+		set_values[int(key)] = true
+	return set_values
+
+
+func _dictionary_from(stored: Variant) -> Dictionary:
+	return (stored as Dictionary).duplicate() if stored is Dictionary else {}
