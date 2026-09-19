@@ -501,7 +501,7 @@ seed_texture = ExtResource("117_seed_art")
 bloom_texture = ExtResource("118_bloom_art")
 relic_motif_textures = Array[Texture2D]([ExtResource("vfx_0"), ExtResource("vfx_1"), ExtResource("vfx_2"), ExtResource("vfx_3"), ExtResource("vfx_4"), ExtResource("vfx_5"), ExtResource("vfx_6"), ExtResource("vfx_7")])
 
-[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "display_settings", "root_director", "vine_whip", "canker_director", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile", "heavy_grazer_profile", "rusher_profile", "siege_corruptor_profile")]
+[node name="CombatDirector" type="Node2D" parent="." unique_id=385667570 node_paths=PackedStringArray("player", "territory_field", "overlay", "audio_settings", "display_settings", "root_director", "vine_whip", "canker_director", "hunter_profile", "grazer_profile", "elite_profile", "boss_profile", "saboteur_profile", "corruptor_profile", "colonizer_profile", "warden_profile", "colony_core_profile", "heavy_grazer_profile", "rusher_profile", "siege_corruptor_profile", "hive_queen_profile")]
 z_index = 3
 position = Vector2(24, 104)
 script = ExtResource("5_combat")
@@ -525,6 +525,7 @@ colony_core_profile = NodePath("EnemyProfiles/ColonyCore")
 heavy_grazer_profile = NodePath("EnemyProfiles/HeavyGrazer")
 rusher_profile = NodePath("EnemyProfiles/Rusher")
 siege_corruptor_profile = NodePath("EnemyProfiles/SiegeCorruptor")
+hive_queen_profile = NodePath("EnemyProfiles/HiveQueen")
 cane_swing_sfx = ExtResource("15_shoot_sfx")
 xp_collect_sfx = ExtResource("16_xp_sfx")
 plant_explosion_sfx = ExtResource("17_explosion_sfx")

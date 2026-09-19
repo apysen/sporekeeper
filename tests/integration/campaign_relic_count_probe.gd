@@ -42,7 +42,7 @@ func _run() -> void:
 	waves.reset_director()
 
 	# Count the awards at their sources: the wave cadence the prototype owns, and
-	# the two milestone kills the wave director schedules.
+	# the milestone kills the wave director schedules.
 	var wave_awards := 0
 	var last_wave := 0
 	var cycle := prototype.relic_reward_wave_cycle
@@ -56,8 +56,8 @@ func _run() -> void:
 			last_wave = wave
 			if cycle > 0 and wave % cycle == 0:
 				wave_awards += 1
-	# One elite and one boss per run: both are latched, so neither recurs.
-	var milestone_awards := 2
+	# One Elite, the Burrower and the Hive Queen: each is latched, so none recurs.
+	var milestone_awards := 3
 	var total := wave_awards + milestone_awards
 
 	print(

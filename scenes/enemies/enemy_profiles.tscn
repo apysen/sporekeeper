@@ -173,6 +173,27 @@ xp_reward = 28
 body_radius_pixels = 16.0
 target_priority_multiplier = 0.55
 
+[node name="HiveQueen" type="Node" parent="." unique_id=1490018201]
+script = ExtResource("14_enemy_profile")
+role = 12
+maximum_health = 1180.0
+movement_speed = 26.0
+contact_damage = 10.0
+contact_interval_seconds = 0.9
+xp_reward = 140
+body_radius_pixels = 30.0
+target_priority_multiplier = 0.25
+use_boss_navigation = true
+knockback_resistance = 0.7
+movement_behavior = 2
+preferred_distance_pixels = 260.0
+territory_behavior = 5
+first_territory_action_delay_seconds = 2.5
+territory_action_interval_seconds = 6.0
+maximum_active_summons = 5
+summon_spacing_pixels = 150.0
+summon_offset_pixels = 190.0
+
 [node name="BurrowerBoss" type="Node" parent="." unique_id=1490018136]
 script = ExtResource("14_enemy_profile")
 role = 3

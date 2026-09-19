@@ -25,6 +25,13 @@ enum Role {
 	## A Corruptor whose conversion accelerates the longer it is left alone, so
 	## ignoring one turns a nuisance into a region.
 	SIEGE_CORRUPTOR,
+	## The Campaign's second boss: anchored, out of reach, and planting Colony Cores
+	## on a cadence. The Burrower comes to the player; this one makes the player come
+	## to her, through the ground she has grown on the way.
+	##
+	## Kept in step with `EnemyKinds.Role`, which is where the doc comment on the same
+	## name explains why both enums only ever grow at the end.
+	HIVE_QUEEN,
 }
 
 enum MovementBehavior {
@@ -113,4 +120,19 @@ enum TerritoryBehavior {
 ## Maximum Colony Cores maintained by one Colonizer profile across the active arena.
 @export_range(0, 20, 1) var maximum_active_summons := 0
 ## Minimum center-to-center distance required before a Colonizer establishes another Core.
+##
+## Measured from the summoner when it plants at its own feet, and between the Cores
+## themselves when it plants on a ring. See `summon_offset_pixels` for why those are
+## the same rule asked from two positions.
 @export_range(0.0, 500.0, 5.0) var summon_spacing_pixels := 0.0
+## How far from the summoner a new Core is planted. Zero is the Colonizer's contract:
+## the Core appears at its feet and it must walk away before it may plant another, so
+## its brood is a trail.
+##
+## A summoner that does *not* walk needs the other shape. The Hive Queen holds her
+## position by design, so planting at her feet would let her have one Core and then
+## stall forever against the spacing rule - she would be a boss whose whole mechanic
+## quietly stopped after its first use. Above zero, Cores go on a ring at this radius
+## and the spacing is measured between them instead, which is a brood chamber rather
+## than a trail and is the shape her art has been drawing all along.
+@export_range(0.0, 600.0, 5.0) var summon_offset_pixels := 0.0

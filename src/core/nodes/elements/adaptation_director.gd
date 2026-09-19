@@ -3074,7 +3074,7 @@ func _resolve_falling_body(body: Array) -> void:
 	var knockback := float(body[5])
 	var target_position := combat.get_enemy_position(target_id)
 	match combat.get_enemy_role(target_id):
-		EnemyKinds.Role.BOSS:
+		EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN:
 			damage *= newton_boss_damage_share
 			knockback = 0.0
 		EnemyKinds.Role.ELITE:
@@ -3298,7 +3298,7 @@ func _get_enemy_momentum_weight(enemy_id: int) -> float:
 			return 0.65
 		EnemyKinds.Role.CORRUPTOR, EnemyKinds.Role.COLONIZER:
 			return 0.72
-		EnemyKinds.Role.BOSS:
+		EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN:
 			return 1.35
 		EnemyKinds.Role.HEAVY_GRAZER, EnemyKinds.Role.SIEGE_CORRUPTOR:
 			return 1.10

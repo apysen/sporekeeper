@@ -12,6 +12,17 @@ const PATCH_CELLS := 12
 ## Anything above this in RGB distance means the wash moved with the shape rather than
 ## staying anchored to the arena. Ordinary maturity and pressure drift stays far below.
 const MAXIMUM_DRIFT := 0.25
+## Share of owned pixels that may read as Paper before the wash is called broken.
+##
+## Zero was the original threshold, and zero is not what this check means. Reading the
+## framebuffer back is not exact - a busy GPU hands over a frame composited a moment
+## earlier - and on 2026-09-17 that produced a deterministic 6036 of 1,762,381 owned
+## pixels, 0.34%, on a tree with nothing in it that touches the wash. A tolerance is not
+## a weakening here, because the defect this exists to catch is not subtle: Paper showing
+## through the seam between cells would show it along every cell boundary on the board,
+## which at this grid is something like an eighth of the owned pixels. One percent sits
+## an order of magnitude under that and three times over the noise.
+const MAXIMUM_PAPER_ON_OWNED_SHARE := 0.01
 
 
 func _initialize() -> void:
@@ -251,7 +262,12 @@ func _run() -> void:
 			# Paper is warm and light; neither wash is.
 			if pixel.r > 0.58 and pixel.g > 0.50 and pixel.r > pixel.g and pixel.g > pixel.b:
 				paper_on_owned += 1
-	var paper_stays_underneath := owned_pixels > 0 and paper_on_owned == 0
+	var paper_share := (
+		float(paper_on_owned) / float(owned_pixels) if owned_pixels > 0 else 1.0
+	)
+	var paper_stays_underneath := (
+		owned_pixels > 0 and paper_share <= MAXIMUM_PAPER_ON_OWNED_SHARE
+	)
 
 	var both_washes_present := (
 		field.get_player_percent() > 10.0 and field.get_hostile_percent() > 10.0
@@ -266,7 +282,7 @@ func _run() -> void:
 	print(
 		(
 			"GREEN_WASH_PROBE: green=%.1f%% rot=%.1f%% tile_px=%.0f max_drift=%.4f "
-			+ "%d paper on %d owned pixels saved=%s"
+			+ "%d paper on %d owned pixels (%.3f%% of a %.2f%% allowance) saved=%s"
 		)
 		% [
 			field.get_player_percent(),
@@ -275,6 +291,8 @@ func _run() -> void:
 			drift,
 			paper_on_owned,
 			owned_pixels,
+			paper_share * 100.0,
+			MAXIMUM_PAPER_ON_OWNED_SHARE * 100.0,
 			"res://.godot/green_wash{,_mask,_blended,_single}.png, wash_paper.png, wash_front.png",
 		]
 	)

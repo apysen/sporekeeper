@@ -23,7 +23,27 @@ enum Role {
 	HEAVY_GRAZER,
 	RUSHER,
 	SIEGE_CORRUPTOR,
+	## The Campaign's second boss. She does not fight for ground herself: she plants
+	## Colony Cores and lets them do it, which is the Colonizer contract at boss scale.
+	##
+	## Appended rather than slotted next to BOSS on purpose. These values are stored -
+	## in `enemy_profiles.tscn`, in authored wave tables, in a run's save - so the
+	## order is a file format, and inserting into the middle of it would silently
+	## rename every role after the insertion point.
+	HIVE_QUEEN,
 }
+
+
+## Whether this role is one of the run's boss actors.
+##
+## Asked in about a dozen places - overkill caps, the shares that stop a pulse
+## trivialising a boss, whether a spawn may be redirected, whether a damage number is
+## worth showing - and every one of them means "a boss", not "the Burrower". Before
+## the Hive Queen there was only one boss, so those sites compared against `BOSS`
+## directly and were right by accident. A predicate is what keeps the second boss from
+## having to be remembered in twelve separate places.
+static func is_boss(role: int) -> bool:
+	return role == Role.BOSS or role == Role.HIVE_QUEEN
 
 ## Rule changes an elite can carry. The design note is explicit that a late elite
 ## should increasingly change the rules rather than only its stat line, so each of

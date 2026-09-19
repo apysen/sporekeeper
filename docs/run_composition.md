@@ -54,7 +54,8 @@ RunRoot
 │       ├── Warden
 │       ├── ColonyCore
 │       ├── EliteRootbreaker
-│       └── BurrowerBoss
+│       ├── BurrowerBoss
+│       └── HiveQueen
 ├── Player
 ├── RunAudio               (scenes/run/run_audio.tscn)
 └── Interface
@@ -125,7 +126,9 @@ territory behavior with the separate `Territory Behavior` dropdown.
 The run lasts twelve minutes. Hunters pressure player HP and Grazers erode Green
 territory from the opening wave. Saboteurs enter the mix at 01:15, the elite
 arrives at 02:30, Corruptors begin at 03:00, Colonizers at 04:45, the Burrower
-boss at 06:00, and Wardens at 07:00. The final invasion begins at 10:00 and
+boss at 06:00, Wardens at 07:00, and the Hive Queen at 09:00 - anchored, out of
+reach, and growing a brood of Colony Cores rather than coming for Grandma
+herself. The final invasion begins at 10:00 and
 reinforcements stop at 11:30. The clock running out at 12:00 does not win the run
 by itself: it retires the timeline and the run enters a Final Stand, where nothing
 more spawns and victory waits until the last hostile still on the field is

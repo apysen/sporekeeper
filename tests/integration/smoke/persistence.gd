@@ -61,6 +61,16 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 			% encoded.size()
 	)
 	var restored := RunSnapshot.from_dictionary(decoded if decoded is Dictionary else {})
+	# Every system in `SYSTEM_KEYS` has to actually put something in, or a key is being
+	# carried that nothing writes. The Cankers are named here because they are the one
+	# whose absence is invisible in a prototype run: it has no Knots to lose, so only the
+	# shape of what it stored says the interior front is on file at all. What a saved Knot
+	# comes back as is `canker_probe`'s subject, on a board that has one.
+	report.check(
+		int(restored.get_system("cankers").get("site_count", 0))
+			== prototype.canker_director.capture_state().get("site_count", -1),
+		"a snapshot carries the Canker board, site for site"
+	)
 
 	# The seed is pinned back on before the restore rather than after: reset_run rolls
 	# a fresh one, and the rest of the suite runs on the authored seed it was given.

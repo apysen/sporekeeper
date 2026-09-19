@@ -9,6 +9,10 @@ signal wave_began(wave_number: int)
 signal grace_skipped(wave_number: int)
 signal elite_arrived
 signal boss_arrived
+## The Hive Queen has entered. Its own event rather than a second `boss_arrived`,
+## because the run says something different about her and because a listener that
+## counted boss arrivals would otherwise start counting two.
+signal hive_queen_arrived
 signal final_invasion_began
 signal cleanup_began
 ## A Campaign wave whose completion opens one of the ten authored relic rewards.
@@ -29,6 +33,12 @@ signal wave_relic_earned(wave_number: int)
 @export_range(10.0, 1800.0, 1.0) var elite_time_seconds := 150.0
 ## Elapsed run time in seconds when the Burrower boss is first scheduled to spawn.
 @export_range(20.0, 1800.0, 1.0) var boss_time_seconds := 360.0
+## Elapsed run time in seconds when the Hive Queen is first scheduled to spawn.
+##
+## Quick's own number: three minutes after the Burrower and one before the final
+## invasion, which leaves room to clear her brood before the last phase arrives on
+## top of it. Campaign overwrites this from its wave table.
+@export_range(20.0, 1800.0, 1.0) var hive_queen_time_seconds := 540.0
 ## Elapsed run time in seconds when final-invasion spawning begins.
 @export_range(30.0, 1800.0, 1.0) var final_invasion_time_seconds := 600.0
 ## Seconds over which pressure ramps from opening to full: spawn cadence, pack
@@ -151,6 +161,7 @@ var announced_wave_number := 1
 var _grace_skipped_wave := 0
 var elite_spawned := false
 var boss_spawned := false
+var hive_queen_spawned := false
 var final_invasion_started := false
 var cleanup_started := false
 
@@ -204,6 +215,7 @@ func _capture_authored_mode_values() -> void:
 		"run_duration_seconds",
 		"elite_time_seconds",
 		"boss_time_seconds",
+		"hive_queen_time_seconds",
 		"final_invasion_time_seconds",
 		"cleanup_time_seconds",
 		"pressure_ramp_seconds",
@@ -256,6 +268,10 @@ func configure_mode(mode: int) -> void:
 		float(CampaignWaves.BOSS_WAVE - 1) * CampaignWaves.WAVE_DURATION_SECONDS
 		+ CampaignWaves.BOSS_SPAWN_SECOND
 	)
+	hive_queen_time_seconds = (
+		float(CampaignWaves.HIVE_QUEEN_WAVE - 1) * CampaignWaves.WAVE_DURATION_SECONDS
+		+ CampaignWaves.HIVE_QUEEN_SPAWN_SECOND
+	)
 	# The final wave is a wave, not a separate invasion phase bolted after one. It
 	# announces itself at its own boundary and stops reinforcing at 24:45.
 	final_invasion_time_seconds = (
@@ -292,6 +308,7 @@ func reset_director() -> void:
 	_grace_skipped_wave = 0
 	elite_spawned = false
 	boss_spawned = false
+	hive_queen_spawned = false
 	final_invasion_started = false
 	cleanup_started = false
 	_spawn_remaining = opening_spawn_delay_seconds
@@ -340,6 +357,19 @@ func debug_spawn_boss() -> bool:
 	if combat.spawn_enemy(EnemyKinds.Role.BOSS) == -1:
 		return false
 	boss_spawned = true
+	return true
+
+
+func debug_spawn_hive_queen() -> bool:
+	## The Queen's counterpart to `debug_spawn_boss`, for a probe that wants the fight
+	## without the twenty waves in front of it. `has_active_boss` covers both bosses,
+	## so this refuses while either is up rather than putting two on the board.
+	if combat.has_active_boss():
+		return false
+	_apply_enemy_spawn_scaling()
+	if combat.spawn_enemy(EnemyKinds.Role.HIVE_QUEEN) == -1:
+		return false
+	hive_queen_spawned = true
 	return true
 
 
@@ -497,6 +527,14 @@ func _update_quick_milestones() -> void:
 		if combat.spawn_enemy(EnemyKinds.Role.BOSS) != -1:
 			boss_spawned = true
 			boss_arrived.emit()
+	if (
+		not hive_queen_spawned
+		and elapsed_seconds >= hive_queen_time_seconds
+		and milestone_spawn_allowed
+	):
+		if combat.spawn_enemy(EnemyKinds.Role.HIVE_QUEEN) != -1:
+			hive_queen_spawned = true
+			hive_queen_arrived.emit()
 
 
 func _update_campaign_milestones() -> void:
@@ -524,6 +562,14 @@ func _update_campaign_milestones() -> void:
 		if _spawn_milestone(EnemyKinds.Role.BOSS):
 			boss_spawned = true
 			boss_arrived.emit()
+	if (
+		not hive_queen_spawned
+		and spec.hive_queen_spawn_second >= 0.0
+		and second >= spec.hive_queen_spawn_second
+	):
+		if _spawn_milestone(EnemyKinds.Role.HIVE_QUEEN):
+			hive_queen_spawned = true
+			hive_queen_arrived.emit()
 	# A milestone whose wave has passed is still owed. Retrying it here is what
 	# turns a rejected entrance into a delay rather than into a lost reward.
 	if not elite_spawned and wave_number > CampaignWaves.ELITE_WAVE:
@@ -534,16 +580,20 @@ func _update_campaign_milestones() -> void:
 		if _spawn_milestone(EnemyKinds.Role.BOSS):
 			boss_spawned = true
 			boss_arrived.emit()
+	if not hive_queen_spawned and wave_number > CampaignWaves.HIVE_QUEEN_WAVE:
+		if _spawn_milestone(EnemyKinds.Role.HIVE_QUEEN):
+			hive_queen_spawned = true
+			hive_queen_arrived.emit()
 
 
 func _spawn_milestone(role: int) -> bool:
 	# Scaling is applied for the milestone's own wave first, so an Elite delayed
 	# into Wave 8 still fights as the Wave 6 Elite it was authored as.
-	var milestone_wave := (
-		CampaignWaves.ELITE_WAVE
-		if role == EnemyKinds.Role.ELITE
-		else CampaignWaves.BOSS_WAVE
-	)
+	var milestone_wave := CampaignWaves.BOSS_WAVE
+	if role == EnemyKinds.Role.ELITE:
+		milestone_wave = CampaignWaves.ELITE_WAVE
+	elif role == EnemyKinds.Role.HIVE_QUEEN:
+		milestone_wave = CampaignWaves.HIVE_QUEEN_WAVE
 	_apply_wave_scaling(get_wave_spec(milestone_wave))
 	var spawned := combat.spawn_enemy(role) != -1
 	_apply_enemy_spawn_scaling()
@@ -874,6 +924,7 @@ func capture_state() -> Dictionary:
 		"grace_skipped_wave": _grace_skipped_wave,
 		"elite_spawned": elite_spawned,
 		"boss_spawned": boss_spawned,
+		"hive_queen_spawned": hive_queen_spawned,
 		"final_invasion_started": final_invasion_started,
 		"cleanup_started": cleanup_started,
 		"spawn_remaining": _spawn_remaining,
@@ -902,6 +953,7 @@ func apply_state(state: Dictionary) -> void:
 	_grace_skipped_wave = int(state.get("grace_skipped_wave", 0))
 	elite_spawned = bool(state.get("elite_spawned", false))
 	boss_spawned = bool(state.get("boss_spawned", false))
+	hive_queen_spawned = bool(state.get("hive_queen_spawned", false))
 	final_invasion_started = bool(state.get("final_invasion_started", false))
 	cleanup_started = bool(state.get("cleanup_started", false))
 	_spawn_remaining = float(state.get("spawn_remaining", 0.0))

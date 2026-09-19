@@ -451,10 +451,12 @@ func _ready() -> void:
 	combat.xp_collected.connect(progression.add_xp)
 	combat.elite_defeated.connect(_on_elite_defeated)
 	combat.boss_defeated.connect(_on_boss_defeated)
+	combat.hive_queen_defeated.connect(_on_hive_queen_defeated)
 	wave_director.wave_began.connect(_on_wave_began)
 	wave_director.wave_relic_earned.connect(_on_wave_relic_earned)
 	wave_director.elite_arrived.connect(_on_elite_arrived)
 	wave_director.boss_arrived.connect(_on_boss_arrived)
+	wave_director.hive_queen_arrived.connect(_on_hive_queen_arrived)
 	wave_director.final_invasion_began.connect(_on_final_invasion_began)
 	wave_director.cleanup_began.connect(_on_cleanup_began)
 	spore_director.status_requested.connect(_set_status)
@@ -1020,6 +1022,10 @@ func _on_boss_arrived() -> void:
 	_set_status("THE BURROWER SURFACES — its eruptions erase Green.")
 
 
+func _on_hive_queen_arrived() -> void:
+	_set_status("THE HIVE QUEEN SETTLES — she will not come to you. Her Cores will.")
+
+
 func _on_final_invasion_began() -> void:
 	# Campaign's final invasion is Wave 25 itself rather than a phase bolted after
 	# the waves, so it announces a minute rather than two.
@@ -1054,6 +1060,16 @@ func _on_boss_defeated() -> void:
 		_set_status("THE BURROWER FALLS — a relic, and room for your last Adaptation.")
 	else:
 		_set_status("BOSS DEFEATED — claim a relic from its remains.")
+	_drain_reward_queue()
+
+
+func _on_hive_queen_defeated() -> void:
+	## A relic and nothing else. The Elite and the Burrower each open a Branch slot
+	## and there are only two, so the third milestone deliberately does not ask:
+	## `unlock_branch_slot` would refuse anyway, and a reward that silently does
+	## nothing is worse than one the run never promised.
+	_queue_reward(QueuedReward.MILESTONE_RELIC)
+	_set_status("THE HIVE QUEEN FALLS — the brood is leaderless. Claim a relic.")
 	_drain_reward_queue()
 
 func _on_upgrade_choice_requested(options: PackedInt32Array) -> void:
@@ -2064,6 +2080,7 @@ func capture_snapshot() -> RunSnapshot:
 	snapshot.set_system("player", player.capture_state())
 	snapshot.set_system("waves", wave_director.capture_state())
 	snapshot.set_system("field", territory_field.capture_state())
+	snapshot.set_system("cankers", canker_director.capture_state())
 	return snapshot
 
 
@@ -2087,6 +2104,10 @@ func restore_snapshot(snapshot: RunSnapshot) -> bool:
 	metabolism.apply_state(snapshot.get_system("metabolism"))
 	player.apply_state(snapshot.get_system("player"))
 	wave_director.apply_state(snapshot.get_system("waves"))
+	# After the field, because a Knot is a claim about ground: the stages restored here
+	# are measured against the cells restored above on the first evaluation afterwards,
+	# and a Knot put back onto a board that had not arrived yet would wither on that tick.
+	canker_director.apply_state(snapshot.get_system("cankers"))
 	# The build is restored as levels and relics; what those levels *do* to the field,
 	# the player and the directors is applied from them rather than saved alongside
 	# them, so a resumed run gets this build's tuning for the upgrades it owns.

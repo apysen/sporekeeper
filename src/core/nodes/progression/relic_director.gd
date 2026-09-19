@@ -1319,7 +1319,7 @@ func _snap_mimosa(origin: Vector2, strength: float) -> void:
 			continue
 		var share := 1.0
 		match combat.get_enemy_role(enemy_id):
-			EnemyKinds.Role.BOSS:
+			EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN:
 				share = mimosa_boss_share
 			EnemyKinds.Role.ELITE:
 				share = mimosa_elite_share
@@ -1514,7 +1514,7 @@ func _on_enemy_killed(
 ) -> void:
 	_release_mulch(combat.get_last_killed_enemy_id(), local_position)
 	var compost := 1
-	if role == EnemyKinds.Role.BOSS:
+	if EnemyKinds.is_boss(role):
 		compost = 5
 	elif role == EnemyKinds.Role.ELITE:
 		compost = 2

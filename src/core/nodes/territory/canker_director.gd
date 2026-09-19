@@ -38,6 +38,10 @@ const CANKER_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/art/cankers/canker_4.png"),
 ]
 const INVALID_POSITION := Vector2(-99999.0, -99999.0)
+## The run's own face, rather than `ThemeDB.fallback_font`: this text is painted onto
+## the board beside a watercolour structure, and the stock sans is the one thing on the
+## field that would read as a debug overlay.
+const LABEL_FONT: Font = preload("res://assets/fonts/beholden/Beholden-Medium.ttf")
 
 @export_group("Collaborators")
 ## Supplies the Rot measurement every decision here is made from.
@@ -128,6 +132,38 @@ const INVALID_POSITION := Vector2(-99999.0, -99999.0)
 @export_range(0.0, 4.0, 0.05) var emergence_seconds := 0.45
 @export_range(0.0, 2.0, 0.05) var redirect_flash_seconds := 0.35
 
+@export_group("Warning text")
+## What the final seconds before a Knot say, and what the Knot says as it opens.
+##
+## Painted beside the region rather than announced across the top of the screen, which
+## is section 22.3's whole point about this warning: it is a thing happening *there*,
+## and a banner would make a local consequence read as a global catastrophe. The ring
+## already says something is coming; the words say what.
+##
+## The second one exists so the structure is somewhere named. A player who never reads
+## the word cannot look a Canker up, and an entry nothing on screen leads to is exactly
+## the closed loop the glossary was cut back to remove on the 17th.
+@export var warning_text := "ROT TAKING ROOT"
+@export var formed_text := "CANKER"
+## Seconds the name stays up after a Knot opens. Long enough to read once, and gone
+## before it becomes part of the furniture.
+@export_range(0.0, 8.0, 0.1) var formed_text_seconds := 2.2
+## Arena pixels. Small: this is a caption on a region, not a headline.
+@export_range(6, 40, 1) var label_font_size := 13
+@export var label_color := Color(0.957, 0.925, 0.867, 1.0)
+## Painted behind the letters so they survive being read against Rot, Green, paper and
+## the Knot itself, none of which can be relied on to be any particular value.
+@export var label_outline_color := Color(0.06, 0.02, 0.05, 0.95)
+@export_range(0.0, 12.0, 0.5) var label_outline_size := 4.0
+## Gap between the bottom of the ring - or of the Knot - and the top of the text.
+@export_range(0.0, 60.0, 1.0) var label_gap := 9.0
+## Seconds the text takes to arrive. The ring is already pulsing by then, so text that
+## appeared instantly would read as a different event rather than as the same one
+## getting louder.
+@export_range(0.0, 2.0, 0.05) var label_fade_seconds := 0.3
+## Above the arena's obstacle layer, which sits at 10. See `LabelLayer`.
+@export_range(0, 40, 1) var label_z_index := 11
+
 var _sites: Array[Site] = []
 var _settings := CankerRules.Settings.new()
 var _random := RandomNumberGenerator.new()
@@ -136,6 +172,35 @@ var _since_evaluation := 0.0
 var _active_knots := 0
 var _elapsed := 0.0
 var _redirects_served := 0
+var _label_layer: LabelLayer
+
+
+class LabelLayer:
+	extends Node2D
+
+	## The warning text, drawn above the arena walls rather than under them.
+	##
+	## The Canker layer sits at z_index 2 and the arena's obstacle layer at 10, so a
+	## warning beside an interior wall came out with the middle of the words behind the
+	## stonework - "ROT TA...OOT", which is worse than no warning because it looks like a
+	## rendering fault rather than a message. Raising the director itself would take the
+	## Knots and telegraph rings up with it, and those are ground: a wall in front of one
+	## *should* cover it. So only the words move, the way `CombatDirector` moves only its
+	## damage numbers.
+	##
+	## A child of the director, so it shares the transform and the positions need no
+	## adjustment, with an absolute z index that ignores the parent's.
+	var director: CankerDirector
+
+	func _process(_delta: float) -> void:
+		# Redrawn from here rather than by the director, because the text fades on a clock
+		# of its own and anything that changes a site - a restore, a probe reaching in -
+		# would otherwise have to know to redraw two nodes instead of one.
+		queue_redraw()
+
+	func _draw() -> void:
+		if director != null:
+			director.draw_labels(self)
 
 
 class Site:
@@ -161,6 +226,11 @@ class Site:
 
 
 func _ready() -> void:
+	_label_layer = LabelLayer.new()
+	_label_layer.director = self
+	_label_layer.z_as_relative = false
+	_label_layer.z_index = label_z_index
+	add_child(_label_layer)
 	_clip_to_arena()
 	reset_director()
 
@@ -493,6 +563,122 @@ func _wither_knot(site: Site) -> void:
 	canker_withered.emit(site.position)
 
 
+## The Knots, the sites climbing toward one, and the ground still cooling down, in a
+## form that survives the game being closed.
+##
+## Site positions are not stored. The grid is derived from the arena, so what a save
+## carries is what each site *is* and this build rebuilds where it sits; the count is
+## stored so a save from an arena that has since been re-authored can be noticed. That
+## is the same question `TerritoryField.apply_state` asks about the cell grid, answered
+## differently: a mismatch drops the Cankers rather than refusing the run, because a run
+## resumed onto a clean board is still the run, where one resumed onto the wrong ground
+## is not.
+##
+## The measured Rot ratio is left out deliberately - it is measured again on the first
+## evaluation after the restore, off the field the save did bring back, and a stored one
+## would be a second opinion about ground that is already on file. `flash_remaining` is
+## left out for the reason `RunSnapshot` keeps no enemies: it is a third of a second of
+## pulse belonging to a spawn that is not coming back.
+func capture_state() -> Dictionary:
+	var stages := PackedInt32Array()
+	var hold_timers := PackedFloat32Array()
+	var warning_timers := PackedFloat32Array()
+	var cooldowns := PackedFloat32Array()
+	var ages := PackedFloat32Array()
+	var texture_indices := PackedInt32Array()
+	var rotations := PackedFloat32Array()
+	for site in _sites:
+		stages.append(int(site.stage))
+		hold_timers.append(site.hold_timer)
+		warning_timers.append(site.warning_timer)
+		cooldowns.append(site.cooldown_remaining)
+		ages.append(site.age)
+		texture_indices.append(site.texture_index)
+		rotations.append(site.rotation)
+	return {
+		"site_count": _sites.size(),
+		"stages": stages,
+		"hold_timers": hold_timers,
+		"warning_timers": warning_timers,
+		"cooldowns": cooldowns,
+		"ages": ages,
+		"texture_indices": texture_indices,
+		"rotations": rotations,
+		"redirects_served": _redirects_served,
+	}
+
+
+## Puts the interior front back.
+##
+## Expects `reset_director` to have run first, the way `RunRoot.restore_snapshot` does
+## it: that is what rebuilds the site grid the stages are laid back onto, and what
+## re-seeds the generator so the Knots a resumed run grows *after* the save still follow
+## the run seed.
+##
+## Nothing is emitted. `canker_formed` and the rest announce an edge - ground that has
+## just been lost or just been won - and a restored Knot is neither; firing them here
+## would tell a player continuing a run that a Canker is forming when what happened is
+## that they pressed Continue.
+func apply_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	var count := _sites.size()
+	if int(state.get("site_count", -1)) != count:
+		push_warning(
+			"CankerDirector: a save with %d sites cannot be read onto this build's %d; "
+			% [int(state.get("site_count", -1)), count]
+			+ "the run resumes with no Cankers"
+		)
+		return
+	var stages := _saved_ints(state, "stages", count)
+	var hold_timers := _saved_floats(state, "hold_timers", count)
+	var warning_timers := _saved_floats(state, "warning_timers", count)
+	var cooldowns := _saved_floats(state, "cooldowns", count)
+	var ages := _saved_floats(state, "ages", count)
+	var texture_indices := _saved_ints(state, "texture_indices", count)
+	var rotations := _saved_floats(state, "rotations", count)
+	if stages.is_empty():
+		return
+	for index in range(count):
+		var site := _sites[index]
+		site.stage = clampi(
+			stages[index], CankerRules.Stage.INACTIVE, CankerRules.Stage.ACTIVE
+		) as CankerRules.Stage
+		site.hold_timer = maxf(0.0, hold_timers[index])
+		site.warning_timer = maxf(0.0, warning_timers[index])
+		site.cooldown_remaining = maxf(0.0, cooldowns[index])
+		site.age = maxf(0.0, ages[index])
+		site.texture_index = posmod(texture_indices[index], CANKER_TEXTURES.size())
+		site.rotation = rotations[index]
+		site.rot_ratio = 0.0
+		site.flash_remaining = 0.0
+	_active_knots = 0
+	for site in _sites:
+		if site.stage == CankerRules.Stage.ACTIVE:
+			_active_knots += 1
+	_redirects_served = maxi(0, int(state.get("redirects_served", 0)))
+	queue_redraw()
+
+
+## One saved column, or an empty array when the save does not hold it at the length the
+## site grid needs. A short column is a truncated save rather than an older one, and
+## reading half of it would leave the board in a state no run ever produced.
+func _saved_floats(state: Dictionary, key: String, count: int) -> PackedFloat32Array:
+	var column: Variant = state.get(key)
+	if column is PackedFloat32Array and (column as PackedFloat32Array).size() == count:
+		return column
+	var empty := PackedFloat32Array()
+	empty.resize(count)
+	return empty
+
+
+func _saved_ints(state: Dictionary, key: String, count: int) -> PackedInt32Array:
+	var column: Variant = state.get(key)
+	if column is PackedInt32Array and (column as PackedInt32Array).size() == count:
+		return column
+	return PackedInt32Array()
+
+
 func _draw() -> void:
 	for site in _sites:
 		match site.stage:
@@ -501,6 +687,12 @@ func _draw() -> void:
 			CankerRules.Stage.ACTIVE:
 				_draw_knot(site)
 	_clip_to_arena()
+
+
+## The words beside each region, painted onto `LabelLayer` rather than onto this node.
+func draw_labels(canvas: CanvasItem) -> void:
+	for site in _sites:
+		_draw_label(canvas, site)
 
 
 func _draw_telegraph(site: Site) -> void:
@@ -574,6 +766,88 @@ func _draw_knot(site: Site) -> void:
 	var tint := Color.WHITE
 	tint.a = lerpf(0.0, 1.0, clampf(emergence * 1.4, 0.0, 1.0))
 	_draw_centered_texture(texture, site.position, diameter, site.rotation, tint)
+
+
+func _draw_label(canvas: CanvasItem, site: Site) -> void:
+	## The words beside a region: the warning while one is coming, and the name of the
+	## thing for as long as it takes to read once after it arrives.
+	var text := ""
+	var alpha := 0.0
+	var clearance := 0.0
+	match site.stage:
+		CankerRules.Stage.WARNING:
+			text = warning_text
+			# Measured from when the warning began rather than from how much is left, so
+			# the text arrives with the second ring instead of with the Knot.
+			var elapsed := maxf(0.0, warning_time - site.warning_timer)
+			alpha = _fade_in(elapsed)
+			clearance = sample_radius * 0.5 + knot_diameter * 0.25
+		CankerRules.Stage.ACTIVE:
+			if formed_text_seconds <= 0.0 or site.age >= formed_text_seconds:
+				return
+			text = formed_text
+			alpha = minf(_fade_in(site.age), _fade_out(formed_text_seconds - site.age))
+			clearance = knot_diameter * 0.5
+		_:
+			return
+	if text.is_empty() or alpha <= 0.0:
+		return
+	var size := Vector2(
+		LABEL_FONT.get_string_size(
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, label_font_size
+		).x,
+		float(label_font_size)
+	)
+	# Under the region, and pulled back inside the wall rather than allowed to run past
+	# it. The layer is clipped, so a label that overhung would lose its last letters -
+	# and ground beside the wall is precisely the ground a player abandons first, which
+	# makes the edge the likeliest place for this text to be needed.
+	var origin := Vector2(
+		site.position.x - size.x * 0.5,
+		site.position.y + clearance + label_gap + size.y
+	)
+	var bounds := (
+		territory_field.get_playable_bounds_local()
+		if territory_field != null and territory_field.tuning != null
+		else Rect2(Vector2.ZERO, size)
+	)
+	var margin := label_outline_size + 2.0
+	origin.x = clampf(
+		origin.x, bounds.position.x + margin, maxf(bounds.position.x + margin, bounds.end.x - size.x - margin)
+	)
+	origin.y = clampf(
+		origin.y, bounds.position.y + size.y + margin, maxf(bounds.position.y + size.y + margin, bounds.end.y - margin)
+	)
+	if label_outline_size > 0.0:
+		var outline := label_outline_color
+		outline.a *= alpha
+		canvas.draw_string_outline(
+			LABEL_FONT,
+			origin,
+			text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			label_font_size,
+			int(label_outline_size),
+			outline
+		)
+	var color := label_color
+	color.a *= alpha
+	canvas.draw_string(
+		LABEL_FONT, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, label_font_size, color
+	)
+
+
+func _fade_in(elapsed: float) -> float:
+	if label_fade_seconds <= 0.0:
+		return 1.0
+	return clampf(elapsed / label_fade_seconds, 0.0, 1.0)
+
+
+func _fade_out(remaining: float) -> float:
+	if label_fade_seconds <= 0.0:
+		return 1.0
+	return clampf(remaining / label_fade_seconds, 0.0, 1.0)
 
 
 func _draw_centered_texture(

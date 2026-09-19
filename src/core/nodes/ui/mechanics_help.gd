@@ -29,6 +29,7 @@ const ENTRIES := {
 	"AFTERGROWTH": "A temporary shield Bloom leaves on Green. Hostile territory damage eats through Aftergrowth before it touches the Green underneath.",
 	"AMPLIFICATION": "The boost Root Potency gives another plant mechanic. The upgrade shows the affected value whenever amplification applies.",
 	"BLOOM": "A plant event that bursts outward, damages enemies, and reclaims territory. Bloom upgrades change its force, frequency, and aftermath.",
+	"CANKER": "A hostile structure that grows where Rot has been held long enough to settle. Damage cannot remove one - reinforcements keep arriving through it until you take the ground back.",
 	"CUTTINGS": "What you get back for Pruning your own Green. Cuttings feed Pruning attacks and recovery effects.",
 	"ENSNARE": "A Bramble condition that stops an enemy moving, though it can still attack. Grasping Thorns applies it, and a snared enemy is briefly immune afterwards.",
 	"ENTANGLEMENT": "A buildup on enemies standing on Green, and the more of it they carry the slower they move. Filling the bar Ensnares them if you have Bramble.",

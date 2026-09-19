@@ -182,7 +182,7 @@ func _bite(site: Vector2) -> void:
 			)
 		var damage := bite_damage
 		match combat.get_enemy_role(enemy_id):
-			EnemyKinds.Role.BOSS:
+			EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN:
 				damage *= boss_damage_share
 			EnemyKinds.Role.ELITE:
 				damage *= elite_damage_share

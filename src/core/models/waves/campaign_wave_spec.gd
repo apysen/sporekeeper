@@ -52,5 +52,7 @@ extends Resource
 @export_range(-1.0, 60.0, 0.5) var elite_spawn_second := -1.0
 ## Second within the wave at which the Burrower Boss enters; negative disables.
 @export_range(-1.0, 60.0, 0.5) var boss_spawn_second := -1.0
-## Completing this wave opens one of the Campaign's ten relic opportunities.
+## Second within the wave at which the Hive Queen enters; negative disables.
+@export_range(-1.0, 60.0, 0.5) var hive_queen_spawn_second := -1.0
+## Completing this wave opens one of the Campaign's eleven relic opportunities.
 @export var grants_wave_relic := false

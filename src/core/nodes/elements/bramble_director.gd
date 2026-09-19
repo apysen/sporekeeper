@@ -157,7 +157,7 @@ func _entanglement_for(enemy_id: int, amount: float) -> float:
 	## relic in this pool spends its Entanglement through here so the elite and boss
 	## shares cannot drift apart between them.
 	match combat.get_enemy_role(enemy_id):
-		EnemyKinds.Role.BOSS:
+		EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN:
 			return amount * relic_boss_entanglement_share
 		EnemyKinds.Role.ELITE:
 			return amount * relic_elite_entanglement_share

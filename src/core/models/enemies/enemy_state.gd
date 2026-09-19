@@ -44,6 +44,7 @@ var catalyst_search_range_pixels := 0.0
 var fresh_maturity_threshold := 0.35
 var maximum_active_summons := 0
 var summon_spacing_pixels := 0.0
+var summon_offset_pixels := 0.0
 var radius := 10.0
 var collision_radius := 6.0
 var xp_value := 1

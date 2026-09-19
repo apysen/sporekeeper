@@ -509,13 +509,30 @@ Wave 18 is the modifier showcase. It uses the table's 40% chance but guarantees 
 - If the Boss remains alive when Wave 14 begins, regular waves continue. The delayed Branch is an organic penalty, not a run lock.
 - If still alive at 25:00, enter boss cleanup with no ordinary reinforcements.
 
+### 14.3 Hive Queen (as built, 2026-09-18)
+
+Not part of this guide's original schedule, and recorded here rather than folded in
+silently so the divergence is visible to whoever reads the guide next.
+
+- Spawn immediately after Wave 20's opening cue.
+- Use Wave 20 global scaling, with a role movement factor of 0.15: she is meant to be
+  reached, so late-wave speed on her would only make her harder to corner.
+- Hold position at range and establish Colony Cores on a ring around herself, to a
+  brood of five. She is exempt from the reserved-core reduction, which exists so a
+  milestone can still enter a crowded arena - she has already entered.
+- Persist until killed. Her Cores outlive her.
+- On death, queue a relic opportunity and nothing else: both Branch Adaptations are
+  already spoken for by the Elite and the Burrower.
+
 ## 15. Relic reward schedule
 
-Campaign authors ten relic opportunities:
+Campaign authors eleven relic opportunities (ten as originally specified, plus the
+Hive Queen defeat added with 14.3):
 
 1. Wave completion rewards at Waves 3, 6, 9, 12, 15, 18, 21, and 24.
 2. One Elite defeat reward.
 3. One Boss defeat reward.
+4. One Hive Queen defeat reward.
 
 Each opportunity offers up to three distinct eligible unowned relics and the player takes one. Preserve the two Campaign relic rerolls.
 

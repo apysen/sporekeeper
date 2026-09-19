@@ -86,6 +86,130 @@ func _drive() -> void:
 		)
 
 	await _check_edge_clipping(director, field)
+	await _check_warning_text(run, director, field)
+
+
+func _check_warning_text(run: RunRoot, director: CankerDirector, field: TerritoryField) -> void:
+	## Section 22.3 asks for "a short local warning ... near the region rather than
+	## presented as a full-screen global catastrophe". So the thing to prove is not that a
+	## string exists but that ink lands on the board beside the site - and then stops when
+	## the warning does, because a warning that outlives its cause is worse than none.
+	##
+	## Measured as a difference between the same band with the warning on and with it off,
+	## rather than as a count of pale pixels. The first frame taken here had a relic choice
+	## panel across the middle of the field and the label behind it, which an absolute
+	## count reads as "no text" and a band near the wall reads as "text" off the stonework.
+	## A difference cannot be fooled by either, because the board is identical in both
+	## frames but for the words.
+	var arena := field.tuning.arena_size
+	# The interface is a CanvasLayer over the arena, and the run has been advanced through
+	# a wave by the checks above, so something is usually open on it. What is being looked
+	# at is the field.
+	var interface_was_visible := run.interface_layer.visible
+	run.interface_layer.visible = false
+
+	var middle := await _label_ink(director, field, arena * 0.5, CankerRules.Stage.WARNING)
+	await _save("res://.godot/canker_warning_text.png")
+	_check(
+		middle > 40,
+		"the warning puts its text on the board beside the region (%d px of ink)" % [middle]
+	)
+
+	# Against the wall, which is the ground a player abandons first and so the likeliest
+	# place for this text to be needed. It is pulled back inside rather than clipped into
+	# half a word.
+	var edge_position := Vector2(arena.x * 0.5, arena.y - 4.0)
+	var edge := await _label_ink(director, field, edge_position, CankerRules.Stage.WARNING)
+	await _save("res://.godot/canker_warning_text_edge.png")
+	_check(
+		edge > 40,
+		"a warning against the wall keeps its words on the board (%d px of ink)" % [edge]
+	)
+	var edge_image := root.get_texture().get_image()
+	if edge_image != null:
+		var reference := _sample_outside(edge_image, field, Vector2(arena.x * 0.25, arena.y * 0.5))
+		_check(
+			_color_distance(_sample_outside(edge_image, field, edge_position), reference) <= 0.12,
+			"and paints none of them through the wall"
+		)
+	# And the name, which is the only place in the game the word appears. The glossary has
+	# a CANKER entry, and an entry for a word the player never reads is the closed loop the
+	# glossary was cut back to remove on the 17th - so what makes that entry honest is this
+	# text existing on the board.
+	var named := await _label_ink(director, field, arena * 0.5, CankerRules.Stage.ACTIVE)
+	await _save("res://.godot/canker_formed_text.png")
+	_check(
+		named > 40,
+		"a Knot that opens says what it is (%d px of ink)" % [named]
+	)
+
+	run.interface_layer.visible = interface_was_visible
+	director.reset_director()
+
+
+func _label_ink(
+	director: CankerDirector,
+	field: TerritoryField,
+	local_position: Vector2,
+	stage: CankerRules.Stage
+) -> int:
+	## Pale pixels a label adds to the ground around a site: the band with one site at that
+	## stage, less the same band with nothing there at all. The frame is left showing the
+	## label, so a caller can save it.
+	director.reset_director()
+	var band := _label_band(field, local_position)
+	await _draw_frames()
+	var without := _count_light_pixels(root.get_texture().get_image(), field, band)
+	var site := CankerDirector.Site.new()
+	site.position = local_position
+	site.stage = stage
+	# Past the fade-in and short of the fade-out, so the text is at full strength in both
+	# cases rather than being measured somewhere on a ramp.
+	site.warning_timer = maxf(0.0, director.warning_time - director.label_fade_seconds - 0.2)
+	site.age = director.label_fade_seconds + 0.2
+	director._sites.append(site)
+	director.queue_redraw()
+	await _draw_frames()
+	var with_warning := _count_light_pixels(root.get_texture().get_image(), field, band)
+	return with_warning - without
+
+
+func _label_band(field: TerritoryField, local_position: Vector2) -> Rect2:
+	## Ground around the site that the label could land on, clipped to the inside of the
+	## wall. A box rather than the strip directly underneath, for the reason the edge case
+	## exists at all: a label against the bottom wall is slid back up inside it, so a band
+	## that only looked below the site would miss exactly the placement being checked.
+	##
+	## Clipping to the playable bounds is not tidiness. The HUD outside the wall is full of
+	## pale text, and a band that ran past the boundary would count the interface as proof
+	## the field had been painted on.
+	return Rect2(local_position - Vector2(200.0, 200.0), Vector2(400.0, 400.0)).intersection(
+		field.get_playable_bounds_local()
+	)
+
+
+func _count_light_pixels(image: Image, field: TerritoryField, band: Rect2) -> int:
+	## Pixels that look like the label's near-white. Counted rather than matched exactly,
+	## because the text is anti-aliased over an outline and no single pixel is the authored
+	## colour; what the count is for is the difference between two frames, not its own size.
+	if image == null:
+		return 0
+	var transform := root.get_final_transform() * field.get_global_transform_with_canvas()
+	var start := transform * band.position
+	var end := transform * band.end
+	var count := 0
+	for pixel_y in range(int(minf(start.y, end.y)), int(maxf(start.y, end.y))):
+		if pixel_y < 0 or pixel_y >= image.get_height():
+			continue
+		for pixel_x in range(int(minf(start.x, end.x)), int(maxf(start.x, end.x))):
+			if pixel_x < 0 or pixel_x >= image.get_width():
+				continue
+			var pixel := image.get_pixel(pixel_x, pixel_y)
+			var lowest := minf(pixel.r, minf(pixel.g, pixel.b))
+			var highest := maxf(pixel.r, maxf(pixel.g, pixel.b))
+			if lowest > 0.80 and highest - lowest < 0.14:
+				count += 1
+	return count
 
 
 func _check_edge_clipping(director: CankerDirector, field: TerritoryField) -> void:

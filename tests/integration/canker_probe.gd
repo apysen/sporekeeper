@@ -139,6 +139,7 @@ func _drive() -> void:
 
 	_check_warning_is_a_promise(director)
 	_check_redirection_is_topology_only(run, director)
+	_check_survives_a_save(director)
 	_check_reclaim_destroys(run, director, field)
 	_check_variation(director)
 
@@ -201,6 +202,106 @@ func _check_redirection_is_topology_only(run: RunRoot, director: CankerDirector)
 	_check(
 		director.get_redirects_served() == served_before,
 		"bosses and telegraphed Rushers are never redirected inside"
+	)
+
+
+func _check_survives_a_save(director: CankerDirector) -> void:
+	## A Knot is ground the player lost, and the ground itself is saved, so a resumed run
+	## that opened on a clean board would be handing back a consequence that the field
+	## still shows the cause of.
+	##
+	## Driven through `reset_director` in between rather than by applying the state over
+	## itself: resetting is what a restore actually lands on, and without it every check
+	## here would pass against a board that was never cleared.
+	var before_count := director.get_active_knot_count()
+	var before_positions := director.get_active_knot_positions()
+	var before_share := director.get_redirect_share()
+	var before_redirects := director.get_redirects_served()
+	var before_textures := PackedInt32Array()
+	var before_rotations := PackedFloat32Array()
+	for site in director._sites:
+		if site.stage == CankerRules.Stage.ACTIVE:
+			before_textures.append(site.texture_index)
+			before_rotations.append(site.rotation)
+	_check(before_count > 0, "there is a Knot on the board to save (%d)" % [before_count])
+	var state := director.capture_state()
+
+	# Through bytes, the way the save file will carry it: the columns are Packed arrays
+	# and the encoder is where a Packed array's type is kept or quietly widened.
+	var decoded: Variant = bytes_to_var(var_to_bytes(state))
+	_check(decoded is Dictionary, "the Canker state survives the encoder the save uses")
+	var restored: Dictionary = decoded if decoded is Dictionary else {}
+
+	director.reset_director()
+	_check(
+		director.get_active_knot_count() == 0 and director.get_redirects_served() == 0,
+		"resetting the director clears the board, so the restore has something to prove"
+	)
+
+	# A save from an arena that has been re-authored since is dropped rather than laid
+	# onto a grid it does not describe - and dropped without taking the run with it.
+	var wrong_size := restored.duplicate()
+	wrong_size["site_count"] = int(wrong_size.get("site_count", 0)) + 1
+	director.apply_state(wrong_size)
+	_check(
+		director.get_active_knot_count() == 0,
+		"a save whose site grid is a different size grows no Knots"
+	)
+	# The ordinary case for every save written before Cankers existed.
+	director.apply_state({})
+	_check(
+		director.get_active_knot_count() == 0,
+		"and a save from before Cankers leaves the board as a fresh run made it"
+	)
+
+	director.apply_state(restored)
+	_check(
+		director.get_active_knot_count() == before_count,
+		"a restored run has the Knots it was saved with (%d of %d)"
+			% [director.get_active_knot_count(), before_count]
+	)
+	var after_positions := director.get_active_knot_positions()
+	var same_ground := after_positions.size() == before_positions.size()
+	if same_ground:
+		for index in range(after_positions.size()):
+			if after_positions[index].distance_to(before_positions[index]) > 0.5:
+				same_ground = false
+	_check(same_ground, "and each one is on the ground it was on")
+	var same_paint := true
+	var index := 0
+	for site in director._sites:
+		if site.stage != CankerRules.Stage.ACTIVE:
+			continue
+		if index >= before_textures.size():
+			same_paint = false
+			break
+		if (
+			site.texture_index != before_textures[index]
+			or absf(site.rotation - before_rotations[index]) > 0.001
+		):
+			same_paint = false
+		index += 1
+	_check(
+		same_paint,
+		"wearing the painting it wore, turned the way it was turned"
+	)
+	_check(
+		is_equal_approx(director.get_redirect_share(), before_share)
+		and director.get_redirects_served() == before_redirects,
+		"and the interior is open again at the share it was open at (%.2f, %d served)"
+			% [director.get_redirect_share(), director.get_redirects_served()]
+	)
+	# Emergence is the swell a Knot plays as it pushes up through the ground. A restore
+	# is not a formation, so a saved Knot comes back grown rather than opening again in
+	# front of a player who has already seen it open.
+	var youngest := INF
+	for site in director._sites:
+		if site.stage == CankerRules.Stage.ACTIVE:
+			youngest = minf(youngest, site.age)
+	_check(
+		youngest >= director.emergence_seconds,
+		"a Knot comes back established rather than replaying its emergence (%.2fs)"
+			% [youngest]
 	)
 
 

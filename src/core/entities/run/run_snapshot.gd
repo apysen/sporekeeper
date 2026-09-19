@@ -22,7 +22,7 @@ extends RefCounted
 ## Systems whose state is kept, and the key each one is stored under. Named as a
 ## constant so the snapshot, the round trip and the tests agree on the set.
 const SYSTEM_KEYS := [
-	"progression", "evolutions", "metabolism", "player", "waves", "field",
+	"progression", "evolutions", "metabolism", "player", "waves", "field", "cankers",
 ]
 
 var mode := RunMode.Id.QUICK

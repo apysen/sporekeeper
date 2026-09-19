@@ -19,6 +19,11 @@ signal enemy_killed(
 signal xp_collected(amount: int)
 signal elite_defeated
 signal boss_defeated
+## The Hive Queen has fallen. Separate from `boss_defeated` because the two bosses
+## pay out at different points in the run and the run root says different things
+## about them; everything that merely means "a boss" asks `EnemyKinds.is_boss`
+## instead of listening to either signal.
+signal hive_queen_defeated
 signal boss_erupted(local_position: Vector2)
 signal briar_trap_detonated(local_position: Vector2)
 ## An Overgrown enemy shedding a Fruiting Body's Seeds is Spore's business, not
@@ -266,6 +271,10 @@ class DamageNumberLayer:
 @export var rusher_profile: EnemyProfile
 ## Late specialist: a Corruptor whose conversion accelerates while it is ignored.
 @export var siege_corruptor_profile: EnemyProfile
+## Profile copied into the Hive Queen, the run's second boss. She holds her distance
+## and plants Colony Cores, so her dangerous numbers are `maximum_active_summons` and
+## her action interval rather than her contact damage.
+@export var hive_queen_profile: EnemyProfile
 ## How far a colony core may be nudged to find ground it can actually be fought on. A
 ## core inside a wall cannot be damaged from any direction, so beyond this the placement
 ## is refused outright rather than allowed to strand the run.
@@ -785,6 +794,10 @@ func _ready() -> void:
 		"The Boss profile must identify itself as BOSS"
 	)
 	assert(
+		hive_queen_profile.role == EnemyProfile.Role.HIVE_QUEEN,
+		"The Hive Queen profile must identify itself as HIVE_QUEEN"
+	)
+	assert(
 		saboteur_profile.role == EnemyProfile.Role.SABOTEUR,
 		"The Saboteur profile must identify itself as SABOTEUR"
 	)
@@ -1023,7 +1036,7 @@ func is_enemy_resistant(enemy_id: int) -> bool:
 	var enemy := _find_enemy(enemy_id)
 	if enemy == null:
 		return false
-	return enemy.role == EnemyKinds.Role.ELITE or enemy.role == EnemyKinds.Role.BOSS
+	return enemy.role == EnemyKinds.Role.ELITE or EnemyKinds.is_boss(enemy.role)
 
 
 func get_enemy_maximum_health(enemy_id: int) -> float:
@@ -1239,7 +1252,7 @@ func _is_redirectable_role(role: int) -> bool:
 	# whole design is a telegraphed arrival from the edge - moving any of them inside
 	# breaks a promise the player has been taught to read.
 	return (
-		role != EnemyKinds.Role.BOSS
+		not EnemyKinds.is_boss(role)
 		and role != EnemyKinds.Role.ELITE
 		and role != EnemyKinds.Role.COLONY_CORE
 		and role != EnemyKinds.Role.RUSHER
@@ -1250,7 +1263,7 @@ func _get_spawn_exclusion(role: int) -> float:
 	# The Colony Core is placed by its Colonizer at a site that was already
 	# validated, and the milestone actors are authored entrances. Only ordinary
 	# reinforcements are held away from Grandma.
-	if role == EnemyKinds.Role.COLONY_CORE or role == EnemyKinds.Role.ELITE or role == EnemyKinds.Role.BOSS:
+	if role == EnemyKinds.Role.COLONY_CORE or role == EnemyKinds.Role.ELITE or EnemyKinds.is_boss(role):
 		return 0.0
 	if role == EnemyKinds.Role.RUSHER:
 		return rusher_spawn_exclusion_pixels
@@ -1405,7 +1418,7 @@ func blast_enemies_in_radius(
 		report.kill_positions.append(position_before)
 		var excess := maxf(0.0, applied - health_before)
 		var cap := normal_overkill_cap
-		if role == EnemyKinds.Role.BOSS:
+		if EnemyKinds.is_boss(role):
 			cap = boss_overkill_cap
 		elif role == EnemyKinds.Role.ELITE:
 			cap = elite_overkill_cap
@@ -1563,7 +1576,7 @@ func get_last_explosion_pitch_scale() -> float:
 
 func has_active_boss() -> bool:
 	for enemy in _enemies:
-		if enemy.active and enemy.role == EnemyKinds.Role.BOSS:
+		if enemy.active and EnemyKinds.is_boss(enemy.role):
 			return true
 	return false
 
@@ -3016,7 +3029,7 @@ func _fungal_collapse(enemy: EnemyState) -> void:
 				DeathSource.SPORE,
 				0
 			)
-		EnemyKinds.Role.BOSS:
+		EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN:
 			_damage_enemy(
 				enemy,
 				enemy.maximum_health * fungal_collapse_boss_health_share,
@@ -3351,7 +3364,7 @@ func apply_mass_entanglement(center: Vector2, radius: float) -> int:
 		if not territory_field.is_growth_path_clear(center, enemy.position):
 			continue
 		var share := 1.0
-		if enemy.role == EnemyKinds.Role.BOSS:
+		if EnemyKinds.is_boss(enemy.role):
 			share = _mass_entanglement_boss_share
 		elif enemy.role == EnemyKinds.Role.ELITE:
 			share = _mass_entanglement_elite_share
@@ -3433,7 +3446,7 @@ func collapse_overgrown_enemy(
 	var damage := enemy.health + 1.0
 	if enemy.role == EnemyKinds.Role.ELITE:
 		damage = enemy.maximum_health * clampf(elite_max_health_share, 0.0, 1.0)
-	elif enemy.role == EnemyKinds.Role.BOSS:
+	elif EnemyKinds.is_boss(enemy.role):
 		damage = enemy.maximum_health * clampf(boss_max_health_share, 0.0, 1.0)
 	_damage_enemy(enemy, damage, death_source, 0)
 	return true
@@ -3947,14 +3960,25 @@ func _try_establish_colony_core(colonizer: EnemyState) -> bool:
 	if colonizer.maximum_active_summons <= 0:
 		return false
 	# The six slots the ordinary reinforcement cap holds back are shared between
-	# Cores and the milestone actors. While an Elite or the Boss is alive the Cores
+	# Cores and the milestone actors. While an Elite or a boss is alive the Cores
 	# give one of them up, because a milestone that cannot enter is a reward and a
 	# wave identity the run silently loses.
+	#
+	# A milestone doing the colonising is the exception, and the Hive Queen is the
+	# reason the exception exists: her Cores *are* her fight. Holding her down to the
+	# reserve would have her reduce her own brood because she is on the field, and the
+	# slots are reserved for a milestone that still has to enter - which she no longer
+	# does.
 	var core_cap := colonizer.maximum_active_summons
-	if has_active_boss() or get_active_enemy_count_by_role(EnemyKinds.Role.ELITE) > 0:
+	var crowding_milestone := (
+		has_active_boss() or get_active_enemy_count_by_role(EnemyKinds.Role.ELITE) > 0
+	)
+	if crowding_milestone and not EnemyKinds.is_boss(colonizer.role):
 		core_cap = mini(core_cap, milestone_reserved_colony_cores)
 	if get_active_enemy_count_by_role(EnemyKinds.Role.COLONY_CORE) >= core_cap:
 		return false
+	if colonizer.summon_offset_pixels > 0.0:
+		return _establish_colony_core_on_ring(colonizer)
 	var minimum_spacing_squared := colonizer.summon_spacing_pixels * colonizer.summon_spacing_pixels
 	for enemy in _enemies:
 		if not enemy.active or enemy.role != EnemyKinds.Role.COLONY_CORE:
@@ -3970,6 +3994,47 @@ func _try_establish_colony_core(colonizer: EnemyState) -> bool:
 	if site == Vector2.INF:
 		return false
 	return spawn_enemy(EnemyKinds.Role.COLONY_CORE, site) != -1
+
+
+func _establish_colony_core_on_ring(summoner: EnemyState) -> bool:
+	## A Core planted around the summoner rather than under it.
+	##
+	## The Hive Queen holds her ground, and the walking Colonizer's rule - plant here,
+	## then move a spacing away before planting again - would give her exactly one Core
+	## and then refuse forever. On a ring the same spacing means what it was always
+	## trying to mean: Cores do not pile up on each other.
+	##
+	## The angles are a golden-angle walk off the summoner's own id and the size of the
+	## brood so far. Deterministic, so a replayed seed grows the same chamber, and it
+	## spreads successive Cores around the ring instead of clustering them where the
+	## first free angle happened to be.
+	var planted := get_active_enemy_count_by_role(EnemyKinds.Role.COLONY_CORE)
+	var minimum_spacing_squared := (
+		summoner.summon_spacing_pixels * summoner.summon_spacing_pixels
+	)
+	for attempt in range(10):
+		var angle := (
+			float(summoner.id) * 1.61803
+			+ float(planted + attempt) * 2.39996
+		)
+		var candidate := summoner.position + Vector2.from_angle(angle) * summoner.summon_offset_pixels
+		if not territory_field.contains_local_point(candidate):
+			continue
+		var crowded := false
+		for enemy in _enemies:
+			if not enemy.active or enemy.role != EnemyKinds.Role.COLONY_CORE:
+				continue
+			if enemy.position.distance_squared_to(candidate) < minimum_spacing_squared:
+				crowded = true
+				break
+		if crowded:
+			continue
+		var site := _find_colony_core_site(candidate)
+		if site == Vector2.INF:
+			continue
+		if spawn_enemy(EnemyKinds.Role.COLONY_CORE, site) != -1:
+			return true
+	return false
 
 
 func _find_colony_core_site(wanted: Vector2) -> Vector2:
@@ -4470,6 +4535,8 @@ func _damage_enemy(
 		elite_defeated.emit()
 	elif role == EnemyKinds.Role.BOSS:
 		boss_defeated.emit()
+	elif role == EnemyKinds.Role.HIVE_QUEEN:
+		hive_queen_defeated.emit()
 	active_enemy_count_changed.emit(_active_enemy_count)
 	if measuring:
 		PerfCounters.timer_add_since(
@@ -4554,7 +4621,7 @@ func _should_show_damage_number(
 	var is_important := (
 		critical
 		or enemy.role == EnemyKinds.Role.ELITE
-		or enemy.role == EnemyKinds.Role.BOSS
+		or EnemyKinds.is_boss(enemy.role)
 		or enemy.elite_modifier != EnemyKinds.EliteModifier.NONE
 		or shown_damage >= important_damage_number_threshold
 	)
@@ -4860,6 +4927,7 @@ func _configure_enemy_stats(enemy: EnemyState) -> void:
 	enemy.fresh_maturity_threshold = profile.fresh_maturity_threshold
 	enemy.maximum_active_summons = profile.maximum_active_summons
 	enemy.summon_spacing_pixels = profile.summon_spacing_pixels
+	enemy.summon_offset_pixels = profile.summon_offset_pixels
 	enemy.cc_resistance = 0.0
 	if _scaling.is_campaign_active():
 		_apply_campaign_role_scaling(enemy)
@@ -4915,6 +4983,8 @@ func _profile_for_role(role: int) -> EnemyProfile:
 			return rusher_profile
 		EnemyKinds.Role.SIEGE_CORRUPTOR:
 			return siege_corruptor_profile
+		EnemyKinds.Role.HIVE_QUEEN:
+			return hive_queen_profile
 	return null
 
 
@@ -5088,7 +5158,7 @@ func _enemy_requires_full_detail(enemy: EnemyState) -> bool:
 	# These bodies carry radial or escalation telegraphs that affect decisions. Crowd
 	# LOD only removes ornamental detail from ordinary enemies.
 	match enemy.role:
-		EnemyKinds.Role.ELITE, EnemyKinds.Role.BOSS, EnemyKinds.Role.WARDEN, EnemyKinds.Role.COLONY_CORE, EnemyKinds.Role.SIEGE_CORRUPTOR:
+		EnemyKinds.Role.ELITE, EnemyKinds.Role.BOSS, EnemyKinds.Role.HIVE_QUEEN, EnemyKinds.Role.WARDEN, EnemyKinds.Role.COLONY_CORE, EnemyKinds.Role.SIEGE_CORRUPTOR:
 			return true
 	return false
 
@@ -5271,6 +5341,8 @@ func _draw_enemy(
 			canvas.draw_circle(enemy.position, enemy.radius, Color("d85cff"))
 			canvas.draw_circle(enemy.position, enemy.radius - 6.0, Color("4a153e"))
 			canvas.draw_arc(enemy.position, enemy.radius + 4.0, 0.0, TAU, 24, Color("f5c4ff"), 2.0, true)
+		EnemyKinds.Role.HIVE_QUEEN:
+			_draw_hive_queen(canvas, enemy)
 		EnemyKinds.Role.BOSS:
 			canvas.draw_circle(enemy.position, enemy.radius + 8.0, Color(0.45, 0.02, 0.12, 0.38))
 			for petal_index in range(6):
@@ -5341,7 +5413,7 @@ func _draw_enemy_state_overlay(canvas: CanvasItem, enemy: EnemyState) -> void:
 
 	if (
 		enemy.role == EnemyKinds.Role.ELITE
-		or enemy.role == EnemyKinds.Role.BOSS
+		or EnemyKinds.is_boss(enemy.role)
 		or enemy.role == EnemyKinds.Role.COLONY_CORE
 		or enemy.health < enemy.maximum_health
 	):
@@ -5637,6 +5709,57 @@ func _draw_saboteur(canvas: CanvasItem, enemy: EnemyState) -> void:
 		2.0,
 		true
 	)
+
+
+func _draw_hive_queen(canvas: CanvasItem, enemy: EnemyState) -> void:
+	## A brood chamber with a crown on it.
+	##
+	## Built out of the two palettes the player has already been taught, because the
+	## fight is a sentence about them: the Colony Core's crimson body and spines, and
+	## the Colonizer's teal for the eggs. Something that is plainly *made of* what it
+	## makes says what to do about it before any text does.
+	##
+	## The eggs are a readout, not decoration. One pod per Core she is allowed, lit for
+	## each Core standing on the board right now - so a player who has cleared her brood
+	## can see that they have, and a player who has ignored it can see a full ring.
+	## Same idiom as the Siege Corruptor's closing escalation arc, for the same reason.
+	var brood_capacity := clampi(enemy.maximum_active_summons, 3, 8)
+	var brood_out := clampi(
+		get_active_enemy_count_by_role(EnemyKinds.Role.COLONY_CORE), 0, brood_capacity
+	)
+	canvas.draw_circle(enemy.position, enemy.radius + 10.0, Color(0.36, 0.02, 0.20, 0.34))
+	# Spines first, so the body's rim cuts them off at the root the way the Core's do.
+	for spine_index in range(8):
+		var spine_direction := Vector2.from_angle(TAU * float(spine_index) / 8.0)
+		canvas.draw_line(
+			enemy.position + spine_direction * (enemy.radius - 4.0),
+			enemy.position + spine_direction * (enemy.radius + 8.0),
+			Color("ff5d78"),
+			3.0,
+			true
+		)
+	canvas.draw_circle(enemy.position, enemy.radius, Color("8f173d"))
+	# The chamber is a proportion of the body rather than a fixed inset, so she reads as
+	# a mantle around a brood at any size the wave scaling gives her.
+	canvas.draw_circle(enemy.position, enemy.radius * 0.60, Color("2b0a24"))
+	var brood_radius := enemy.radius * 0.36
+	var pod_radius := maxf(2.5, enemy.radius * 0.13)
+	for pod_index in range(brood_capacity):
+		# Started at the top and turned by the enemy's own id, so two Queens in one
+		# arena - which the retry path can produce - do not sit as identical stamps.
+		var pod_angle := (
+			TAU * float(pod_index) / float(brood_capacity)
+			- PI * 0.5
+			+ float(enemy.id % 7) * 0.17
+		)
+		var pod_centre := enemy.position + Vector2.from_angle(pod_angle) * brood_radius
+		var lit := pod_index < brood_out
+		canvas.draw_circle(pod_centre, pod_radius + 1.5, Color(0.05, 0.16, 0.18, 0.85))
+		canvas.draw_circle(
+			pod_centre, pod_radius, Color("59d7c6") if lit else Color("1d4a52")
+		)
+	canvas.draw_arc(enemy.position, enemy.radius - 1.0, 0.0, TAU, 36, Color("ffc1cc"), 2.0, true)
+	canvas.draw_circle(enemy.position, maxf(2.0, enemy.radius * 0.13), Color("b8fff2"))
 
 
 func _draw_siege_corruptor(canvas: CanvasItem, enemy: EnemyState) -> void:

@@ -38,6 +38,7 @@ const ROLE_COLONY_CORE := EnemyKinds.Role.COLONY_CORE
 const ROLE_HEAVY_GRAZER := EnemyKinds.Role.HEAVY_GRAZER
 const ROLE_RUSHER := EnemyKinds.Role.RUSHER
 const ROLE_SIEGE_CORRUPTOR := EnemyKinds.Role.SIEGE_CORRUPTOR
+const ROLE_HIVE_QUEEN := EnemyKinds.Role.HIVE_QUEEN
 
 ## The same, for the rule changes an elite can carry.
 const MODIFIER_NONE := EnemyKinds.EliteModifier.NONE
@@ -85,8 +86,8 @@ const MODIFIER_CHANCE_BY_WAVE := [
 	0.35, 0.40, 0.43, 0.46, 0.49, 0.52, 0.55, 0.60, 0.70,
 ]
 
-## Waves whose completion opens one of the Campaign's ten relic opportunities. The
-## Elite and Boss defeats are the other two.
+## Waves whose completion opens eight of the Campaign's eleven relic opportunities.
+## The Elite, the Burrower and the Hive Queen are the other three.
 const RELIC_WAVES := [3, 6, 9, 12, 15, 18, 21, 24]
 
 const ELITE_WAVE := 6
@@ -94,6 +95,14 @@ const ELITE_SPAWN_SECOND := 35.0
 const BOSS_WAVE := 13
 ## Immediately after the wave's opening cue, which is its authored break.
 const BOSS_SPAWN_SECOND := 2.5
+## The Hive Queen, seven waves after the Burrower and five before the end.
+##
+## Deliberately not a relic wave (18 and 21 are the neighbours) so her reward is her
+## own rather than arriving in the same breath as a wave's. Wave 20 is "Devour"; wave
+## 19, "Colony War", is the better thematic home and is a one-constant move if the
+## pacing ever wants her earlier.
+const HIVE_QUEEN_WAVE := 20
+const HIVE_QUEEN_SPAWN_SECOND := 3.0
 
 ## Wave at which the objective specialists join the modifier system.
 const LATE_MODIFIER_ROLE_WAVE := 13
@@ -372,6 +381,9 @@ static func _build_wave_spec(wave_number: int, authored: Dictionary) -> Campaign
 	spec.modifier_pool_stage = get_modifier_pool_stage(wave_number)
 	spec.elite_spawn_second = ELITE_SPAWN_SECOND if wave_number == ELITE_WAVE else -1.0
 	spec.boss_spawn_second = BOSS_SPAWN_SECOND if wave_number == BOSS_WAVE else -1.0
+	spec.hive_queen_spawn_second = (
+		HIVE_QUEEN_SPAWN_SECOND if wave_number == HIVE_QUEEN_WAVE else -1.0
+	)
 	spec.grants_wave_relic = RELIC_WAVES.has(wave_number)
 	return spec
 
@@ -515,6 +527,14 @@ static func build_role_scaling_profiles() -> Dictionary:
 	var boss := _role_profile(ROLE_BOSS, 0.40, 0.65)
 	boss.role_cc_resistance = 0.35
 	profiles[ROLE_BOSS] = boss
+	# The Queen takes the Burrower's resistance and almost none of the movement
+	# scaling: she is meant to hold a position and be reached, so a late-wave speed
+	# multiplier on her would only make her harder to corner. Her action speed scales
+	# like a Colonizer's, because that is the number that decides how fast the brood
+	# comes back after it is cleared.
+	var hive_queen := _role_profile(ROLE_HIVE_QUEEN, 0.15, 0.75)
+	hive_queen.role_cc_resistance = 0.35
+	profiles[ROLE_HIVE_QUEEN] = hive_queen
 	return profiles
 
 
