@@ -99,7 +99,18 @@ var _briarball_charge := 0
 
 @export_group("Entanglement")
 ## Movement-speed reduction applied to a fully Entangled enemy before upgrades.
-@export_range(0.0, 0.9, 0.01) var base_slow_fraction := 0.15
+##
+## **`run.tscn` sets this per-scene**, so editing the default here changes nothing in
+## the running game; the scene is the tuning surface and it now carries 0.25.
+##
+## Raised from 0.15 in the early-Path pass, and the half of that pass that survived
+## measurement. Bramble's rank-1 problem was never its damage -- the chip buff that
+## went with this was reverted for tripling its output and *reducing* its control --
+## it was that an Adaptation whose whole identity is control produced no control the
+## player could see. A quarter off a fully Entangled enemy's speed is visible the
+## first time one walks onto the Green, costs no kill throughput, and is the axis
+## section 7 of the rework actually asked for.
+@export_range(0.0, 0.9, 0.01) var base_slow_fraction := 0.25
 ## Additional fully-Entangled movement-speed reduction granted by each rank.
 ## Three ranks reach +15 percentage points, on top of the base 15%.
 @export_range(0.0, 0.25, 0.01) var slow_per_level := 0.05

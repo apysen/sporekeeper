@@ -216,11 +216,13 @@ func resolved_effect(upgrade_id: int) -> String:
 				* _pruning_director.get_pruning_cutting_yield_multiplier()
 			)
 		Progression.UpgradeId.PRUNING_CUTTING_DAMAGE:
-			return "%.0f thicket damage per bite, %.0f per launched Cutting" % [
-				_pruning_director.orbit_contact_damage
-				* _pruning_director.get_pruning_cutting_damage_multiplier(),
+			# The thicket's own bite is printed beside the line but not multiplied by
+			# it: this line buys launched Cuttings, and the ring is deliberately
+			# outside it. Showing both keeps the card honest about which half moves.
+			return "%.0f per launched Cutting; the thicket bites for %.0f" % [
 				_pruning_director.cutting_damage
 				* _pruning_director.get_pruning_cutting_damage_multiplier(),
+				_pruning_director.orbit_contact_damage,
 			]
 		Progression.UpgradeId.PRUNING_CHARGE:
 			# Read from the exports rather than through get_charge_seconds, which now

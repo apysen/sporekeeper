@@ -28,7 +28,15 @@ signal status_requested(message: String)
 
 @export_group("Seed Lines")
 ## Enemy kills required to create a Seed before Seed Production ranks reduce it.
-@export_range(1, 10, 1) var baseline_seed_kill_threshold := 5
+##
+## Four rather than five, from the early-Path pass. Spore's first rank was not weak
+## so much as *late*: at five kills a Seed, an opening Spore run spent most of its
+## first minute having produced nothing at all, and an Adaptation the player cannot
+## see working in the first minute is one they cannot tell they have taken. Four
+## brings the first Seed inside the opening wave without changing what a Seed is or
+## how the line scales -- Seed Production still buys a kill off the threshold, and
+## the floor below is unchanged, so the ceiling this line reaches has not moved.
+@export_range(1, 10, 1) var baseline_seed_kill_threshold := 4
 ## Lowest Seed kill threshold allowed after all Seed Production reductions.
 @export_range(1, 10, 1) var minimum_seed_kill_threshold := 2
 ## Additive Seed territory-mass multiplier granted by each Growth Mass rank.
@@ -241,7 +249,7 @@ func _advance_seed_bank(delta: float) -> void:
 				status_requested.emit(
 					"MAST YEAR — a second full wave breaks over the same ground."
 				)
-	var rank := progression.get_evolution_upgrade_level()
+	var rank := progression.get_evolution_rank(Progression.EvolutionId.SEED_BANK)
 	var storage_rate := evolutions.seed_bank_storage_per_mature_percent
 	if rank >= 2:
 		storage_rate *= 1.0 + evolutions.seed_reserve_rate_bonus
@@ -581,7 +589,7 @@ func _release_germination_season(seeds: int) -> int:
 		# so a Season's infrastructure is known the moment it is sown. The remainder
 		# carries forward rather than being discarded between Seasons.
 		if (
-			progression.get_evolution_upgrade_level() >= 4
+			progression.get_evolution_rank(Progression.EvolutionId.SEED_BANK) >= 4
 			and evolutions.fungal_reserve_seeds > 0
 		):
 			_fungal_reserve_progress += 1
@@ -610,8 +618,7 @@ func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 	if progression.has_active_evolution(Progression.EvolutionId.SEED_BANK):
 		inherited_mass += evolutions.seed_bank_maturity_mass_bonus * ground_maturity
 	if (
-		progression.has_active_evolution(Progression.EvolutionId.PIONEER)
-		and progression.get_evolution_upgrade_level() >= 3
+		progression.get_evolution_rank(Progression.EvolutionId.PIONEER) >= 3
 		and territory_field.get_pruned_ground_at_local(local_position) > 0.0
 	):
 		# Fertile Cut: ground Pruning has just opened is the best thing a Seed can land
@@ -674,7 +681,7 @@ func _fire_rootburst(local_position: Vector2) -> void:
 	# keeps killing normal mobs as the waves harden, and it lands as a fraction of a
 	# boss rather than as a boss-killer. Root Potency amplifies both halves - this is
 	# the one Spore effect the doc wants Mature ground to make lethal outright.
-	var rank := progression.get_evolution_upgrade_level()
+	var rank := progression.get_evolution_rank(Progression.EvolutionId.SEED_BANK)
 	var damage_share := evolutions.rootburst_damage_share
 	var radius := evolutions.rootburst_radius_pixels
 	if rank >= 3:
@@ -746,7 +753,7 @@ func get_fungal_reserve_progress() -> int:
 
 func _apply_tangleburst(local_position: Vector2, radius: float) -> void:
 	# Tangleburst turns germination itself into crowd control, rank by rank.
-	var rank := progression.get_evolution_upgrade_level()
+	var rank := progression.get_evolution_rank(Progression.EvolutionId.BRIAR_PODS)
 	if rank <= 0:
 		return
 	_briar_pod_germinations += 1

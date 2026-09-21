@@ -20,8 +20,15 @@ static func find_open_ground_position(prototype: RunRoot) -> Vector2:
 			var index := y * width + x
 			if field._claimable_mask[index] == 0:
 				continue
-			if field._control[index] <= field.tuning.ownership_threshold:
-				return field.cell_to_local(Vector2(x, y))
+			if field._control[index] > field.tuning.ownership_threshold:
+				continue
+			# Checked the way the run checks it, not the way the array stores it.
+			# `get_control_at_local` samples between cells, so an unowned cell with
+			# owned neighbours still reads as standing on Green -- and every fixture
+			# that steps off the Green to drop a ring was handed one of those.
+			var candidate := field.cell_to_local(Vector2(x, y))
+			if field.get_control_at_local(candidate) <= field.tuning.ownership_threshold:
+				return candidate
 	return Vector2(-1.0, -1.0)
 
 
@@ -80,11 +87,28 @@ static func graze_owned_ground(
 	# Pruning's harvest eats the ground under the player, so a fixture that stands
 	# still burns its own footing out. Grazing is what a run actually does to keep a
 	# ring turning, and it is what the fixture has to do too.
-	var graze := home + Vector2.from_angle(angle) * 46.0
-	if prototype.territory_field.get_control_at_local(graze) > (
-		prototype.territory_field.tuning.ownership_threshold
-	):
-		prototype.player.global_position = prototype.territory_field.to_global(graze)
+	#
+	# The circle has to be wider than the harvest itself or it is not grazing: a sweep
+	# inside `upkeep_radius_pixels` re-treads ground the last lap already cut, which
+	# starves the ring exactly as standing still does. Widest-first, because the test
+	# ecosystem is not always big enough for the wide lap and a graze onto ground the
+	# run does not own is no graze at all.
+	# The circle has to be wider than the harvest itself or it is not grazing: a sweep
+	# inside `upkeep_radius_pixels` re-treads ground the last lap already cut, which
+	# starves the ring exactly as standing still does.
+	#
+	# Widest-first, and the angle is a heading rather than a promise. `home` is often
+	# the first owned cell found scanning from the corner, so half of a wide circle
+	# around it is off the field or off the Green; swinging the heading until the step
+	# lands on owned ground keeps her inside the garden and still moving.
+	var field := prototype.territory_field
+	var harvest_radius: float = prototype.pruning_director.upkeep_radius_pixels
+	for radius in [harvest_radius * 1.6, harvest_radius * 1.2]:
+		for swing in [0.0, 0.7, -0.7, 1.4, -1.4, 2.1, -2.1, 2.8, -2.8, PI]:
+			var graze: Vector2 = home + Vector2.from_angle(angle + swing) * radius
+			if field.get_control_at_local(graze) > field.tuning.ownership_threshold:
+				prototype.player.global_position = field.to_global(graze)
+				return
 
 
 static func stand_on_owned_ground(prototype: RunRoot) -> Vector2:

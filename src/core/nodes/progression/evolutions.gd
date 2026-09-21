@@ -288,8 +288,54 @@ signal evolution_changed(status: int)
 @export_range(0.0, 1.0, 0.05) var stool_regrowth_second_threshold := 0.50
 @export_range(0.0, 1.0, 0.05) var stool_regrowth_second_share := 0.40
 
-var evolution_status := Progression.EvolutionStatus.NOT_READY
-var active_evolution := Progression.EvolutionId.NONE
+## Every Evolution this run holds, in the order it claimed them.
+##
+## Plural, because an Evolution is no longer a property of one locked pair. A run
+## owning three Adaptations has three relationships, any of which may mature, and a
+## Path that has already evolved once stays eligible for its other relationship --
+## taking Root + Vine does not spend Vine. Two per run is the target; nothing here
+## enforces it, because what limits it is how many relationships a twenty-minute run
+## can actually develop and how many reward moments the Campaign opens.
+var active_evolutions: Array[int] = []
+
+## Whether at least one relationship currently qualifies. Stored rather than derived
+## so a bench can force it, and so recomputing it is one call from Progression rather
+## than a pair sweep every time something asks.
+var _pair_ready := false
+
+## The first Evolution claimed, for everything that still speaks of "the" Evolution:
+## the HUD line, the Adaptation tree's header, and a handful of probes. Assigning it
+## replaces the whole set, which is what a test restoring a forced state means.
+var active_evolution: int:
+	get:
+		return (
+			active_evolutions[0]
+			if not active_evolutions.is_empty()
+			else Progression.EvolutionId.NONE
+		)
+	set(value):
+		active_evolutions.clear()
+		if value != Progression.EvolutionId.NONE:
+			active_evolutions.append(value)
+		evolution_changed.emit(evolution_status)
+
+## Derived from the set rather than tracked beside it, because a stored status and a
+## set of claimed Evolutions are two records of the same fact and only one of them
+## can be right after a claim nobody remembered to announce.
+var evolution_status: int:
+	get:
+		if not active_evolutions.is_empty():
+			return Progression.EvolutionStatus.EVOLVED
+		return (
+			Progression.EvolutionStatus.READY
+			if _pair_ready
+			else Progression.EvolutionStatus.NOT_READY
+		)
+	set(value):
+		# EVOLVED is the set's to say; forcing the other two is how a bench asks for a
+		# claim without buying ten ranks to get there first.
+		if value != Progression.EvolutionStatus.EVOLVED:
+			_pair_ready = value == Progression.EvolutionStatus.READY
 
 
 func _ready() -> void:
@@ -299,63 +345,70 @@ func _ready() -> void:
 
 
 func reset_evolutions() -> void:
-	evolution_status = Progression.EvolutionStatus.NOT_READY
-	active_evolution = Progression.EvolutionId.NONE
+	active_evolutions.clear()
+	_pair_ready = false
 	evolution_changed.emit(evolution_status)
 
 
 func update_readiness(pair_ready: bool) -> void:
-	# Progression owns what "maxed" means for a path line, so it reports readiness
-	# and this node decides what the run's Evolution state becomes.
-	if evolution_status == Progression.EvolutionStatus.EVOLVED:
-		return
-	var next_status := (
-		Progression.EvolutionStatus.READY
-		if pair_ready
-		else Progression.EvolutionStatus.NOT_READY
-	)
-	if next_status == evolution_status:
-		return
-	evolution_status = next_status
-	evolution_changed.emit(evolution_status)
+	# Progression owns what counts as investment in a Path, so it reports whether any
+	# relationship qualifies and this node decides what the run's state becomes.
+	var was := evolution_status
+	_pair_ready = pair_ready
+	if evolution_status != was:
+		evolution_changed.emit(evolution_status)
 
 
 func clear_active_evolution() -> void:
-	# A pairing that changes invalidates what it would have become. The status is
-	# left alone: readiness is recomputed from the new pair immediately after.
-	active_evolution = Progression.EvolutionId.NONE
+	# A roster that changed under the run invalidates what it had claimed. Readiness
+	# is recomputed from the new roster immediately after.
+	active_evolutions.clear()
 
 
 func is_evolution_path(path_id: int) -> bool:
-	# Only the Core pair makes the pairing. A Branch never joins it, so no second
-	# Evolution and no three-way pairing can ever form.
-	return progression.is_core_adaptation(path_id)
+	# Every owned Adaptation is half of a relationship now. Cores and Branches differ
+	# in when the run is allowed to take them, not in what they can become.
+	return progression.owns_adaptation(path_id)
 
 
 static func get_evolution_upgrade_id(evolution_id: int) -> int:
 	return EvolutionDescriptions.upgrade_id_for(evolution_id)
 
 
-func get_evolution_upgrade_level() -> int:
-	# Level of the line belonging to the Evolution this run actually holds. Zero
-	# for a run that has not evolved, so every consumer can read it unguarded.
-	if evolution_status != Progression.EvolutionStatus.EVOLVED:
+func get_evolution_rank(evolution_id: int) -> int:
+	## What rank the run has bought of one named Evolution, or zero if it does not
+	## hold that Evolution at all.
+	##
+	## The question every director actually has. While a run could only ever hold one
+	## Evolution, "the Evolution's rank" and "Deadfall's rank" were the same number
+	## and every caller asked for the first; with two claimed at once they are not,
+	## and a Pruning effect reading a Spore Evolution's rank would be silently wrong
+	## rather than visibly broken.
+	if evolution_id == Progression.EvolutionId.NONE:
 		return 0
-	var upgrade_id := get_evolution_upgrade_id(active_evolution)
+	if not active_evolutions.has(evolution_id):
+		return 0
+	var upgrade_id := get_evolution_upgrade_id(evolution_id)
 	if upgrade_id < 0:
 		return 0
 	return progression.get_upgrade_level(upgrade_id)
+
+
+func get_evolution_upgrade_level() -> int:
+	# The deepest rank the run holds in any of its Evolutions. Presentation only --
+	# the HUD line and the Adaptation tree header -- because a run with two
+	# Evolutions has no single "the Evolution rank", and anything that mechanically
+	# needs one is asking the wrong question and should name its Evolution.
+	var deepest := 0
+	for evolution_id in active_evolutions:
+		deepest = maxi(deepest, get_evolution_rank(evolution_id))
+	return deepest
 
 
 func get_active_evolution_rank() -> int:
 	## Claiming an Evolution grants its line at rank 1; later drafts deepen that
 	## same stored line to rank 5.
-	if evolution_status != Progression.EvolutionStatus.EVOLVED:
-		return 0
-	var upgrade_id := get_evolution_upgrade_id(active_evolution)
-	if upgrade_id < 0:
-		return 0
-	return progression.get_upgrade_level(upgrade_id)
+	return get_evolution_rank(active_evolution)
 
 
 ## The Evolution matrix, as one symmetric table.
@@ -409,17 +462,45 @@ static func get_pair_evolution_for(first_path: int, second_path: int) -> int:
 
 
 func get_pair_evolution_id() -> int:
-	# A claimed pairing is frozen: nothing acquired afterwards -- no Branch, no
-	# relic, no generated event -- may re-roll which Evolution the run holds.
-	if evolution_status == Progression.EvolutionStatus.EVOLVED:
-		return active_evolution
+	## What the Core pair specifically becomes. Still meaningful -- the Cores are the
+	## first two Adaptations a run commits to and the relationship it is most likely
+	## to develop -- but no longer the run's only possible Evolution.
 	if not progression.has_primary_path() or not progression.has_secondary_path():
 		return Progression.EvolutionId.NONE
 	return get_pair_evolution_for(progression.primary_path, progression.secondary_path)
 
 
+func get_eligible_evolutions() -> PackedInt32Array:
+	## Every Evolution the run could claim right now.
+	##
+	## One entry per owned pair whose two Adaptations are both developed past the
+	## investment gate and whose Evolution is not already held. Order is the roster's,
+	## so the same build offers the same list twice -- the *sample* shown to the
+	## player is drawn from it, and drawing from a set that reshuffled itself would
+	## make a reroll look like it had changed what the run qualifies for.
+	var eligible := PackedInt32Array()
+	if progression == null:
+		return eligible
+	var owned := progression.get_owned_adaptations()
+	for first_index in range(owned.size()):
+		for second_index in range(first_index + 1, owned.size()):
+			var first: int = owned[first_index]
+			var second: int = owned[second_index]
+			if not progression.is_pair_invested(first, second):
+				continue
+			var evolution_id := get_pair_evolution_for(first, second)
+			if evolution_id == Progression.EvolutionId.NONE:
+				continue
+			if active_evolutions.has(evolution_id):
+				continue
+			if eligible.has(evolution_id):
+				continue
+			eligible.append(evolution_id)
+	return eligible
+
+
 func has_active_evolution(evolution_id: int) -> bool:
-	return evolution_status == Progression.EvolutionStatus.EVOLVED and active_evolution == evolution_id
+	return active_evolutions.has(evolution_id)
 
 
 func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> String:
@@ -430,21 +511,34 @@ func get_evolution_upgrade_rank_description(upgrade_id: int, rank: int) -> Strin
 
 
 func is_pair_evolution_draftable() -> bool:
-	return (
-		evolution_status == Progression.EvolutionStatus.READY
-		and get_pair_evolution_id() != Progression.EvolutionId.NONE
-	)
+	return not get_eligible_evolutions().is_empty()
+
+
+func grant_evolution(evolution_id: int) -> bool:
+	## Claims one named Evolution. Nothing is consumed: both Paths stay eligible for
+	## whatever else they are half of, which is what lets a three-Adaptation run reach
+	## a second Evolution without abandoning the first.
+	if evolution_id == Progression.EvolutionId.NONE:
+		return false
+	if active_evolutions.has(evolution_id):
+		return false
+	active_evolutions.append(evolution_id)
+	evolution_changed.emit(evolution_status)
+	return true
 
 
 func grant_evolution_if_ready() -> bool:
-	if evolution_status != Progression.EvolutionStatus.READY:
+	## The first Evolution the run qualifies for, claimed.
+	##
+	## The bench path and the shorthand every probe uses. A forced READY with nothing
+	## actually eligible falls back to the Core pair, so an instrument can hand a
+	## build its Evolution without buying ten ranks to get there first.
+	var eligible := get_eligible_evolutions()
+	if not eligible.is_empty():
+		return grant_evolution(eligible[0])
+	if not _pair_ready:
 		return false
-	active_evolution = get_pair_evolution_id()
-	if active_evolution == Progression.EvolutionId.NONE:
-		return false
-	evolution_status = Progression.EvolutionStatus.EVOLVED
-	evolution_changed.emit(evolution_status)
-	return true
+	return grant_evolution(get_pair_evolution_id())
 
 
 static func get_evolution_name(evolution_id: int) -> String:
@@ -458,19 +552,28 @@ static func get_evolution_description(evolution_id: int) -> String:
 static func get_upgrade_evolution(upgrade_id: int) -> int:
 	return EvolutionDescriptions.evolution_for_upgrade(upgrade_id)
 
-## The two fields that are the run's Evolution, rather than the authored tuning that
-## surrounds them. Everything else on this node describes what an Evolution *does*,
-## which belongs to the build and not to the save.
+## What the run has claimed, rather than the authored tuning that surrounds it.
+## Everything else on this node describes what an Evolution *does*, which belongs to
+## the build and not to the save.
 func capture_state() -> Dictionary:
 	return {
-		"evolution_status": evolution_status,
-		"active_evolution": active_evolution,
+		"pair_ready": _pair_ready,
+		"active_evolutions": PackedInt32Array(active_evolutions),
 	}
 
 
 func apply_state(state: Dictionary) -> void:
 	if state.is_empty():
 		return
-	evolution_status = int(state.get("evolution_status", Progression.EvolutionStatus.NOT_READY))
-	active_evolution = int(state.get("active_evolution", Progression.EvolutionId.NONE))
+	_pair_ready = bool(state.get("pair_ready", false))
+	active_evolutions.clear()
+	var stored: Variant = state.get("active_evolutions")
+	if stored is PackedInt32Array:
+		for evolution_id in stored as PackedInt32Array:
+			active_evolutions.append(int(evolution_id))
+	elif state.has("active_evolution"):
+		# A save written before Evolutions became plural.
+		var single := int(state.get("active_evolution", Progression.EvolutionId.NONE))
+		if single != Progression.EvolutionId.NONE:
+			active_evolutions.append(single)
 	evolution_changed.emit(evolution_status)

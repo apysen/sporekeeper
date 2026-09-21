@@ -16,12 +16,12 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		Progression.PathId.ROOT
 	)
 	var ready_before_investment := prototype.progression.evolution_status
-	# One mastered line in each Core is deliberately not enough.
+	# Three ranks in each is short of the five the gate asks for.
 	prototype.progression._upgrade_levels[Progression.UpgradeId.GROWTH_MASS] = 3
 	prototype.progression._upgrade_levels[Progression.UpgradeId.ROOT_MATURATION] = 3
 	prototype.progression._update_evolution_readiness()
 	var ready_with_one_each := prototype.progression.evolution_status
-	# Two in one Core and one in the other is not enough either.
+	# Six in one and three in the other is not enough either: both halves count.
 	prototype.progression._upgrade_levels[Progression.UpgradeId.SPORULATION] = 3
 	prototype.progression._update_evolution_readiness()
 	var ready_with_lopsided := prototype.progression.evolution_status
@@ -32,7 +32,7 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		and ready_with_one_each == Progression.EvolutionStatus.NOT_READY
 		and ready_with_lopsided == Progression.EvolutionStatus.NOT_READY
 		and prototype.progression.evolution_status == Progression.EvolutionStatus.READY,
-		"Evolution needs two mastered lines in each Core, not one and not two in one"
+		"an Evolution needs five owned ranks in each half of the pair, not one deep line"
 	)
 	prototype.progression.grant_evolution_if_ready()
 	var claimed_evolution := prototype.progression.active_evolution
@@ -70,9 +70,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		and fifth_refused
 		and prototype.progression.get_owned_adaptation_count() == 4
 		and prototype.progression.is_branch_adaptation(Progression.PathId.BRAMBLE)
-		and not prototype.progression.is_evolution_path(Progression.PathId.BRAMBLE)
-		and prototype.progression.get_pair_evolution_id() == claimed_evolution,
-		"a Branch waits for its milestone, then completes the roster without re-rolling the Evolution"
+		and prototype.progression.is_evolution_path(Progression.PathId.BRAMBLE)
+		and prototype.progression.get_pair_evolution_id() == claimed_evolution
+		and prototype.progression.active_evolution == claimed_evolution,
+		"a Branch waits for its milestone, then joins the roster as a relationship of its own"
 	)
 	# A mastered Branch line must not satisfy the Core gate either.
 	for branch_line in prototype.progression.get_adaptation_line_ids(
@@ -85,6 +86,20 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 			Progression.PathId.SPORE
 		) == 2,
 		"a mastered Branch counts toward its own mastery and never toward the Core gate"
+	)
+	# A Branch is half of a relationship too, and the Evolution already claimed does
+	# not spend either of the Adaptations that produced it. Bramble is mastered by
+	# the block above; Thistle only needs to clear the investment gate.
+	for thistle_line in prototype.progression.get_adaptation_line_ids(
+		Progression.PathId.THISTLE
+	):
+		prototype.progression._upgrade_levels[thistle_line] = 2
+	prototype.progression._update_evolution_readiness()
+	var branch_eligible := prototype.progression.get_eligible_evolutions()
+	report.check(
+		branch_eligible.has(Progression.EvolutionId.HEDGE_BATTERY)
+		and not branch_eligible.has(claimed_evolution),
+		"two developed Branches are a relationship of their own, and a claimed one is spent"
 	)
 
 	# Every relic pool the roster owns, and only those.

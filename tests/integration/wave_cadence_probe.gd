@@ -4,10 +4,14 @@ extends SceneTree
 ##
 ## Two things this checks, both of which were true of Quick and not of Campaign.
 ##
-## Campaign is 25 waves of one minute, and its reinforcements stop at 24:45, so its
+## Campaign is 20 waves of one minute, and its reinforcements stop at 19:45, so its
 ## final wave is a wave: three quarters of it spawns and the last fifteen seconds
 ## are fought. Quick has never had that problem either: its cleanup is the last
 ## thirty seconds of the run.
+##
+## It also covers Provocation, because Provocation is a cadence mechanic: it moves
+## the schedule forward without moving the clock, which is exactly the kind of thing
+## that breaks a wave counter quietly.
 ##
 ## And a Quick wave opens with a grace period. Standing in a cleared arena waiting
 ## for it
@@ -58,6 +62,7 @@ func _run() -> void:
 	_check_mode_switch_restores(prototype)
 	_check_grace_skipped_when_clear(prototype)
 	_check_grace_holds_while_enemies_live(prototype)
+	_check_provocation(prototype)
 
 	prototype.queue_free()
 	await process_frame
@@ -141,6 +146,69 @@ func _check_mode_switch_restores(prototype: RunRoot) -> void:
 	print(
 		"WAVE_CADENCE          switching Campaign -> Quick restores run %.0fs, cleanup %.0fs, boss %.0fs"
 		% [quick_run, quick_cleanup, quick_boss]
+	)
+
+
+func _check_provocation(prototype: RunRoot) -> void:
+	## Calling a wave early advances the schedule, raises Blight, and leaves the wall
+	## clock where it was.
+	##
+	## The last of those is the one worth a test: the Campaign's position and the time
+	## the player has spent in it stopped being the same number the moment Provocation
+	## existed, and a run that recorded twenty minutes for a seventeen-minute clear
+	## would be wrong in the one place a player checks.
+	var director := prototype.wave_director
+	director.configure_mode(RunMode.Id.CAMPAIGN)
+	director.reset_director()
+	prototype.combat.reset_combat()
+	_checks += 1
+
+	if director.can_provoke():
+		_failures.append(
+			"WAVE_CADENCE: wave 1 is provokable at zero seconds, so the mechanic "
+			+ "skips waves rather than shortening them"
+		)
+		return
+	# Far enough in that the clock alone opens the call.
+	while director.get_seconds_into_wave() < director.provoke_unlock_seconds:
+		director.advance(STEP)
+	if not director.can_provoke():
+		_failures.append(
+			"WAVE_CADENCE: wave 1 is not provokable %.0fs in, past its own unlock"
+			% director.provoke_unlock_seconds
+		)
+		return
+	var real_before := director.real_elapsed_seconds
+	var skipped := director.provoke()
+	if skipped <= 0.0:
+		_failures.append("WAVE_CADENCE: an available Provocation was refused")
+		return
+	if director.get_current_wave_number() != 2:
+		_failures.append(
+			"WAVE_CADENCE: Provocation left the run on wave %d instead of wave 2"
+			% director.get_current_wave_number()
+		)
+		return
+	if not is_equal_approx(director.real_elapsed_seconds, real_before):
+		_failures.append(
+			"WAVE_CADENCE: Provocation moved the wall clock, so a provoked run "
+			+ "would record the time it skipped as time it played"
+		)
+		return
+	if director.get_blight_level() != 1:
+		_failures.append(
+			"WAVE_CADENCE: a rewarded Provocation left Blight at %d"
+			% director.get_blight_level()
+		)
+		return
+	print(
+		"WAVE_CADENCE          provoking wave 1 skipped %.0fs, reached wave %d at %.0fs played, Blight %s"
+		% [
+			skipped,
+			director.get_current_wave_number(),
+			director.real_elapsed_seconds,
+			director.get_blight_name(),
+		]
 	)
 
 

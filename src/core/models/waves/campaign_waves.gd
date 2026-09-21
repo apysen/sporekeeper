@@ -1,25 +1,51 @@
 class_name CampaignWaves
 extends RefCounted
 
-## The authored 25-wave Campaign, in one place.
+## The authored 20-wave Campaign, in one place.
 ##
 ## Every wave of the Campaign is a CampaignWaveSpec built here from the authored
-## curves and composition tables. Keeping the whole schedule in one builder rather
-## than as twenty-five files on disk means a curve is edited as a curve -- the six
-## pressure lerps are five lines, not twenty-five hand-copied numbers that can
-## drift apart -- while the director still only ever reads a resource.
+## curves and encounter tables. Keeping the whole schedule in one builder rather than
+## as twenty files on disk means a curve is edited as a curve -- the six pressure
+## lerps are five lines, not twenty hand-copied numbers that can drift apart -- while
+## the director still only ever reads a resource.
 ##
-## The six coordinated curves are health, contact damage, movement speed, territory
-## strength, territory action speed, and composition. Raw enemy count is a
-## supporting tool: Sporekeeper turns density into kills, corpses, contagion and
-## collisions, so bodies alone can strengthen a finished build instead of
-## threatening it.
+## Twenty minutes rather than twenty-five, in four acts. The measured Campaign
+## reached its last meaningful Evolution rank around minute thirteen and then ran for
+## another twelve, so half of it was spent after the build had finished becoming
+## itself. The four acts name what each quarter is for: establish a build, make it
+## interact, complete it, then find out whether it survives.
+##
+## A wave is a **threat budget** and a list of encounter recipes, not a pack interval
+## and a pack size. Raw enemy count is not a difficulty lever in this game: Sporekeeper
+## turns density into kills, corpses, contagion and collisions, so bodies alone
+## strengthen a finished build instead of threatening it. A late wave is dangerous
+## here because its recipe list contains Siege Pushes and Elite Spearheads and its
+## budget can afford them, not because it places three Hunters where Wave 1 placed one.
 
-const WAVE_COUNT := 25
+const WAVE_COUNT := 20
 const WAVE_DURATION_SECONDS := 60.0
-const CAMPAIGN_DURATION_SECONDS := 1500.0
+const CAMPAIGN_DURATION_SECONDS := 1200.0
 ## Reinforcements stop here so the final quarter-minute is fought, not spawned into.
-const FINAL_REINFORCEMENT_CUTOFF_SECONDS := 1485.0
+const FINAL_REINFORCEMENT_CUTOFF_SECONDS := 1185.0
+
+## The four acts, and where each one ends.
+##
+## Not labelled heavily in the interface -- the wave card already says what the wave
+## is -- but the enemy pool, the Canker rules and the recipe gating all read them, so
+## the boundaries are real even where they are not announced.
+enum Act {
+	## Waves 1-5. Establish the build; basic enemies; nothing lethal yet.
+	GERMINATION = 1,
+	## Waves 6-10. First synergy, first specialists as ordinary members, first Canker.
+	ENCROACHMENT = 2,
+	## Waves 11-15. Complete the build; coordinated recipes; territory consequences.
+	INFESTATION = 3,
+	## Waves 16-20. Stress-test a finished build. Minimal filler, maximum composition.
+	BLIGHT = 4,
+}
+
+const ACT_LAST_WAVES := [5, 10, 15, 20]
+const ACT_NAMES := ["Germination", "Encroachment", "Infestation", "Blight"]
 
 ## Short names for the roles, so the authored table below reads as a table rather
 ## than as a column of fully qualified enum paths. These were hand-copied integers
@@ -49,9 +75,13 @@ const MODIFIER_REGENERATIVE := EnemyKinds.EliteModifier.REGENERATIVE
 const MODIFIER_DISRUPTIVE := EnemyKinds.EliteModifier.DISRUPTIVE
 const MODIFIER_VOLATILE := EnemyKinds.EliteModifier.VOLATILE
 
-## Wave-25 end multipliers. Wave 25 is the top of each smooth curve and applies no
+## Wave-20 end multipliers. Wave 20 is the top of each smooth curve and applies no
 ## extra final-wave spike: the last wave is brutal because everything has matured
 ## together, not because a hidden multiplier lands on it.
+##
+## The endpoints are the twenty-five-wave Campaign's, reached across twenty waves
+## instead. That is deliberate: the same total escalation over a shorter run is what
+## makes the last quarter the hardest part of it rather than its longest plateau.
 const OPENING_HP_MULTIPLIER := 1.10
 const FINAL_HP_MULTIPLIER := 3.60
 const OPENING_CONTACT_MULTIPLIER := 1.05
@@ -66,61 +96,71 @@ const FINAL_ACTION_SPEED_MULTIPLIER := 1.22
 ## Crowd-control resistance and modifier chance per wave, indexed from Wave 1.
 ##
 ## These two are authored tables rather than lerps because they are not straight
-## lines. Resistance holds at nothing until Wave 9 -- Bramble and Fruit deserve a
-## third of the run where their control is worth exactly what it says -- and then
-## climbs unevenly. Modifier chance opens slowly, steps up at the Wave 13 Boss, and
-## steps again after the Wave 18 showcase, so the last third is fought against
-## behaviour rather than against larger numbers.
+## lines. Resistance holds at nothing until Wave 8 -- Bramble and Fruit deserve most
+## of the first two acts where their control is worth exactly what it says -- and
+## then climbs unevenly. Modifier chance opens slowly, steps up at the Wave 10 Boss,
+## and steps again entering Act IV, so the last third is fought against behaviour
+## rather than against larger numbers.
 ##
 ## Plain Arrays rather than Packed ones because only a plain Array literal is a
 ## constant expression in GDScript; a Packed constructor is a call, and a call
 ## cannot initialise a const.
 const CC_RESISTANCE_BY_WAVE := [
-	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-	0.02, 0.03, 0.04, 0.05, 0.07, 0.08, 0.09, 0.10,
-	0.11, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20,
+	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+	0.02, 0.03, 0.05,
+	0.06, 0.08, 0.09, 0.11, 0.12,
+	0.14, 0.16, 0.18, 0.20, 0.20,
 ]
 const MODIFIER_CHANCE_BY_WAVE := [
-	0.00, 0.00, 0.00, 0.05, 0.06, 0.08, 0.10, 0.12,
-	0.14, 0.16, 0.18, 0.20, 0.23, 0.26, 0.29, 0.32,
-	0.35, 0.40, 0.43, 0.46, 0.49, 0.52, 0.55, 0.60, 0.70,
+	0.00, 0.00, 0.00, 0.05, 0.07,
+	0.10, 0.13, 0.16, 0.19, 0.22,
+	0.26, 0.30, 0.34, 0.38, 0.42,
+	0.48, 0.54, 0.60, 0.66, 0.75,
 ]
 
 ## Waves whose completion opens eight of the Campaign's eleven relic opportunities.
-## The Elite, the Burrower and the Hive Queen are the other three.
-const RELIC_WAVES := [3, 6, 9, 12, 15, 18, 21, 24]
+## The Elite, the Burrower and the Hive Queen are the other three. Deliberately not
+## the milestone waves themselves: a relic arriving in the same breath as a boss's
+## own reward reads as one reward rather than two.
+const RELIC_WAVES := [2, 4, 7, 9, 12, 14, 17, 19]
 
-const ELITE_WAVE := 6
-const ELITE_SPAWN_SECOND := 35.0
-const BOSS_WAVE := 13
+## Waves that open an Evolution reward, if the run has an eligible Path relationship.
+##
+## Three opportunities for a target of roughly two Evolutions per run: one late in
+## Act II when the first pairing can plausibly be developed, one in the middle of Act
+## III, and one in Act IV for a run whose second relationship matured late. A run
+## that qualifies for none of them simply does not evolve, which is what makes
+## meeting the requirement worth building toward.
+const EVOLUTION_REWARD_WAVES := [8, 14, 18]
+
+## Waves that hand the player a new Adaptation draft.
+##
+## Path acquisition is authored rather than drawn. The measured pacing showed early
+## upgrade ordering deciding whether a build functioned at all, and randomness is
+## supposed to influence how a build develops rather than whether the player is
+## allowed to have one. Wave 1 is the opening choice, Wave 3 is roughly two minutes
+## in, Wave 5 closes Act I with the roster complete.
+const PATH_GRANT_WAVES := [1, 3, 5]
+
+## Waves that carry a Trial: one rule the player may follow for one wave, for a relic.
+##
+## One per act after Germination, and deliberately on waves that owe nothing else.
+## Act I is left alone because a Trial is a constraint on how a build is played and
+## the player does not have a build yet.
+const TRIAL_WAVES := [6, 11, 16]
+
+const ELITE_WAVE := 5
+const ELITE_SPAWN_SECOND := 30.0
+const BOSS_WAVE := 10
 ## Immediately after the wave's opening cue, which is its authored break.
 const BOSS_SPAWN_SECOND := 2.5
-## The Hive Queen, seven waves after the Burrower and five before the end.
-##
-## Deliberately not a relic wave (18 and 21 are the neighbours) so her reward is her
-## own rather than arriving in the same breath as a wave's. Wave 20 is "Devour"; wave
-## 19, "Colony War", is the better thematic home and is a one-constant move if the
-## pacing ever wants her earlier.
-const HIVE_QUEEN_WAVE := 20
+## The Hive Queen, five waves after the Burrower and five before the end: the Act III
+## checkpoint, fought by a build that should be close to complete.
+const HIVE_QUEEN_WAVE := 15
 const HIVE_QUEEN_SPAWN_SECOND := 3.0
 
 ## Wave at which the objective specialists join the modifier system.
-const LATE_MODIFIER_ROLE_WAVE := 13
-
-## Pack-size sequences. The index resets at each wave boundary, which is what makes
-## requested density deterministic rather than a function of when the last wave
-## happened to end.
-const PACK_PATTERNS := {
-	&"ONE": [1],
-	&"ONE_ONE_ONE_TWO": [1, 1, 1, 2],
-	&"ONE_ONE_TWO": [1, 1, 2],
-	&"ONE_TWO": [1, 2],
-	&"TWO": [2],
-	&"TWO_TWO_TWO_THREE": [2, 2, 2, 3],
-	&"TWO_TWO_THREE": [2, 2, 3],
-	&"TWO_THREE": [2, 3],
-	&"THREE": [3],
-}
+const LATE_MODIFIER_ROLE_WAVE := 11
 
 ## Perimeter placement profiles. Each names a way of choosing which of the eight
 ## perimeter sectors a pack enters from, so a wave's pressure has a shape rather
@@ -134,223 +174,200 @@ const TOPOLOGY_COLONIZER_DISTRACTION := &"COLONIZER_DISTRACTION"
 const TOPOLOGY_THREE_FRONT_PRESSURE := &"THREE_FRONT_PRESSURE"
 const TOPOLOGY_FINAL_ROTATION := &"FINAL_ROTATION"
 
-## Mixed into the run seed per wave so two runs shuffle their leader decks
+## Mixed into the run seed per wave so two runs shuffle their recipe draws
 ## differently while one run replays exactly.
 const PRIME_WAVE_SEED := 7919
 
-## Wave 25 tightens once the invasion is under way rather than arriving at its
-## final rate: the cue, the opening rate, then the closing rate, then silence.
-const FINAL_WAVE_LATE_INTERVAL := 0.22
-const FINAL_WAVE_LATE_INTERVAL_SECOND := 25.0
-
-## Wave identity, cadence, composition, and topology. One row per wave, in the
-## order the player meets them. Everything else on a spec is a curve this builder
-## evaluates, so a row says what makes its wave different and nothing else.
+## Wave identity, opening break, threat budget, and the recipes the wave may buy.
+## One row per wave, in the order the player meets them.
 ##
-## Role weights are percentages of non-milestone reinforcement leaders and sum to
-## 100 in every row.
+## The budget curve is the pacing dial. It roughly doubles across the run while the
+## recipe lists move from two-Hunter probes to elite spearheads, so the same
+## proportional increase buys a very different wave at each end -- which is the whole
+## structural point: late pressure arrives as composition, not as population.
 const AUTHORED_WAVES := [
 	{
-		"name": &"Garden Under Attack", "break": 0.0, "interval": 0.80,
-		"pattern": &"ONE", "topology": TOPOLOGY_EVEN_RING,
-		"roles": {ROLE_HUNTER: 70, ROLE_GRAZER: 30},
+		"name": &"Garden Under Attack", "break": 0.0, "budget": 620.0,
+		"topology": TOPOLOGY_EVEN_RING,
+		"recipes": [EncounterRecipes.PROBE, EncounterRecipes.PAIR_PUSH],
 	},
 	{
-		"name": &"Sabotage", "break": 4.0, "interval": 0.78,
-		"pattern": &"ONE", "topology": TOPOLOGY_EVEN_RING,
-		"roles": {ROLE_HUNTER: 55, ROLE_GRAZER: 30, ROLE_SABOTEUR: 15},
+		"name": &"Sabotage", "break": 4.0, "budget": 700.0,
+		"topology": TOPOLOGY_EVEN_RING,
+		"recipes": [
+			EncounterRecipes.PROBE, EncounterRecipes.PAIR_PUSH,
+			EncounterRecipes.SABOTAGE_RUN,
+		],
 	},
 	{
-		"name": &"Corruption", "break": 4.0, "interval": 0.76,
-		"pattern": &"ONE", "topology": TOPOLOGY_EVEN_RING,
-		"roles": {ROLE_HUNTER: 45, ROLE_GRAZER: 25, ROLE_SABOTEUR: 15, ROLE_CORRUPTOR: 15},
+		"name": &"Grazing", "break": 4.0, "budget": 790.0,
+		"topology": TOPOLOGY_CLUSTERED_FRONT,
+		"recipes": [
+			EncounterRecipes.PAIR_PUSH, EncounterRecipes.GRAZE_LINE,
+			EncounterRecipes.SABOTAGE_RUN,
+		],
 	},
 	{
-		"name": &"Grazer Surge", "break": 3.5, "interval": 0.74,
-		"pattern": &"ONE", "topology": TOPOLOGY_CLUSTERED_FRONT,
-		"roles": {ROLE_GRAZER: 65, ROLE_HUNTER: 15, ROLE_SABOTEUR: 10, ROLE_HEAVY_GRAZER: 10},
+		"name": &"Mixed Opening", "break": 3.5, "budget": 880.0,
+		"topology": TOPOLOGY_EVEN_RING,
+		"recipes": [
+			EncounterRecipes.PROBE, EncounterRecipes.PAIR_PUSH,
+			EncounterRecipes.GRAZE_LINE, EncounterRecipes.SABOTAGE_RUN,
+		],
 	},
 	{
-		"name": &"Rush", "break": 3.5, "interval": 0.72,
-		"pattern": &"ONE_ONE_ONE_TWO", "topology": TOPOLOGY_TWO_SIDE_PINCER,
-		"roles": {
-			ROLE_HUNTER: 45, ROLE_RUSHER: 20, ROLE_GRAZER: 20,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 5,
-		},
+		"name": &"Rootbreaker", "break": 3.5, "budget": 980.0,
+		"topology": TOPOLOGY_CLUSTERED_FRONT,
+		"recipes": [
+			EncounterRecipes.PAIR_PUSH, EncounterRecipes.GRAZE_LINE,
+			EncounterRecipes.SABOTAGE_RUN,
+		],
 	},
 	{
-		"name": &"Rootbreaker", "break": 3.5, "interval": 0.70,
-		"pattern": &"ONE_ONE_TWO", "topology": TOPOLOGY_CLUSTERED_FRONT,
-		"roles": {
-			ROLE_HUNTER: 40, ROLE_GRAZER: 20, ROLE_HEAVY_GRAZER: 10,
-			ROLE_RUSHER: 10, ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10,
-		},
+		"name": &"Corruption", "break": 3.5, "budget": 1080.0,
+		"topology": TOPOLOGY_SPECIALIST_OPPOSITE_PACK,
+		"recipes": [
+			EncounterRecipes.PAIR_PUSH, EncounterRecipes.GRAZE_LINE,
+			EncounterRecipes.CORRUPTION_CELL, EncounterRecipes.SABOTAGE_RUN,
+		],
 	},
 	{
-		"name": &"Colonization", "break": 3.0, "interval": 0.68,
-		"pattern": &"ONE_TWO", "topology": TOPOLOGY_COLONIZER_DISTRACTION,
-		"roles": {
-			ROLE_HUNTER: 30, ROLE_GRAZER: 20, ROLE_COLONIZER: 15, ROLE_HEAVY_GRAZER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_RUSHER: 5,
-		},
+		"name": &"Rush", "break": 3.0, "budget": 1180.0,
+		"topology": TOPOLOGY_WEAK_SIDE_RUSH,
+		"recipes": [
+			EncounterRecipes.RUSH_ASSAULT, EncounterRecipes.PAIR_PUSH,
+			EncounterRecipes.GRAZE_LINE, EncounterRecipes.SABOTAGE_RUN,
+		],
 	},
 	{
-		"name": &"Mixed Pressure", "break": 3.0, "interval": 0.66,
-		"pattern": &"TWO", "topology": TOPOLOGY_COLONIZER_DISTRACTION,
-		"roles": {
-			ROLE_HUNTER: 30, ROLE_GRAZER: 20, ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_COLONIZER: 10,
-		},
+		"name": &"Heavy Ground", "break": 3.0, "budget": 1290.0,
+		"topology": TOPOLOGY_CLUSTERED_FRONT,
+		"recipes": [
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.GRAZE_LINE,
+			EncounterRecipes.CORRUPTION_CELL, EncounterRecipes.RUSH_ASSAULT,
+		],
 	},
 	{
-		"name": &"Warden", "break": 3.0, "interval": 0.64,
-		"pattern": &"TWO", "topology": TOPOLOGY_WEAK_SIDE_RUSH,
-		"roles": {
-			ROLE_HUNTER: 25, ROLE_GRAZER: 15, ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_COLONIZER: 10, ROLE_WARDEN: 10,
-		},
+		"name": &"Colonization", "break": 3.0, "budget": 1400.0,
+		"topology": TOPOLOGY_COLONIZER_DISTRACTION,
+		"recipes": [
+			EncounterRecipes.COLONY_PUSH, EncounterRecipes.CORRUPTION_CELL,
+			EncounterRecipes.PAIR_PUSH, EncounterRecipes.CANKER_REINFORCEMENT,
+		],
 	},
 	{
-		"name": &"Horde", "break": 3.0, "interval": 0.62,
-		"pattern": &"TWO", "topology": TOPOLOGY_CLUSTERED_FRONT,
-		"roles": {
-			ROLE_HUNTER: 45, ROLE_GRAZER: 20, ROLE_HEAVY_GRAZER: 15, ROLE_RUSHER: 20,
-		},
+		"name": &"The Burrower", "break": 2.5, "budget": 1520.0,
+		"topology": TOPOLOGY_TWO_SIDE_PINCER,
+		"recipes": [
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.RUSH_ASSAULT,
+			EncounterRecipes.CORRUPTION_CELL, EncounterRecipes.CANKER_REINFORCEMENT,
+		],
 	},
 	{
-		"name": &"Siege", "break": 2.5, "interval": 0.60,
-		"pattern": &"TWO", "topology": TOPOLOGY_TWO_SIDE_PINCER,
-		"roles": {
-			ROLE_HUNTER: 25, ROLE_GRAZER: 15, ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 10,
-			ROLE_CORRUPTOR: 15, ROLE_SIEGE_CORRUPTOR: 10, ROLE_SABOTEUR: 5,
-			ROLE_COLONIZER: 5, ROLE_WARDEN: 5,
-		},
+		"name": &"Siege", "break": 2.5, "budget": 1650.0,
+		"topology": TOPOLOGY_TWO_SIDE_PINCER,
+		"recipes": [
+			EncounterRecipes.SIEGE_PUSH, EncounterRecipes.HEAVY_FRONT,
+			EncounterRecipes.CORRUPTION_CELL, EncounterRecipes.PAIR_PUSH,
+		],
 	},
 	{
-		"name": &"Specialist Mix", "break": 2.5, "interval": 0.58,
-		"pattern": &"TWO", "topology": TOPOLOGY_TWO_SIDE_PINCER,
-		"roles": {
-			ROLE_HUNTER: 15, ROLE_GRAZER: 10, ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 5,
-			ROLE_SABOTEUR: 15, ROLE_CORRUPTOR: 15, ROLE_SIEGE_CORRUPTOR: 10,
-			ROLE_COLONIZER: 10, ROLE_WARDEN: 10,
-		},
+		"name": &"Split Front", "break": 2.5, "budget": 1780.0,
+		"topology": TOPOLOGY_TWO_SIDE_PINCER,
+		"recipes": [
+			EncounterRecipes.SPLIT_PRESSURE, EncounterRecipes.RUSH_ASSAULT,
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.COLONY_PUSH,
+		],
 	},
 	{
-		"name": &"Burrower", "break": 2.5, "interval": 0.56,
-		"pattern": &"TWO", "topology": TOPOLOGY_TWO_SIDE_PINCER,
-		"roles": {
-			ROLE_HUNTER: 25, ROLE_GRAZER: 15, ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_SIEGE_CORRUPTOR: 5,
-			ROLE_COLONIZER: 10, ROLE_WARDEN: 5,
-		},
+		"name": &"Warden Line", "break": 2.5, "budget": 1900.0,
+		"topology": TOPOLOGY_SPECIALIST_OPPOSITE_PACK,
+		"recipes": [
+			EncounterRecipes.WARDEN_GUARD, EncounterRecipes.SIEGE_PUSH,
+			EncounterRecipes.GRAZE_LINE, EncounterRecipes.CANKER_REINFORCEMENT,
+		],
 	},
 	{
-		"name": &"Recovery Denied", "break": 2.5, "interval": 0.54,
-		"pattern": &"TWO", "topology": TOPOLOGY_SPECIALIST_OPPOSITE_PACK,
-		"roles": {
-			ROLE_GRAZER: 30, ROLE_HEAVY_GRAZER: 30, ROLE_HUNTER: 15, ROLE_SABOTEUR: 5,
-			ROLE_CORRUPTOR: 5, ROLE_SIEGE_CORRUPTOR: 5, ROLE_COLONIZER: 5, ROLE_WARDEN: 5,
-		},
+		"name": &"Infestation", "break": 2.0, "budget": 2030.0,
+		"topology": TOPOLOGY_COLONIZER_DISTRACTION,
+		"recipes": [
+			EncounterRecipes.COLONY_PUSH, EncounterRecipes.SIEGE_PUSH,
+			EncounterRecipes.WARDEN_GUARD, EncounterRecipes.SPLIT_PRESSURE,
+			EncounterRecipes.CANKER_REINFORCEMENT,
+		],
 	},
 	{
-		"name": &"Rush Hour", "break": 2.5, "interval": 0.52,
-		"pattern": &"TWO", "topology": TOPOLOGY_WEAK_SIDE_RUSH,
-		"roles": {
-			ROLE_RUSHER: 35, ROLE_HUNTER: 35, ROLE_GRAZER: 10, ROLE_HEAVY_GRAZER: 5,
-			ROLE_SABOTEUR: 5, ROLE_CORRUPTOR: 5, ROLE_SIEGE_CORRUPTOR: 5,
-		},
+		"name": &"The Hive Queen", "break": 2.0, "budget": 2160.0,
+		"topology": TOPOLOGY_THREE_FRONT_PRESSURE,
+		"recipes": [
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.SPLIT_PRESSURE,
+			EncounterRecipes.CORRUPTION_CELL, EncounterRecipes.RUSH_ASSAULT,
+		],
 	},
 	{
-		"name": &"Siege Line", "break": 2.0, "interval": 0.50,
-		"pattern": &"TWO", "topology": TOPOLOGY_SPECIALIST_OPPOSITE_PACK,
-		"roles": {
-			ROLE_CORRUPTOR: 20, ROLE_SIEGE_CORRUPTOR: 20, ROLE_WARDEN: 15,
-			ROLE_COLONIZER: 10, ROLE_HEAVY_GRAZER: 10, ROLE_GRAZER: 10,
-			ROLE_HUNTER: 10, ROLE_SABOTEUR: 5,
-		},
+		"name": &"Combined Arms", "break": 2.0, "budget": 2300.0,
+		"topology": TOPOLOGY_THREE_FRONT_PRESSURE,
+		"recipes": [
+			EncounterRecipes.SIEGE_PUSH, EncounterRecipes.SPLIT_PRESSURE,
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.WARDEN_GUARD,
+			EncounterRecipes.ELITE_SPEARHEAD,
+		],
 	},
 	{
-		"name": &"Swarm", "break": 2.0, "interval": 0.48,
-		"pattern": &"TWO", "topology": TOPOLOGY_CLUSTERED_FRONT,
-		"roles": {
-			ROLE_HUNTER: 50, ROLE_GRAZER: 25, ROLE_HEAVY_GRAZER: 15, ROLE_RUSHER: 10,
-		},
+		"name": &"Breach", "break": 2.0, "budget": 2440.0,
+		"topology": TOPOLOGY_WEAK_SIDE_RUSH,
+		"recipes": [
+			EncounterRecipes.ELITE_SPEARHEAD, EncounterRecipes.RUSH_ASSAULT,
+			EncounterRecipes.SIEGE_PUSH, EncounterRecipes.SPLIT_PRESSURE,
+		],
 	},
 	{
-		"name": &"Mutation", "break": 2.0, "interval": 0.46,
-		"pattern": &"TWO", "topology": TOPOLOGY_SPECIALIST_OPPOSITE_PACK,
-		"roles": {
-			ROLE_HUNTER: 20, ROLE_GRAZER: 15, ROLE_HEAVY_GRAZER: 15, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_SIEGE_CORRUPTOR: 10,
-			ROLE_COLONIZER: 5, ROLE_WARDEN: 5,
-		},
+		"name": &"Colony War", "break": 1.5, "budget": 2580.0,
+		"topology": TOPOLOGY_COLONIZER_DISTRACTION,
+		"recipes": [
+			EncounterRecipes.COLONY_PUSH, EncounterRecipes.WARDEN_GUARD,
+			EncounterRecipes.SIEGE_PUSH, EncounterRecipes.CANKER_REINFORCEMENT,
+			EncounterRecipes.ELITE_SPEARHEAD,
+		],
 	},
 	{
-		"name": &"Colony War", "break": 2.0, "interval": 0.44,
-		"pattern": &"TWO", "topology": TOPOLOGY_THREE_FRONT_PRESSURE,
-		"roles": {
-			ROLE_COLONIZER: 25, ROLE_CORRUPTOR: 15, ROLE_SIEGE_CORRUPTOR: 10,
-			ROLE_WARDEN: 10, ROLE_HUNTER: 15, ROLE_GRAZER: 10,
-			ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 5,
-		},
+		"name": &"Collapse", "break": 1.5, "budget": 2720.0,
+		"topology": TOPOLOGY_THREE_FRONT_PRESSURE,
+		"recipes": [
+			EncounterRecipes.ELITE_SPEARHEAD, EncounterRecipes.SPLIT_PRESSURE,
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.SIEGE_PUSH,
+			EncounterRecipes.WARDEN_GUARD,
+		],
 	},
 	{
-		"name": &"Devour", "break": 2.0, "interval": 0.42,
-		"pattern": &"TWO", "topology": TOPOLOGY_THREE_FRONT_PRESSURE,
-		"roles": {
-			ROLE_HEAVY_GRAZER: 35, ROLE_GRAZER: 25, ROLE_HUNTER: 10, ROLE_CORRUPTOR: 10,
-			ROLE_SIEGE_CORRUPTOR: 10, ROLE_COLONIZER: 5, ROLE_WARDEN: 5,
-		},
-	},
-	{
-		"name": &"Combined Arms", "break": 1.5, "interval": 0.38,
-		"pattern": &"TWO_TWO_TWO_THREE", "topology": TOPOLOGY_THREE_FRONT_PRESSURE,
-		"roles": {
-			ROLE_HUNTER: 20, ROLE_GRAZER: 15, ROLE_HEAVY_GRAZER: 10, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_SIEGE_CORRUPTOR: 10,
-			ROLE_COLONIZER: 8, ROLE_WARDEN: 7,
-		},
-	},
-	{
-		"name": &"Breach", "break": 1.5, "interval": 0.37,
-		"pattern": &"TWO_TWO_THREE", "topology": TOPOLOGY_WEAK_SIDE_RUSH,
-		"roles": {
-			ROLE_RUSHER: 30, ROLE_SIEGE_CORRUPTOR: 20, ROLE_CORRUPTOR: 10,
-			ROLE_HUNTER: 15, ROLE_HEAVY_GRAZER: 10, ROLE_WARDEN: 10, ROLE_SABOTEUR: 5,
-		},
-	},
-	{
-		"name": &"Infestation", "break": 1.5, "interval": 0.36,
-		"pattern": &"TWO_THREE", "topology": TOPOLOGY_COLONIZER_DISTRACTION,
-		"roles": {
-			ROLE_SABOTEUR: 15, ROLE_CORRUPTOR: 15, ROLE_SIEGE_CORRUPTOR: 15,
-			ROLE_COLONIZER: 15, ROLE_WARDEN: 15, ROLE_HEAVY_GRAZER: 10,
-			ROLE_RUSHER: 10, ROLE_HUNTER: 5,
-		},
-	},
-	{
-		"name": &"Collapse", "break": 1.5, "interval": 0.34,
-		"pattern": &"THREE", "topology": TOPOLOGY_THREE_FRONT_PRESSURE,
-		"roles": {
-			ROLE_HUNTER: 15, ROLE_GRAZER: 10, ROLE_HEAVY_GRAZER: 15, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_SIEGE_CORRUPTOR: 10,
-			ROLE_COLONIZER: 10, ROLE_WARDEN: 10,
-		},
-	},
-	{
-		"name": &"Final Invasion", "break": 1.25, "interval": 0.28,
-		"pattern": &"THREE", "topology": TOPOLOGY_FINAL_ROTATION,
-		"roles": {
-			ROLE_HUNTER: 15, ROLE_GRAZER: 10, ROLE_HEAVY_GRAZER: 15, ROLE_RUSHER: 10,
-			ROLE_SABOTEUR: 10, ROLE_CORRUPTOR: 10, ROLE_SIEGE_CORRUPTOR: 10,
-			ROLE_COLONIZER: 10, ROLE_WARDEN: 10,
-		},
+		"name": &"Final Invasion", "break": 1.25, "budget": 2900.0,
+		"topology": TOPOLOGY_FINAL_ROTATION, "sustained": true,
+		"recipes": [
+			EncounterRecipes.ELITE_SPEARHEAD, EncounterRecipes.SPLIT_PRESSURE,
+			EncounterRecipes.SIEGE_PUSH, EncounterRecipes.RUSH_ASSAULT,
+			EncounterRecipes.HEAVY_FRONT, EncounterRecipes.CANKER_REINFORCEMENT,
+		],
 	},
 ]
 
 
 static func get_wave_count() -> int:
 	return WAVE_COUNT
+
+
+static func get_act(wave_number: int) -> int:
+	## Which quarter of the Campaign a wave belongs to. The recipe gate, the Canker
+	## escalation and the enemy pool all read this rather than comparing wave numbers
+	## in three places that could disagree.
+	var wave := clampi(wave_number, 1, WAVE_COUNT)
+	for index in range(ACT_LAST_WAVES.size()):
+		if wave <= int(ACT_LAST_WAVES[index]):
+			return index + 1
+	return Act.BLIGHT
+
+
+static func get_act_name(act: int) -> String:
+	return ACT_NAMES[clampi(act, 1, ACT_NAMES.size()) - 1]
 
 
 static func build_wave_specs() -> Array[CampaignWaveSpec]:
@@ -364,6 +381,7 @@ static func build_wave_specs() -> Array[CampaignWaveSpec]:
 static func _build_wave_spec(wave_number: int, authored: Dictionary) -> CampaignWaveSpec:
 	var spec := CampaignWaveSpec.new()
 	spec.wave_index = wave_number
+	spec.act = get_act(wave_number)
 	spec.display_name = authored["name"]
 	spec.duration_seconds = WAVE_DURATION_SECONDS
 	spec.opening_break_seconds = authored["break"]
@@ -374,10 +392,10 @@ static func _build_wave_spec(wave_number: int, authored: Dictionary) -> Campaign
 	spec.territory_action_speed_multiplier = get_territory_action_speed_multiplier(wave_number)
 	spec.cc_resistance = get_cc_resistance(wave_number)
 	spec.modifier_chance = get_modifier_chance(wave_number)
-	spec.pack_interval_seconds = authored["interval"]
-	spec.pack_pattern = authored["pattern"]
-	spec.role_weights = authored["roles"].duplicate()
+	spec.threat_budget = float(authored["budget"])
+	spec.recipe_ids = (authored["recipes"] as Array).duplicate()
 	spec.spawn_topology = authored["topology"]
+	spec.sustains_final_pressure = bool(authored.get("sustained", false))
 	spec.modifier_pool_stage = get_modifier_pool_stage(wave_number)
 	spec.elite_spawn_second = ELITE_SPAWN_SECOND if wave_number == ELITE_WAVE else -1.0
 	spec.boss_spawn_second = BOSS_SPAWN_SECOND if wave_number == BOSS_WAVE else -1.0
@@ -385,11 +403,14 @@ static func _build_wave_spec(wave_number: int, authored: Dictionary) -> Campaign
 		HIVE_QUEEN_SPAWN_SECOND if wave_number == HIVE_QUEEN_WAVE else -1.0
 	)
 	spec.grants_wave_relic = RELIC_WAVES.has(wave_number)
+	spec.grants_evolution_reward = EVOLUTION_REWARD_WAVES.has(wave_number)
+	spec.grants_path_draft = PATH_GRANT_WAVES.has(wave_number)
+	spec.grants_trial = TRIAL_WAVES.has(wave_number)
 	return spec
 
 
 static func get_wave_progress(wave_number: int) -> float:
-	## Position of a wave along every global curve, from 0 at Wave 1 to 1 at Wave 25.
+	## Position of a wave along every global curve, from 0 at Wave 1 to 1 at Wave 20.
 	return float(clampi(wave_number, 1, WAVE_COUNT) - 1) / float(WAVE_COUNT - 1)
 
 
@@ -434,27 +455,27 @@ static func get_territory_action_speed_multiplier(wave_number: int) -> float:
 
 
 static func get_cc_resistance(wave_number: int) -> float:
-	## Nothing before Wave 9, then a climb to 20% at Wave 25. Never an immunity:
+	## Nothing before Wave 8, then a climb to 20% at Wave 19. Never an immunity:
 	## every root, shove and slow still lands, shortened.
 	return float(CC_RESISTANCE_BY_WAVE[clampi(wave_number, 1, WAVE_COUNT) - 1])
 
 
 static func get_modifier_chance(wave_number: int) -> float:
-	## Rule changes begin at Wave 4 and accelerate after the Wave 18 showcase, so
-	## the last third of the Campaign is fought against behaviour rather than only
-	## against larger numbers.
+	## Rule changes begin at Wave 4 and accelerate entering Act IV, so the last
+	## quarter of the Campaign is fought against behaviour rather than only against
+	## larger numbers.
 	return float(MODIFIER_CHANCE_BY_WAVE[clampi(wave_number, 1, WAVE_COUNT) - 1])
 
 
 static func get_modifier_pool_stage(wave_number: int) -> int:
 	var wave := clampi(wave_number, 1, WAVE_COUNT)
-	if wave <= 3:
+	if wave <= 2:
 		return 0
-	if wave <= 8:
+	if wave <= 5:
 		return 1
-	if wave <= 12:
+	if wave <= 10:
 		return 2
-	if wave <= 17:
+	if wave <= 15:
 		return 3
 	return 4
 
@@ -484,16 +505,10 @@ static func get_stage_modifiers(stage: int) -> PackedInt32Array:
 	return PackedInt32Array()
 
 
-static func get_pack_pattern(pattern_id: StringName) -> Array:
-	if PACK_PATTERNS.has(pattern_id):
-		return PACK_PATTERNS[pattern_id]
-	return PACK_PATTERNS[&"ONE"]
-
-
 static func build_role_scaling_profiles() -> Dictionary:
 	## Role id to EnemyRoleScalingProfile.
 	##
-	## Movement is the sensitive one. A Rusher that received the whole Wave 25
+	## Movement is the sensitive one. A Rusher that received the whole Wave 20
 	## movement curve would arrive faster than the reaction window the role exists
 	## to test, so it takes half of it and the Boss takes less still. Grazers keep
 	## their authored bite cadence and scale only the rest between bursts.
@@ -550,93 +565,10 @@ static func _role_profile(
 	return profile
 
 
-static func build_leader_deck(spec: CampaignWaveSpec) -> PackedInt32Array:
-	## A hundred entries in the authored proportions, consumed one per pack.
-	##
-	## Deliberately a deck rather than a weighted roll per pack. Independent rolls
-	## produce streaks -- eight Colonizers in a row because the dice allowed it --
-	## and a wave whose identity is its composition cannot survive that. The deck
-	## guarantees the proportions and the shuffle keeps the order unpredictable.
-	var deck := PackedInt32Array()
-	var roles := spec.role_weights.keys()
-	roles.sort()
-	for role in roles:
-		for _entry in range(int(spec.role_weights[role])):
-			deck.append(int(role))
-	if deck.is_empty():
-		deck.append(ROLE_HUNTER)
-	# An under-filled row still produces a full deck rather than a short one, so a
-	# mis-authored wave degrades into slightly wrong proportions instead of into a
-	# reshuffle every few packs.
-	var authored_size := deck.size()
-	var index := 0
-	while deck.size() < 100:
-		deck.append(deck[index % authored_size])
-		index += 1
-	return deck
-
-
-static func shuffle_deck(
-	deck: PackedInt32Array,
-	run_seed: int,
-	wave_index: int,
-	cycle: int
-) -> PackedInt32Array:
-	## Fisher-Yates from a generator seeded by the run, the wave and the reshuffle
-	## count, so one seed replays exactly and a long wave does not repeat its own
-	## order when the deck is exhausted.
-	var shuffled := deck.duplicate()
-	var random := RandomNumberGenerator.new()
-	random.seed = run_seed + wave_index * PRIME_WAVE_SEED + cycle * 104729
-	for index in range(shuffled.size() - 1, 0, -1):
-		var swap := random.randi() % (index + 1)
-		var held := shuffled[index]
-		shuffled[index] = shuffled[swap]
-		shuffled[swap] = held
-	return shuffled
-
-
 static func is_specialist_role(role: int) -> bool:
-	## A role whose presence changes what the pack is about rather than how large
-	## it is. Follower rules cap how many of these one pack may carry.
+	## A role whose presence changes what a pack is about rather than how large it
+	## is. The perimeter topology reads this to decide where a pack enters from.
 	return role in [
 		ROLE_SABOTEUR, ROLE_CORRUPTOR, ROLE_SIEGE_CORRUPTOR,
 		ROLE_COLONIZER, ROLE_WARDEN,
 	]
-
-
-static func get_follower_role(
-	leader_role: int,
-	follower_index: int,
-	wave_number: int
-) -> int:
-	## What accompanies a leader. Pressure roles bring more pressure; a specialist
-	## brings escort rather than a second copy of itself, because two Colonizers
-	## through one entrance is a problem the player cannot split.
-	match leader_role:
-		ROLE_HUNTER:
-			# One Rusher per pack before Wave 21, so a Hunter pack stays a Hunter
-			# pack rather than quietly becoming a Rusher pack.
-			if wave_number >= 21:
-				return ROLE_RUSHER if follower_index % 2 == 1 else ROLE_HUNTER
-			if follower_index == 1 and wave_number >= 5:
-				return ROLE_RUSHER
-			return ROLE_HUNTER
-		ROLE_GRAZER:
-			if wave_number >= 14:
-				return ROLE_HEAVY_GRAZER if follower_index % 2 == 1 else ROLE_GRAZER
-			if follower_index == 1 and wave_number >= 4:
-				return ROLE_HEAVY_GRAZER
-			return ROLE_GRAZER
-		ROLE_HEAVY_GRAZER:
-			if wave_number >= 14:
-				return ROLE_HEAVY_GRAZER if follower_index % 2 == 1 else ROLE_GRAZER
-			return ROLE_GRAZER
-		ROLE_RUSHER:
-			return ROLE_HUNTER
-	if is_specialist_role(leader_role):
-		# Waves 24 and 25 may mix a second specialist in, never a third.
-		if wave_number >= 24 and follower_index == 1:
-			return ROLE_HUNTER if leader_role == ROLE_WARDEN else ROLE_HEAVY_GRAZER
-		return ROLE_GRAZER if follower_index % 2 == 1 else ROLE_HUNTER
-	return ROLE_HUNTER

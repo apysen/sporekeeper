@@ -34,13 +34,18 @@ func _run() -> void:
 		Progression.PathId.BRAMBLE,
 		Progression.PathId.THISTLE
 	)
+	# Campaign opens with an authored Adaptation draft, and the chooser pauses the
+	# directors until it is answered. The roster above is already what this
+	# measurement wants, so the panel is simply dismissed.
+	if p._choice_kind != RunRoot.ChoiceKind.NONE:
+		p._choose_displayed_option(0)
 	# The player cannot die out from under the measurement; what is being measured
 	# is the pressure the run produces, not how long a passive player survives.
 	p.player.maximum_health = 1000000.0
 	p.player.heal(1000000.0)
 
 	var step := 1.0 / 30.0
-	var minutes := 16
+	var minutes := 21
 	var next_sample := 30.0
 	var elapsed := 0.0
 	var peak := 0

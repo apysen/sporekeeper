@@ -78,6 +78,77 @@ const SOLO_NETWORK_SHARE := 0.65
 @export_range(0.0, 3.0, 0.05) var thistle_carry_seconds_per_line := 0.25
 @export_range(0.0, 3.0, 0.05) var thistle_stick_cooldown_per_line := 0.55
 
+@export_group("Vine Lines")
+## What one rank of each Vine line is worth.
+##
+## Exported rather than written into `_refresh_vine_modifiers` because Vine is the
+## strongest Adaptation in the measured pair sweep and nobody yet knows which of its
+## four lines is carrying that. Answering it means benchmarking the lines against
+## each other one at a time, and a benchmark that needs a code edit and a recompile
+## between every value is a benchmark that does not get run.
+##
+## Reach is the one under suspicion -- it multiplies into targets found rather than
+## into damage dealt, which is the shape of every runaway this game has had -- but
+## it keeps its authored 20% here. The sweep has to isolate it before it is cut.
+@export_range(0.0, 2.0, 0.01) var vine_lignification_damage_per_rank := 0.25
+@export_range(0.0, 2.0, 0.01) var vine_turgor_attack_speed_per_rank := 0.15
+@export_range(0.0, 2.0, 0.01) var vine_elongation_reach_per_rank := 0.20
+@export_range(0.0, 2.0, 0.01) var vine_apical_damage_per_rank := 0.25
+
+@export_group("Root Cane Floor")
+## Share of the Root Network that reaches the Cane itself.
+##
+## Root's problem in the rank-1 pair sweep was that it has no floor. It is an
+## amplifier, so a Root build that has not yet found an output mechanic to amplify
+## measures at bare-Cane output -- and a Path whose first rank does nothing visible
+## is a Path the player cannot tell they have taken.
+##
+## The Cane is the answer because every run has one. Root standing on its own ground
+## now makes the universal weapon hit harder, at a fraction of what it does for a
+## line the player actually invested in, so Root is never nothing and is still always
+## worth more in a build that gives it something to work with.
+##
+## Half, not all. Root must not become a generic damage Path: this is a floor, and a
+## floor that matched the amplification Thistle or Vine receive would make Root the
+## correct third Adaptation for every build rather than for the ones it suits.
+@export_range(0.0, 1.0, 0.05) var root_cane_network_share := 0.50
+## Share of the Root Network that reaches an upgrade line's per-rank bonus.
+##
+## The Cane has always taken a share rather than the whole multiplier; the lines took
+## all of it, which made Root Potency a second rank multiplier stacked on top of the
+## first. A line's bonus is already rank x per-rank, so amplifying it by the Network
+## compounds the two investments the run made on the same axis -- the exact shape
+## section 35 of the rework says to look for before touching damage values.
+##
+## Measured: Root+Vine was 71,596 damage taking 121, against 57,260 for the next
+## strongest pair. Zeroing the Network entirely took it to 50,456 taking 253, so a
+## third of that build was this one multiplication.
+##
+## Deliberately applied here rather than by cutting `network_bonus_per_level`, which
+## reads the same on the damage column but also pays out of Bramble's control depth --
+## Bramble resolves the Network in `CombatDirector` rather than through a line bonus,
+## so it is untouched by this and was measurably not untouched by that.
+@export_range(0.0, 1.0, 0.05) var root_line_network_share := 0.50
+
+@export_group("Thornwhip")
+## Thorns one mounted Thistle head fires per sweep, and what each of them hits for.
+##
+## One thorn, at double damage, rather than a full Clustering volley.
+##
+## Thornwhip was multiplying five things at once: mounted heads, Clustering
+## projectile count, Burr ricochets, Needlepoint critical scaling and Vine sweep
+## cadence. Four heads at rank 4, each firing a Clustering volley, each thorn
+## ricocheting, is not a strong Evolution -- it is four separate multipliers landing
+## on the same hit. Removing the Clustering axis takes the Evolution's advantage over
+## an unevolved Thistle + Vine from roughly +50/70/115% at ranks 1/3/5 to +16/36/67%,
+## which is a substantial Evolution rather than a build-defining one.
+##
+## Deliberately not a damage cut to Thistle. Base Thistle is not dominant in the
+## measured pair sweep; one Evolution's interaction is, and the fix belongs where the
+## interaction is rather than on every Thistle run that never took it.
+@export_range(1, 8, 1) var thornwhip_head_projectiles := 1
+@export_range(0.5, 6.0, 0.05) var thornwhip_head_damage_scale := 2.0
+
 @export_group("Root Network Feedback")
 ## Whether to light points that the Root Network is paying out under. Root Potency's
 ## whole-unit step is the one part of the Network that is on or off rather than
@@ -525,6 +596,10 @@ func _refresh_vine_modifiers() -> void:
 	var cooldown_multiplier := 1.0
 	var reach_multiplier := 1.0
 	var apical_bonus := 0.0
+	# Root's floor, applied whether or not the run holds Vine. Mature ground under
+	# Grandma makes the Cane itself heavier, which is what stops a Root opening from
+	# measuring as no build at all.
+	damage_multiplier += _root_cane_bonus()
 	if vine_active:
 		var origin := player.get_arena_position()
 		# Each Vine line takes Root Potency on its own bonus, so the Network
@@ -533,21 +608,33 @@ func _refresh_vine_modifiers() -> void:
 		# four lines resolve at the same point, so they share one Network sample.
 		var network := _root_network_at(origin)
 		damage_multiplier += _root_scaled_bonus_with(
-			Progression.UpgradeId.VINE_LIGNIFICATION, 0.25, network
+			Progression.UpgradeId.VINE_LIGNIFICATION,
+			vine_lignification_damage_per_rank,
+			network
 		)
 		cooldown_multiplier /= 1.0 + _root_scaled_bonus_with(
-			Progression.UpgradeId.VINE_TURGOR, 0.15, network
+			Progression.UpgradeId.VINE_TURGOR,
+			vine_turgor_attack_speed_per_rank,
+			network
 		)
 		reach_multiplier += _root_scaled_bonus_with(
-			Progression.UpgradeId.VINE_ELONGATION, 0.20, network
+			Progression.UpgradeId.VINE_ELONGATION,
+			vine_elongation_reach_per_rank,
+			network
 		)
 		apical_bonus = _root_scaled_bonus_with(
-			Progression.UpgradeId.VINE_APICAL_DOMINANCE, 0.25, network
+			Progression.UpgradeId.VINE_APICAL_DOMINANCE,
+			vine_apical_damage_per_rank,
+			network
 		)
+	# Quickening and Spread, the two Growth stats the Cane is the universal carrier
+	# of. Folded in here rather than inside CombatDirector because this is where the
+	# Cane's four numbers are decided, and a second place applying a multiplier to
+	# the same fields is how they end up applied twice.
 	combat.set_cane_modifiers(
 		damage_multiplier,
-		cooldown_multiplier,
-		reach_multiplier,
+		cooldown_multiplier / progression.get_growth_attack_speed_multiplier(),
+		reach_multiplier * progression.get_growth_area_multiplier(),
 		apical_bonus
 	)
 	# The rope is the Vine. Holding the Adaptation is what makes the Cane resolve
@@ -586,7 +673,10 @@ func _root_count_step(upgrade_id: int, origin: Vector2) -> int:
 func _root_bonus_scale(upgrade_id: int, origin: Vector2) -> float:
 	if not _root_amplifies_line(upgrade_id):
 		return 1.0
-	return maxf(1.0, root_director.get_network_multiplier_here(origin))
+	# Only `root_line_network_share` of the Network reaches a line bonus; see the note
+	# on that export for why a line does not get the whole multiplier.
+	var network := maxf(1.0, root_director.get_network_multiplier_here(origin))
+	return 1.0 + (network - 1.0) * root_line_network_share
 
 
 ## One line's per-rank bonus after Root Potency: rank x per-rank value x the
@@ -599,6 +689,20 @@ func _root_scaled_bonus(upgrade_id: int, per_rank: float, origin: Vector2) -> fl
 ## The Network at a point, sampled once for callers whose lines all resolve there.
 ## The projection query behind it walks nearby ground, so a per-frame refresh or a
 ## multi-line spawn takes one sample instead of one per line.
+func _root_cane_bonus() -> float:
+	## What the Root Network adds to the Cane's damage where Grandma is standing.
+	##
+	## Read from the ground under her rather than from the ranks she owns, the same
+	## way every other Root payout is: a Root run that has abandoned its Mature ground
+	## gets nothing here either, which keeps the floor a reward for holding territory
+	## rather than a flat bonus for having taken the Path.
+	if root_director == null or not root_director.has_path():
+		return 0.0
+	var origin := player.get_arena_position()
+	var network := maxf(1.0, root_director.get_network_multiplier_here(origin))
+	return (network - 1.0) * root_cane_network_share
+
+
 func _root_network_at(origin: Vector2) -> float:
 	if root_director == null or not root_director.has_path():
 		return 1.0
@@ -607,7 +711,9 @@ func _root_network_at(origin: Vector2) -> float:
 
 ## Same rule as _root_scaled_bonus, for a caller that already holds that sample.
 func _root_scaled_bonus_with(upgrade_id: int, per_rank: float, network: float) -> float:
-	var scale := network if _root_amplifies_line(upgrade_id) else 1.0
+	var scale := 1.0
+	if _root_amplifies_line(upgrade_id):
+		scale = 1.0 + (maxf(1.0, network) - 1.0) * root_line_network_share
 	return per_rank * float(_upgrade(upgrade_id)) * scale
 
 
@@ -637,9 +743,7 @@ func _upgrade(upgrade_id: int) -> int:
 
 
 func _evolution_rank(evolution_id: int) -> int:
-	if not progression.has_active_evolution(evolution_id):
-		return 0
-	return evolutions.get_active_evolution_rank()
+	return progression.get_evolution_rank(evolution_id)
 
 
 func _has_relic(relic_id: int) -> bool:
@@ -2200,10 +2304,14 @@ func _fire_thornwhip(
 	for head_index in range(head_count):
 		var fraction := float(head_index + 1) / float(head_count + 1)
 		var head_position := origin + facing * reach * fraction
-		var scale := 1.0
+		# The mounted thorn is worth two ordinary ones, which is what pays for the
+		# Clustering volley it no longer fires.
+		var scale := thornwhip_head_damage_scale
 		if rank >= 3 and head_index == head_count - 1:
 			scale += _root_scaled_bonus(
-				Progression.UpgradeId.VINE_APICAL_DOMINANCE, 0.25, origin
+				Progression.UpgradeId.VINE_APICAL_DOMINANCE,
+				vine_apical_damage_per_rank,
+				origin
 			)
 		_fire_mounted_head(
 			head_position,
@@ -2260,14 +2368,10 @@ func _fire_mounted_head(
 			targets.append(enemy_id)
 	if targets.is_empty():
 		return
-	var projectile_count := (
-		1
-		+ _upgrade(Progression.UpgradeId.THISTLE_CLUSTERING)
-		+ _root_count_step(
-			Progression.UpgradeId.THISTLE_CLUSTERING, head_position
-		)
-	)
-	for index in range(projectile_count):
+	# Clustering is deliberately not read here. A mounted head fires its own authored
+	# number of thorns, so the Evolution stops multiplying a line that is already
+	# multiplying the turret it came from.
+	for index in range(maxi(1, thornwhip_head_projectiles)):
 		_spawn_thorn(
 			head_position,
 			targets[index % targets.size()],

@@ -17,6 +17,20 @@ signal final_invasion_began
 signal cleanup_began
 ## A Campaign wave whose completion opens one of the ten authored relic rewards.
 signal wave_relic_earned(wave_number: int)
+## A Campaign wave milestone that offers every Evolution the run now qualifies for.
+signal evolution_reward_earned(wave_number: int)
+## A Campaign wave that hands the player a draft of Adaptations they do not own.
+signal path_draft_earned(wave_number: int)
+## The player called the next wave early, giving up the seconds carried here.
+signal wave_provoked(wave_number: int, seconds_skipped: float)
+## Blight rose, because a rewarded Provocation was taken.
+signal blight_changed(level: int)
+## A provoked wave was survived, so a Growth choice is owed.
+signal growth_reward_earned
+## A Campaign wave that sets a Trial, and the wave boundary that answers the last one.
+## Both carry the wave they belong to so a listener can tell them apart in a log.
+signal trial_wave_began(wave_number: int)
+signal trial_wave_ended(wave_number: int)
 
 @export_group("Collaborators")
 ## Combat component that receives scaled enemy spawn requests from this director.
@@ -69,11 +83,10 @@ signal wave_relic_earned(wave_number: int)
 @export_range(0.03, 2.0, 0.01) var final_spawn_interval_seconds := 0.12
 
 @export_group("Campaign Scheduler")
-## Reinforcement packs one frame may request. A hitch must not be paid back as a
-## burst the player never saw coming, so catch-up is bounded rather than unlimited.
+## Encounter recipes one frame may place. A hitch releases several intervals of
+## credit at once, and a burst the player never saw coming must not be how it is
+## paid back, so catch-up is spread across frames rather than being unlimited.
 @export_range(1, 8, 1) var maximum_packs_per_frame := 2
-## Intervals of scheduling debt retained across a hitch before the rest is dropped.
-@export_range(1.0, 10.0, 0.5) var maximum_spawn_debt_intervals := 3.0
 ## Active actors above which ordinary reinforcements stop being requested, leaving
 ## the remainder of the hard cap reserved for the Elite, the Boss, and Colony Cores.
 @export_range(10, 300, 1) var regular_reinforcement_cap := 124
@@ -90,10 +103,14 @@ signal wave_relic_earned(wave_number: int)
 @export_range(1.0, 5.0, 0.05) var final_health_scale := 2.15
 ## Enemy contact-damage multiplier reached at 100% final-invasion pressure.
 @export_range(1.0, 5.0, 0.05) var final_contact_damage_scale := 1.60
-## Campaign XP multiplier reached at Wave 25. Deliberately far below the health
-## curve: more durable enemies already reduce the kill rate, so matching the two
-## would make dense late waves fund themselves.
-@export_range(1.0, 6.0, 0.05) var campaign_final_xp_multiplier := 2.20
+## Campaign XP multiplier reached at the final wave.
+##
+## Raised with the Threat Director, and for its sake. Late Campaign now buys quality
+## instead of population, so a late wave puts far fewer bodies on the board than the
+## old density curve did; without more XP per body, a twenty-minute Campaign would
+## finish its build later than the twenty-five-minute one it replaced. Still well
+## under the health curve, so a dense wave does not fund itself.
+@export_range(1.0, 6.0, 0.05) var campaign_final_xp_multiplier := 3.00
 
 @export_group("Enemy Mix")
 ## Reinforcement-pack cycle outside a surge; every Nth regular pack leads with a Grazer.
@@ -144,6 +161,39 @@ signal wave_relic_earned(wave_number: int)
 ## Share of Corruptor spawns that arrive as Siege Corruptors once introduced.
 @export_range(0.0, 1.0, 0.01) var siege_corruptor_share := 0.5
 
+@export_group("Provocation")
+## Seconds into a wave after which the next one may always be called early.
+##
+## Forty of sixty, so Provocation is reaching into the peak and the recovery rather
+## than skipping the wave. A player who wants the run to go faster gives up the only
+## part of it that was going to be quiet.
+@export_range(0.0, 120.0, 1.0) var provoke_unlock_seconds := 40.0
+## The other door: a wave whose released threat has mostly been cleared is provokable
+## sooner. Both conditions are needed, so a lull thirty seconds in does not count as
+## having beaten a wave that has barely started.
+##
+## Deliberately measured against threat the Director actually released and the player
+## actually removed, never against theoretical build strength -- the Campaign is not
+## allowed to read Grandma's damage and respond to it.
+@export_range(0.0, 1.0, 0.01) var provoke_release_floor := 0.40
+@export_range(0.0, 1.0, 0.01) var provoke_cleared_fraction := 0.80
+## Seconds of Campaign a run may skip by Provoking, across the whole run.
+##
+## Four minutes of twenty, so an aggressive run finishes around sixteen and a
+## conservative one around twenty. Uncapped, nineteen Provocations at twenty-odd
+## seconds each would take a twenty-minute Campaign under thirteen, and the
+## structure needs time to breathe however far ahead of it the player is: the point
+## of Provocation is a faster, more dangerous run, not a different, shorter game.
+@export_range(0.0, 900.0, 5.0) var maximum_provoked_seconds := 240.0
+## Surge credit granted per second of recovery given up.
+##
+## The immediate, temporary half of a Provocation. Called five seconds early it is a
+## nudge; called twenty seconds early it is most of another encounter arriving at the
+## front of a wave that has not finished opening. Earlier calls buy danger, never a
+## larger permanent reward -- that asymmetry is what stops "provoke as early as
+## possible" from being the only correct way to play.
+@export_range(0.0, 200.0, 0.5) var surge_credit_per_second := 14.0
+
 @export_group("Escalation")
 ## Elapsed run time at which elites may begin carrying rule changes at all. The
 ## design note ties this to the run's own progression rather than the clock, and
@@ -154,6 +204,13 @@ signal wave_relic_earned(wave_number: int)
 @export_range(0.0, 1800.0, 1.0) var elite_modifier_intro_seconds := 300.0
 
 var elapsed_seconds := 0.0
+## Seconds actually played, which Provocation makes shorter than the schedule.
+##
+## `elapsed_seconds` is the Campaign's *position*: the wave, the curves and every
+## milestone are read off it, and Provocation moves it forward by the recovery the
+## player gave up. This is the wall clock beside it, so a run that finished Wave 20
+## in seventeen minutes records seventeen minutes rather than twenty.
+var real_elapsed_seconds := 0.0
 var announced_wave_number := 1
 ## The wave whose opening break has already been cut short by the arena being
 ## cleared. Latched per wave rather than recomputed, because the break must not come
@@ -173,22 +230,31 @@ var _grazer_pack_sequence := 0
 ## get eight Heavy Grazers in a row because the dice said so.
 var _variant_sequence := 0
 
-## Whether this run is the authored 25-wave Campaign rather than Quick's ramp.
+## Whether this run is the authored 20-wave Campaign rather than Quick's ramp.
 var _campaign_mode := false
 var _wave_specs: Array[CampaignWaveSpec] = []
 var _role_scaling_profiles := {}
 var _topology := SpawnTopology.new()
 var _run_seed := 0
-## Scheduling debt in seconds, so pack timing is what the clock says rather than
-## what the frame rate allowed.
-var _spawn_debt_seconds := 0.0
-## Index into the current wave's pack-size pattern; reset at every wave boundary.
-var _pattern_index := 0
-## The current wave's shuffled leader deck and how far through it the wave is.
-var _leader_deck := PackedInt32Array()
-var _leader_cursor := 0
-var _leader_cycle := 0
-var _deck_wave := 0
+## The run's permanent Blight, raised one level by each rewarded Provocation and
+## never lowered. Read by the budget, by enemy health and damage, and by the price
+## the Director pays for its expensive recipes.
+var _blight_level := 0
+## Provocations taken, the Campaign seconds they have skipped between them, and the
+## surge waiting to be injected into the next wave.
+var _provocations := 0
+var _provoked_seconds := 0.0
+var _pending_surge_credit := 0.0
+## The waves whose end each owes a Growth reward. Paid when that wave ends rather
+## than at the moment of the call: the Growth is the reward for living through the
+## encounter, not for asking for it.
+##
+## A list rather than one wave, because a player can Provoke out of a wave they were
+## already owed a Growth for -- they still survived it, and a single slot would have
+## quietly dropped the first reward every time the second was earned.
+var _growth_owed_waves := PackedInt32Array()
+## How the current Campaign wave spends itself.
+var _threat := ThreatDirector.new()
 ## Requests the Campaign issued and how many of them became live enemies. Both are
 ## telemetry: a wave that requests three hundred packs into a full cap is a
 ## different wave from one that requested eighty and spawned all of them.
@@ -292,7 +358,6 @@ func set_run_seed(seed_value: int) -> void:
 		territory_field.tuning.arena_size if territory_field != null else Vector2(1280.0, 720.0),
 		absi(seed_value) % SpawnTopology.SECTOR_COUNT
 	)
-	_deck_wave = 0
 
 
 func _ready() -> void:
@@ -311,27 +376,30 @@ func reset_director() -> void:
 	hive_queen_spawned = false
 	final_invasion_started = false
 	cleanup_started = false
+	real_elapsed_seconds = 0.0
+	_blight_level = 0
+	_provocations = 0
+	_provoked_seconds = 0.0
+	_pending_surge_credit = 0.0
+	_growth_owed_waves = PackedInt32Array()
 	_spawn_remaining = opening_spawn_delay_seconds
 	_spawn_pack_sequence = 0
 	_grazer_pack_sequence = 0
 	_variant_sequence = 0
-	_spawn_debt_seconds = 0.0
-	_pattern_index = 0
-	_leader_deck = PackedInt32Array()
-	_leader_cursor = 0
-	_leader_cycle = 0
-	_deck_wave = 0
 	_packs_requested = 0
 	_packs_rejected = 0
 	_enemies_spawned = 0
 	set_run_seed(_run_seed if _run_seed != 0 else (randi() | 1))
 	_apply_enemy_spawn_scaling()
 	combat.set_elite_modifier_pressure(0.0)
+	blight_changed.emit(_blight_level)
+	_begin_campaign_wave(1)
 
 
 func advance(delta: float) -> void:
 	if delta <= 0.0:
 		return
+	real_elapsed_seconds += delta
 	elapsed_seconds = minf(run_duration_seconds, elapsed_seconds + delta)
 	_update_timeline_events()
 	if _campaign_mode:
@@ -463,6 +531,144 @@ func get_spawn_topology() -> SpawnTopology:
 	return _topology
 
 
+## Whether the player may call the next wave in right now.
+##
+## Two doors. The first is the clock: forty seconds into a sixty-second wave, which
+## is the point at which what remains is the peak and the recovery. The second is
+## having actually finished it -- most of the wave's threat released, and most of
+## what was released already dead.
+##
+## The second door reads threat the Director spent and enemies that are no longer on
+## the board. It never reads Grandma's damage, her build, or her Paths: the Campaign
+## responds to what the player has *done*, and a difficulty system that reads what
+## they are capable of is the thing this rework exists to avoid.
+func can_provoke() -> bool:
+	if not _campaign_mode or cleanup_started or is_complete():
+		return false
+	if get_current_wave_number() >= get_final_wave_number():
+		return false
+	if is_grace_period_active():
+		return false
+	if not has_provocation_budget():
+		return false
+	if get_seconds_into_wave() >= provoke_unlock_seconds:
+		return true
+	if _threat.get_released_fraction() < provoke_release_floor:
+		return false
+	return get_cleared_threat_fraction() >= provoke_cleared_fraction
+
+
+## Share of the threat this wave has released that is no longer standing.
+##
+## Measured as spent-minus-alive rather than by counting kills, because what matters
+## is whether the board is clear and an enemy that walked off a cliff of Bramble
+## damage counts the same as one the Cane killed. Alive threat is priced with the
+## same table the Director bought them from, so a wave holding one Siege Corruptor
+## is not "cleared" the way a wave holding one Hunter is.
+func get_cleared_threat_fraction() -> float:
+	var spent := _threat.get_spent()
+	if spent <= 0.0:
+		return 0.0
+	var alive := 0.0
+	for role in EncounterRecipes.THREAT_COSTS:
+		alive += float(
+			combat.get_active_enemy_count_by_role(int(role))
+			* EncounterRecipes.get_role_cost(int(role))
+		)
+	return clampf((spent - alive) / spent, 0.0, 1.0)
+
+
+## Calls the next wave in early. Returns the seconds of recovery given up, or zero
+## when the call was refused.
+##
+## Everything already on the board stays on it. That is the whole mechanic: the next
+## wave arrives on top of what the player has not finished, without the authored
+## pause that would normally separate them, with a Surge at its front proportional
+## to how early it was called, and with the run permanently one level more Blighted
+## if that level was still available to buy.
+func provoke() -> float:
+	if not can_provoke():
+		return 0.0
+	var wave_number := get_current_wave_number()
+	var skipped := _seconds_left_in_wave()
+	if skipped <= 0.0:
+		return 0.0
+	_provoked_seconds += skipped
+	# The schedule jumps; the wall clock does not. `elapsed_seconds` is where the
+	# Campaign is, and Provocation is the player moving the Campaign forward -- which
+	# is why a provoked run finishes Wave 20 in less than twenty minutes.
+	elapsed_seconds = minf(run_duration_seconds, elapsed_seconds + skipped)
+	_provocations += 1
+	_pending_surge_credit += skipped * surge_credit_per_second
+	if _blight_level < BlightTable.MAXIMUM_LEVEL:
+		_blight_level += 1
+		# Owed to the wave this call is about to start, and paid when that wave ends.
+		_growth_owed_waves.append(wave_number + 1)
+		blight_changed.emit(_blight_level)
+	wave_provoked.emit(wave_number, skipped)
+	_update_timeline_events()
+	return skipped
+
+
+## Whether the run has enough of its compression allowance left to call this wave.
+##
+## Separate from `can_provoke` because the two refusals are not the same thing and
+## must not print the same sentence. "Not yet, hold the wave longer" is true when the
+## window has not opened; it is a lie when the window is open and the run has simply
+## spent its four minutes, and a player told to wait longer for something that will
+## never come again learns to distrust the prompt.
+##
+## The whole remainder has to fit: a partial skip would charge a Blight level and
+## leave the run mid-wave. As the allowance runs down this tapers -- only later,
+## smaller calls still fit -- rather than stopping dead.
+func has_provocation_budget() -> bool:
+	if not _campaign_mode:
+		return false
+	return _provoked_seconds + _seconds_left_in_wave() <= maximum_provoked_seconds
+
+
+func _seconds_left_in_wave() -> float:
+	return maxf(0.0, wave_duration_seconds - get_seconds_into_wave())
+
+
+func debug_set_blight(level: int) -> void:
+	## Forces the run's Blight, so "is Blight V materially harder than Blight 0" can
+	## be answered by running the same build at both rather than by reading the table
+	## and multiplying in one's head. The wave in progress is rebuilt underneath it,
+	## because the budget it was handed was priced at the old level.
+	_blight_level = BlightTable.clamp_level(level)
+	blight_changed.emit(_blight_level)
+	_begin_campaign_wave(get_current_wave_number())
+
+
+func get_blight_level() -> int:
+	return _blight_level
+
+
+func get_blight_name() -> String:
+	return BlightTable.get_level_name(_blight_level)
+
+
+func get_provocation_count() -> int:
+	return _provocations
+
+
+func get_provoked_seconds() -> float:
+	return _provoked_seconds
+
+
+func get_wave_threat_budget() -> float:
+	return _threat.get_budget()
+
+
+func get_wave_threat_spent() -> float:
+	return _threat.get_spent()
+
+
+func get_current_act() -> int:
+	return CampaignWaves.get_act(get_current_wave_number()) if _campaign_mode else 0
+
+
 func report_sector_pressure(local_position: Vector2, amount: float) -> void:
 	## Damage taken or Green lost, so the topology knows which side is actually
 	## under pressure rather than only which side is crowded.
@@ -502,19 +708,36 @@ func _update_timeline_events() -> void:
 
 
 func _on_wave_boundary_crossed(wave_number: int) -> void:
-	# The pattern index and the leader deck both reset here, which is what makes a
-	# wave's requested density a property of the wave rather than of when the
-	# previous one happened to end.
-	_pattern_index = 0
-	_spawn_debt_seconds = 0.0
-	_leader_deck = PackedInt32Array()
-	_leader_cursor = 0
-	_leader_cycle = 0
 	if not _campaign_mode:
 		return
 	var previous := get_wave_spec(wave_number - 1)
 	if previous != null and previous.grants_wave_relic:
 		wave_relic_earned.emit(wave_number - 1)
+	# A Provocation's Growth is the reward for living through the wave it called,
+	# which is the wave that has just ended.
+	var still_owed := PackedInt32Array()
+	for owed_wave in _growth_owed_waves:
+		if wave_number > owed_wave:
+			growth_reward_earned.emit()
+		else:
+			still_owed.append(owed_wave)
+	_growth_owed_waves = still_owed
+	_begin_campaign_wave(wave_number)
+	var spec := get_wave_spec(wave_number)
+	if spec == null:
+		return
+	# Both are offers rather than grants: what the run is eligible for is Progression's
+	# question, and a wave that opens a door nobody can walk through simply opens it.
+	if spec.grants_path_draft:
+		path_draft_earned.emit(wave_number)
+	if spec.grants_evolution_reward:
+		evolution_reward_earned.emit(wave_number)
+	# The Trial that was running is answered before a new one is set, so a Trial wave
+	# followed immediately by another cannot swallow the first one's reward.
+	if previous != null and previous.grants_trial:
+		trial_wave_ended.emit(wave_number - 1)
+	if spec.grants_trial:
+		trial_wave_began.emit(wave_number)
 
 
 func _update_quick_milestones() -> void:
@@ -631,75 +854,110 @@ func _advance_campaign_topology(delta: float) -> void:
 
 
 func _update_campaign_spawning(delta: float) -> void:
-	## A bounded debt scheduler rather than at most one pack per frame.
+	## The Threat Director spending one frame's worth of the wave's budget.
 	##
-	## The old timing tied requested density to the frame rate: a 30 fps machine
-	## could not issue the packs a 0.28-second interval asks for, so the same wave
-	## was a different wave on different hardware. Debt accumulates in seconds and
-	## is spent in whole intervals, with the catch-up bounded so a hitch produces a
-	## slightly late wave rather than a sudden wall.
-	if cleanup_started or is_grace_period_active():
+	## The old scheduler was a pack interval and a pack size, and a bounded debt
+	## counter so the frame rate could not change how many packs a wave issued. The
+	## budget replaces all three: credit is released on the wave's own clock, so a
+	## hitch defers a purchase rather than losing it, and how many enemies a wave
+	## placed is a property of what it bought rather than of how often it was asked.
+	if cleanup_started:
 		return
 	var spec := get_current_wave_spec()
 	if spec == null:
 		return
-	var interval := _get_campaign_pack_interval(spec)
-	_spawn_debt_seconds += delta
-	var packs_this_frame := 0
-	while (
-		_spawn_debt_seconds >= interval
-		and packs_this_frame < maximum_packs_per_frame
-	):
-		_spawn_debt_seconds -= interval
-		_request_campaign_pack(spec)
-		packs_this_frame += 1
-	_spawn_debt_seconds = minf(
-		_spawn_debt_seconds,
-		interval * maximum_spawn_debt_intervals
-	)
-
-
-func _get_campaign_pack_interval(spec: CampaignWaveSpec) -> float:
-	# The final wave tightens once the invasion is under way rather than arriving
-	# at its closing rate, so the last minute has a shape of its own.
-	if (
-		spec.wave_index == CampaignWaves.WAVE_COUNT
-		and get_seconds_into_wave() >= CampaignWaves.FINAL_WAVE_LATE_INTERVAL_SECOND
-	):
-		return CampaignWaves.FINAL_WAVE_LATE_INTERVAL
-	return maxf(0.05, spec.pack_interval_seconds)
-
-
-func _request_campaign_pack(spec: CampaignWaveSpec) -> void:
-	## One scheduled request. A rejected ordinary request is recorded and discarded
-	## rather than retried: retrying against a full cap turns the moment the arena
-	## clears into a burst nobody asked for.
-	_packs_requested += 1
-	if combat.get_active_enemy_count() >= regular_reinforcement_cap:
-		_packs_rejected += 1
+	# Released during the opening break too -- the release curve already treats the
+	# break as time the wave is not spending in, so this is a no-op rather than an
+	# exception somebody has to remember.
+	_threat.advance(delta)
+	if is_grace_period_active():
 		return
-	var leader := _draw_leader_role(spec)
-	var pack_size := _next_pack_size(spec)
+	var placed := 0
+	while placed < maximum_packs_per_frame:
+		if combat.get_active_enemy_count() >= regular_reinforcement_cap:
+			# Recorded and dropped, exactly as a rejected pack always was. Retrying
+			# against a full cap turns the moment the arena clears into a burst
+			# nobody asked for.
+			_packs_rejected += 1
+			return
+		var recipe := _threat.next_purchase(_has_canker_entrance())
+		if recipe == &"":
+			return
+		_packs_requested += 1
+		_place_recipe(spec, recipe)
+		placed += 1
+
+
+func _begin_campaign_wave(wave_number: int) -> void:
+	## Hands one wave's budget, recipe list and act gate to the Threat Director, with
+	## Blight on the budget and any Surge the player just bought injected at its front.
+	if not _campaign_mode:
+		return
+	var spec := get_wave_spec(wave_number)
+	if spec == null:
+		return
+	_threat.begin_wave(
+		spec.wave_index,
+		spec.act,
+		spec.threat_budget * BlightTable.get_budget_multiplier(_blight_level),
+		spec.recipe_ids,
+		spec.duration_seconds,
+		spec.opening_break_seconds,
+		_blight_level,
+		spec.sustains_final_pressure,
+		_run_seed
+	)
+	if _pending_surge_credit > 0.0:
+		_threat.add_surge_credit(_pending_surge_credit)
+		_pending_surge_credit = 0.0
+
+
+func _has_canker_entrance() -> bool:
+	## Whether an interior recipe has anywhere to come out of. The Director never
+	## makes a Canker; it only notices that territory failure has made one.
+	return combat != null and combat.has_active_cankers()
+
+
+func _place_recipe(spec: CampaignWaveSpec, recipe_id: StringName) -> void:
+	## One bought pack, put on the board.
+	##
+	## The recipe names its own topology, because a Siege Push entering from a
+	## rotating ring is not a siege. The wave's profile is the fallback for a recipe
+	## that has no opinion, which keeps a wave's authored shape meaningful without
+	## letting it overrule a pack whose whole identity is where it comes from.
+	var members := EncounterRecipes.get_members(recipe_id)
+	if members.is_empty():
+		return
+	var leader := members[0]
+	var topology := EncounterRecipes.get_topology(recipe_id)
+	if topology == &"":
+		topology = spec.spawn_topology
 	var sector := _topology.select_sector(
-		spec.spawn_topology,
+		topology,
 		leader,
 		leader == CampaignWaves.ROLE_RUSHER,
 		CampaignWaves.is_specialist_role(leader)
 	)
-	for index in range(pack_size):
+	var opposite := posmod(sector + SpawnTopology.SECTOR_COUNT / 2, SpawnTopology.SECTOR_COUNT)
+	var split := EncounterRecipes.is_split(recipe_id)
+	var interior := EncounterRecipes.is_interior(recipe_id)
+	var half := members.size() / 2
+	for index in range(members.size()):
 		if combat.get_active_enemy_count() >= regular_reinforcement_cap:
 			_packs_rejected += 1
 			return
-		var role := (
-			leader
-			if index == 0
-			else CampaignWaves.get_follower_role(leader, index, spec.wave_index)
+		var role := members[index]
+		# A split pack is two fronts, not one larger one: its second half enters
+		# opposite the first, which is the entire content of an encounter that exists
+		# to ask a stationary build to be in two places.
+		var entry := sector if not (split and index >= half) else opposite
+		var point := _topology.get_spawn_point(entry, _get_spawn_margin(role))
+		var spawned := (
+			combat.spawn_enemy_from_canker(role, point)
+			if interior
+			else combat.spawn_enemy_near(role, point)
 		)
-		var point := _topology.get_spawn_point(
-			sector,
-			_get_spawn_margin(role)
-		)
-		if combat.spawn_enemy_near(role, point) != -1:
+		if spawned != -1:
 			_enemies_spawned += 1
 
 
@@ -707,42 +965,6 @@ func _get_spawn_margin(role: int) -> float:
 	# The Rusher's whole role is arriving before the player has finished reacting,
 	# so it is kept further out than the rest rather than allowed to appear closer.
 	return 34.0 if role == CampaignWaves.ROLE_RUSHER else 26.0
-
-
-func _next_pack_size(spec: CampaignWaveSpec) -> int:
-	var pattern := CampaignWaves.get_pack_pattern(spec.pack_pattern)
-	if pattern.is_empty():
-		return 1
-	var size := int(pattern[_pattern_index % pattern.size()])
-	_pattern_index += 1
-	return size
-
-
-func _draw_leader_role(spec: CampaignWaveSpec) -> int:
-	if _deck_wave != spec.wave_index or _leader_deck.is_empty():
-		_deck_wave = spec.wave_index
-		_leader_cycle = 0
-		_leader_cursor = 0
-		_leader_deck = CampaignWaves.shuffle_deck(
-			CampaignWaves.build_leader_deck(spec),
-			_run_seed,
-			spec.wave_index,
-			_leader_cycle
-		)
-	if _leader_cursor >= _leader_deck.size():
-		# The same authored deck again, reshuffled, so the proportions hold across
-		# a long wave without its second half repeating the order of its first.
-		_leader_cycle += 1
-		_leader_cursor = 0
-		_leader_deck = CampaignWaves.shuffle_deck(
-			CampaignWaves.build_leader_deck(spec),
-			_run_seed,
-			spec.wave_index,
-			_leader_cycle
-		)
-	var role := _leader_deck[_leader_cursor]
-	_leader_cursor += 1
-	return role
 
 
 func _update_enemy_spawning(delta: float) -> void:
@@ -871,10 +1093,14 @@ func _apply_wave_scaling(spec: CampaignWaveSpec) -> void:
 	## be reasoned about by any of them.
 	if spec == null:
 		return
+	# Blight rides on the authored curves rather than replacing them, and it moves
+	# health and damage by a fraction of what it moves the budget by. A player who
+	# chose a harder run should meet harder encounters, not the same encounter with a
+	# longer time-to-kill.
 	combat.set_campaign_wave_scaling(
 		spec.wave_index,
-		spec.hp_multiplier,
-		spec.contact_damage_multiplier,
+		spec.hp_multiplier * BlightTable.get_health_multiplier(_blight_level),
+		spec.contact_damage_multiplier * BlightTable.get_damage_multiplier(_blight_level),
 		spec.movement_speed_multiplier,
 		spec.territory_strength_multiplier,
 		spec.territory_action_speed_multiplier,
@@ -927,17 +1153,17 @@ func capture_state() -> Dictionary:
 		"hive_queen_spawned": hive_queen_spawned,
 		"final_invasion_started": final_invasion_started,
 		"cleanup_started": cleanup_started,
+		"real_elapsed_seconds": real_elapsed_seconds,
+		"blight_level": _blight_level,
+		"provocations": _provocations,
+		"provoked_seconds": _provoked_seconds,
+		"pending_surge_credit": _pending_surge_credit,
+		"growth_owed_waves": _growth_owed_waves,
 		"spawn_remaining": _spawn_remaining,
 		"spawn_pack_sequence": _spawn_pack_sequence,
 		"grazer_pack_sequence": _grazer_pack_sequence,
 		"variant_sequence": _variant_sequence,
 		"run_seed": _run_seed,
-		"spawn_debt_seconds": _spawn_debt_seconds,
-		"pattern_index": _pattern_index,
-		"leader_deck": _leader_deck,
-		"leader_cursor": _leader_cursor,
-		"leader_cycle": _leader_cycle,
-		"deck_wave": _deck_wave,
 		"packs_requested": _packs_requested,
 		"packs_rejected": _packs_rejected,
 		"enemies_spawned": _enemies_spawned,
@@ -956,17 +1182,26 @@ func apply_state(state: Dictionary) -> void:
 	hive_queen_spawned = bool(state.get("hive_queen_spawned", false))
 	final_invasion_started = bool(state.get("final_invasion_started", false))
 	cleanup_started = bool(state.get("cleanup_started", false))
+	real_elapsed_seconds = float(state.get("real_elapsed_seconds", elapsed_seconds))
+	_blight_level = BlightTable.clamp_level(int(state.get("blight_level", 0)))
+	_provocations = int(state.get("provocations", 0))
+	_provoked_seconds = float(state.get("provoked_seconds", 0.0))
+	_pending_surge_credit = float(state.get("pending_surge_credit", 0.0))
+	var owed: Variant = state.get("growth_owed_waves")
+	_growth_owed_waves = (
+		owed as PackedInt32Array if owed is PackedInt32Array else PackedInt32Array()
+	)
 	_spawn_remaining = float(state.get("spawn_remaining", 0.0))
 	_spawn_pack_sequence = int(state.get("spawn_pack_sequence", 0))
 	_grazer_pack_sequence = int(state.get("grazer_pack_sequence", 0))
 	_variant_sequence = int(state.get("variant_sequence", 0))
-	_spawn_debt_seconds = float(state.get("spawn_debt_seconds", 0.0))
-	_pattern_index = int(state.get("pattern_index", 0))
-	var deck: Variant = state.get("leader_deck")
-	_leader_deck = deck as PackedInt32Array if deck is PackedInt32Array else PackedInt32Array()
-	_leader_cursor = int(state.get("leader_cursor", 0))
-	_leader_cycle = int(state.get("leader_cycle", 0))
-	_deck_wave = int(state.get("deck_wave", 0))
 	_packs_requested = int(state.get("packs_requested", 0))
 	_packs_rejected = int(state.get("packs_rejected", 0))
 	_enemies_spawned = int(state.get("enemies_spawned", 0))
+	# The wave in progress is rebuilt rather than restored: its budget, act and
+	# recipe list come from this build's tables, and a resumed run gets the schedule
+	# the current build authors rather than the one the save was written against.
+	# What is restored is everything that cannot be derived -- the clock, the Blight
+	# the player chose, and the Growth a Provocation still owes them.
+	_begin_campaign_wave(get_current_wave_number())
+	blight_changed.emit(_blight_level)

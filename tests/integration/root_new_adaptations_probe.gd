@@ -65,8 +65,22 @@ func _run() -> void:
 	prototype.territory_field._maturity[cell] = 1.0
 	prototype.adaptation_director._refresh_vine_modifiers()
 
-	var amplification := prototype.root_director.get_network_multiplier_here(origin)
-	_check(amplification > 1.0, "Mature ground under the player is amplifying at all")
+	var network := prototype.root_director.get_network_multiplier_here(origin)
+	_check(network > 1.0, "Mature ground under the player is amplifying at all")
+	# A line takes a share of the Network rather than all of it. The whole multiplier
+	# made Root Potency a second rank multiplier stacked on the line's own rank, which
+	# is where Root+Vine's runaway lived. The share is the contract now, so the probe
+	# reads it from the director rather than hard-coding the old full-strength rule --
+	# but it still asserts the shape, and `amplification > 1.0` below still requires
+	# that a line on Mature ground is genuinely amplified.
+	var amplification := (
+		1.0
+		+ (network - 1.0) * prototype.adaptation_director.root_line_network_share
+	)
+	_check(
+		amplification > 1.0 and amplification <= network,
+		"a line takes a share of the Network, and that share amplifies it"
+	)
 
 	for upgrade_id in BONUS_LINES:
 		_check(
@@ -76,7 +90,7 @@ func _run() -> void:
 				),
 				BONUS_LINES[upgrade_id] * amplification
 			),
-			"rank-1 %s takes its own bonus times the Network" % (
+			"rank-1 %s takes its own bonus times its share of the Network" % (
 				Progression.get_upgrade_name(upgrade_id)
 			)
 		)
@@ -91,7 +105,7 @@ func _run() -> void:
 	_test_rooted_glow(prototype, origin)
 	_test_off_mature_ground(prototype, origin)
 	_test_thistle_outputs(prototype, origin, amplification)
-	_test_vine_outputs(prototype, amplification)
+	_test_vine_outputs(prototype, amplification, network)
 	_test_fruit_outputs(prototype, origin, amplification)
 	_test_jackpot_gates(prototype, origin)
 
@@ -215,7 +229,7 @@ func _test_thistle_outputs(
 			thorn.critical_damage_bonus,
 			adaptations.thistle_needlepoint_critical_damage_per_rank * amplification
 		),
-		"Needlepoint critical damage is its own bonus times the Network"
+		"Needlepoint critical damage is its own bonus times its share of the Network"
 	)
 	_check(
 		is_equal_approx(thorn.damage, adaptations.thistle_damage),
@@ -240,15 +254,32 @@ func _test_thistle_outputs(
 	)
 
 
-func _test_vine_outputs(prototype: RunRoot, amplification: float) -> void:
+func _test_vine_outputs(
+	prototype: RunRoot, amplification: float, network: float
+) -> void:
 	var combat := prototype.combat
 	_check(
 		is_equal_approx(combat._cane_reach_multiplier, 1.0 + 0.20 * amplification),
 		"Elongation reach is its own bonus times the Network"
 	)
+	# Lignification plus Root's own Cane floor. The floor is not a Vine line: it is
+	# what Root pays a run that has not yet found anything to amplify, and it lands on
+	# the Cane whether or not Vine is owned. It shows up here because this build owns
+	# both, and the two are checked together so neither can quietly absorb the other.
+	# The floor reads the *whole* Network, not a line's share of it: it is not a line.
+	var cane_floor := (
+		(network - 1.0) * prototype.adaptation_director.root_cane_network_share
+	)
 	_check(
-		is_equal_approx(combat._cane_damage_multiplier, 1.0 + 0.25 * amplification),
-		"Lignification damage is its own bonus times the Network"
+		is_equal_approx(
+			combat._cane_damage_multiplier,
+			1.0 + 0.25 * amplification + cane_floor
+		),
+		"Lignification damage is its own bonus times the Network, over Root's Cane floor"
+	)
+	_check(
+		cane_floor > 0.0,
+		"Root standing on Mature ground makes the Cane itself heavier"
 	)
 	_check(
 		is_equal_approx(
@@ -331,13 +362,15 @@ func _test_jackpot_gates(prototype: RunRoot, origin: Vector2) -> void:
 	# A Root jackpot runs the path, and it now lends Fruit and Vine exactly what it
 	# already lends Spore, Bloom, Bramble and Pruning: the Network at its lent
 	# strength, read through the one multiplier every consumer reads.
+	var lent_network := prototype.root_director.get_network_multiplier_here(origin)
+	var lent_share := (
+		1.0
+		+ (lent_network - 1.0) * adaptations.root_line_network_share
+	)
 	_check(
-		is_equal_approx(
-			adaptations._root_bonus_scale(fruit_set, origin),
-			prototype.root_director.get_network_multiplier_here(origin)
-		)
+		is_equal_approx(adaptations._root_bonus_scale(fruit_set, origin), lent_share)
 		and adaptations._root_bonus_scale(fruit_set, origin) > 1.0,
-		"a Root jackpot lends Fruit the same Network every other path reads"
+		"a Root jackpot lends Fruit the same share of the Network every other line reads"
 	)
 	progression.set_casino_path_active(Progression.PathId.ROOT, false)
 	progression._upgrade_levels[Progression.UpgradeId.ROOT_POTENCY] = 5

@@ -102,14 +102,14 @@ The principal editing surfaces are:
 | `Player` | Health, movement speed and radius, Green healing rate and maturity threshold |
 | `CombatDirector` | Cane sweep damage/cadence/reach/sector targeting, Bramble flat and max-health thorn chip damage, Entanglement, Ensnare and Repulsion, Old Growth, Briar Pod/Trap pools, combat audio, hit feedback, pool limits, and shared navigation clearance |
 | Any node under `EnemyProfiles` | Health, speed, contact damage, XP, size, target priority, movement and territory behaviors, action cadence/strength, grazing burst and recovery window, catalyst sensing, preferred range, and Colony Core limits |
-| `WaveDirector` | Run and path-choice milestones, Final Stand naming, wave/grace cadence, spawn rate, Grazer pack cycle and surge waves, specialist introduction times/cycles, per-wave XP/territory growth, and end-of-run enemy scaling |
+| `WaveDirector` | Run and path-choice milestones, Final Stand naming, wave/grace cadence, Quick's spawn rate, Grazer pack cycle and surge waves, specialist introduction times/cycles, per-wave XP/territory growth, end-of-run enemy scaling, and Campaign's Provocation window, total compression cap and Surge rate |
 | `BrambleDirector` | Bramble's base resistance, Entanglement slow and potency, Ensnare rate, Grasping Thorns duration and immunity, and Repulsion distance |
 | `RootDirector` | Maturation rate, Biomass yield, Mature resistance and regrowth, and the Root Network amplification every other path reads |
 | `ManEater` | Hunger per enemy-second and its threshold, the telegraph, jaw radius, Bite damage and the elite and boss shares, and the Green the meal comes back as |
 | `SporeDirector` | Seed durability, kills per Seed, Briar Pods and Tangleburst, and the Seed Bank's storage, threshold, spread, and Mast Year delay |
 | `BloomDirector` | Bloom timing, telegraph, damage and durability, Super Bloom chain depth and cascade, Flowering Season charge and Echo Blooms, and Thornburst harvest yield and Briar Trap strength |
 | `AdaptationDirector` | Thistle turret/thorn pools, Vine pair triggers, Fruit velocity/trails/terminal bursts, and all new Evolution/relic runtime rules |
-| `Progression` | XP curve, rerolls, eight-path eligibility, ordinary/Evolution rank ceilings, Biomass economy, and relic effects |
+| `Progression` | XP curve, rerolls, eight-path eligibility, the Branch slot limit and whether Adaptations are drafted or authored, Evolution and Growth offer sizes, ordinary/Evolution rank ceilings, Biomass economy, and relic effects |
 | `Metabolism` | Level costs and their growth, when Pressure and Cohesion unlock, the material a purchase injects, Breakthrough interval and effects, Overgrow's share and cooldown, and the production milestones |
 | `AudioSettings` | SFX/Music buses and the linear output represented by 100% on each pause-menu slider |
 | `Interface/PauseMenu` | Pause and settings wording, the fullscreen and unavailable-volume alternates, and the controller stick deadzone that shows the focus ring |
@@ -137,6 +137,12 @@ STAND, leaving the survivor count as the objective. Every defeat condition still
 applies during it, so a run can still be lost after the clock is spent. Losing all
 player HP ends the run immediately; losing all Green territory starts a
 six-second recovery grace period.
+
+Quick and Campaign share the wave clock and almost nothing else about how a wave
+is filled. What follows describes Quick; Campaign's twenty waves, threat budgets,
+encounter recipes, acts, Provocation, Blight and Growth are specified in
+`docs/campaign_pacing_balance_rework.md` and authored in
+`src/core/models/waves/campaign_waves.gd`.
 
 The timeline is divided into sixty-second pressure waves. Enemies snapshot the
 current wave when they spawn: territory-retaking attacks gain 10% strength per

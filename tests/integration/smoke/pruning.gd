@@ -45,22 +45,31 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	SmokeFixtures.grow_test_ecosystem(prototype)
 	pruning.reset_director()
 	var harvest_home := SmokeFixtures.stand_on_owned_ground(prototype)
-	for _hold_step in range(60):
-		prototype.player.global_position = prototype.territory_field.to_global(harvest_home)
+	for hold_step in range(60):
+		SmokeFixtures.graze_owned_ground(prototype, harvest_home, float(hold_step) * 0.10)
 		pruning.advance(1.0 / 60.0)
 		prototype.territory_field.step_simulation()
 	var held_cells := pruning.get_upkeep_cells_taken()
 	pruning.reset_director()
 	var open_stand := SmokeFixtures.find_open_ground_position(prototype)
 	prototype.player.global_position = prototype.territory_field.to_global(open_stand)
+	# The ring coasts for `footing_grace_seconds` after the Green underfoot runs out,
+	# and the harvest coasts with it -- it can still reach Green inside its own radius
+	# even while she is standing on bare ground. What stops is everything after the
+	# grace, so the reading is taken from there rather than from the step she left.
+	for _grace_step in range(int(ceil((pruning.footing_grace_seconds + 0.2) * 60.0))):
+		prototype.player.global_position = prototype.territory_field.to_global(open_stand)
+		pruning.advance(1.0 / 60.0)
+	var cells_after_grace := pruning.get_upkeep_cells_taken()
 	for _idle_step in range(60):
 		prototype.player.global_position = prototype.territory_field.to_global(open_stand)
 		pruning.advance(1.0 / 60.0)
 	report.check(
 		held_cells > 0
 		and not pruning.is_player_on_green()
-		and pruning.get_upkeep_cells_taken() == 0,
-		"the harvest has no cooldown: it runs while you stand on Green and not otherwise"
+		and pruning.get_upkeep_cells_taken() == cells_after_grace,
+		"the harvest has no cooldown: it runs while you stand on Green and, once the "
+			+ "footing grace is spent, not otherwise"
 	)
 
 
@@ -114,15 +123,18 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 			+ "(%d above, %d below, furthest %.1fpx)" % [cut_above, cut_below, furthest_cut]
 	)
 
-	# And it spares the ground the player is standing on. The harvest only runs while
-	# they are on their own Green, so cutting the cell underfoot would switch off the
-	# thing that is running it after a single step.
+	# And it takes the ground the player is standing on. This is the positional cost of
+	# the path: the cut is not a hole opened politely around her, it is the ground she
+	# is standing in going away, so a ring held in one spot starves itself. The harvest
+	# is gated on standing on Green, which is why `footing_grace_seconds` exists -- the
+	# ring survives long enough to reach more, and no longer.
 	report.check(
-		prototype.territory_field.get_control_at_local(centred_home)
-		> prototype.territory_field.tuning.ownership_threshold
-		and pruning.is_player_on_green()
-		and pruning.upkeep_inner_radius_pixels > 0.0,
-		"the harvest leaves the player's own footing intact"
+		is_zero_approx(pruning.upkeep_inner_radius_pixels)
+		and prototype.territory_field.get_control_at_local(centred_home)
+			<= prototype.territory_field.tuning.ownership_threshold
+		and not pruning.is_player_on_green()
+		and pruning.footing_grace_seconds > 0.0,
+		"the harvest cuts the ground out from under the player"
 	)
 
 	# Cut ground comes back faster than ordinary neutral ground.
@@ -151,9 +163,16 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype.territory_field.reset_field()
 	SmokeFixtures.grow_test_ecosystem(prototype)
 	pruning.reset_director()
-	var burn_home := SmokeFixtures.stand_on_owned_ground(prototype)
-	for _burn_step in range(90):
-		prototype.player.global_position = prototype.territory_field.to_global(burn_home)
+	# Far enough from the edge that a graze lap fits. `stand_on_owned_ground` returns
+	# the first owned cell scanning from the corner, and most of a lap around that one
+	# is off the field -- she ends up shuffling inside her own harvest radius, which
+	# starves the ring and is the opposite of the hold this is measuring.
+	var burn_home := SmokeFixtures.find_owned_cell_with_clearance(
+		prototype, pruning.upkeep_radius_pixels * 1.7
+	)
+	prototype.player.global_position = prototype.territory_field.to_global(burn_home)
+	for burn_step in range(90):
+		SmokeFixtures.graze_owned_ground(prototype, burn_home, float(burn_step) * 0.07)
 		pruning.advance(1.0 / 60.0)
 		prototype.territory_field.step_simulation()
 		SmokeFixtures.step_field(prototype.territory_field, 1)
@@ -163,7 +182,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype.player.global_position = prototype.territory_field.to_global(
 		SmokeFixtures.find_open_ground_position(prototype)
 	)
-	pruning.advance(1.0 / 60.0)
+	# Past the footing grace, not one frame past stepping off: the ring is allowed a
+	# moment off Green now, and letting go is what happens when that moment runs out.
+	for _let_go_step in range(int(ceil((pruning.footing_grace_seconds + 0.2) * 60.0))):
+		pruning.advance(1.0 / 60.0)
 	SmokeFixtures.step_field(
 		prototype.territory_field,
 		int(prototype.territory_field.tuning.simulation_hz * 3.0)
@@ -204,7 +226,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype.combat.reset_combat()
 	prototype.combat._cane_remaining = 9999.0
 	pruning.reset_director()
-	var ring_home := SmokeFixtures.stand_on_owned_ground(prototype)
+	var ring_home := SmokeFixtures.find_owned_cell_with_clearance(
+		prototype, pruning.upkeep_radius_pixels * 1.7
+	)
+	prototype.player.global_position = prototype.territory_field.to_global(ring_home)
 	# The ring fills over a few seconds of grazing. Standing still burns the ground
 	# out from underneath and fires the ring, which is the loop working, so the
 	# fixture moves the way a run has to.
@@ -242,8 +267,8 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	# is the ring working; doing it every third of a second is not, and that turned
 	# holding into a free homing volley with the disc beside the point.
 	var capacity_reached := false
-	for _capacity_step in range(900):
-		SmokeFixtures.graze_owned_ground(prototype, ring_home, 8.0)
+	for capacity_step in range(900):
+		SmokeFixtures.graze_owned_ground(prototype, ring_home, float(capacity_step) * 0.04)
 		pruning.advance(1.0 / 60.0)
 		if pruning.get_orbit_count() >= pruning.orbit_capacity:
 			capacity_reached = true
@@ -251,8 +276,8 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	var launched_at_capacity := pruning.get_cuttings_launched()
 	var cells_at_capacity := pruning.get_upkeep_cells_taken()
 	var held_seconds := 6.0
-	for _hold_step in range(int(held_seconds * 60.0)):
-		SmokeFixtures.graze_owned_ground(prototype, ring_home, 8.0)
+	for shed_step in range(int(held_seconds * 60.0)):
+		SmokeFixtures.graze_owned_ground(prototype, ring_home, float(900 + shed_step) * 0.04)
 		pruning.advance(1.0 / 60.0)
 	var shed := pruning.get_cuttings_launched() - launched_at_capacity
 	var allowed := int(ceil(held_seconds / pruning.full_ring_replacement_seconds)) + 1
@@ -410,7 +435,16 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	# be and most of the spikes are culled before anything can look at them.
 	var open_ground := SmokeFixtures.find_open_ground_near(prototype, release_home)
 	prototype.player.global_position = prototype.territory_field.to_global(open_ground)
-	pruning.advance(1.0 / 60.0)
+	# The ring is given `footing_grace_seconds` off Green before it tears -- she cuts
+	# her own footing out constantly now, so an instant release would make the path
+	# unholdable. What is under test is that the grace ends in a discharge.
+	# Stop on the release, not after a fixed span. The checks below read the spikes the
+	# discharge threw, and a spike that has been flying for another second has spent its
+	# pierce on whatever it met on the way.
+	for _release_step in range(int(ceil((pruning.footing_grace_seconds + 0.5) * 60.0))):
+		pruning.advance(1.0 / 60.0)
+		if pruning.get_rings_released() > rings_before:
+			break
 	report.check(
 		orbit_before_release > 0
 		and pruning.get_orbit_count() == 0
@@ -426,7 +460,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	var burst_total := 0
 	var burst_centre := prototype.combat.player.get_arena_position()
 	for cutting in pruning._cuttings:
-		if cutting.state != PruningDirector.CuttingState.LAUNCHED:
+		if (
+			cutting.state != PruningDirector.CuttingState.LAUNCHED
+			or not cutting.natural_release
+		):
 			continue
 		burst_total += 1
 		if burst_centre.direction_to(cutting.position).dot(
@@ -446,17 +483,30 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	)
 
 	# A bursting spike drives through a crowd instead of stopping in the front rank.
+	# Only the spikes the discharge threw. The ring is allowed a moment off Green before
+	# it tears, and ordinary Cuttings launched during the gather are still in the air
+	# when it does -- reading the whole pool took the minimum falloff across both and
+	# reported the burst as no harder-driving than a loose Cutting, which is the pool
+	# talking rather than the burst.
 	var burst_pierce := 0
 	var burst_falloff := 1.0
 	for cutting in pruning._cuttings:
-		if cutting.state == PruningDirector.CuttingState.LAUNCHED:
+		if (
+			cutting.state == PruningDirector.CuttingState.LAUNCHED
+			and cutting.natural_release
+		):
 			burst_pierce = maxi(burst_pierce, cutting.pierce_remaining)
 			burst_falloff = minf(burst_falloff, cutting.pierce_falloff)
 	report.check(
 		burst_pierce >= pruning.cutting_pierce
 		and burst_falloff > pruning.cutting_pierce_falloff
 		and pruning.launch_pierce_at_charge > 0,
-		"discharged spikes drive further through a crowd than a loose Cutting does"
+		"discharged spikes drive further through a crowd than a loose Cutting does "
+			+ "(pierce %d vs %d, falloff %.3f vs %.3f)"
+			% [
+				burst_pierce, pruning.cutting_pierce,
+				burst_falloff, pruning.cutting_pierce_falloff
+			]
 	)
 
 

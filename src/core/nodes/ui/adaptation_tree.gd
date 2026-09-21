@@ -248,25 +248,33 @@ func _update_path_upgrade_row(
 
 
 func _update_evolution_tree_slot() -> void:
-	evolution_slot.slot_count = 1
+	var active := _progression.get_active_evolutions()
+	# One socket per Evolution the run holds. A run can hold more than one now, and a
+	# single socket would have shown the first one it claimed for the rest of the run
+	# while the second quietly did its work unlabelled.
+	evolution_slot.slot_count = maxi(1, active.size())
 	match _progression.evolution_status:
 		Progression.EvolutionStatus.EVOLVED:
-			var evolution_name := Evolutions.get_evolution_name(_progression.active_evolution)
-			var upgrade_id := Evolutions.get_evolution_upgrade_id(_progression.active_evolution)
-			evolution_label.text = evolution_name
-			evolution_slot.set_slot(
-				0,
-				UpgradeDescriptions.initials(evolution_name),
-				# Against its own five-rank ceiling, the same way every ordinary line
-				# now reads against three.
-				"%d/%d" % [
-					_progression.get_evolution_upgrade_level(),
-					_progression.get_upgrade_maximum_level(upgrade_id),
-				],
-				_descriptions.tooltip(upgrade_id),
-				UpgradeSlots.SlotState.FILLED,
-				Color("d4a94f")
-			)
+			var names := PackedStringArray()
+			for index in range(active.size()):
+				var evolution_id: int = active[index]
+				var evolution_name := Evolutions.get_evolution_name(evolution_id)
+				var upgrade_id := Evolutions.get_evolution_upgrade_id(evolution_id)
+				names.append(evolution_name)
+				evolution_slot.set_slot(
+					index,
+					UpgradeDescriptions.initials(evolution_name),
+					# Against its own five-rank ceiling, the same way every ordinary
+					# line now reads against three.
+					"%d/%d" % [
+						_progression.get_evolution_rank(evolution_id),
+						_progression.get_upgrade_maximum_level(upgrade_id),
+					],
+					_descriptions.tooltip(upgrade_id),
+					UpgradeSlots.SlotState.FILLED,
+					Color("d4a94f")
+				)
+			evolution_label.text = " · ".join(names)
 		Progression.EvolutionStatus.READY:
 			# Named only once it has been claimed. Until then the slot says what it
 			# is for and nothing about what is waiting in it.

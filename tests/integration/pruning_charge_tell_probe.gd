@@ -47,8 +47,12 @@ func _run() -> void:
 	var quiet_while_charging := true
 	var reached_full := false
 	var charge_ticks := int(pruning.get_charge_seconds() * 60.0) + 120
-	for _hold_step in range(charge_ticks):
-		prototype.player.global_position = prototype.territory_field.to_global(home)
+	for hold_step in range(charge_ticks):
+		# Grazed rather than pinned. The harvest cuts the ground she is standing on, so
+		# an unbroken hold is something a moving player does: parked in one spot the
+		# ring starves, the Charge stops climbing and it eventually tears loose, which
+		# is the mechanic rather than a fault in the tell.
+		SmokeFixtures.graze_owned_ground(prototype, home, float(hold_step) * 0.04)
 		pruning.advance(1.0 / 60.0)
 		prototype.territory_field.step_simulation()
 		if pruning.is_fully_charged():
@@ -68,8 +72,8 @@ func _run() -> void:
 
 	var brightest := 0.0
 	var dimmest := 1.0
-	for _beat_step in range(90):
-		prototype.player.global_position = prototype.territory_field.to_global(home)
+	for beat_step in range(90):
+		SmokeFixtures.graze_owned_ground(prototype, home, float(beat_step) * 0.04)
 		pruning.advance(1.0 / 60.0)
 		if not pruning.is_fully_charged():
 			break

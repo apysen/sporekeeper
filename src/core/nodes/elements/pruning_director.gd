@@ -118,12 +118,44 @@ class Cutting:
 ## Arena pixels around the player the harvest eats from. Deliberately tight, so the
 ## hole opens under the player's feet where it can be seen.
 @export_range(10.0, 240.0, 2.0) var upkeep_radius_pixels := 52.0
-## Ground immediately under the player the harvest will not cut. The harvest only
-## runs while the player is standing on their own Green, so cutting the cell they
-## are standing on stops the harvest after a single step. Sparing this much leaves
-## the footing intact and opens the hole in a ring around the player, which is also
-## what makes the cut legible: a hole exactly underneath is hidden by the Gardener.
-@export_range(0.0, 60.0, 0.5) var upkeep_inner_radius_pixels := 7.0
+## Ground immediately under the player the harvest will not cut. Zero on purpose:
+## the harvest takes the cell she is standing on, so holding the ring in one place
+## eats her own footing and the ring starves where it stands. That is the whole
+## positional cost of the path -- the ring is maintained by walking it onto fresh
+## Green, not by parking on a good spot. `footing_grace_seconds` is what makes it
+## survivable; raise this instead if the cut ever needs to spare a standing pad.
+@export_range(0.0, 60.0, 0.5) var upkeep_inner_radius_pixels := 0.0
+## Seconds the ring survives with no Green underfoot before it tears loose. She is
+## now cutting the ground she stands on, so running dry is the normal end of every
+## stationary moment rather than a mistake, and it has to leave enough time to walk
+## to fresh Green. Too short and the path cannot be held while manoeuvring; too long
+## and standing still costs nothing, which is the thing this is here to prevent.
+@export_range(0.0, 4.0, 0.05) var footing_grace_seconds := 1.10
+## How fast finding Green again pays the grace back, as a multiple of how fast being
+## off it spends. Recovery drains the timer rather than clearing it, which is the
+## whole mechanism: the cut leaves Pruned Ground that regrows under her within a
+## second or two, and a timer that reset on a single frame of that regrowth let a
+## player stand in one spot forever -- measured at 82% of the bench spent with no
+## Green underfoot and the ring never once tearing loose. Draining means a flicker of
+## regrowth is worth a flicker of grace, and only ground she has not already spent
+## pays the debt off faster than standing still runs it up.
+@export_range(0.5, 8.0, 0.1) var footing_recovery_rate := 1.50
+## Share of the banked Charge payout a ring pays when it tears rather than when it is
+## let go on purpose.
+##
+## The discharge is the path's payout and it is priced as a decision: hold the ring,
+## bank the Charge, then step off your own Green and spend it. Cutting the ground out
+## from under her made that decision fire itself -- the footing runs out every few
+## seconds whether she meant it to or not -- and the bench found the result was not a
+## ring build at all. With `orbit_contact_damage` set to 1.0, Pruning+Vine still did
+## 93% of its damage: the orbiting ring is nearly irrelevant and the path is a Cutting
+## cannon firing a free seven-times volley on a timer.
+##
+## So a tear is not a discharge. The spikes still fly, because a ring coming apart has
+## to look like a ring coming apart, but the banked bonus is mostly not paid. The two
+## are told apart by the ground she is standing on: Pruned Ground means she ground her
+## own footing away, bare ground means she walked off her garden and meant it.
+@export_range(0.0, 1.0, 0.05) var torn_ring_charge_share := 0.20
 ## Cells of Green below which the harvest stops entirely. Counted in cells rather
 ## than as a share of the arena on purpose: a percentage floor gates the whole path
 ## on a state runs in this build rarely reach. What the floor is for is refusing to
@@ -144,7 +176,9 @@ class Cutting:
 ## Cuttings preallocated for the whole run.
 @export_range(8, 400, 1) var cutting_pool_size := 120
 ## Base damage of one Cutting before Cutting Damage applies.
-@export_range(1.0, 300.0, 1.0) var cutting_damage := 26.0
+## Moves with `orbit_contact_damage`; see the note there for why they are not separate
+## decisions.
+@export_range(1.0, 300.0, 1.0) var cutting_damage := 12.0
 ## Enemies one Cutting can strike before it is spent.
 @export_range(1, 12, 1) var cutting_pierce := 2
 ## Damage retained after each enemy a Cutting passes through.
@@ -183,11 +217,53 @@ class Cutting:
 ## runners that sweep the whole enclosed ground, so an enemy that closes to contact
 ## is standing in the thicket rather than safely inside a bare circle.
 @export_range(2.0, 60.0, 1.0) var orbit_reach_pixels := 18.0
-## Damage one pass of the ring deals before Cutting Damage and Charge. This is a
-## glass cannon: the ring kills what stands in it, and it costs the ecosystem.
-@export_range(0.5, 200.0, 0.5) var orbit_contact_damage := 26.0
+## Damage one pass of the ring deals before Cutting Damage and Charge.
+##
+## Cut from 26.0 with `cutting_damage` alongside it, and the two have to move together
+## or neither moves at all. Measured on the rank-3 siege bench: zeroing the ring alone
+## cost 5,200 damage, zeroing the Cuttings alone cost 2,300, and zeroing both cost
+## 23,600 -- whichever source is left simply takes over the kills. The same held for
+## the defence: either one alone was enough to keep damage taken at zero against sixty
+## enemies, and only removing both let anything reach her.
+@export_range(0.5, 200.0, 0.5) var orbit_contact_damage := 12.0
 ## Seconds before the ring may strike the same enemy again.
 @export_range(0.05, 3.0, 0.05) var orbit_hit_cooldown_seconds := 0.35
+## Enemies one tick of the thicket may bite, nearest first.
+##
+## An aura's real output is its per-enemy damage multiplied by how many enemies are
+## standing in it, and the second term is enemy density, which climbs all run. Every
+## weapon of this shape in the genre bounds one of the two. Vampire Survivors bounds
+## the first: Garlic does fifteen damage a second to a single target at max level and
+## earns its place through the knockback and freeze-resistance it strips, not through
+## damage. This thicket does about two hundred and fifty a second per body, so it has
+## to bound the other.
+##
+## Nearest first, so the cap reads as the thicket being *crowded out* rather than as
+## an arbitrary refusal: what it bites is what is pressed against it, which is what a
+## player watching the ring would expect it to bite anyway.
+@export_range(1, 60, 1) var orbit_maximum_targets_per_tick := 8
+## Share of the ring's damage a ring of one spike deals, against a full ring of
+## `orbit_capacity`. Between the two it is linear in the spike count.
+##
+## The thicket used to deal `orbit_contact_damage` flat the moment a single spike
+## existed, so one spike bit exactly as hard as sixteen and the ring's damage was
+## binary: up, or down. That is most of why the path resisted every nerf. Halving the
+## Cutting yield changed nothing because the ring was already at full damage on its
+## first spike, `orbit_capacity` and the shed timer were decorative, and the only
+## number that moved output was how much of the run the ring existed at all -- which
+## was 99% of it.
+##
+## Scaled, the ring becomes the thing it looks like: a thicket she builds by cutting
+## fresh ground and loses by standing on ground she has already cut.
+@export_range(0.0, 1.0, 0.01) var orbit_lone_spike_damage_share := 0.06
+## Seconds of harvesting that finds nothing before the ring loses a spike.
+##
+## The other half of the same rule. Without it a ring that had filled stayed filled:
+## the harvest stopping cost her the *next* spike but never the ones she had, so
+## standing still was free once the ring was built. Spikes wilt rather than launch --
+## a ring starving is not a discharge, and paying her a volley for stopping would
+## reward the thing this is here to discourage.
+@export_range(0.05, 5.0, 0.05) var orbit_wilt_interval_seconds := 0.40
 
 @export_group("Charge")
 ## Seconds of unbroken holding to reach full Charge.
@@ -315,6 +391,13 @@ var _upkeep_debt := 0.0
 var _upkeep_cells_taken := 0
 var _rings_released := 0
 var _holding := false
+## Seconds since there was last Green under her feet; see `footing_grace_seconds`.
+var _starved_seconds := 0.0
+## Set when the ring tore, cleared when the footing debt is paid off in full. A torn
+## ring does not begin re-forming the moment one cell of Green comes back underfoot.
+var _torn := false
+## Seconds since the harvest last found ground to cut; see `orbit_wilt_interval_seconds`.
+var _unfed_seconds := 0.0
 var _hold_seconds := 0.0
 
 ## Cells harvested past the Brush Pile threshold, and the bundles they have become.
@@ -389,6 +472,9 @@ func reset_director() -> void:
 	_rings_released = 0
 	_holding = false
 	_hold_seconds = 0.0
+	_starved_seconds = 0.0
+	_torn = false
+	_unfed_seconds = 0.0
 	queue_redraw()
 
 func advance(delta: float) -> void:
@@ -695,15 +781,64 @@ func _advance_ring(delta: float) -> void:
 		_hit_cooldowns[enemy_id] = float(_hit_cooldowns[enemy_id]) - delta
 		if _hit_cooldowns[enemy_id] <= 0.0:
 			_hit_cooldowns.erase(enemy_id)
+	# The footing debt, kept before anything decides whether the ring lives, because it
+	# has to keep being paid back while the ring is down. Off Green it runs up, on Green
+	# it drains; it is capped at the grace so that a long walk over bare ground is not a
+	# debt she then has to stand still to clear, which would invert the whole mechanic.
+	if is_player_on_green():
+		_starved_seconds = maxf(0.0, _starved_seconds - delta * footing_recovery_rate)
+	else:
+		_starved_seconds = minf(footing_grace_seconds, _starved_seconds + delta)
+	# Losing the path outright, or spending the ecosystem down to the floor, ends the
+	# hold at once. Losing the ground underfoot does not: she cuts that ground herself,
+	# so it runs out constantly and she is given `footing_grace_seconds` to reach more.
+	# A torn ring has to be earned back, not resumed. Without this the ring re-formed on
+	# the first frame of Green after a tear and sat at 99% uptime through the whole
+	# bench, which is why cutting its damage did so little: the path's output is its
+	# coverage, and coverage was never interrupted.
+	if _torn and _starved_seconds <= 0.0:
+		_torn = false
 	var can_hold := (
 		progression.has_path_active(Progression.PathId.PRUNING)
-		and is_player_on_green()
 		and is_above_safety_floor()
+		and _starved_seconds < footing_grace_seconds
+		and not _torn
 	)
 	if not can_hold:
 		if get_orbit_count() > 0:
-			# Stepping off your own ground throws the ring outward.
-			_release_ring("PRUNING — the ring tore loose as you left the Green.")
+			# Running out of ground throws the ring outward. Whether that is a discharge
+			# or a failure depends on why the ground went: Pruned Ground underfoot means
+			# the harvest ate it while she stood there, which is the ring tearing; bare
+			# ground means she walked off her own garden, which is her spending it.
+			var chose_it := (
+				territory_field.get_pruned_ground_at_local(
+					combat.player.get_arena_position()
+				) <= 0.0
+			)
+			if chose_it:
+				_release_ring("PRUNING — you stepped off the Green; the ring fired.")
+				_torn = true
+			else:
+				# Worded for the common case, which is no longer stepping off the Green
+				# but standing still until the harvest has eaten it: the ground goes
+				# away under her, and a message blaming her for leaving reads as a bug
+				# the first few times it happens.
+				# Worded for the common case, which is no longer stepping off the Green
+				# but standing still until the harvest has eaten it: the ground goes
+				# away under her, and a message blaming her for leaving reads as a bug
+				# the first few times it happens.
+				#
+				# This branch was briefly made to *wither* the ring -- lose every spike
+				# without launching any -- on the reasoning that running out of ground
+				# should not pay a volley. Measured, it moved rooted and walking output
+				# by the same 4% and did not widen the gap between them at all, which is
+				# the only thing it was for, and it broke the test above it: after a
+				# harvest the ground all around her is Pruned, so deliberately stepping
+				# aside was indistinguishable from starving in place. Reverted.
+				_release_ring(
+					"PRUNING — no Green left underfoot; the ring tore loose.", false
+				)
+				_torn = true
 		_holding = false
 		_charge = 0.0
 		_hold_seconds = 0.0
@@ -711,6 +846,19 @@ func _advance_ring(delta: float) -> void:
 		return
 	_holding = true
 	_hold_seconds += delta
+	# A ring nothing is feeding thins out. The harvest resets this whenever it finds
+	# ground; see `orbit_wilt_interval_seconds`.
+	_unfed_seconds += delta
+	while _unfed_seconds >= orbit_wilt_interval_seconds:
+		_unfed_seconds -= orbit_wilt_interval_seconds
+		if not _wilt_oldest_spike():
+			_unfed_seconds = 0.0
+			break
+	# Charge builds for as long as the ring is up, starving or not. Gating it on a
+	# clear footing debt was a third tax on the same decision -- the harvest already
+	# costs her the ground, and running the debt out already costs her the ring -- and
+	# it quietly made the discharge, which is the path's payout, unreachable from a
+	# short hold.
 	_charge = minf(1.0, _charge + delta / maxf(0.05, get_charge_seconds()))
 	_run_harvest(delta)
 	_turn_ring(delta)
@@ -738,14 +886,10 @@ func _run_harvest(delta: float) -> void:
 	var wanted := int(floor(_upkeep_debt))
 	_upkeep_debt -= float(wanted)
 	_harvest(wanted)
-	if _last_cycle_cells > 0:
-		return
-	# Nothing left underfoot, so there is nothing feeding the ring any longer.
-	if get_orbit_count() > 0:
-		_release_ring("PRUNING — nothing left underfoot; the ring fired.", false)
-	_holding = false
-	_charge = 0.0
-	_hold_seconds = 0.0
+	# A cycle that found nothing used to fire the ring on the spot. It cannot now: the
+	# cut takes her own cell, so an empty cycle is what every stationary player gets
+	# within a second or two, and firing there would make the path unholdable. The
+	# grace timer in `_advance_ring` owns the release instead.
 
 func _harvest(wanted_cells: int) -> int:
 	if wanted_cells <= 0:
@@ -764,6 +908,10 @@ func _harvest(wanted_cells: int) -> int:
 	_last_cycle_cells = harvest.cell_count
 	if harvest.cell_count <= 0:
 		return 0
+	# Fed. Every cell the drain returns is fresh by construction -- Pruned Ground sits
+	# at zero control and the drain only takes ground she still owns -- so finding any
+	# ground at all is the signal that she has moved onto something worth cutting.
+	_unfed_seconds = 0.0
 	_cycles_run += 1
 	_upkeep_cells_taken += harvest.cell_count
 	# A full ring still sheds its oldest spike to take a new one — that is the ring
@@ -776,7 +924,11 @@ func _harvest(wanted_cells: int) -> int:
 			# Bank toward the next shed rather than discarding it, but never bank
 			# more than the one spike a shed is allowed to raise: a full ring must
 			# not save up a volley to dump the moment the timer elapses.
-			_cutting_debt = minf(_cutting_debt + float(harvest.cell_count) * cuttings_per_cell, 1.0)
+			_cutting_debt = minf(
+				_cutting_debt
+				+ float(harvest.cell_count) * cuttings_per_cell,
+				1.0
+			)
 			return 0
 		_replacement_remaining = get_replacement_seconds()
 	var cuttings := float(harvest.cell_count) * cuttings_per_cell
@@ -1201,6 +1353,12 @@ func _advance_gathering_cutting(
 
 func _launch_cutting(cutting: Cutting, outward: bool = false) -> void:
 	cutting.state = CuttingState.LAUNCHED
+	# Set here rather than trusted from the caller. Cuttings are pooled, so a spike
+	# recycled out of an earlier discharge still carried `natural_release` when the
+	# ring shed it or a gather flew loose -- and that flag is what pays Green Manure,
+	# what Skimming Cut redirects and what Watersprouts sprout from, so a recycled
+	# spike was quietly claiming all three. Only a discharge is a natural release.
+	cutting.natural_release = outward
 	cutting.remaining = cutting_lifetime_seconds
 	cutting.last_hit_enemy_id = -1
 	cutting.pierce_remaining = cutting_pierce
@@ -1270,23 +1428,58 @@ func _apply_orbit_damage() -> void:
 	# enemy cannot slip between two blades, and closing to contact does not put it
 	# safely inside an empty circle: the runners strung between the spikes sweep the
 	# ground the hoop encloses. Each enemy keeps its own cooldown, so the thicket
-	# grinds rather than deleting whatever brushes it.
+	# grinds rather than deleting whatever brushes it, and one tick bites a bounded
+	# number of them, so a denser crowd is not simply a larger number.
 	var centre := combat.player.get_arena_position()
 	var radius := get_orbit_radius()
+	# Deliberately *not* multiplied by Cutting Damage. That line buys the damage of a
+	# launched Cutting -- a finite, aimed thing that hits what the player pointed it
+	# at -- and letting it also multiply the thicket put a stat multiplier on top of a
+	# quantity already multiplied by how many bodies are standing in the disc. That is
+	# the same stacked-axis shape the Thornwhip correction removed, and it is what the
+	# rework's own section 35 says to look for first when a build runs away.
+	#
+	# Charge stays: it is the path's own tension, paid for in ground, and it is the
+	# thing that makes holding the ring a decision rather than a default.
+	#
+	# There used to be a second, softer positional cost stacked here: a multiplier that
+	# read how recently the ground underfoot had been stripped and cut both the spike
+	# yield and this damage toward a quarter. It was a proxy for a cost the path did not
+	# yet have. The harvest now takes the cell she is standing on outright, so the cost
+	# is modelled rather than approximated, and keeping the proxy taxed the same
+	# decision twice -- measured, it held the ring to six spikes of sixteen while she
+	# was grazing properly, which quietly retired `orbit_capacity` and the shed timer
+	# built around it.
+	# Linear in the spike count, so the ring she has actually built is the ring that
+	# bites. See `orbit_lone_spike_damage_share`.
+	var spikes := get_orbit_count()
+	var fullness := float(spikes) / float(maxi(1, orbit_capacity))
 	var damage := (
 		orbit_contact_damage
-		* get_pruning_cutting_damage_multiplier()
 		* (1.0 + orbit_charge_damage_bonus * _charge)
+		* lerpf(clampf(orbit_lone_spike_damage_share, 0.0, 1.0), 1.0, fullness)
 	)
 	var reach := radius + orbit_reach_pixels
 	var ids := combat.get_active_enemy_ids()
 	var positions := combat.get_active_enemy_positions()
+	var candidates: Array = []
 	for index in range(mini(ids.size(), positions.size())):
 		var enemy_id := ids[index]
 		if _hit_cooldowns.has(enemy_id):
 			continue
-		if positions[index].distance_to(centre) > reach:
+		var distance := positions[index].distance_to(centre)
+		if distance > reach:
 			continue
+		candidates.append([distance, enemy_id])
+	# Only sorted when the cap actually binds. Most frames every body in the disc is
+	# still on its own cooldown, so this is a handful of entries or none at all.
+	if candidates.size() > orbit_maximum_targets_per_tick:
+		candidates.sort_custom(
+			func(first: Array, second: Array) -> bool: return first[0] < second[0]
+		)
+		candidates.resize(orbit_maximum_targets_per_tick)
+	for candidate in candidates:
+		var enemy_id: int = candidate[1]
 		if combat.damage_enemy_by_id(
 			enemy_id,
 			damage,
@@ -1296,11 +1489,37 @@ func _apply_orbit_damage() -> void:
 				notify_ring_kill(false)
 			_hit_cooldowns[enemy_id] = orbit_hit_cooldown_seconds
 
+func _wilt_oldest_spike() -> bool:
+	## Drops the ring's oldest spike outright. Returns whether there was one to drop.
+	##
+	## Wilted rather than launched: a spike that falls off a starving ring is ground
+	## that ran out, not a shot she took, and `_launch_cutting` would hand her the
+	## damage anyway.
+	var oldest: Cutting = null
+	for cutting in _cuttings:
+		if cutting.state != CuttingState.ORBITING:
+			continue
+		if oldest == null or cutting.orbit_slot < oldest.orbit_slot:
+			oldest = cutting
+	if oldest == null:
+		return false
+	oldest.state = CuttingState.INACTIVE
+	_position_orbit(get_orbit_count())
+	return true
+
 func _release_ring(message: String, intentional: bool = true) -> void:
 	var released := 0
 	var release_charge := _charge
 	var release_facing := combat.player.get_facing_direction()
-	var payout := 1.0 + get_launch_charge_damage_bonus() * release_charge
+	# A torn ring keeps its spikes but mostly not its banked Charge: the payout is the
+	# price of a decision, and a ring that came apart because the ground ran out was
+	# not one.
+	var payout := (
+		1.0
+		+ get_launch_charge_damage_bonus()
+		* release_charge
+		* (1.0 if intentional else clampf(torn_ring_charge_share, 0.0, 1.0))
+	)
 	var espalier_rank := get_evolution_rank(Progression.EvolutionId.ESPALIER)
 	var orbiting := get_orbit_count()
 	for cutting in _cuttings:
@@ -1342,6 +1561,10 @@ func _release_ring(message: String, intentional: bool = true) -> void:
 	)
 	_charge = 0.0
 	_hold_seconds = 0.0
+	# The footing debt deliberately survives a discharge. Clearing it here handed the
+	# ring a fresh grace the instant it tore, so a player standing on bare ground got
+	# an endless cycle of refill-and-tear rather than a path that had run out of
+	# ground. Firing the ring does not put the Green back.
 	_upkeep_debt = 0.0
 	_gleaning_kills = 0
 	_gleaning_banked = 0.0
@@ -1643,9 +1866,7 @@ func get_evolution_rank(evolution_id: int) -> int:
 	## The rank of this pairing's own Evolution line, or zero for a run holding a
 	## different pairing. Every rank check below reads this rather than the raw level,
 	## so a line can never be read by the Evolution it does not belong to.
-	if not progression.has_active_evolution(evolution_id):
-		return 0
-	return progression.get_evolution_upgrade_level()
+	return progression.get_evolution_rank(evolution_id)
 
 
 func _bury_pioneer_seeds(harvest: TerritoryField.PruneHarvest) -> void:

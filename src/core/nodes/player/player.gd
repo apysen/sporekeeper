@@ -75,6 +75,14 @@ var input_enabled := true
 var simulation_paused := false
 
 var _health := 0.0
+## What the universal Growth stats add. Held as three separate numbers rather than
+## folded into the authored exports so a reset puts the authored values back without
+## having to remember what was added to them, and so the Inspector keeps meaning what
+## the scene says it means.
+var _growth_bonus_health := 0.0
+var _growth_damage_reduction := 0.0
+var _growth_regeneration := 0.0
+var _growth_speed_multiplier := 1.0
 ## Movement speed is composed rather than held in one slot: relics and territory
 ## both want a say, and a single shared multiplier meant whichever wrote last
 ## erased the other. Each owner writes its own factor and movement reads the
@@ -123,6 +131,10 @@ func _physics_process(delta: float) -> void:
 		>= green_healing_maturity_threshold
 	):
 		heal(green_healing_per_second * delta)
+	# Convalescence, the Growth stat. Unconditional, unlike Photosynthesis above:
+	# what the player bought is regeneration, not another reason to stand on Green.
+	if _growth_regeneration > 0.0:
+		heal(_growth_regeneration * delta)
 	queue_redraw()
 
 
@@ -183,12 +195,16 @@ func _draw() -> void:
 
 
 func reset_player() -> void:
-	_health = maximum_health
+	_growth_bonus_health = 0.0
+	_growth_damage_reduction = 0.0
+	_growth_regeneration = 0.0
+	_health = get_max_health()
 	_invulnerability_remaining = 0.0
 	_invulnerability_elapsed = 0.0
 	_damage_flash_remaining = 0.0
 	_relic_speed_multiplier = 1.0
 	_territory_speed_multiplier = 1.0
+	_growth_speed_multiplier = 1.0
 	_territory_bonus_active = false
 	_damage_absorption_remaining = 0.0
 	_facing = Vector2.RIGHT
@@ -198,7 +214,7 @@ func reset_player() -> void:
 			territory_field.tuning.arena_size.y * 0.53
 		)
 	)
-	health_changed.emit(_health, maximum_health)
+	health_changed.emit(_health, get_max_health())
 	queue_redraw()
 
 
@@ -238,11 +254,14 @@ func apply_damage(amount: float) -> bool:
 	):
 		amount *= 1.0 - _damage_absorption
 		_damage_absorption_remaining = _damage_absorption_cooldown
+	# Bark, the Growth stat. Applied after Canopy, so the two stack without either
+	# being able to reach the total immunity each of them stops well short of.
+	amount *= 1.0 - _growth_damage_reduction
 	_health = maxf(0.0, _health - amount)
 	_invulnerability_remaining = damage_invulnerability_seconds
 	_invulnerability_elapsed = 0.0
 	_damage_flash_remaining = damage_flash_seconds
-	health_changed.emit(_health, maximum_health)
+	health_changed.emit(_health, get_max_health())
 	damage_taken.emit(amount)
 	if _health <= 0.0:
 		died.emit()
@@ -292,13 +311,17 @@ func _update_territory_speed() -> void:
 	)
 
 
+func get_growth_damage_reduction() -> float:
+	return _growth_damage_reduction
+
+
 func set_relic_speed_multiplier(multiplier: float) -> void:
 	_relic_speed_multiplier = maxf(0.05, multiplier)
 
 
 ## The effective multiplier movement actually travels on.
 func get_speed_multiplier() -> float:
-	return _relic_speed_multiplier * _territory_speed_multiplier
+	return _relic_speed_multiplier * _territory_speed_multiplier * _growth_speed_multiplier
 
 
 func set_damage_absorption(fraction: float, cooldown_seconds: float) -> void:
@@ -313,10 +336,11 @@ func get_damage_absorption_remaining() -> float:
 
 
 func heal(amount: float) -> void:
-	if amount <= 0.0 or _health <= 0.0 or _health >= maximum_health:
+	var ceiling := get_max_health()
+	if amount <= 0.0 or _health <= 0.0 or _health >= ceiling:
 		return
-	_health = minf(maximum_health, _health + amount)
-	health_changed.emit(_health, maximum_health)
+	_health = minf(ceiling, _health + amount)
+	health_changed.emit(_health, ceiling)
 
 
 func get_health() -> float:
@@ -324,7 +348,32 @@ func get_health() -> float:
 
 
 func get_max_health() -> float:
-	return maximum_health
+	## The authored maximum plus whatever Hardiness has been bought. Everything that
+	## draws, clamps or compares against a maximum reads this rather than the export,
+	## so a Growth rank raises the bar instead of only the number beside it.
+	return maximum_health + _growth_bonus_health
+
+
+func set_growth_modifiers(
+	bonus_health: float,
+	speed_multiplier: float,
+	damage_reduction: float,
+	regeneration_per_second: float
+) -> void:
+	## The universal stats, pushed in whenever a Growth rank is taken.
+	##
+	## Extra maximum health is granted as health too. A reward that raised the ceiling
+	## and left the player where they were would read as having been given nothing at
+	## the exact moment they had just survived something for it.
+	var previous := get_max_health()
+	_growth_bonus_health = maxf(0.0, bonus_health)
+	_growth_damage_reduction = clampf(damage_reduction, 0.0, 0.75)
+	_growth_regeneration = maxf(0.0, regeneration_per_second)
+	_growth_speed_multiplier = maxf(0.05, speed_multiplier)
+	var gained := get_max_health() - previous
+	if gained > 0.0 and _health > 0.0:
+		_health += gained
+	health_changed.emit(_health, get_max_health())
 
 
 func get_arena_position() -> Vector2:
@@ -387,12 +436,12 @@ func capture_state() -> Dictionary:
 func apply_state(state: Dictionary) -> void:
 	if state.is_empty():
 		return
-	_health = clampf(float(state.get("health", maximum_health)), 0.0, maximum_health)
+	_health = clampf(float(state.get("health", get_max_health())), 0.0, get_max_health())
 	var local_position: Variant = state.get("local_position", Vector2.ZERO)
 	if local_position is Vector2:
 		global_position = territory_field.to_global(local_position)
 	var facing: Variant = state.get("facing", Vector2.RIGHT)
 	if facing is Vector2 and (facing as Vector2).length_squared() > 0.0:
 		_facing = (facing as Vector2).normalized()
-	health_changed.emit(_health, maximum_health)
+	health_changed.emit(_health, get_max_health())
 	queue_redraw()

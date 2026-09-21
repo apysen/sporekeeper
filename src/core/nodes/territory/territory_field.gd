@@ -1573,11 +1573,11 @@ func drain_territory_in_radius(
 	var radius_x := maxi(1, ceili(radius_pixels / cell_width))
 	var radius_y := maxi(1, ceili(radius_pixels / cell_height))
 	var radius_squared := radius_pixels * radius_pixels
-	# Ground the cut is not allowed to touch, measured from the same centre. The
-	# harvest is gated on the player standing on their own Green, so a cut that takes
-	# the cell underfoot switches off the very thing that is running it: one step of
-	# harvesting and the ring stops filling. Sparing a small disc keeps the player's
-	# own footing and opens the hole around them instead of beneath them.
+	# Ground the cut is not allowed to touch, measured from the same centre. Pruning
+	# passes zero and so cuts the cell underfoot, which is deliberate: standing still
+	# is supposed to strip the caller's own footing. A caller that needs to keep the
+	# ground it stands on -- because it is gated on standing there -- passes a small
+	# disc and gets the hole opened around it instead of beneath it.
 	var inner_squared := maxf(0.0, inner_radius_pixels) * maxf(0.0, inner_radius_pixels)
 	var bands := [
 		[0.0, tuning.mature_threshold * 0.5],

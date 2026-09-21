@@ -409,6 +409,15 @@ class DamageNumberLayer:
 ## accounting exists rather than the assurance.
 var debug_damage_accounting := false
 var debug_damage_applied_total := 0.0
+## Damage the build *produced*, before it was clipped to the health that was there.
+##
+## `debug_damage_applied_total` is health removed, which is the honest measure of a
+## kill and a misleading measure of output: a source firing into a crowd something
+## else is already killing contributes almost nothing to it however hard it hits. The
+## two together separate "what did this build destroy" from "what did it fire", and a
+## balance bench needs both -- the gap between them is overkill, which is itself the
+## thing worth knowing about a single-target line standing next to an area sweep.
+var debug_damage_dealt_total := 0.0
 var debug_damage_number_total := 0.0
 
 ## Where the baked digit strip lives, and the point size it was baked at. The two
@@ -419,14 +428,27 @@ const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
 
 @export_group("Bramble Territory")
 ## Base thorn damage per tick against an enemy that has only just stepped onto Green.
-## Thorn damage is deliberately a fixed, modest chip effect with no upgrade line
-## behind it: Bramble controls enemies, and its Evolutions turn that control into
-## damage.
+## Thorn damage is deliberately a fixed effect with no upgrade line behind it:
+## Bramble controls enemies, and its Evolutions turn that control into damage.
+##
+## Raised to 0.55 in the early-Path pass and put back, which is worth recording
+## because the measurement that reversed it is the useful part.
+##
+## The pair sweep that said a Bramble opening was indistinguishable from no
+## Adaptation was run on a board with six per cent Green on it, and Bramble damages
+## enemies standing *on Green*. On a developed board Bramble's base mechanic already
+## adds about a quarter again on top of the Cane with nothing bought. Tripling the
+## chip on top of that tripled its whole contribution -- and measurably *lowered* its
+## slow, Entanglement and pin, because bodies that die faster never accumulate any.
+## A buff that converts the control Adaptation into a damage Adaptation is the one
+## change this line must not make.
 @export_range(0.0, 100.0, 0.5) var bramble_contact_damage := 0.18
 ## Seconds between repeated thorn-damage ticks while an enemy stands on Green.
 @export_range(0.05, 3.0, 0.05) var bramble_damage_interval_seconds := 0.45
 ## Fraction of an enemy's maximum health added to each thorn tick, so chip damage
 ## still registers against late-game health pools. No upgrade line raises it.
+##
+## Put back with the flat part above and for the same reason.
 @export_range(0.0, 0.2, 0.001) var bramble_max_health_damage_fraction := 0.0005
 ## Thorn-damage multiplier reached once an enemy is fully Entangled. Chip damage
 ## still rises with Entanglement, but a crossing enemy must never be killed by it.
@@ -586,6 +608,11 @@ var _enemy_slot_by_id := {}
 var _last_inactive_enemy_slot := -1
 var _spawn_sequence := 0
 var _cane_remaining := 0.0
+## The universal Growth stats this component owns: one multiplier on every point of
+## damage the garden deals, and one on the radius of every area effect it produces.
+## Both default to doing nothing, so a run that never Provokes never notices them.
+var _growth_damage_multiplier := 1.0
+var _growth_area_multiplier := 1.0
 var _cane_damage_multiplier := 1.0
 var _cane_cooldown_multiplier := 1.0
 var _cane_reach_multiplier := 1.0
@@ -1072,6 +1099,8 @@ func _find_enemy(enemy_id: int) -> EnemyState:
 func reset_combat() -> void:
 	_elite_modifiers.reset()
 	_scaling.reset_campaign()
+	_growth_damage_multiplier = 1.0
+	_growth_area_multiplier = 1.0
 	for enemy in _enemies:
 		enemy.active = false
 		enemy.state = EnemyKinds.StateKind.INACTIVE
@@ -1228,7 +1257,11 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	return enemy.id
 
 
-func _request_canker_spawn(role: int, collision_radius: float) -> Vector2:
+func _request_canker_spawn(
+	role: int,
+	collision_radius: float,
+	forced: bool = false
+) -> Vector2:
 	## An interior entrance beside a Canker, or the invalid sentinel to stay outside.
 	##
 	## The ground is checked here rather than in the director because occupancy is this
@@ -1237,7 +1270,7 @@ func _request_canker_spawn(role: int, collision_radius: float) -> Vector2:
 	## an ordinary one than have the request stall or vanish.
 	if canker_director == null or not _is_redirectable_role(role):
 		return Vector2(-99999.0, -99999.0)
-	var candidate := canker_director.request_interior_spawn()
+	var candidate := canker_director.request_interior_spawn(forced)
 	if candidate.x < -90000.0:
 		return candidate
 	if not _can_occupy_diamond(candidate, collision_radius):
@@ -1333,6 +1366,35 @@ func _find_perimeter_placement(role: int, wanted: Vector2) -> Vector2:
 	return Vector2(-99999.0, -99999.0)
 
 
+func has_active_cankers() -> bool:
+	## Whether the run currently holds a Knot. Asked by the wave director before it
+	## buys a Canker Reinforcement, so a recipe that has nowhere to come out of is
+	## simply not bought rather than bought and quietly turned into a perimeter pack.
+	return canker_director != null and canker_director.has_active_knots()
+
+
+func spawn_enemy_from_canker(role: int, fallback: Vector2) -> int:
+	## An enemy that is *meant* to come out of the interior, rather than one that
+	## happened to win the redirect roll.
+	##
+	## The share `CankerDirector` applies to ordinary reinforcements is the rule that
+	## keeps the perimeter the main entrance; an authored Canker Reinforcement is the
+	## exception the recipe table makes on purpose, so it asks past the share. The
+	## ground check is unchanged, and a refused point still falls back to the
+	## perimeter -- a redirected spawn becoming an ordinary one is always better than
+	## a spawn that does not happen.
+	var profile := _profile_for_role(role)
+	var radius := (
+		profile.body_radius_pixels * enemy_collision_radius_multiplier
+		if profile != null
+		else 6.0
+	)
+	var interior := _request_canker_spawn(role, radius, true)
+	if interior.x > -90000.0:
+		return spawn_enemy(role, interior)
+	return spawn_enemy_near(role, fallback)
+
+
 func spawn_pack(role: int, count: int) -> int:
 	var spawned := 0
 	for _index in range(count):
@@ -1375,6 +1437,11 @@ func blast_enemies_in_radius(
 	elite_overkill_cap: float = 0.0,
 	boss_overkill_cap: float = 0.0
 ) -> BlastReport:
+	# Spread, the Growth stat, applied here because every area effect in the game --
+	# eruptions, traps, Blooms, pulses, the ring -- resolves through this one call.
+	# A universal reward has to be universal; widening each caller instead would mean
+	# the stat quietly did nothing for whichever effect somebody forgot.
+	radius *= _growth_area_multiplier
 	var report := BlastReport.new()
 	if PerfCounters.enabled:
 		PerfCounters.count(PerfCounters.COUNT_BLAST_CALLS)
@@ -1969,6 +2036,20 @@ func get_enemy_movement_speed_multiplier(enemy_id: int) -> float:
 	return enemy.movement_speed_multiplier if enemy != null else 0.0
 
 
+func set_growth_modifiers(
+	damage_multiplier: float,
+	area_multiplier: float
+) -> void:
+	## The two universal Growth stats that belong to combat rather than to the body.
+	## Pushed in when a Growth rank is taken, alongside the ones the player node owns.
+	_growth_damage_multiplier = maxf(0.05, damage_multiplier)
+	_growth_area_multiplier = maxf(0.05, area_multiplier)
+
+
+func get_growth_damage_multiplier() -> float:
+	return _growth_damage_multiplier
+
+
 func set_enemy_scaling(
 	health_scale: float,
 	damage_scale: float,
@@ -2058,6 +2139,7 @@ func debug_kill_all(death_source: int = DeathSource.DEBUG) -> int:
 
 func debug_reset_damage_accounting() -> void:
 	debug_damage_applied_total = 0.0
+	debug_damage_dealt_total = 0.0
 	debug_damage_number_total = 0.0
 
 
@@ -4443,6 +4525,12 @@ func _damage_enemy(
 ) -> void:
 	if not enemy.active or damage <= 0.0:
 		return
+	# Vigour, the Growth stat. Here rather than at each weapon, because this is the
+	# single funnel every point of damage the garden deals passes through, and a
+	# universal damage bonus applied per-source would be a different number for each
+	# Path. Debug damage is left alone so a probe asking for exactly 40 gets 40.
+	if death_source != DeathSource.DEBUG:
+		damage *= _growth_damage_multiplier
 	# One static read per call, and the timestamp only when it is on. Taking it
 	# unconditionally here is what pushed a pairing over budget earlier in this pass:
 	# this runs once per enemy per blast, many blasts a frame.
@@ -4455,6 +4543,7 @@ func _damage_enemy(
 	var applied_damage := minf(damage, enemy.health)
 	if debug_damage_accounting:
 		debug_damage_applied_total += applied_damage
+		debug_damage_dealt_total += damage
 	# Being hit is what "interrupted" means. An escalating enemy loses everything it
 	# had built up, which is what makes answering one worth doing at all rather than
 	# only worth doing eventually.

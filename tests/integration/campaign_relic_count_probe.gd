@@ -41,11 +41,12 @@ func _run() -> void:
 	waves.configure_mode(RunMode.Id.CAMPAIGN)
 	waves.reset_director()
 
-	# Count the awards at their sources: the wave cadence the prototype owns, and
-	# the milestone kills the wave director schedules.
+	# Counted off the wave specs the director is actually running, not off Quick's
+	# repeating cycle. Campaign authors which waves pay a relic on its wave table,
+	# and this probe used to count the Quick cadence instead -- which agreed with the
+	# table by luck at twenty-five waves and stopped agreeing at twenty.
 	var wave_awards := 0
 	var last_wave := 0
-	var cycle := prototype.relic_reward_wave_cycle
 	var duration := waves.run_duration_seconds
 	var elapsed := 0.0
 	while elapsed < duration:
@@ -54,7 +55,8 @@ func _run() -> void:
 		var wave := waves.get_current_wave_number()
 		if wave != last_wave:
 			last_wave = wave
-			if cycle > 0 and wave % cycle == 0:
+			var spec := waves.get_wave_spec(wave)
+			if spec != null and spec.grants_wave_relic:
 				wave_awards += 1
 	# One Elite, the Burrower and the Hive Queen: each is latched, so none recurs.
 	var milestone_awards := 3
@@ -62,9 +64,9 @@ func _run() -> void:
 
 	print(
 		(
-			"CAMPAIGN_RELICS: waves=%d cycle=%d wave_awards=%d milestones=%d total=%d "
+			"CAMPAIGN_RELICS: waves=%d wave_awards=%d milestones=%d total=%d "
 			+ "target=%d-%d"
-		) % [last_wave, cycle, wave_awards, milestone_awards, total, MINIMUM, MAXIMUM]
+		) % [last_wave, wave_awards, milestone_awards, total, MINIMUM, MAXIMUM]
 	)
 	prototype.queue_free()
 	await process_frame

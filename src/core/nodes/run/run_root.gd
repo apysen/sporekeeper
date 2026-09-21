@@ -20,6 +20,10 @@ enum ChoiceKind {
 	NONE,
 	UPGRADE,
 	RELIC,
+	## Claiming one of the relationships the build has developed far enough to evolve.
+	EVOLUTION,
+	## A universal stat, paid out for having survived a wave the player called early.
+	GROWTH,
 }
 
 ## One queue for every full-screen choice, in the order the design fixes.
@@ -33,9 +37,18 @@ enum QueuedReward {
 	## from the pool the new Adaptation just opened. A relic offered a moment
 	## earlier would be drawn from a smaller catalogue for no reason the player
 	## could see.
-	BRANCH_DRAFT,
+	ADAPTATION_DRAFT,
+	## Second, for the same reason in reverse: an Evolution claimed now is an
+	## Evolution the relic behind it may be chosen to support.
+	EVOLUTION,
 	MILESTONE_RELIC,
 	WAVE_RELIC,
+	## A Trial that was held. After the ordinary relics because those were earned by
+	## the wave arriving, and this one was earned by how it was played.
+	TRIAL_RELIC,
+	## Last. Growth is the smallest reward in the run and the one least worth
+	## interrupting anything else for.
+	GROWTH,
 }
 
 @export_group("Gameplay Components")
@@ -255,6 +268,14 @@ enum QueuedReward {
 ## them take named placeholders - {like_this} - and a placeholder that matches
 ## nothing is printed as typed, which is how a misspelt name shows itself.
 @export var wave_grace_template := "WAVE {wave} IN {seconds}s"
+## The wave line once the run has Blight on it. Written in place of the plain wave
+## counter rather than beside it, because the player has to be able to see at a
+## glance why the garden got harder and there is no second line to put it on.
+@export var wave_blight_template := "WAVE {wave}/{waves}   BLIGHT {blight}"
+## Announced once per wave, the first moment the next one can be called in early.
+## Provocation is the Campaign's main difficulty dial and the player chooses it, so
+## they have to be told it is available rather than left to discover the key.
+@export var provoke_ready_banner := "PROVOKE READY — E CALLS THE NEXT WAVE"
 @export var status_complete_text := "CLEAR THE FIELD"
 @export_multiline var metabolism_complete_template := (
 	"LIFETIME BIOMASS {lifetime}
@@ -265,6 +286,10 @@ FULLY DEVELOPED"
 ## Heading on the milestone offer of lines from Adaptations the run has not
 ## entered, so the panel says what it is rather than looking like a level-up.
 @export var choice_header_branch_draft := "NEW ADAPTATION"
+@export var choice_header_evolution := "EVOLUTION"
+@export var choice_header_growth := "GROWTH"
+@export_multiline var choice_growth_template := "{name}
+{detail}"
 @export_multiline var choice_evolution_template := "{name}   EVOLUTION
 {detail}"
 @export_multiline var choice_upgrade_template := (
@@ -320,6 +345,9 @@ var _damage_vignette_alpha := 0.0
 ## time is what has stopped.
 var _hit_freeze_remaining := 0.0
 var _banner_remaining := 0.0
+## The wave whose Provocation window has already been announced, so the prompt
+## arrives once when it opens rather than every tenth of a second afterwards.
+var _provoke_prompt_wave := 0
 ## Whether the run is currently choosing where to put a release, and which action is
 ## waiting on the answer. The run keeps running while it is: the doc treats a release
 ## as a decision made under pressure, not a pause to plan in.
@@ -360,6 +388,14 @@ var _base_small_fragment_decay := 0.0
 var save_enabled := false
 var _clover_enabled := true
 var _mechanics_help: MechanicsHelp
+## The Trial currently running, and its card. Built in code rather than authored in
+## the scene, the same way the glossary is: it is a prototype, and a prototype that
+## needs a scene edit before anyone can look at it is a prototype nobody looks at.
+var _trial_director: TrialDirector
+## Whether the Trial that just resolved is owed its reward. Kept rather than paid
+## immediately, because a Trial resolves on a wave boundary that may already be
+## carrying a relic and a draft.
+var _owed_trial_relics := 0
 
 
 func _ready() -> void:
@@ -459,6 +495,13 @@ func _ready() -> void:
 	wave_director.hive_queen_arrived.connect(_on_hive_queen_arrived)
 	wave_director.final_invasion_began.connect(_on_final_invasion_began)
 	wave_director.cleanup_began.connect(_on_cleanup_began)
+	wave_director.path_draft_earned.connect(_on_path_draft_earned)
+	wave_director.evolution_reward_earned.connect(_on_evolution_reward_earned)
+	wave_director.growth_reward_earned.connect(_on_growth_reward_earned)
+	wave_director.wave_provoked.connect(_on_wave_provoked)
+	wave_director.blight_changed.connect(_on_blight_changed)
+	wave_director.trial_wave_began.connect(_on_trial_wave_began)
+	wave_director.trial_wave_ended.connect(_on_trial_wave_ended)
 	spore_director.status_requested.connect(_set_status)
 	bloom_director.status_requested.connect(_set_status)
 	combat.boss_erupted.connect(_on_boss_erupted)
@@ -506,6 +549,9 @@ func _ready() -> void:
 	adaptation_director.status_requested.connect(_set_status)
 	progression.upgrade_choice_requested.connect(_on_upgrade_choice_requested)
 	progression.relic_choice_requested.connect(_on_relic_choice_requested)
+	progression.evolution_choice_requested.connect(_on_evolution_choice_requested)
+	progression.growth_choice_requested.connect(_on_growth_choice_requested)
+	progression.growth_changed.connect(_apply_progression_modifiers)
 	progression.upgrades_changed.connect(_apply_progression_modifiers)
 	progression.paths_changed.connect(_apply_progression_modifiers)
 	progression.metabolism_changed.connect(_apply_progression_modifiers)
@@ -536,6 +582,7 @@ func _ready() -> void:
 	pause_menu.quit_requested.connect(_quit_from_pause_menu)
 	_refresh_dev_controls()
 	_build_mechanics_help()
+	_build_trial_director()
 
 	overlay.show_annotations = false
 	_apply_clover_presence()
@@ -603,6 +650,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_R:
 			reset_run()
 			return
+		KEY_E:
+			# A real mechanic rather than a debug key, so it answers whether or not
+			# the dev controls are on.
+			_provoke_next_wave()
+			return
 	# Everything past here is a debug key and answers only while the dev controls are on.
 	if not dev_controls_enabled:
 		return
@@ -645,6 +697,32 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_status("Debug: a relic reward is on the table.")
 		KEY_F11:
 			_report_man_eater_state()
+
+
+func _provoke_next_wave() -> void:
+	## The player calling the next wave in early.
+	##
+	## Refusals say why. Provocation is a deliberate risk and a button that silently
+	## does nothing teaches the player that the mechanic is unreliable rather than
+	## that the wave is not ready to be called yet.
+	if not wave_director.is_campaign_mode():
+		_set_status("Provocation is a Campaign mechanic.")
+		return
+	if _run_state != RunState.RUNNING or _choice_kind != ChoiceKind.NONE:
+		return
+	if wave_director.provoke() > 0.0:
+		return
+	# Two different refusals, and telling the player the wrong one is worse than
+	# telling them nothing: "hold the wave longer" is advice they can act on, and it
+	# is false once the run has spent its compression allowance for good.
+	if not wave_director.has_provocation_budget():
+		_set_status(
+			"The garden has been hurried as far as it will go this run."
+		)
+		return
+	_set_status(
+		"Not yet. Hold this wave longer, or clear what it has already sent."
+	)
 
 
 func _report_wager_debug() -> void:
@@ -775,6 +853,8 @@ func advance_run(delta: float) -> void:
 	man_eater.advance(delta)
 	pruning_director.advance(delta)
 	canker_director.advance(delta)
+	if _trial_director != null:
+		_trial_director.advance(delta)
 	_update_territory_failure(delta)
 	_advance_banner(delta)
 
@@ -804,6 +884,7 @@ func reset_run() -> void:
 	_damage_vignette_remaining = 0.0
 	_damage_vignette_alpha = 0.0
 	_hit_freeze_remaining = 0.0
+	_provoke_prompt_wave = 0
 	_update_damage_vignette()
 	_hud_accumulator = 999.0
 	choice_panel.hide_options()
@@ -839,6 +920,9 @@ func reset_run() -> void:
 	wave_director.reset_director()
 	canker_director.set_run_seed(progression.run_seed)
 	canker_director.reset_director()
+	if _trial_director != null:
+		_trial_director.reset_trials()
+	_owed_trial_relics = 0
 	spore_director.reset_director()
 	bloom_director.reset_director()
 	bramble_director.reset_director()
@@ -848,6 +932,13 @@ func reset_run() -> void:
 	_refresh_simulation_pause()
 	_apply_progression_modifiers()
 	_set_status("The frontier is alive. Move with WASD; Cane sweeps automatically.")
+	# Campaign's first Adaptation is handed out rather than waited for. Wave 1 is on
+	# the wave table's grant list and no boundary is ever crossed into it, so the
+	# opening choice is opened here -- and it is the *only* thing the player is asked
+	# before the first enemy walks in.
+	if wave_director.is_campaign_mode():
+		_queue_reward(QueuedReward.ADAPTATION_DRAFT)
+		_drain_reward_queue()
 	_update_hud()
 
 
@@ -862,7 +953,11 @@ func debug_advance_time(seconds: float) -> void:
 
 
 func get_elapsed_seconds() -> float:
-	return wave_director.elapsed_seconds
+	## Wall clock, not schedule position. A provoked Campaign moves its own timeline
+	## forward, so the wave the run is on and the time it took to get there are two
+	## different numbers -- and what a result screen and a personal best are about is
+	## how long the player actually played.
+	return wave_director.real_elapsed_seconds
 
 
 func get_run_state() -> int:
@@ -943,11 +1038,18 @@ func _drain_reward_queue() -> void:
 		var reward: int = _reward_queue[0]
 		_reward_queue.remove_at(0)
 		match reward:
-			QueuedReward.BRANCH_DRAFT:
-				if progression.request_branch_upgrade_choice():
+			QueuedReward.ADAPTATION_DRAFT:
+				if progression.request_adaptation_draft():
 					return
-			QueuedReward.MILESTONE_RELIC, QueuedReward.WAVE_RELIC:
+			QueuedReward.EVOLUTION:
+				if progression.request_evolution_choice():
+					return
+			QueuedReward.MILESTONE_RELIC, QueuedReward.WAVE_RELIC, \
+			QueuedReward.TRIAL_RELIC:
 				if progression.request_relic_choice():
+					return
+			QueuedReward.GROWTH:
+				if progression.request_growth_choice():
 					return
 
 
@@ -973,7 +1075,10 @@ func _on_adaptation_mastered(path_id: int) -> void:
 
 
 func _on_core_pair_locked(core_a: int, core_b: int, evolution_id: int) -> void:
-	_set_status("%s + %s — this run's Evolution is %s." % [
+	# A relationship the run now has, rather than the run's one Evolution. Nothing is
+	# locked by the second Core any more: a third Adaptation brings two more pairs
+	# with it, and any of the three may be the one the player develops.
+	_set_status("%s + %s — develop both and they can evolve into %s." % [
 		Progression.get_path_name(core_a),
 		Progression.get_path_name(core_b),
 		Evolutions.get_evolution_name(evolution_id),
@@ -989,7 +1094,7 @@ func _on_compost_cache_granted() -> void:
 	## remaining use for: health, and a patch of Fresh Green put back on the
 	## frontier. A reward event rather than a Seed germination, so nothing that
 	## counts Seeds counts this.
-	player.heal(player.maximum_health * compost_cache_heal_fraction)
+	player.heal(player.get_max_health() * compost_cache_heal_fraction)
 	territory_field.queue_seed_growth(
 		_find_compost_cache_site(),
 		compost_cache_growth_mass_scale
@@ -1048,18 +1153,20 @@ func _on_elite_defeated() -> void:
 	# third Adaptation. The room, not the Adaptation: what grows in it is still
 	# drafted, the same way the Core pair was.
 	if progression.unlock_branch_slot():
-		_queue_reward(QueuedReward.BRANCH_DRAFT)
+		_queue_reward(QueuedReward.ADAPTATION_DRAFT)
 		_set_status("ROOTBREAKER FELLED — a relic, and room for a new Adaptation.")
+	_queue_milestone_evolution()
 	_drain_reward_queue()
 
 
 func _on_boss_defeated() -> void:
 	_queue_reward(QueuedReward.MILESTONE_RELIC)
 	if progression.unlock_branch_slot():
-		_queue_reward(QueuedReward.BRANCH_DRAFT)
+		_queue_reward(QueuedReward.ADAPTATION_DRAFT)
 		_set_status("THE BURROWER FALLS — a relic, and room for your last Adaptation.")
 	else:
 		_set_status("BOSS DEFEATED — claim a relic from its remains.")
+	_queue_milestone_evolution()
 	_drain_reward_queue()
 
 
@@ -1070,7 +1177,17 @@ func _on_hive_queen_defeated() -> void:
 	## nothing is worse than one the run never promised.
 	_queue_reward(QueuedReward.MILESTONE_RELIC)
 	_set_status("THE HIVE QUEEN FALLS — the brood is leaderless. Claim a relic.")
+	_queue_milestone_evolution()
 	_drain_reward_queue()
+
+
+func _queue_milestone_evolution() -> void:
+	## Quick's Evolution rewards. Campaign authors its three on the wave table, so a
+	## Campaign boss does not also open one -- six opportunities in twenty minutes
+	## would turn a two-Evolution target into "however many pairs you developed".
+	if wave_director.is_campaign_mode():
+		return
+	_queue_reward(QueuedReward.EVOLUTION)
 
 func _on_upgrade_choice_requested(options: PackedInt32Array) -> void:
 	_show_choice(ChoiceKind.UPGRADE, options)
@@ -1090,26 +1207,81 @@ func _reroll_upgrade_choice() -> void:
 				% progression.get_relic_rerolls_remaining()
 			)
 		return
-	if _choice_kind != ChoiceKind.UPGRADE:
+	if _choice_kind != ChoiceKind.UPGRADE or progression.is_pending_adaptation_draft():
 		return
 	if progression.reroll_upgrade_choice():
 		_set_status("Draft rerolled. %d reroll(s) left this run." % progression.rerolls_remaining)
 
 
 func _update_reroll_button() -> void:
-	# Upgrade and relic drafts both sample a pool, so both can be redrawn. Path
-	# and Breakthrough offers present every option there is, so they cannot.
+	# Upgrade and relic drafts both sample a pool, so both can be redrawn.
+	#
+	# Nothing else can. An Adaptation draft, an Evolution reward and a Growth reward
+	# are all built from a different pool than the level-up roll, and the reroll only
+	# knows how to rebuild a level-up: offering it on an Adaptation draft would trade
+	# the run's Path choice for three ordinary upgrade lines, which is not a redraw
+	# of anything the player was looking at.
 	if _choice_kind == ChoiceKind.RELIC:
 		choice_panel.set_reroll_state(true, progression.get_relic_rerolls_remaining())
 		return
 	choice_panel.set_reroll_state(
-		_choice_kind == ChoiceKind.UPGRADE,
+		_choice_kind == ChoiceKind.UPGRADE
+		and not progression.is_pending_adaptation_draft(),
 		progression.rerolls_remaining,
 	)
 
 
 func _on_relic_choice_requested(options: PackedInt32Array) -> void:
 	_show_choice(ChoiceKind.RELIC, options)
+
+
+func _on_evolution_choice_requested(options: PackedInt32Array) -> void:
+	_show_choice(ChoiceKind.EVOLUTION, options)
+
+
+func _on_growth_choice_requested(options: PackedInt32Array) -> void:
+	_show_choice(ChoiceKind.GROWTH, options)
+
+
+func _on_path_draft_earned(_wave_number: int) -> void:
+	## A Campaign wave that hands out one of the run's three Adaptations. Queued
+	## rather than opened, because a wave boundary can already be carrying a relic.
+	##
+	## The room is opened here too. In Quick a Branch position is the Elite's and the
+	## Burrower's reward; in Campaign the roster is on the wave table, and a draft
+	## that arrived before the milestone that happened to earn it would be silently
+	## refused for having nowhere to put what it offered. The Elite still pays its
+	## relic -- `unlock_branch_slot` simply answers false once the limit is spent,
+	## which is the same thing the Hive Queen's milestone already relies on.
+	if not (progression.has_core_slot_open() or progression.has_branch_slot_open()):
+		progression.unlock_branch_slot()
+	_queue_reward(QueuedReward.ADAPTATION_DRAFT)
+	_drain_reward_queue()
+
+
+func _on_evolution_reward_earned(_wave_number: int) -> void:
+	_queue_reward(QueuedReward.EVOLUTION)
+	_drain_reward_queue()
+
+
+func _on_growth_reward_earned() -> void:
+	_queue_reward(QueuedReward.GROWTH)
+	_drain_reward_queue()
+
+
+func _on_wave_provoked(wave_number: int, seconds_skipped: float) -> void:
+	_show_banner("PROVOKED — WAVE %d ARRIVES %ds EARLY" % [
+		wave_number + 1,
+		roundi(seconds_skipped),
+	])
+	save_run()
+
+
+func _on_blight_changed(level: int) -> void:
+	if level <= 0:
+		return
+	_show_banner("BLIGHT %s" % BlightTable.get_level_name(level))
+	_update_hud()
 
 
 func _show_choice(kind: int, options: PackedInt32Array) -> void:
@@ -1125,11 +1297,15 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 			# that the lines on it belong to Adaptations the run has not entered.
 			header_text = (
 				choice_header_branch_draft
-				if progression.is_pending_branch_upgrade_choice()
+				if progression.is_pending_adaptation_draft()
 				else choice_header_upgrade
 			)
 		ChoiceKind.RELIC:
 			header_text = choice_header_relic
+		ChoiceKind.EVOLUTION:
+			header_text = choice_header_evolution
+		ChoiceKind.GROWTH:
+			header_text = choice_header_growth
 	# The panel draws cards; what a card says is built here, because it is read off
 	# progression and the Root Network and neither of those is a panel's business.
 	var entries: Array = []
@@ -1140,11 +1316,15 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 
 
 func _build_choice_entry(kind: int, option_id: int) -> Dictionary:
-	if kind == ChoiceKind.UPGRADE and option_id == Progression.EVOLUTION_DRAFT_OPTION:
-		var pair_evolution := progression.get_pair_evolution_id()
+	if kind == ChoiceKind.EVOLUTION:
 		return {"text": AuthoredText.render(choice_evolution_template, {
-			"name": Evolutions.get_evolution_name(pair_evolution),
-			"detail": Evolutions.get_evolution_description(pair_evolution),
+			"name": Evolutions.get_evolution_name(option_id),
+			"detail": Evolutions.get_evolution_description(option_id),
+		})}
+	if kind == ChoiceKind.GROWTH:
+		return {"text": AuthoredText.render(choice_growth_template, {
+			"name": GrowthCatalog.get_stat_name(option_id).to_upper(),
+			"detail": GrowthCatalog.get_description(option_id),
 		})}
 	if kind == ChoiceKind.UPGRADE:
 		var current_upgrade_level := progression.get_upgrade_level(option_id)
@@ -1185,13 +1365,16 @@ func _choose_displayed_option(index: int) -> void:
 	choice_panel.hide_options()
 	_mechanics_help.hide_tooltip()
 	_update_reroll_button()
-	if prior_kind == ChoiceKind.UPGRADE and selected_id == Progression.EVOLUTION_DRAFT_OPTION:
-		var evolved_pair := _get_path_pair_label()
-		if progression.choose_pair_evolution():
-			_set_status("%s has evolved into %s." % [
-				evolved_pair,
-				Evolutions.get_evolution_name(progression.active_evolution),
-			])
+	if prior_kind == ChoiceKind.EVOLUTION:
+		if progression.choose_evolution(selected_id):
+			_show_banner(Evolutions.get_evolution_name(selected_id).to_upper())
+			_set_status(
+				"The garden has evolved into %s."
+				% Evolutions.get_evolution_name(selected_id)
+			)
+	elif prior_kind == ChoiceKind.GROWTH:
+		if progression.choose_growth(selected_id):
+			_set_status("Growth: %s." % GrowthCatalog.get_stat_name(selected_id))
 	elif prior_kind == ChoiceKind.UPGRADE:
 		# Taking a line of an Adaptation the run has not entered is what enters it,
 		# so the status says which slot the choice just filled.
@@ -1583,6 +1766,19 @@ func _apply_progression_modifiers() -> void:
 	territory_field.tuning.maturity_resistance_bonus = (
 		_base_maturity_resistance_bonus * progression.get_resistance_multiplier()
 	)
+	# The universal Growth stats, pushed into the two components that own a body and
+	# a battlefield. Applied before the paths below, because the Cane's own numbers
+	# are rebuilt out of the Vine lines and the Growth multipliers together.
+	combat.set_growth_modifiers(
+		progression.get_growth_damage_multiplier(),
+		progression.get_growth_area_multiplier()
+	)
+	player.set_growth_modifiers(
+		progression.get_growth_bonus_health(),
+		progression.get_growth_movement_multiplier(),
+		progression.get_growth_damage_reduction(),
+		progression.get_growth_regeneration()
+	)
 	# Cane has no universal upgrade lines. Vine's four lines are pushed by the
 	# AdaptationDirector after this baseline reset once that path is active.
 	combat.set_cane_modifiers(1.0, 1.0, 1.0, 0.0)
@@ -1594,23 +1790,31 @@ func _apply_progression_modifiers() -> void:
 		progression.has_path_active(Progression.PathId.SPORE),
 		spore_director.get_sporulation_rate_multiplier()
 	)
-	var evolution_rank := progression.get_evolution_upgrade_level()
+	# Two Evolutions, two ranks. These used to share one number because a run could
+	# only ever hold one Evolution, so "the rank" was unambiguous; a run holding both
+	# Thornburst and Old Growth would otherwise have each of them read the other's.
+	var payload_rank := progression.get_evolution_rank(
+		Progression.EvolutionId.THORNBURST
+	)
+	var fury_rank := progression.get_evolution_rank(
+		Progression.EvolutionId.OLD_GROWTH
+	)
 	combat.set_evolution_upgrade_modifiers(
-		evolutions.briar_payload_trigger_bonus if evolution_rank >= 2 else 0.0,
-		evolutions.briar_payload_chain_bonus if evolution_rank >= 4 else 0.0,
-		evolutions.briar_payload_entanglement if evolution_rank >= 3 else 0.0,
-		evolutions.briar_payload_heart_cadence if evolution_rank >= 5 else 0,
-		evolutions.ancient_fury_radius_bonus if evolution_rank >= 1 else 0.0,
-		evolutions.ancient_fury_entanglement if evolution_rank >= 2 else 0.0,
+		evolutions.briar_payload_trigger_bonus if payload_rank >= 2 else 0.0,
+		evolutions.briar_payload_chain_bonus if payload_rank >= 4 else 0.0,
+		evolutions.briar_payload_entanglement if payload_rank >= 3 else 0.0,
+		evolutions.briar_payload_heart_cadence if payload_rank >= 5 else 0,
+		evolutions.ancient_fury_radius_bonus if fury_rank >= 1 else 0.0,
+		evolutions.ancient_fury_entanglement if fury_rank >= 2 else 0.0,
 		evolutions.ancient_fury_chain_damage_share,
-		evolution_rank >= 3,
+		fury_rank >= 3,
 		(
 			evolutions.ancient_fury_trigger_threshold
-			if evolution_rank >= 4
+			if fury_rank >= 4
 			else 1.0
 		),
-		evolutions.ancient_fury_awakening_enemies if evolution_rank >= 5 else 0,
-		evolutions.ancient_fury_awakening_eruptions if evolution_rank >= 5 else 0,
+		evolutions.ancient_fury_awakening_enemies if fury_rank >= 5 else 0,
+		evolutions.ancient_fury_awakening_eruptions if fury_rank >= 5 else 0,
 		evolutions.ancient_fury_awakening_cooldown
 	)
 	combat.set_mass_entanglement_shares(
@@ -1703,7 +1907,7 @@ func _on_player_damage_taken(amount: float) -> void:
 	# number says how much, the screen says at all, and the freeze says it mattered.
 	combat.spawn_player_damage_number(player.get_arena_position(), amount)
 	var severity := clampf(
-		amount / maxf(1.0, player.maximum_health * heavy_damage_health_fraction),
+		amount / maxf(1.0, player.get_max_health() * heavy_damage_health_fraction),
 		0.0,
 		1.0
 	)
@@ -1849,6 +2053,71 @@ func is_pause_menu_open() -> bool:
 	return pause_menu.is_open()
 
 
+func _build_trial_director() -> void:
+	_trial_director = TrialDirector.new()
+	interface_layer.add_child(_trial_director)
+	_trial_director.setup(territory_field, player)
+	_trial_director.trial_started.connect(_on_trial_started)
+	_trial_director.trial_resolved.connect(_on_trial_resolved)
+	# A Trial counts what the run tells it happened rather than reading the combat
+	# director, so the two cannot disagree about a kill that a relic caused.
+	combat.enemy_killed.connect(_on_kill_for_trial)
+	player.damage_taken.connect(_on_damage_for_trial)
+
+
+func _on_kill_for_trial(
+	_position: Vector2,
+	_xp_value: int,
+	_role: int,
+	_death_source: int,
+	_chain_depth: int
+) -> void:
+	if _trial_director != null:
+		_trial_director.note_kill()
+
+
+func _on_damage_for_trial(_amount: float) -> void:
+	if _trial_director != null:
+		_trial_director.note_damage_taken()
+
+
+func _on_trial_wave_began(_wave_number: int) -> void:
+	if _trial_director == null:
+		return
+	# Drawn from the catalogue rather than authored per wave: which rule a Trial wave
+	# carries is a thing the run should be able to surprise the player with, and the
+	# wave table already decides the far more important question of *when*.
+	var trial_id := randi() % TrialCatalog.get_count()
+	_trial_director.begin_trial(trial_id)
+
+
+func _on_trial_wave_ended(_wave_number: int) -> void:
+	if _trial_director != null:
+		_trial_director.resolve_trial()
+
+
+func _on_trial_started(trial_id: int) -> void:
+	_show_banner("%s — %s" % [
+		TrialCatalog.get_trial_name(trial_id),
+		TrialCatalog.get_rule(trial_id).to_upper(),
+	])
+	_set_status("TRIAL — %s." % TrialCatalog.get_rule(trial_id))
+
+
+func _on_trial_resolved(trial_id: int, success: bool) -> void:
+	## A held Trial owes a relic. A broken one owes nothing and costs nothing, which
+	## is the whole contract: section 27 is explicit that failure should not end a run,
+	## and a constraint the player can simply stop honouring is one they can take a
+	## risk on rather than one they have to play around.
+	if not success:
+		_show_banner("%s BROKEN" % TrialCatalog.get_trial_name(trial_id))
+		return
+	_owed_trial_relics += 1
+	_show_banner("%s HELD" % TrialCatalog.get_trial_name(trial_id))
+	_queue_reward(QueuedReward.TRIAL_RELIC)
+	_drain_reward_queue()
+
+
 func _build_mechanics_help() -> void:
 	_mechanics_help = MechanicsHelp.new()
 	interface_layer.add_child(_mechanics_help)
@@ -1972,10 +2241,12 @@ func _update_hud() -> void:
 	slot_panel.refresh_controls()
 	if not is_node_ready():
 		return
+	var blight_level := wave_director.get_blight_level()
 	var wave_values := {
 		"wave": get_current_wave_number(),
 		"waves": get_final_wave_number(),
 		"seconds": "%02d" % ceili(get_wave_grace_remaining_seconds()),
+		"blight": wave_director.get_blight_name(),
 	}
 	var status_values := {
 		"mass": metabolism.get_level(Metabolism.SystemId.PHOTOSYNTHESIS),
@@ -1997,6 +2268,10 @@ func _update_hud() -> void:
 	# moved, coloured, or sized without editing code and counting spaces.
 	if is_wave_grace_period_active():
 		_authored.write_variant(wave_label, wave_grace_template, wave_values)
+	elif blight_level > 0:
+		# Blight is permanent and the player chose it, so it stays on screen for the
+		# rest of the run rather than being announced once and forgotten.
+		_authored.write_variant(wave_label, wave_blight_template, wave_values)
 	else:
 		# The number and nothing else. Campaign waves still carry a display name in
 		# the wave tables; it is simply not written onto this line.
@@ -2033,9 +2308,29 @@ func _update_hud() -> void:
 			# Nothing worth announcing until a pairing is actually in reach.
 			evolution_label.text = ""
 			evolution_label.modulate = Color("93aab0")
+	_announce_provocation_window()
 	_advance_all_in_countdown()
 	relic_tray.refresh()
 	adaptation_tree.refresh()
+
+
+func _announce_provocation_window() -> void:
+	## Says once, per wave, that the next one can now be called in.
+	##
+	## On the HUD's own clock rather than on a signal, because the window opens from
+	## two different directions -- the wave's fortieth second, or the player having
+	## cleared what it already sent -- and neither of those is an event the director
+	## emits. `can_provoke` answers the clock condition first, so the ordinary case
+	## costs a comparison.
+	if _run_state != RunState.RUNNING or _choice_kind != ChoiceKind.NONE:
+		return
+	if not wave_director.is_campaign_mode():
+		return
+	var wave := get_current_wave_number()
+	if _provoke_prompt_wave == wave or not wave_director.can_provoke():
+		return
+	_provoke_prompt_wave = wave
+	_show_banner(provoke_ready_banner)
 
 
 func _format_time(seconds: float) -> String:

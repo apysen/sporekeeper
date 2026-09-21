@@ -296,7 +296,7 @@ func get_rank_description(upgrade_id: int, rank: int) -> String:
 		Progression.UpgradeId.EVOLUTION_THORNWHIP:
 			match rank:
 				1:
-					return "Two mounted Thistle heads fire once through each Vine sweep"
+					return "Two mounted Thistle heads each drive one heavy thorn per sweep"
 				2:
 					return "Mount a third Thistle head"
 				3:

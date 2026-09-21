@@ -38,6 +38,8 @@ const CANKER_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/art/cankers/canker_4.png"),
 ]
 const INVALID_POSITION := Vector2(-99999.0, -99999.0)
+## Blight at which the run is allowed one Knot beyond what its act would give it.
+const BLIGHT_EXTRA_KNOT_LEVEL := 3
 ## The run's own face, rather than `ThemeDB.fallback_font`: this text is painted onto
 ## the board beside a watercolour structure, and the stock sans is the one thing on the
 ## field that would read as a debug overlay.
@@ -65,7 +67,9 @@ const LABEL_FONT: Font = preload("res://assets/fonts/beholden/Beholden-Medium.tt
 ## Seconds of held Rot before a site starts warning, and how long the warning runs.
 @export_range(1.0, 60.0, 0.5) var hold_time := 10.0
 @export_range(0.5, 10.0, 0.1) var warning_time := 2.5
-## Knots allowed at once. Two is an interior front; more is a second perimeter.
+## Knots allowed at once at the Campaign's most permissive. Two is an interior front;
+## more is a second perimeter, which is why only a heavily Blighted Act IV reaches it.
+## Quick, and any run without a wave director, uses this number flat.
 @export_range(1, 6, 1) var maximum_active_knots := 2
 ## How often the whole site grid is measured. Section 17 asks for 2 to 4 Hz, which is
 ## far below a frame and still well inside the reaction time of a ten-second hold.
@@ -83,7 +87,11 @@ const LABEL_FONT: Font = preload("res://assets/fonts/beholden/Beholden-Medium.tt
 ## three" is a rule somebody can hold, where forty-five seconds is a number they would
 ## have to discover. Both modes run sixty-second waves, so this means the same thing in
 ## each.
-@export_range(1, 25, 1) var first_wave := 3
+## Act I is Canker-free: the arena opens with a hostile basin on it and the run has
+## not yet been given the tools to contest it, so a Knot there would be a timer
+## rather than a consequence. Wave 6 opens Act II, which is where the Campaign's
+## first meaningful Canker risk belongs.
+@export_range(1, 25, 1) var first_wave := 6
 ## Samples every Nth cell on each axis when measuring. Over the hundreds of cells in a
 ## sample radius this does not move the ratio anywhere near the dead band.
 @export_range(1, 4, 1) var sample_cell_stride := 2
@@ -306,6 +314,26 @@ func is_armed() -> bool:
 	return wave_director == null or wave_director.get_current_wave_number() >= first_wave
 
 
+## How many Knots the run may currently hold.
+##
+## The Campaign's escalation ladder, and the only place the acts reach this system:
+## Act II may hold one interior front, Act III two, Act IV three. A Canker is still
+## made by losing ground and by nothing else -- the act decides how much of the board
+## the player is allowed to have abandoned at once, not whether abandoning it costs
+## anything.
+##
+## A heavily Blighted run gets one more. That is the Director and this system talking
+## without merging: Blight does not create a Knot, it widens the room for the ground
+## the player is already failing to hold.
+func get_maximum_knots_now() -> int:
+	if wave_director == null or not wave_director.is_campaign_mode():
+		return maximum_active_knots
+	var allowed := clampi(wave_director.get_current_act() - 1, 1, maximum_active_knots)
+	if wave_director.get_blight_level() >= BLIGHT_EXTRA_KNOT_LEVEL:
+		allowed += 1
+	return clampi(allowed, 1, maximum_active_knots + 1)
+
+
 ## Whether any Knot is established. Cheap enough for a spawn path to ask every time.
 func has_active_knots() -> bool:
 	return _active_knots > 0
@@ -344,10 +372,16 @@ func get_active_knot_positions() -> PackedVector2Array:
 ## the spawner's question, and it already knows how to ask it; a point refused there
 ## falls back to the perimeter rather than being retried, because section 19 would
 ## rather a spawn be ordinary than be late.
-func request_interior_spawn() -> Vector2:
+func request_interior_spawn(forced: bool = false) -> Vector2:
 	if _active_knots <= 0:
 		return INVALID_POSITION
-	if _random.randf() >= get_redirect_share():
+	# `forced` is the authored Canker Reinforcement recipe, which the Campaign buys
+	# *because* a Knot exists. The share below is the rule for ordinary
+	# reinforcements that merely happen past one, and applying it to a pack the wave
+	# table deliberately aimed at a Knot would make that recipe silently ordinary
+	# five times out of six. The cap on how many enemies exist is untouched either
+	# way: this still only answers where one comes in.
+	if not forced and _random.randf() >= get_redirect_share():
 		return INVALID_POSITION
 	var knot := _pick_active_knot()
 	if knot == null:
@@ -502,7 +536,7 @@ func _can_open_knot(site: Site) -> bool:
 	## Knots themselves are worth.
 	if site.cooldown_remaining > 0.0:
 		return false
-	if _committed_count(site) >= maximum_active_knots:
+	if _committed_count(site) >= get_maximum_knots_now():
 		return false
 	var player_distance := (
 		site.position.distance_to(player.get_arena_position())

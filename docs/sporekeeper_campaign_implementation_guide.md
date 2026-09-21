@@ -1,5 +1,19 @@
 # Sporekeeper 25-Wave Campaign Implementation Guide
 
+> **Superseded.** The 25-wave, 25-minute Campaign this guide specifies was built and
+> then replaced. `docs/campaign_pacing_balance_rework.md` is the current design, and
+> `src/core/models/waves/campaign_waves.gd` is the current implementation: twenty
+> waves in four acts, three Adaptations, threat budgets and encounter recipes instead
+> of pack intervals and role weights, and run-wide Provocation.
+>
+> This document is kept because most of it is still true and none of it is duplicated
+> elsewhere. The six coordinated pressure curves, the per-role scaling factors, the
+> crowd-control resistance rule and the reasoning behind each are unchanged — the
+> curves simply reach their endpoints across twenty waves now instead of
+> twenty-five. **Where this guide and the rework disagree — wave count, run length,
+> composition tables, the milestone schedule, the Adaptation limit, the Evolution
+> gate — the rework wins.**
+
 ## 1. Purpose
 
 This guide replaces the current 30-wave Campaign with a 25-wave, 25-minute structure designed around the new four-Adaptation build model.

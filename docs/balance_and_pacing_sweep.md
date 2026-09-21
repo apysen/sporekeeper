@@ -581,3 +581,481 @@ currency.
   Only Thistle+Vine and Spore+Root were driven end to end, and the Spore+Root run is the
   one that showed a collapse a bench cannot: population reaching the cap, and the board
   going with it.
+
+---
+
+## 9. Instrument corrections, 2026-09-19
+
+Everything above was measured with three defects in the bench. All three push the same
+way — against control kits and against single-target kits — which is the direction §3 and
+§6 both concluded in, so they are worth stating before any of those numbers is acted on
+again.
+
+None of this overturns §6.1. That comparison was two *full runs* on the pacing probe, and
+the ground-held gap it found is not a bench artifact. What is in question is the
+forty-second pair table in §3, and the reading that several Adaptations "provide almost no
+immediate combat value" that came out of it.
+
+### 9.1 The bench was unseeded
+
+`reset_run()` rolls a fresh run seed unless one is authored, and the bench never authored
+one. Every row therefore had its own critical hits, its own Thistle placements and its own
+spawn jitter, so two rows differed by the build *and* by the dice.
+
+The size of that is not academic: before the fix, two of Thistle's four lines measured
+**below** Thistle with no lines bought at all. A line cannot subtract. Any gap in §3
+narrower than about eight per cent was noise.
+
+Fixed: one pinned seed for the whole sweep, `--seed` to re-run a reading on a second one.
+Vine is RNG-free and now reproduces to the digit across seeds, which is the check that the
+pin works.
+
+### 9.2 The board had almost no territory on it
+
+The bench board is one Bloom grown for seven seconds: about **six per cent** of the arena,
+with the held population entering from a ring outside it. Bramble damages and tangles
+enemies standing *on Green*. Root amplifies from Mature Green. Spore germinates into it.
+All three were being measured almost entirely off their own ground.
+
+`--island` plants five Blooms and grows them to about 92%. Bramble+Root, rank 3, siege:
+
+| | patch board (6% Green) | island board (92% Green) |
+|---|---|---|
+| mean slow on the board | 0.000 | **0.409** |
+| mean Entanglement | 0.005 | **0.574** |
+| share Ensnared | 0.000 | **0.239** |
+| damage taken | 6 | **0** |
+| ground lost over 40s | −24.1 | **−0.95** |
+
+On the patch board three of Bramble's four lines were **bit-identical** to the Adaptation
+with nothing bought. That is not a finding about Bramble.
+
+The honest reading is that the two boards are two different questions, and both are real:
+the patch board is roughly what minute two of a run looks like, and the island board is
+roughly minute twelve. A control Adaptation genuinely does little in the first case. What
+cannot be concluded from the patch board alone is that it does little *at all*.
+
+### 9.3 The damage column was counting kills
+
+`debug_damage_applied_total` clips every hit to the target's remaining health, so it
+measures health removed rather than damage produced. On a held-population board that makes
+it a proxy for kills — damage divided by kills came out at 28–29 in every single row of
+every sweep — and it reads zero for any source landing on targets something else is
+already killing.
+
+`debug_damage_dealt_total` now accumulates the unclipped figure beside it. The gap between
+the two is overkill, which is itself the number worth having about a single-target line
+standing next to an area sweep. The cane-only row added to `--isolate` is the other half:
+on a crowded board the universal Cane is most of the damage in every row, so an Adaptation
+that doubles its own output still moves the total by a few per cent.
+
+### 9.4 Vine, line by line — Elongation is not the driver
+
+Rank 3, siege, seeded, over a cane-only baseline of 15,248 applied / 25,848 dealt:
+
+| row | applied | dealt | kills | applied over Vine base |
+|---|---:|---:|---:|---:|
+| cane only | 15,248 | 25,848 | 530 | |
+| Vine, no lines | 21,656 | 36,696 | 752 | — |
+| Apical Dominance | 24,296 | 40,500 | 854 | +2,640 |
+| **Elongation** | 24,644 | 41,784 | 857 | **+2,988** |
+| Turgor | 27,252 | 46,392 | 957 | +5,596 |
+| **Lignification** | 35,112 | 52,764 | 1,254 | **+13,456** |
+
+Reach is the second *weakest* of the four, at roughly a fifth of Lignification on applied
+damage and a third on dealt. Same ordering on both boards, both metrics, both seeds — and
+re-run unchanged to the digit after the pause defect in §9.8 was fixed, because Vine reads
+neither the overlay nor the field.
+
+**Decision: do not reduce Elongation.** Section 11 of the rework makes the cut conditional
+on confirming that reach is a primary source of Vine's dominance, and it is not. Vine is
+strong because Lignification multiplies a weapon every build already has. If Vine is to be
+cut, that is the line to look at — and that is a design call nobody has authorised.
+
+### 9.5 Thistle, line by line — no case for a Burr nerf
+
+Same conditions, re-run after the §9.8 fix:
+
+| row | applied | dealt | kills | applied over Thistle base |
+|---|---:|---:|---:|---:|
+| cane only | 15,248 | 25,848 | 530 | |
+| Thistle, no lines | 15,680 | 26,304 | 548 | — |
+| Dehiscence | 15,728 | 26,172 | 548 | +48 |
+| Needlepoint | 15,912 | 26,700 | 552 | +232 |
+| Clustering | 16,328 | 26,928 | 575 | +648 |
+| **Burr** | 16,520 | 26,784 | 578 | **+840** |
+
+The whole Adaptation at rank 3, best line included, is about **eight per cent** over the
+Cane — and siege geometry, sixty bodies at 130px, is the *best* case a ricochet line will
+ever get.
+
+Burr is Thistle's **strongest** line, which the paused bench had it second. Needlepoint,
+which that bench read as exactly zero, contributes +232; the paused figure was the overkill
+effect compounded by a frozen player.
+
+**Decision: do not add Burr ricochet falloff.** It is the best line of an Adaptation that
+contributes eight per cent over the universal weapon at full rank. Section 10 asks for
+Thistle to be evaluated independently before the cut; independently it is not carrying
+anything, and cutting its best line would only deepen that. Whatever made Thistle+Vine the
+top pair in §3 was Vine and Thornwhip.
+
+### 9.6 Bramble, and a change the corrections reversed
+
+Bramble on the island board, rank 3, siege, over the same cane-only baseline:
+
+As it stands now — chip back at 0.18, slow at 0.25, run after the §9.8 fix:
+
+| row | applied | kills | slow | tangle | pinned | taken |
+|---|---:|---:|---:|---:|---:|---:|
+| cane only | 15,248 | 530 | 0.000 | 0.000 | 0.000 | 363 |
+| Bramble, no lines | 18,056 | 631 | 0.115 | 0.414 | 0.016 | 336 |
+| Repulsion | 18,056 | 631 | 0.115 | 0.414 | 0.016 | 336 |
+| Grasping Thorns | 16,686 | 586 | 0.151 | 0.446 | 0.053 | 363 |
+| Entanglement | 17,531 | 609 | 0.178 | 0.426 | 0.016 | 341 |
+| Entanglement Rate | 19,046 | 664 | 0.135 | 0.482 | 0.020 | 363 |
+
+Two things in that table are worth more than the ordering.
+
+**Bramble's base mechanic is worth real damage on ground it owns**, at +18% applied and
++19% kills over the Cane with nothing bought — from an Adaptation the pair sweep called
+near-worthless. (The +70% figure taken before the chip revert was three times this, which
+is precisely the change that was reverted.)
+
+But Bramble alone barely improves survival: 336 taken against the Cane's 363. The lockdown
+in §9.8's Bramble+Root row — zero damage, 0.62 slow, 0.32 pinned — is **not Bramble**. It is
+Bramble's Entanglement scaled by Root's Mature ground through the Network multiplier. The
+pair is the mechanism, which is exactly what a pair Evolution is supposed to mean.
+
+**Its control lines cost it kill throughput.** Entanglement takes the board from 0.115
+slow to 0.178 and drops damage from 18,056 to 17,531; Grasping Thorns triples the pinned
+share and drops it further. Slowed enemies walk into the thorns more slowly. That is a real
+trade and it is invisible in any table that prints damage alone.
+
+Repulsion is bit-identical to base in all eleven columns. On this board it does nothing
+measurable at all. Worth a look; not a rework item.
+
+#### The chip-damage buff, measured and reverted
+
+The early-Path pass raised `bramble_contact_damage` from 0.18 to 0.55 on the strength of
+the patch-board reading. Running the same isolation with the pre-change values:
+
+| Bramble, no lines | applied | kills | over Cane | slow | tangle | pinned |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.18 chip | 18,771 | 656 | +3,523 | 0.049 | 0.389 | 0.012 |
+| 0.55 chip | 25,950 | 912 | **+10,702** | 0.040 | 0.315 | 0.009 |
+
+(Both rows predate the §9.8 fix, so their absolute figures are low and their slow column is
+suppressed. They were taken under identical conditions, so the comparison between them
+stands; the current state of the Adaptation is the table above.)
+
+The buff tripled Bramble's contribution — and **lowered its slow, Entanglement and pin**,
+because bodies that die faster never live long enough to accumulate any. It converted the
+control Adaptation into a damage Adaptation, which is the one thing that line must not do.
+
+**Reverted**: chip back to 0.18, max-health share back to 0.0005. The base slow increase
+(0.15 → 0.25) **stays** — it is visible at rank 1, costs no throughput, and is the axis
+section 7 actually asked for.
+
+This is the clearest case in the document for why the instrument mattered. The buff was a
+reasonable response to the reading available at the time; the reading was wrong, and the
+change it produced was backwards.
+
+### 9.7 Two of the four early-Path changes never ran
+
+The confirming measurement after reverting Bramble's chip damage came back **bit-identical
+to the pre-change run** across all eleven columns — including the slow column, which the
+same pass had supposedly raised from 0.15 to 0.25.
+
+`base_slow_fraction` and `bloom_interval_seconds` are `@export`s, and `run.tscn` sets both:
+
+```
+bloom_interval_seconds = 15.0
+base_slow_fraction = 0.1
+```
+
+A scene value overrides the script default, so editing the default changes nothing about
+the running game. The early-Path pass edited defaults for both. **Neither change had ever
+taken effect** — the game was running 0.1 slow and a 15-second Bloom throughout, and the
+0.15 the script claimed was not the number either.
+
+This is worth more than the two changes. Exports are the Inspector design surface in this
+project, which means the scene is authoritative for anything it sets, and a tuning pass
+that edits script defaults is tuning a fallback nobody reads. Both defaults now carry a
+comment saying so.
+
+Applied since:
+
+- **Bramble base slow 0.1 → 0.25, in `run.tscn`**, which is where it takes effect.
+- **Bloom's default put back to 13.0 and left alone.** Re-applying the shortening in the
+  scene would be a new, unmeasured change resting on the same biased reading that produced
+  the Bramble chip mistake, so Bloom's rank-1 item stays open rather than being guessed at
+  twice.
+
+It also means the chip-damage finding in §9.6 is *cleaner* than it looked: both rows there
+were taken at 0.1 slow, so the control drop was caused entirely by the chip buff killing
+bodies before they tangled, with nothing else moving.
+
+With the slow finally applied in the scene, Bramble base at 0.18 chip:
+
+| Bramble, no lines | applied | kills | slow | tangle | pinned |
+|---|---:|---:|---:|---:|---:|
+| 0.1 slow | 18,771 | 656 | 0.049 | 0.389 | 0.012 |
+| **0.25 slow** | 18,285 | 635 | **0.111** | 0.407 | 0.013 |
+
+Measured slow more than doubles for about 2.6% of kill throughput. That is the shape the
+change was supposed to have and the exact inverse of the chip buff's: control up sharply,
+damage essentially flat. It is the one early-Path change in the pass that is now evidenced
+rather than assumed.
+
+### 9.8 The bench was pausing itself — a fifth defect, and the worst of them
+
+The corrected sweeps put Spore+Bloom, Spore+Pruning and Bloom+Pruning at rank 1
+bit-identical to the cane-only row in all eleven columns, and isolating Spore showed it
+identical to owning nothing at rank 1 *and* rank 3. Instrumenting the catalyst path found
+the cause, and it was not Spore.
+
+Seeds were being sown correctly all along — 36 of them from 144 kills, rising to 48 with
+one rank of Seed Production, exactly as designed. **None of them ever opened.**
+
+`RunRoot._refresh_simulation_pause()` sets `effects_paused` on the overlay and
+`simulation_paused` on the field and the player. It fires on any heavy hit, and the only
+thing that ever clears it is `RunRoot._process` — which a bench that steps every system by
+hand never calls. One heavy hit, and those three systems stayed paused for the rest of the
+row.
+
+Spore, no lines, rank 1, clearable board:
+
+| | sown | germinated | green | biomass | taken |
+|---|---:|---:|---:|---:|---:|
+| paused | 36 | **0** | 5.92 | 8.7 | **6** |
+| fixed | 36 | **33** | 9.33 | 11.2 | **330** |
+
+Note the last column. §1 of this document complained that "every pair took 6 points of
+damage in forty seconds, the same 6", diagnosed it correctly as `player._physics_process`
+never running, and added the call. The call was right and was being swallowed by the early
+return on `simulation_paused`, so the symptom it was written to fix had never gone away.
+
+The bench now asserts all three flags false every step, and reports `sown` and `seeds`
+(Seeds planted against Seeds that broke ground) and `blooms` so that a row which reads as
+nothing can say whether the mechanic fired and did nothing or never fired at all.
+
+#### What it cost, and what survived
+
+The bias ran hardest against the *weakest* builds on the survivability axis: an early heavy
+hit froze the player, so doing nothing looked safe. On the corrected bench the cane-only
+row takes 363 damage at rank 3 where it used to read 6.
+
+- **Rank 1 is a different table.** Nothing is inert. The weakest pair is now +12% over the
+  bare Cane rather than +0%, and Pruning — which read as contributing *nothing* at rank 1 —
+  is in fact the strongest rank-1 Adaptation, occupying the top seven rows. Its harvest and
+  regrowth run through the field, which was the thing being paused.
+- **Rank 3 barely moved.** Damage, kills and ground are unchanged to the digit for almost
+  every row; only the cane baseline and a few Spore rows shifted.
+- **§9.6's Bramble+Root result survives and is stronger.** It took zero damage before and
+  zero after, while the baseline moved from 6 to 363. A build 27th of 28 on damage is the
+  only one in the sweep that a siege cannot touch.
+
+The rank-1 story is not that some pairs have no build. It is **damage taken**: Pruning and
+Vine openings take 6 to 28 over forty seconds, and everything else takes 200 to 330. That
+is where the weak openings actually lose, and it is a column that was broken until now.
+
+### 9.9 Root's Cane floor, isolated
+
+The floor added in the early-Path pass, measured on the corrected bench with Root owned
+and one line bought at a time. Clearable board, rank 1 then rank 3:
+
+| Root, rank 1 | applied | kills | green | taken |
+|---|---:|---:|---:|---:|
+| cane only | 4,152 | 144 | 9.33 | 330 |
+| Root, no lines | 4,170 | 144 | 9.46 | 330 |
+| Maturation / Lateral Roots / Mature Strength | 4,170 | 144 | ~9.45 | 330 |
+| **Root Potency** | **4,928** | **176** | 10.31 | 308 |
+
+At rank 3 Root Potency reaches 5,488 and 196 kills, about **+32%** over the bare Cane
+against **+19%** at rank 1.
+
+Three things this settles.
+
+**The floor works and is correctly sized.** A Root opening with nothing to amplify is no
+longer bare-Cane output; it is about a fifth better at rank 1 and a third better at rank 3.
+That is a floor rather than a conversion into a damage Path — Vine's opening is four to
+five times larger.
+
+**It is Root Potency's, not Root's.** With no lines bought the floor is +18 damage and zero
+extra kills, because it reads the Network multiplier and the Network is what Potency buys.
+A player who takes Root and never buys Potency still has no floor. Whether that is right is
+a design question the rework does not answer; it is at least *legible*, since Potency is
+the line whose whole description is amplification.
+
+**An earlier reading of +46% was wrong.** It came from the broken sweep, where Spore and
+Bloom read as zero and Root+Spore therefore looked like Root alone. It was neither Root
+alone nor a correct figure.
+
+### 9.10 Campaign archetypes and Provocation, driven end to end
+
+Section 33.3 and 33.4, run for the first time: five three-Adaptation rosters through a
+whole twenty-wave Campaign on the real wave clock, plus two Provocation policies. Upgrades
+are taken by the greedy build-completing policy, so every "when" below is the *earliest* a
+build can reach that state rather than the average one.
+
+| roster | first Evolution | build complete | green @10 | green @end | taken @end | alive @end |
+|---|---:|---:|---:|---:|---:|---:|
+| Vine+Thistle+Pruning | min 8 | min 16 | 31.4 | 42.6 | 0 | 1 |
+| Spore+Bloom+Root | min 8 | min 16 | 35.5 | 22.2 | 1,309 | 32 |
+| Bramble+Root+Spore | min 8 | min 17 | 71.3 | 31.8 | 1,010 | 19 |
+| Thistle+Spore+Root | min 8 | min 16 | 90.1 | 73.1 | 590 | 0 |
+| Thistle+Vine+Root | min 8 | min 15 | 33.8 | 61.8 | 0 | 0 |
+
+**The Evolution timing target is met exactly.** All five rosters reach their first Evolution
+at minute 8, against the rework's 6-to-8-minute target. That is the single clearest
+confirmation that the wave-8/14/18 reward schedule is placed correctly.
+
+**Build completion is slightly late.** Minute 15 to 17 against a design that wants the
+build "largely complete" before the final five minutes. One roster makes 15; three make 16;
+the defensive roster needs 17. The last quarter is therefore still finishing the build for
+most of them rather than testing it.
+
+**The damage rosters end clean and the territory rosters do not.** Vine+Thistle+Pruning and
+Thistle+Vine+Root end with nothing alive and zero damage taken. Spore+Bloom+Root ends with
+thirty-two enemies still standing, 22% of the board, and 1,309 damage taken; Bramble+Root+
+Spore ends with nineteen alive. The §6 finding survives the move to three Adaptations and
+the new Campaign: the territory rosters are not ahead on territory *at the end*, whatever
+they hold at minute 10.
+
+#### Provocation
+
+Same roster (Thistle+Spore+Root), three policies:
+
+| policy | finished | Blight | provocations | Growth | green @10 |
+|---|---:|---:|---:|---:|---:|
+| never | 20:00 | 0 | 0 | 0 | 90.1 |
+| moderate | 16:00 | V | 19 | 5 | 3.7 |
+| aggressive | 16:00 | V | 19 | 5 | 64.1 |
+
+Three things, and two of them are problems.
+
+**The runtime lands where it was designed to.** Aggressive finishes at 16:00 against the
+rework's 15-to-17-minute target for aggressive play. The four-minute compression cap is
+doing exactly its job.
+
+**Moderate and aggressive have converged.** Both take nineteen Provocations, both reach
+Blight V, both finish at 16:00 — because the compression cap binds long before the policies
+diverge. The rework wants a spread (conservative 19-20, moderate 17-19, aggressive 15-17)
+and there is currently no moderate band at all: any player who Provokes at all ends up at
+the cap. Either the cap is the wrong shape or the availability rule is too permissive.
+
+**Fourteen of nineteen Provocations buy nothing permanent.** Blight reaches V and Growth
+reaches its five-rank cap by roughly minute 7. Every call after that is speed only. That is
+what §23 specifies, but at this call rate it means the permanent half of the mechanic is
+spent in the first third of the run and the remaining two thirds are a pure accelerator.
+
+### 9.11 What the corrections do not settle
+
+The rank-1 and rank-3 **pair sweeps have not been re-run** on the corrected instrument, so
+the §3 table still stands as written and still carries all three defects. That is the next
+measurement, and it should be run on both boards, because §9.2 means one board cannot
+answer it.
+
+Of the four early-Path changes made on 2026-09-19, Bramble's chip damage has now been
+measured and reverted. The other three — Root's Cane floor, Spore's Seed threshold,
+Bloom's interval — still rest on the biased reading, and Bramble's case is the reason to
+distrust them: all three were made to answer a board that gives territory Adaptations
+nothing to work with, and at least one of them turned out to be pushing the wrong axis.
+
+### 9.12 The bench cannot measure whether moving pays
+
+Added when the harvest was changed to cut the ground under the player
+(`upkeep_inner_radius_pixels = 0`), which makes Pruning's output a function of how she
+moves. Two instruments were added for it and one limit turned out to be structural.
+
+`--walk-radius N` sets the radius of the bench's walk lap; `--walk` alone keeps the old
+70px default. The default lap is *narrower than Pruning's own 52px harvest disc*, so it
+re-treads ground it just cut: it measures a player who fidgets, not one who relocates.
+
+`--ring` reports Pruning's hold instead of its damage — percent of the bench the ring was
+up, percent with no Green underfoot, and how many times the ring tore loose. These are the
+only columns that speak to the positional rule directly.
+
+The limit: **`--siege` holds its population at the arena centre**, so every step away from
+the fight costs contact for every build alike. Measured at rank 3 on the island board, the
+cane-only baseline falls from 15,248 to 9,696 between a 0px and a 260px lap — it loses
+36% purely to being measured further from its own targets. Any Adaptation measured while
+walking is charged that same toll on top of its own positional cost, and nothing in the
+bench ever pays movement back.
+
+So the bench can report what movement *costs* and it cannot report what movement *buys*.
+Rooted tops the isolated Pruning table at every walk radius, and that ordering is a
+property of where the targets are pinned, not a finding about the path. Comparisons across
+walk radii have to be read as each build's ratio over the cane baseline at that same radius,
+never as absolute damage; and even then, a build whose whole argument is repositioning is
+being asked to prove it in a room where repositioning is defined as losing.
+
+The three ring columns are the reading that survives this, because they are about the ring
+rather than about the fight: rooted spends 73.8% of the bench with no Green underfoot and
+tears the ring 8 times in 40 seconds, against 45.8% and 5 tears at a 120px lap. That is the
+mechanic working. Whether it is *enough* pressure is a question for a played run.
+
+### 9.13 Pruning's two damage sources are not separable
+
+The single most useful thing the bench has produced, and it invalidates how every Pruning
+number in sections 7.3b and 9 was read.
+
+Pruning deals damage two ways: the orbiting ring (`orbit_contact_damage`) and the launched
+Cuttings (`cutting_damage`). Measured at rank 3 on the island siege board, against a
+baseline of 48,791:
+
+| zeroed | damage lost | damage taken |
+|---|---|---|
+| ring alone | 5,174 | 0 |
+| Cuttings alone | 2,255 | 0 |
+| **both together** | **23,556** | **369** |
+
+Neither source matters on its own and both matter enormously together, because whichever
+one is left takes over the kills. The board is a fixed population under a weapon that
+massively overkills it, so removing capacity does not remove throughput until there is not
+enough capacity left to clear the board at all.
+
+This has a direct consequence for how any Pruning change must be measured: **a lever pulled
+by itself will read as noise even when it is large.** Four consecutive nerfs -- halving ring
+damage, raising the hit cooldown, halving Cutting yield, and dropping the ring's target cap
+from eight to two -- each moved total damage by under 10% and left damage taken at zero.
+Yesterday's spent-ground multiplier measured as nothing for the same reason.
+
+The same non-additivity governs the defence, which is the more important half. Either
+source alone is enough to hold damage taken at zero against sixty enemies. Pruning's
+zero-damage-taken result is therefore not a property of the ring or of the Cuttings; it is
+a property of having two independent always-on 360-degree damage sources, and it cannot be
+tuned away by weakening one of them.
+
+#### And the response to damage is a threshold, not a slope
+
+Both sources cut together, isolated at rank 3:
+
+| ring + Cutting damage | damage | x cane | taken |
+|---|---|---|---|
+| 26.0 (original) | 48,791 | 3.20x | 0 |
+| 17.0 | 45,164 | 2.96x | 11 |
+| 13.0 | 43,820 | 2.87x | 11 |
+| 8.0 | 40,644 | 2.67x | 94 |
+| 5.0 | 34,674 | 2.27x | 286 |
+| 3.0 | 28,925 | 1.90x | 347 |
+| 1.0 | 25,235 | 1.66x | 369 |
+
+A 50% damage cut costs 10% of output. The next 60% cut costs another 34%. Everything above
+about 8.0 is overkill against a Hunter, so the bench cannot distinguish "strong" from
+"absurd" anywhere in the upper half of that table -- the only column that responds at all
+is `taken`.
+
+Tuning to where that column looks healthy would mean cutting damage by 80%, which is a
+literal 80% against anything the volley does not already overkill: a boss, an Elite, the
+Hive Queen. **The siege bench cannot price a weapon against a tough single target, and a
+number chosen from it will be wrong for one.** Anything tuned here has to be confirmed on a
+boss wave before it is believed.
+
+#### Uptime, not damage
+
+The ring was up 99.2% of the bench even while tearing eight times, because a torn ring
+re-formed on the first frame of Green. Pruning's output is its coverage. Coverage is
+cheaper to move than damage and it does not misprice the path against a boss, so it is the
+lever to reach for first: `footing_recovery_rate`, the re-form rule, and how long a tear
+actually costs.

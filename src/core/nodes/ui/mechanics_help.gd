@@ -27,6 +27,12 @@ enum TooltipMode {
 
 const ENTRIES := {
 	"AFTERGROWTH": "A temporary shield Bloom leaves on Green. Hostile territory damage eats through Aftergrowth before it touches the Green underneath.",
+	"ACT": "One quarter of a Campaign. Germination establishes your build, Encroachment brings the first specialists and the first Canker risk, Infestation completes the build against coordinated attacks, and Blight tests the finished thing. An act decides which encounters the garden is allowed to send, so a wave that is going badly still sends problems from its own act.",
+	"BLIGHT": "How much harder the garden has become because you kept Provoking it. Each rewarded Provocation raises it one level, it never falls, and the final encounter inherits whatever you built up. Most of it is the Threat Director's budget: at high Blight the garden can afford its expensive attacks far more often, while an individual enemy is only slightly tougher.",
+	"GROWTH": "A small universal stat - damage, attack speed, movement, reach, health, armour or regeneration - paid out for surviving a wave you called in early. Each one is capped, they add rather than multiply, and the whole set a run can collect is worth less than one Adaptation.",
+	"PROVOCATION": "Calling the next wave in early. Everything already on the field stays there, the wave's quiet ending is skipped, the next one arrives with a Surge at its front, and your Blight rises permanently. Calling it earlier buys more danger, not more reward.",
+	"SURGE": "The immediate cost of Provoking. The earlier you call a wave, the more of its pressure arrives at the very start of it instead of being spread across the minute. Temporary, unlike Blight.",
+	"THREAT": "What an attack costs the garden to send. Every wave has a budget and a list of attacks it may buy, so a late wave is dangerous because it can afford Siege Pushes and elite spearheads - not because it puts more bodies on the board.",
 	"AMPLIFICATION": "The boost Root Potency gives another plant mechanic. The upgrade shows the affected value whenever amplification applies.",
 	"BLOOM": "A plant event that bursts outward, damages enemies, and reclaims territory. Bloom upgrades change its force, frequency, and aftermath.",
 	"CANKER": "A hostile structure that grows where Rot has been held long enough to settle. Damage cannot remove one - reinforcements keep arriving through it until you take the ground back.",
@@ -39,7 +45,7 @@ const ENTRIES := {
 	"MATURE": "Green that has aged and settled, producing more value and powering the Root Network. The golden Root Network light only appears under Grandma while she stands on it.",
 	"OVERGROW": "An active burst that spends the growth you have banked. It drives Mass and Pressure into the frontier you choose and hardens the Green there.",
 	"PRESSURE": "The outward force of Green against hostile territory. More Pressure helps reclaim and expand the field.",
-	"PRUNING": "A plant path that cuts your own Green on purpose, trading it for Cuttings, attacks, and fresh regrowth.",
+	"PRUNING": "A plant path that cuts your own Green on purpose, trading it for Cuttings, attacks, and fresh regrowth. The cut lands where you are standing, so a ring held in one place eats its own footing and tears loose — keep walking onto fresh Green to hold it.",
 	"REPULSION": "A Bramble effect that pushes enemies away from defended Green and its frontier.",
 	"ROOT NETWORK": "The web Mature Green forms, carrying Root Potency into the plant mechanics that can use it. While you own Root, a slow golden light breathes under Grandma and under each planted Thistle standing on Mature Green, brighter where the Network runs deeper. Effects that gain a whole extra unit from Root Potency, such as one more Fruit or thorn, only gain it while that light is lit.",
 	"ROOT POTENCY": "The strength of the Root Network. It amplifies the effects that work from Mature Green.",

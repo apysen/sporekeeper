@@ -1,7 +1,7 @@
 class_name CampaignWaveSpec
 extends Resource
 
-## One authored wave of the 25-minute Campaign.
+## One authored wave of the 20-minute Campaign.
 ##
 ## The wave is the Campaign's unit of configuration. Every number an enemy spawned
 ## during a wave is built from lives here, so tuning a wave is editing one object
@@ -10,7 +10,10 @@ extends Resource
 
 @export_group("Identity")
 ## One-based Campaign wave this spec configures.
-@export_range(1, 25, 1) var wave_index := 1
+@export_range(1, 20, 1) var wave_index := 1
+## Which of the four Campaign acts this wave belongs to. Gates which encounter
+## recipes the Threat Director may buy and how far the Canker ladder has opened.
+@export_range(1, 4, 1) var act := 1
 ## Wave card title shown to the player; says what the wave is rather than its numbers.
 @export var display_name: StringName = &"Garden Under Attack"
 ## Length of this wave in seconds. Every Campaign wave is a fixed minute.
@@ -35,15 +38,21 @@ extends Resource
 ## Chance an eligible spawn carries one rule-changing modifier.
 @export_range(0.0, 1.0, 0.01) var modifier_chance := 0.0
 
-@export_group("Cadence")
-## Seconds between scheduled reinforcement packs.
-@export_range(0.05, 5.0, 0.01) var pack_interval_seconds := 0.80
-## Pack-size sequence consumed one entry per pack, reset at the wave boundary.
-@export var pack_pattern: StringName = &"ONE"
-## Role id (EnemyKinds.Role) to leader-deck percentage.
-@export var role_weights: Dictionary = {}
-## Topology profile governing where this wave's packs enter the arena.
+@export_group("Threat")
+## Total threat this wave may spend on encounters, before Blight and Surge.
+##
+## The Campaign's one density dial. It is a budget rather than a spawn rate because
+## the same number has to buy a different kind of wave at each end of the run: three
+## hundred spent on Probes is a crowd, three hundred spent on a Siege Push is a
+## problem, and the recipe list below decides which of those a wave is made of.
+@export_range(0.0, 20000.0, 10.0) var threat_budget := 620.0
+## Encounter recipe ids (see `EncounterRecipes`) this wave may buy.
+@export var recipe_ids: Array = []
+## Topology profile used when a recipe does not name one of its own.
 @export var spawn_topology: StringName = &"EVEN_RING"
+## Whether this wave skips the recovery tail in its pressure rhythm. Only the finale
+## does: every other wave owes the player the quiet that Provocation is spent on.
+@export var sustains_final_pressure := false
 ## Which modifier unlock stage this wave draws from; see CampaignWaves.
 @export_range(0, 4, 1) var modifier_pool_stage := 0
 
@@ -56,3 +65,9 @@ extends Resource
 @export_range(-1.0, 60.0, 0.5) var hive_queen_spawn_second := -1.0
 ## Completing this wave opens one of the Campaign's eleven relic opportunities.
 @export var grants_wave_relic := false
+## Beginning this wave offers every Evolution the run currently qualifies for.
+@export var grants_evolution_reward := false
+## Beginning this wave hands the player a draft of Adaptations they do not own.
+@export var grants_path_draft := false
+## Beginning this wave sets a Trial: one rule, held for this wave, for a relic.
+@export var grants_trial := false

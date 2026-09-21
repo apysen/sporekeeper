@@ -27,6 +27,12 @@ signal relic_pools_changed(eligible_pool_ids: PackedInt32Array)
 signal compost_cache_granted
 ## No ordinary or Evolution rank remains to buy. Announced once per run.
 signal garden_completed
+## An Evolution reward is open, carrying the eligible Evolutions it is offering.
+signal evolution_choice_requested(options: PackedInt32Array)
+## A Growth reward is open, carrying the universal stats it is offering.
+signal growth_choice_requested(options: PackedInt32Array)
+## A Growth rank was taken, so everything reading the universal stats must refresh.
+signal growth_changed
 
 enum PathId {
 	SPORE,
@@ -40,9 +46,6 @@ enum PathId {
 }
 
 const UNSELECTED_PATH := -1
-
-## Draft option identifying the pair evolution rather than an upgrade line.
-const EVOLUTION_DRAFT_OPTION := -2
 
 ## Which kind of slot an Adaptation occupies. Core and Branch are both permanent
 ## and both complete: the only differences are that the unordered Core pair names
@@ -59,16 +62,30 @@ enum SlotKind {
 const MAXIMUM_CORE_ADAPTATIONS := 2
 const MAXIMUM_BRANCH_ADAPTATIONS := 2
 const MAXIMUM_OWNED_ADAPTATIONS := MAXIMUM_CORE_ADAPTATIONS + MAXIMUM_BRANCH_ADAPTATIONS
+## Adaptations a Campaign run may own. Three, not four.
+##
+## Three Adaptations is three pair relationships rather than six, which is enough
+## Evolution variety for a twenty-minute run without diluting four Paths' worth of
+## upgrade lines across it -- and it leaves each Path a larger share of the run's
+## identity. Quick keeps four; a fourth Path in Campaign is reserved for whatever
+## eventually breaks the rules on purpose.
+const CAMPAIGN_OWNED_ADAPTATIONS := 3
 
 ## Ordinary lines every owned Adaptation exposes, all of them from the moment it is
 ## acquired. Nothing is ever permanently rejected: a lower-priority utility line is
 ## delayed by choice rather than locked out of the run.
 const LINES_PER_ADAPTATION := 4
 
-## Mastered lines each Core needs before the pairing may be claimed. Twelve
-## ordinary purchases, six in each Core, and no Branch line, temporary Clover rank
-## or relic bonus counts toward it.
-const MASTERED_LINES_FOR_EVOLUTION := 2
+## Owned ordinary ranks each half of a pair needs before their Evolution becomes
+## eligible.
+##
+## Five of a possible twelve, in each of the two Adaptations: ten deliberate
+## purchases for a relationship, which is meaningful investment without being
+## mastery. Requiring both Paths maxed was the old rule and it cannot survive a
+## twenty-minute run with a two-Evolution target -- there is not time to max four
+## lines twice, twice. No Branch distinction, no temporary Clover rank and no relic
+## bonus counts: this reads owned ordinary ranks and nothing else.
+const EVOLUTION_RANKS_PER_PATH := 5
 
 enum UpgradeId {
 	SEED_PRODUCTION,
@@ -257,6 +274,30 @@ enum EvolutionId {
 ## pool. Repeatable percentage purchases are gone; Metabolism spends the Reserve.
 @export_range(1.0, 100.0, 0.5) var biomass_base_cost := 8.0
 
+@export_group("Reward Offers")
+## Evolutions shown at an Evolution reward, sampled from everything eligible.
+##
+## Three of however many relationships qualify, so a run with all three pairs
+## developed still has to choose rather than being handed the whole set, and a run
+## with one qualifying pair simply sees that one.
+@export_range(1, 4, 1) var evolution_offer_count := 3
+## Universal stats shown at a Growth reward.
+@export_range(1, 4, 1) var growth_offer_count := 3
+
+@export_group("Adaptation Slots")
+## Branch positions this run may ever open. Two in Quick, one in Campaign, which is
+## what makes the Campaign roster three Adaptations rather than four.
+@export_range(0, 2, 1) var branch_slot_limit := MAXIMUM_BRANCH_ADAPTATIONS
+## Whether new Adaptations may only be entered through an authored Adaptation draft.
+##
+## Campaign turns this on. The measured pacing showed early upgrade ordering deciding
+## whether a build functioned at all -- a run whose first three screens happened to
+## offer three lines of one Path had no build, through no decision anybody made.
+## Randomness is supposed to shape how a build develops, not whether the player is
+## allowed to have one, so Campaign hands out its three Adaptation choices on the
+## wave table and keeps ordinary level-ups to the lines of Paths already owned.
+@export var authored_path_drafts := false
+
 @export_group("Relic Drafting")
 ## Relic options presented at one reward. Relics are choose-one-of-three; the
 ## pool is far larger than the run will ever see, so the offer is a sample.
@@ -350,6 +391,15 @@ var _pending_upgrade_options := PackedInt32Array()
 ## the panel can name what it is rather than looking like an ordinary level-up.
 var _pending_upgrade_is_branch_choice := false
 var _pending_relic_options := PackedInt32Array()
+## The Evolution reward currently on the table, and the Growth reward behind it.
+## Kept apart from the upgrade draft because they are different rewards arriving
+## from different places: an Evolution comes from a Campaign milestone or a boss, a
+## Growth from having survived a wave the player called in early, and neither is
+## something an ordinary level-up may roll.
+var _pending_evolution_options := PackedInt32Array()
+var _pending_growth_options := PackedInt32Array()
+## Ranks bought in each universal Growth stat, indexed by GrowthCatalog.StatId.
+var _growth_ranks := PackedInt32Array()
 var _upgrade_slot_order := PackedInt32Array()
 var _upgrade_offer_cursor := 0
 ## Adaptations already announced as mastered, so the flourish plays once.
@@ -421,6 +471,10 @@ func reset_progression() -> void:
 	_pending_upgrade_options.clear()
 	_pending_upgrade_is_branch_choice = false
 	_pending_relic_options.clear()
+	_pending_evolution_options.clear()
+	_pending_growth_options.clear()
+	_growth_ranks.resize(GrowthCatalog.get_count())
+	_growth_ranks.fill(0)
 	_upgrade_slot_order.clear()
 	_upgrade_levels.resize(UpgradeId.size())
 	_upgrade_levels.fill(0)
@@ -490,6 +544,14 @@ func get_owned_adaptation_count() -> int:
 func has_core_slot_open() -> bool:
 	return core_adaptations.size() < MAXIMUM_CORE_ADAPTATIONS
 
+func get_branch_slot_limit() -> int:
+	return clampi(branch_slot_limit, 0, MAXIMUM_BRANCH_ADAPTATIONS)
+
+
+func get_maximum_owned_adaptations() -> int:
+	return MAXIMUM_CORE_ADAPTATIONS + get_branch_slot_limit()
+
+
 func has_branch_slot_open() -> bool:
 	## A Branch slot exists only once the milestone that earns it has been beaten.
 	## Breadth is the Elite's and the Boss's reward, so before those fights the run
@@ -500,7 +562,7 @@ func has_branch_slot_open() -> bool:
 func unlock_branch_slot() -> bool:
 	## Opens one Branch position. The Adaptation that fills it is still drafted, not
 	## handed over: the milestone earns the room, the player chooses what goes in it.
-	if unlocked_branch_slots >= MAXIMUM_BRANCH_ADAPTATIONS:
+	if unlocked_branch_slots >= get_branch_slot_limit():
 		return false
 	unlocked_branch_slots += 1
 	branch_slot_unlocked.emit(unlocked_branch_slots)
@@ -561,15 +623,19 @@ func acquire_adaptation(path_id: int) -> bool:
 	upgrades_changed.emit()
 	return true
 
-func request_branch_upgrade_choice() -> bool:
-	## The milestone reward: a draft of real upgrade lines drawn only from
-	## Adaptations the run has not entered.
+func request_adaptation_draft() -> bool:
+	## A draft of real upgrade lines drawn only from Adaptations the run has not
+	## entered.
 	##
-	## A Branch is entered exactly the way a Core was -- by taking one of its lines
-	## -- so the reward for beating the Elite is an upgrade offer, never a screen of
-	## bare Adaptations to pick between. What the milestone changed is that there is
-	## now somewhere for a new Adaptation to go.
-	if not has_branch_slot_open() or _has_any_pending_choice():
+	## An Adaptation is entered exactly the way it always was -- by taking one of its
+	## lines -- so this is an upgrade offer, never a screen of bare Adaptations to
+	## pick between. What changed is who opens it: in Quick it is the milestone that
+	## earned the room for a Branch, and in Campaign it is the wave table, which hands
+	## out all three of the run's Adaptation choices at authored moments rather than
+	## leaving them to whatever the level-up pool happened to roll.
+	if not (has_core_slot_open() or has_branch_slot_open()):
+		return false
+	if _has_any_pending_choice():
 		return false
 	var candidates: Array[int] = []
 	for upgrade_id in range(UpgradeId.size()):
@@ -594,7 +660,7 @@ func request_branch_upgrade_choice() -> bool:
 	upgrade_choice_requested.emit(_pending_upgrade_options.duplicate())
 	return true
 
-func is_pending_branch_upgrade_choice() -> bool:
+func is_pending_adaptation_draft() -> bool:
 	return _pending_upgrade_is_branch_choice and not _pending_upgrade_options.is_empty()
 
 func is_line_mastered(upgrade_id: int) -> bool:
@@ -673,6 +739,50 @@ func get_path_rank_fraction(path_id: int) -> float:
 func has_active_evolution(evolution_id: int) -> bool:
 	return evolutions != null and evolutions.has_active_evolution(evolution_id)
 
+
+func get_invested_rank_count(path_id: int) -> int:
+	## Owned ordinary ranks in one Adaptation. The currency the Evolution gate is
+	## priced in: not lines mastered, because three ranks of one line and one rank of
+	## three are the same amount of commitment and only one of them used to count.
+	if not owns_adaptation(path_id):
+		return 0
+	var invested := 0
+	for upgrade_id in get_adaptation_line_ids(path_id):
+		invested += get_owned_upgrade_level(upgrade_id)
+	return invested
+
+
+func is_pair_invested(first_path: int, second_path: int) -> bool:
+	## Whether both halves of a relationship are developed enough to evolve.
+	return (
+		first_path != second_path
+		and get_invested_rank_count(first_path) >= EVOLUTION_RANKS_PER_PATH
+		and get_invested_rank_count(second_path) >= EVOLUTION_RANKS_PER_PATH
+	)
+
+
+func get_eligible_evolutions() -> PackedInt32Array:
+	return (
+		evolutions.get_eligible_evolutions()
+		if evolutions != null
+		else PackedInt32Array()
+	)
+
+
+func get_evolution_rank(evolution_id: int) -> int:
+	## The rank of one named Evolution, or zero when the run does not hold it. Every
+	## director asks this rather than "the Evolution rank": a run can hold two.
+	return evolutions.get_evolution_rank(evolution_id) if evolutions != null else 0
+
+
+func get_active_evolutions() -> PackedInt32Array:
+	var active := PackedInt32Array()
+	if evolutions == null:
+		return active
+	for evolution_id in evolutions.active_evolutions:
+		active.append(int(evolution_id))
+	return active
+
 func get_pair_evolution_id() -> int:
 	return evolutions.get_pair_evolution_id() if evolutions != null else EvolutionId.NONE
 
@@ -683,19 +793,177 @@ func is_pair_evolution_draftable() -> bool:
 	return evolutions != null and evolutions.is_pair_evolution_draftable()
 
 func grant_evolution_if_ready() -> bool:
-	if evolutions == null or not evolutions.grant_evolution_if_ready():
+	if evolutions == null:
 		return false
-	var upgrade_id: int = evolutions.get_evolution_upgrade_id(active_evolution)
-	if upgrade_id >= 0 and get_owned_upgrade_level(upgrade_id) == 0:
-		_upgrade_levels[upgrade_id] = 1
+	var before := get_active_evolutions().size()
+	if not evolutions.grant_evolution_if_ready():
+		return false
+	_open_granted_evolution_lines()
+	return get_active_evolutions().size() > before
+
+
+func grant_evolution(evolution_id: int) -> bool:
+	## Claims one named Evolution and opens its five-rank line at rank 1.
+	if evolutions == null or not evolutions.grant_evolution(evolution_id):
+		return false
+	_open_granted_evolution_lines()
+	return true
+
+
+func _open_granted_evolution_lines() -> void:
+	# Every claimed Evolution owns a line, and claiming it is what buys that line's
+	# first rank. Walked over the whole set rather than over the one just added, so a
+	# state restored out of a save opens the lines it was already holding.
+	for evolution_id in get_active_evolutions():
+		var upgrade_id: int = evolutions.get_evolution_upgrade_id(evolution_id)
+		if upgrade_id >= 0 and get_owned_upgrade_level(upgrade_id) == 0:
+			_upgrade_levels[upgrade_id] = 1
+	_update_evolution_readiness()
+	upgrades_changed.emit()
+
+
+## An Evolution reward: every relationship the run currently qualifies for, sampled
+## down to a few and put on the table.
+##
+## The whole point of the rework is here. An Evolution used to be decided by which
+## two Adaptations the run happened to take first, minutes before the player knew
+## what the run was going to be; now any owned pair that has been developed is a
+## candidate, a Path may take part in more than one, and the reward is a choice
+## between the relationships the build has actually earned.
+func request_evolution_choice() -> bool:
+	if _has_any_pending_choice():
+		return false
+	var eligible := get_eligible_evolutions()
+	if eligible.is_empty():
+		return false
+	var offered := PackedInt32Array()
+	var remaining: Array[int] = []
+	for evolution_id in eligible:
+		remaining.append(evolution_id)
+	while offered.size() < evolution_offer_count and not remaining.is_empty():
+		var index := _draft_random.randi_range(0, remaining.size() - 1)
+		offered.append(remaining[index])
+		remaining.remove_at(index)
+	_pending_evolution_options = offered
+	evolution_choice_requested.emit(_pending_evolution_options.duplicate())
+	return true
+
+
+func choose_evolution(evolution_id: int) -> bool:
+	if _pending_evolution_options.find(evolution_id) == -1:
+		return false
+	if not grant_evolution(evolution_id):
+		return false
+	_pending_evolution_options.clear()
+	relic_pools_changed.emit(get_eligible_relic_pool_ids())
+	return true
+
+
+func get_pending_evolution_options() -> PackedInt32Array:
+	return _pending_evolution_options.duplicate()
+
+
+func has_pending_evolution_choice() -> bool:
+	return not _pending_evolution_options.is_empty()
+
+
+## A Growth reward: three of the universal stats that still have a rank left.
+##
+## Offered rather than granted, and capped per stat, so the set a run collects is a
+## small spread rather than four ranks of whichever one is best. Returns false when
+## every stat is full, which is the run having collected all the Growth there is.
+func request_growth_choice() -> bool:
+	if _has_any_pending_choice():
+		return false
+	var remaining: Array[int] = []
+	for stat_id in range(GrowthCatalog.get_count()):
+		if get_growth_rank(stat_id) < GrowthCatalog.get_rank_cap(stat_id):
+			remaining.append(stat_id)
+	if remaining.is_empty():
+		return false
+	var offered := PackedInt32Array()
+	while offered.size() < growth_offer_count and not remaining.is_empty():
+		var index := _draft_random.randi_range(0, remaining.size() - 1)
+		offered.append(remaining[index])
+		remaining.remove_at(index)
+	_pending_growth_options = offered
+	growth_choice_requested.emit(_pending_growth_options.duplicate())
+	return true
+
+
+func choose_growth(stat_id: int) -> bool:
+	if _pending_growth_options.find(stat_id) == -1:
+		return false
+	if get_growth_rank(stat_id) >= GrowthCatalog.get_rank_cap(stat_id):
+		return false
+	_growth_ranks[stat_id] += 1
+	_pending_growth_options.clear()
+	growth_changed.emit()
 	upgrades_changed.emit()
 	return true
 
+
+func get_pending_growth_options() -> PackedInt32Array:
+	return _pending_growth_options.duplicate()
+
+
+func has_pending_growth_choice() -> bool:
+	return not _pending_growth_options.is_empty()
+
+
+func get_growth_rank(stat_id: int) -> int:
+	if stat_id < 0 or stat_id >= _growth_ranks.size():
+		return 0
+	return _growth_ranks[stat_id]
+
+
+func get_growth_total_ranks() -> int:
+	var total := 0
+	for rank in _growth_ranks:
+		total += rank
+	return total
+
+
+func get_growth_bonus(stat_id: int) -> float:
+	## Additive, always. Growth is the one reward in the run that must not compound
+	## with itself, because it is the one the player can farm by repeatedly choosing
+	## to make the Campaign harder.
+	return float(get_growth_rank(stat_id)) * GrowthCatalog.get_per_rank(stat_id)
+
+
+func get_growth_damage_multiplier() -> float:
+	return 1.0 + get_growth_bonus(GrowthCatalog.StatId.DAMAGE)
+
+
+func get_growth_attack_speed_multiplier() -> float:
+	return 1.0 + get_growth_bonus(GrowthCatalog.StatId.ATTACK_SPEED)
+
+
+func get_growth_movement_multiplier() -> float:
+	return 1.0 + get_growth_bonus(GrowthCatalog.StatId.MOVEMENT_SPEED)
+
+
+func get_growth_area_multiplier() -> float:
+	return 1.0 + get_growth_bonus(GrowthCatalog.StatId.AREA)
+
+
+func get_growth_bonus_health() -> float:
+	return get_growth_bonus(GrowthCatalog.StatId.MAX_HEALTH)
+
+
+func get_growth_damage_reduction() -> float:
+	return get_growth_bonus(GrowthCatalog.StatId.ARMOR)
+
+
+func get_growth_regeneration() -> float:
+	return get_growth_bonus(GrowthCatalog.StatId.RECOVERY)
+
 func is_evolution_path(path_id: int) -> bool:
-	# Only the Core pair makes the pairing. A Branch never joins it, so no second
-	# Evolution and no three-way pairing can ever form no matter how deeply the
-	# Branch is developed.
-	return is_core_adaptation(path_id)
+	# Every owned Adaptation is half of a relationship. A Branch used to be excluded
+	# by construction -- the pairing was the Core pair and nothing else -- and that
+	# is the rule the Evolution rework removed: a run that took Thistle third and
+	# built it is entitled to what Thistle pairs with.
+	return owns_adaptation(path_id)
 
 func debug_select_tertiary_path(path_id: int) -> bool:
 	## Debug shorthand for filling the next Branch slot.
@@ -745,10 +1013,19 @@ func add_xp(amount: int) -> void:
 
 
 func configure_mode(mode: int) -> void:
-	# Campaign has more time and more authored adaptation positions to fill, so its
-	# level curve uses the measured 30-minute pacing while Quick keeps its balance.
+	# Campaign is three Adaptations handed out on its wave table, in twenty minutes
+	# rather than twenty-five. The level curve is flatter than Quick's because the
+	# build has to be *finished* by the last quarter rather than still assembling
+	# through it, and flatter again than the twenty-five-minute Campaign's because
+	# the Threat Director puts fewer bodies on the board to earn XP from.
 	if mode == RUN_MODE.Id.CAMPAIGN:
-		xp_requirement_growth = 1.20
+		xp_requirement_growth = 1.18
+		branch_slot_limit = CAMPAIGN_OWNED_ADAPTATIONS - MAXIMUM_CORE_ADAPTATIONS
+		authored_path_drafts = true
+	else:
+		xp_requirement_growth = 1.34
+		branch_slot_limit = MAXIMUM_BRANCH_ADAPTATIONS
+		authored_path_drafts = false
 
 func choose_upgrade(upgrade_id: int) -> bool:
 	if _pending_upgrade_options.find(upgrade_id) == -1:
@@ -780,6 +1057,11 @@ func get_upgrade_committed_path(upgrade_id: int) -> int:
 	if upgrade_path == UNSELECTED_PATH or owns_adaptation(upgrade_path):
 		return UNSELECTED_PATH
 	if not is_path_offered(upgrade_path):
+		return UNSELECTED_PATH
+	# With authored drafts on, the only screen that may commit a new Adaptation is
+	# the Adaptation draft itself. An ordinary level-up cannot quietly decide what
+	# the run is going to be.
+	if authored_path_drafts and not _pending_upgrade_is_branch_choice:
 		return UNSELECTED_PATH
 	if has_core_slot_open() or has_branch_slot_open():
 		return upgrade_path
@@ -970,7 +1252,7 @@ func get_relic_run_state() -> int:
 	## the build rather than elapsed time, so a roster that filled early gets the
 	## deeper table early. Where several rows apply, the furthest one wins.
 	var owned := get_owned_adaptation_count()
-	if owned >= MAXIMUM_OWNED_ADAPTATIONS:
+	if owned >= get_maximum_owned_adaptations():
 		return RelicCatalog.RunState.FULL_ROSTER
 	if owned >= 3 or evolution_status == EvolutionStatus.EVOLVED:
 		return RelicCatalog.RunState.POST_EVOLUTION
@@ -1091,11 +1373,17 @@ func has_relic(relic_id: int) -> bool:
 func debug_complete_evolution_requirements() -> void:
 	if not has_primary_path() or not has_secondary_path():
 		debug_select_paths(PathId.SPORE, PathId.BLOOM)
-	# Two mastered lines in each Core, which is what the gate actually asks for.
+	# Enough owned ranks in each Core to clear the investment gate, bought a line at
+	# a time exactly as a player would have to buy them.
 	for core_id in core_adaptations:
-		var lines := get_adaptation_line_ids(core_id)
-		for index in range(mini(MASTERED_LINES_FOR_EVOLUTION, lines.size())):
-			_upgrade_levels[lines[index]] = get_upgrade_maximum_level(lines[index])
+		var invested := get_invested_rank_count(core_id)
+		for upgrade_id in get_adaptation_line_ids(core_id):
+			while (
+				invested < EVOLUTION_RANKS_PER_PATH
+				and get_owned_upgrade_level(upgrade_id) < get_upgrade_maximum_level(upgrade_id)
+			):
+				_upgrade_levels[upgrade_id] += 1
+				invested += 1
 	_update_evolution_readiness()
 	upgrades_changed.emit()
 
@@ -1263,7 +1551,7 @@ func get_upgrade_description(upgrade_id: int) -> String:
 				pruning_director.pruning_cutting_yield_per_level * 100.0 if pruning_director != null else 0.0
 			)
 		UpgradeId.PRUNING_CUTTING_DAMAGE:
-			return "+%d%% ring and Cutting damage" % roundi(
+			return "+%d%% launched Cutting damage" % roundi(
 				pruning_director.pruning_cutting_damage_per_level * 100.0 if pruning_director != null else 0.0
 			)
 		UpgradeId.PRUNING_CHARGE:
@@ -1368,18 +1656,6 @@ func _is_same_offer(left: PackedInt32Array, right: PackedInt32Array) -> bool:
 			return false
 	return true
 
-func choose_pair_evolution() -> bool:
-	if _pending_upgrade_options.find(EVOLUTION_DRAFT_OPTION) == -1:
-		return false
-	if not grant_evolution_if_ready():
-		return false
-	_pending_upgrade_options.clear()
-	_pending_upgrade_is_branch_choice = false
-	relic_pools_changed.emit(get_eligible_relic_pool_ids())
-	_try_request_level_up()
-	xp_changed.emit(current_level, current_xp, get_required_xp())
-	return true
-
 func _is_upgrade_draftable(upgrade_id: int) -> bool:
 	## Whether this line may appear in an offer at all, ignoring its current rank.
 	##
@@ -1398,6 +1674,10 @@ func _is_upgrade_draftable(upgrade_id: int) -> bool:
 		return true
 	if not is_path_offered(upgrade_path):
 		return false
+	if authored_path_drafts:
+		# The Adaptation draft builds its own candidate list, so an unowned Path is
+		# simply not in the ordinary pool at all.
+		return false
 	return has_core_slot_open() or has_branch_slot_open()
 
 func get_ordinary_candidate_lines() -> PackedInt32Array:
@@ -1414,17 +1694,22 @@ func get_ordinary_candidate_lines() -> PackedInt32Array:
 			candidates.append(upgrade_id)
 	return candidates
 
-func _get_evolution_rank_candidate() -> int:
-	# The claimed Evolution's own line, offered as an ordinary unrestricted
-	# candidate at exactly the next rank it can buy.
-	if evolutions == null or evolution_status != EvolutionStatus.EVOLVED:
-		return -1
-	var upgrade_id: int = evolutions.get_evolution_upgrade_id(active_evolution)
-	if upgrade_id < 0:
-		return -1
-	if get_owned_upgrade_level(upgrade_id) >= get_upgrade_maximum_level(upgrade_id):
-		return -1
-	return upgrade_id
+func _get_evolution_rank_candidates() -> PackedInt32Array:
+	# Every claimed Evolution's own line, offered as an ordinary unrestricted
+	# candidate at exactly the next rank it can buy. Claiming an Evolution is a
+	# reward of its own now; deepening one is an ordinary upgrade like any other,
+	# and a run holding two has two such lines competing for the same screens.
+	var candidates := PackedInt32Array()
+	if evolutions == null:
+		return candidates
+	for evolution_id in get_active_evolutions():
+		var upgrade_id: int = evolutions.get_evolution_upgrade_id(evolution_id)
+		if upgrade_id < 0:
+			continue
+		if get_owned_upgrade_level(upgrade_id) >= get_upgrade_maximum_level(upgrade_id):
+			continue
+		candidates.append(upgrade_id)
+	return candidates
 
 func _roll_upgrade_options() -> bool:
 	## Three cards drawn from everything the run could still buy.
@@ -1433,17 +1718,11 @@ func _roll_upgrade_options() -> bool:
 	## weighted rather than uniform: the drought guards below are what keep a line
 	## the player wants from simply not appearing for minutes at a time.
 	var candidates := get_ordinary_candidate_lines()
-	var evolution_rank_candidate := _get_evolution_rank_candidate()
-	if evolution_rank_candidate >= 0:
+	for evolution_rank_candidate in _get_evolution_rank_candidates():
 		candidates.append(evolution_rank_candidate)
-	# A completed pairing holds one of the three slots until it is taken, so the
-	# claim can never be missed by an unlucky draw.
-	var claim_ready := is_pair_evolution_draftable()
-	if candidates.is_empty() and not claim_ready:
+	if candidates.is_empty():
 		return false
 	var offer := PackedInt32Array()
-	if claim_ready:
-		offer.append(EVOLUTION_DRAFT_OPTION)
 	var remaining: Array[int] = []
 	for upgrade_id in candidates:
 		if offer.find(upgrade_id) == -1:
@@ -1521,26 +1800,22 @@ func _offer_carries_path(offer: PackedInt32Array, path_id: int) -> bool:
 
 
 func _update_evolution_readiness() -> void:
-	## Two mastered lines in each Core, and nothing else counts.
+	## Whether any owned relationship has been developed far enough to evolve.
 	##
-	## Not one line each, and not any two mastered lines: twelve deliberate ordinary
-	## purchases split across both Cores is what the Evolution is the reward for.
-	## Branch lines, Clover's temporary ranks, relic bonuses and Evolution-generated
-	## events carrying a Core's tag are all excluded by construction here, because
-	## this reads owned ordinary ranks of the two Core Adaptations and nothing else.
+	## Any pair, not the Core pair: a Branch is half of a relationship too, and a run
+	## that took Thistle third and built it is entitled to what Thistle pairs with.
+	## Clover's temporary ranks and relic bonuses are excluded by construction,
+	## because the gate reads owned ordinary ranks and nothing else.
 	if evolutions == null:
 		return
-	evolutions.update_readiness(
-		has_primary_path()
-		and has_secondary_path()
-		and get_mastered_line_count(core_adaptations[0]) >= MASTERED_LINES_FOR_EVOLUTION
-		and get_mastered_line_count(core_adaptations[1]) >= MASTERED_LINES_FOR_EVOLUTION
-	)
+	evolutions.update_readiness(not evolutions.get_eligible_evolutions().is_empty())
 
 func _has_any_pending_choice() -> bool:
 	return (
 		not _pending_upgrade_options.is_empty()
 		or not _pending_relic_options.is_empty()
+		or not _pending_evolution_options.is_empty()
+		or not _pending_growth_options.is_empty()
 	)
 
 func _get_upgrade_path(upgrade_id: int) -> int:
@@ -1611,6 +1886,9 @@ func capture_state() -> Dictionary:
 		"pending_upgrade_options": _pending_upgrade_options,
 		"pending_upgrade_is_branch_choice": _pending_upgrade_is_branch_choice,
 		"pending_relic_options": _pending_relic_options,
+		"pending_evolution_options": _pending_evolution_options,
+		"pending_growth_options": _pending_growth_options,
+		"growth_ranks": _growth_ranks,
 		"upgrade_slot_order": _upgrade_slot_order,
 		"upgrade_offer_cursor": _upgrade_offer_cursor,
 		"garden_complete_announced": _garden_complete_announced,
@@ -1656,6 +1934,9 @@ func apply_state(state: Dictionary) -> void:
 	_pending_upgrade_options = _int_array_from(state.get("pending_upgrade_options"))
 	_pending_upgrade_is_branch_choice = bool(state.get("pending_upgrade_is_branch_choice", false))
 	_pending_relic_options = _int_array_from(state.get("pending_relic_options"))
+	_pending_evolution_options = _int_array_from(state.get("pending_evolution_options"))
+	_pending_growth_options = _int_array_from(state.get("pending_growth_options"))
+	_growth_ranks = _fit_int_array(state.get("growth_ranks"), GrowthCatalog.get_count())
 	_upgrade_slot_order = _int_array_from(state.get("upgrade_slot_order"))
 	_upgrade_offer_cursor = int(state.get("upgrade_offer_cursor", _upgrade_offer_cursor))
 	_garden_complete_announced = bool(state.get("garden_complete_announced", false))

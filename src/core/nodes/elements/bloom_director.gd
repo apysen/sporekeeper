@@ -77,6 +77,11 @@ class Glob:
 ## Seconds after a run reset before the first automatic Bloom is planted.
 @export_range(0.0, 30.0, 0.5) var first_bloom_delay_seconds := 4.0
 ## Base seconds between automatic Blooms before Bloom Frequency upgrades apply.
+##
+## **`run.tscn` overrides this to 15.0.** This default is not what the game runs, and
+## an early-Path pass shortened it here to 11.0 believing otherwise -- a change that
+## did nothing at all. Tune Bloom's cadence on the BloomDirector node in the scene;
+## the number here is only the fallback for a scene that does not set one.
 @export_range(1.0, 60.0, 0.5) var bloom_interval_seconds := 13.0
 ## Short telegraph in seconds between a Bloom charging on the frontier and its burst.
 @export_range(0.1, 5.0, 0.05) var bloom_windup_seconds := 0.65
@@ -429,7 +434,7 @@ func plant_chained_bloom(local_position: Vector2, chain_depth: int) -> bool:
 
 func get_maximum_chain_depth() -> int:
 	# Deep Cascade lets a Super Bloom chain propagate one generation further.
-	if progression.get_evolution_upgrade_level() >= 2:
+	if progression.get_evolution_rank(Progression.EvolutionId.SUPER_BLOOM) >= 2:
 		return evolutions.maximum_chain_depth + 1
 	return evolutions.maximum_chain_depth
 
@@ -448,7 +453,9 @@ func _advance_flowering_season(delta: float) -> void:
 	if _flowering_charge < evolutions.flowering_season_charge_required:
 		return
 	_flowering_charge = 0.0
-	var rank := progression.get_evolution_upgrade_level()
+	var rank := progression.get_evolution_rank(
+		Progression.EvolutionId.FLOWERING_SEASON
+	)
 	# Distributed Flowering spreads the sites across the frontier instead of
 	# clustering them near one anchor.
 	var spread_pixels := 180.0
@@ -529,7 +536,9 @@ func _harvest_bramble_into_traps(local_position: Vector2, bloom_radius_pixels: f
 	)
 	if harvest.amount <= 0.0:
 		return
-	var payload_rank := progression.get_evolution_upgrade_level()
+	var payload_rank := progression.get_evolution_rank(
+		Progression.EvolutionId.THORNBURST
+	)
 	var trap_yield := 1.0
 	if payload_rank >= 1:
 		trap_yield += evolutions.briar_payload_trap_yield
@@ -603,9 +612,9 @@ func on_bloom_detonated(
 	)
 	var expansion := progression.get_expansion_multiplier()
 	var super_multiplier := evolutions.chained_bloom_multiplier if is_super_bloom else 1.0
-	var cascade_rank := 0
-	if progression.has_active_evolution(Progression.EvolutionId.SUPER_BLOOM):
-		cascade_rank = progression.get_evolution_upgrade_level()
+	var cascade_rank := progression.get_evolution_rank(
+		Progression.EvolutionId.SUPER_BLOOM
+	)
 	var grand_scale := 1.0
 	if is_super_bloom:
 		# Cascade Force: a chained Bloom keeps more of the Force that spawned it,

@@ -109,7 +109,7 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype._on_elite_defeated()
 	var branch_draft_offered := false
 	var branch_draft_is_unowned := true
-	if prototype.progression.is_pending_branch_upgrade_choice():
+	if prototype.progression.is_pending_adaptation_draft():
 		branch_draft_offered = true
 		for option_id in prototype.progression.get_pending_upgrade_options():
 			branch_draft_is_unowned = (

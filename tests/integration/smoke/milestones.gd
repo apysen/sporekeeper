@@ -40,40 +40,43 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype.progression.debug_complete_evolution_requirements()
 	report.check(
 		prototype.progression.evolution_status == Progression.EvolutionStatus.READY,
-		"maxing one Spore and one Bloom line marks Evolution Ready"
+		"investing five ranks in each of Spore and Bloom marks an Evolution eligible"
 	)
+	# An Evolution is a reward of its own now, not a card inside a level-up. An
+	# ordinary draft must never contain one, however ready the run is.
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
-	var evolution_draft := prototype.progression.get_pending_upgrade_options()
-	var evolution_index := evolution_draft.find(
-		Progression.EVOLUTION_DRAFT_OPTION
+	var ordinary_draft := prototype.progression.get_pending_upgrade_options()
+	var draft_carries_evolution := false
+	for option_id in ordinary_draft:
+		if prototype.progression.is_evolution_upgrade(option_id):
+			draft_carries_evolution = true
+	report.check(
+		ordinary_draft.size() == 3 and not draft_carries_evolution,
+		"a level-up offers three upgrade lines and never the Evolution itself"
 	)
+	prototype._choose_displayed_option(0)
+	var evolution_opened := prototype.progression.request_evolution_choice()
+	var evolution_options := prototype.progression.get_pending_evolution_options()
 	var evolution_button_text := ""
-	if evolution_index >= 0:
-		evolution_button_text = prototype.choice_panel.buttons[evolution_index].text
+	if not evolution_options.is_empty():
+		evolution_button_text = prototype.choice_panel.buttons[0].text
 	report.check(
-		evolution_index >= 0
-		and evolution_draft.size() == 3
-		and evolution_button_text.contains("SUPER BLOOM")
-		and evolution_button_text.contains("EVOLUTION"),
-		"a ready pairing is offered inside the level-up draft alongside two upgrades"
-	)
-	prototype.progression.reroll_upgrade_choice()
-	report.check(
-		prototype.progression.get_pending_upgrade_options().has(
-			Progression.EVOLUTION_DRAFT_OPTION
-		),
-		"a ready pairing survives a reroll so it cannot be drafted away"
+		evolution_opened
+		and evolution_options.has(Progression.EvolutionId.SUPER_BLOOM)
+		and prototype.choice_panel.header.text == "EVOLUTION"
+		and evolution_button_text.contains("SUPER BLOOM"),
+		"an Evolution reward offers the relationships the build has actually developed"
 	)
 	prototype._choose_displayed_option(
-		prototype.progression.get_pending_upgrade_options().find(
-			Progression.EVOLUTION_DRAFT_OPTION
-		)
+		evolution_options.find(Progression.EvolutionId.SUPER_BLOOM)
 	)
 	report.check(
 		prototype.progression.evolution_status == Progression.EvolutionStatus.EVOLVED
 		and prototype.progression.active_evolution
 		== Progression.EvolutionId.SUPER_BLOOM
-		and prototype.progression.get_evolution_upgrade_level() == 1,
+		and prototype.progression.get_evolution_rank(
+			Progression.EvolutionId.SUPER_BLOOM
+		) == 1,
 		"choosing the pairing grants Super Bloom and its rank-1 line immediately"
 	)
 
@@ -115,10 +118,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype._update_hud()
 	prototype.progression.add_xp(prototype.progression.get_required_xp())
 	report.check(
-		not prototype.progression.get_pending_upgrade_options().has(
-			Progression.EVOLUTION_DRAFT_OPTION
+		not prototype.progression.get_eligible_evolutions().has(
+			Progression.EvolutionId.SUPER_BLOOM
 		),
-		"an evolved run stops offering the pairing in later drafts"
+		"a claimed Evolution stops being eligible for a second Evolution reward"
 	)
 	prototype._choose_displayed_option(0)
 
@@ -135,7 +138,7 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	# The Boss opens the last Branch position, so its Adaptation offer comes first
 	# and the relic follows once that choice is made -- by which time the new
 	# Adaptation's relic pool is already eligible.
-	if prototype.progression.is_pending_branch_upgrade_choice():
+	if prototype.progression.is_pending_adaptation_draft():
 		prototype._choose_displayed_option(0)
 	report.check(
 		prototype.choice_panel.visible
