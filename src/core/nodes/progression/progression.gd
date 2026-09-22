@@ -190,7 +190,22 @@ enum EvolutionId {
 
 @export_group("XP and Drafting")
 ## XP required to advance from the starting level to the first upgrade draft.
-@export_range(1, 100, 1) var first_level_xp := 7
+##
+## Raised from 7. The Campaign rework rebuilt a wave into a threat budget and never
+## revisited this curve, so it was being fed by a spawn supply it was not calibrated
+## against. Measured end to end by `tools/pacing_probe.gd`: level 9 and eight upgrade
+## picks inside the first minute, level 12 by wave 3, and twenty of a roster's
+## thirty-six ranks bought by minute five of twenty -- half the picks in a run landing
+## in its first quarter. The probe's own note names that as the failure it exists to
+## catch: a build that is merely good is a problem if it is complete by minute four.
+##
+## This rather than `xp_requirement_growth`, because the shape is wrong only at the
+## start: after minute six the run already settles to about one pick a minute, which is
+## fine, and steepening the exponent would punish the part that works. Scaling this
+## multiplies every threshold equally, and since early income is small while late income
+## is enormous, the same factor costs minutes early and seconds late -- the asymmetry the
+## problem actually has.
+@export_range(1, 200, 1) var first_level_xp := 34
 ## Exponential multiplier applied to the XP requirement for each new level.
 @export_range(1.0, 3.0, 0.01) var xp_requirement_growth := 1.34
 ## Highest rank obtainable by an ordinary Adaptation line.
@@ -1543,7 +1558,7 @@ func get_upgrade_description(upgrade_id: int) -> String:
 				root_director.network_bonus_per_level * 100.0 if root_director != null else 0.0
 			)
 		UpgradeId.PRUNING_HARVEST_RATE:
-			return "+%d%% ground harvested per second, and spent per second" % roundi(
+			return "+%d%% harvest rate, and the ring holds that much longer unfed" % roundi(
 				pruning_director.pruning_harvest_rate_per_level * 100.0 if pruning_director != null else 0.0
 			)
 		UpgradeId.PRUNING_CUTTING_YIELD:

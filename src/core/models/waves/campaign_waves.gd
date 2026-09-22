@@ -131,7 +131,19 @@ const RELIC_WAVES := [2, 4, 7, 9, 12, 14, 17, 19]
 ## III, and one in Act IV for a run whose second relationship matured late. A run
 ## that qualifies for none of them simply does not evolve, which is what makes
 ## meeting the requirement worth building toward.
+##
+## "Roughly two" was a prediction rather than a rule, and nothing enforced it. The
+## limiter was supposed to be eligibility -- each reward needs a developed Path
+## relationship -- but a three-Adaptation roster has three possible pairings and
+## qualifies at every checkpoint, so three is what a played run and the pacing probe both
+## produced. `CATCH_UP_EVOLUTION_WAVES` are the slots this comment already describes as
+## being *for a run whose second relationship matured late*: they open only for a run
+## still short of the target, which is what makes the target true.
 const EVOLUTION_REWARD_WAVES := [8, 14, 18]
+## Of the waves above, the ones that are a second chance rather than another grant.
+const CATCH_UP_EVOLUTION_WAVES := [18]
+## Evolutions a run is aimed at, and the count a catch-up slot checks against.
+const EVOLUTION_TARGET := 2
 
 ## Waves that hand the player a new Adaptation draft.
 ##
@@ -142,12 +154,18 @@ const EVOLUTION_REWARD_WAVES := [8, 14, 18]
 ## in, Wave 5 closes Act I with the roster complete.
 const PATH_GRANT_WAVES := [1, 3, 5]
 
-## Waves that carry a Trial: one rule the player may follow for one wave, for a relic.
+## Waves that *may* carry a Trial. Whether one actually turns up is rolled by the run,
+## so this is the list of places a Trial is allowed to appear rather than a schedule.
 ##
-## One per act after Germination, and deliberately on waves that owe nothing else.
-## Act I is left alone because a Trial is a constraint on how a build is played and
-## the player does not have a build yet.
-const TRIAL_WAVES := [6, 11, 16]
+## Every wave here owes nothing else: no relic, no evolution, no path draft and no
+## milestone spawn. A Trial's relic landing in the same breath as a wave's relic reads
+## as one reward rather than two, and a Trial is a rule about how a wave is *played*,
+## which is not a thing to ask of the wave a boss walks into.
+##
+## Act I is left out because a Trial constrains how a build is played and the player
+## does not have a build yet, and Wave 20 because the last wave of a run is already
+## carrying everything it can.
+const TRIAL_ELIGIBLE_WAVES := [6, 11, 13, 16]
 
 const ELITE_WAVE := 5
 const ELITE_SPAWN_SECOND := 30.0
@@ -404,8 +422,9 @@ static func _build_wave_spec(wave_number: int, authored: Dictionary) -> Campaign
 	)
 	spec.grants_wave_relic = RELIC_WAVES.has(wave_number)
 	spec.grants_evolution_reward = EVOLUTION_REWARD_WAVES.has(wave_number)
+	spec.evolution_reward_is_catch_up = CATCH_UP_EVOLUTION_WAVES.has(wave_number)
 	spec.grants_path_draft = PATH_GRANT_WAVES.has(wave_number)
-	spec.grants_trial = TRIAL_WAVES.has(wave_number)
+	spec.grants_trial = TRIAL_ELIGIBLE_WAVES.has(wave_number)
 	return spec
 
 

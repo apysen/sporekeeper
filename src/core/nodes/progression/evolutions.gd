@@ -288,6 +288,13 @@ signal evolution_changed(status: int)
 @export_range(0.0, 1.0, 0.05) var stool_regrowth_second_threshold := 0.50
 @export_range(0.0, 1.0, 0.05) var stool_regrowth_second_share := 0.40
 
+## How many Evolutions a run is built to develop.
+##
+## Not a cap -- nothing refuses a third -- but the number the panel shows sockets for,
+## because a run that can grow two relationships and is shown one socket has no way to
+## know the second is coming.
+const TARGET_ACTIVE_EVOLUTIONS := 2
+
 ## Every Evolution this run holds, in the order it claimed them.
 ##
 ## Plural, because an Evolution is no longer a property of one locked pair. A run

@@ -202,6 +202,12 @@ enum QueuedReward {
 @export var status_label: Label
 ## The hostile-count warning, its own node so the panel can place it.
 @export var hostile_label: Label
+## Blight's own line. It used to be a suffix inside `wave_blight_template`, on a label
+## narrow enough that it wrapped underneath the wave number -- which is the same
+## complaint the wave and status labels were split apart over: text sharing a node
+## cannot be moved, coloured or sized without editing a format string and counting
+## spaces.
+@export var blight_label: Label
 ## Label that displays selected Plant paths, mastery readiness, and active evolution.
 @export var evolution_label: Label
 ## The relic row: the run's relics as rounded slots, under a fixed heading.
@@ -209,6 +215,14 @@ enum QueuedReward {
 ## Panel shown while the player chooses an upgrade or relic.
 ## The Adaptation panel: the Core and Branch rows and the Evolution between them.
 @export var adaptation_tree: AdaptationTree
+## The Trial plaque: the live rule, what holding it is worth, and how it is going.
+## It lives in the side panel rather than over the arena because a rule the player is
+## meant to hold for a whole wave belongs with the other things they are managing.
+@export var trial_card: TrialDirector
+## Calls the next wave in early. Provocation is the Campaign's difficulty dial and
+## the player turns it, so it is a control on the panel rather than a key they have
+## to be told about.
+@export var provoke_button: Button
 @export var choice_panel: ChoicePanel
 
 @export_group("Clover Machine")
@@ -271,11 +285,42 @@ enum QueuedReward {
 ## The wave line once the run has Blight on it. Written in place of the plain wave
 ## counter rather than beside it, because the player has to be able to see at a
 ## glance why the garden got harder and there is no second line to put it on.
+## Kept for a scene that has not been re-saved with a `blight_label` wired up; the run
+## falls back to the old shared line when the node is absent.
 @export var wave_blight_template := "WAVE {wave}/{waves}   BLIGHT {blight}"
+@export var blight_label_template := "BLIGHT {blight}"
+## How often an eligible wave actually sets a Trial, and how many a run will ever
+## offer.
+##
+## Trials are written the way Die in the Dungeon writes its challenges, and that
+## includes how often they turn up: there they appear at random during battles rather
+## than on a schedule, and Hades' Trials of the Gods go further -- a run gets nought,
+## one or two, and which is part of what makes one worth stopping for. Into the Breach
+## is the opposite model, a bonus objective on every mission, and it works there
+## because a mission is twenty minutes of deliberation rather than sixty seconds of
+## defending a garden.
+##
+## Four eligible waves at a coin flip means a run typically sees two, sometimes one,
+## sometimes three, and occasionally none at all. The fixed 6/11/16 this replaced
+## produced exactly three, in the same places, in every run -- which is a schedule the
+## player learns once and then stops reading.
+@export_range(0.0, 1.0, 0.05) var trial_chance := 0.5
+@export_range(0, 6, 1) var maximum_trials_per_run := 3
+
+## The provoke button's two faces: gold once the window is open, the panel's own
+## muted grey while it is still shut.
+const PROVOKE_READY_COLOR := Color(0.769, 0.604, 0.314, 1.0)
+const PROVOKE_WAITING_COLOR := Color(0.663, 0.69, 0.608, 1.0)
+
 ## Announced once per wave, the first moment the next one can be called in early.
 ## Provocation is the Campaign's main difficulty dial and the player chooses it, so
 ## they have to be told it is available rather than left to discover the key.
-@export var provoke_ready_banner := "PROVOKE READY — E CALLS THE NEXT WAVE"
+@export var provoke_ready_banner := "PROVOKE READY — CALL THE NEXT WAVE IN"
+## What the button says while the window is shut, and while it is open. Two strings
+## rather than one greyed-out control, because "not yet" and "now" are the whole of
+## what provocation asks the player to read.
+@export var provoke_button_text := "PROVOKE"
+@export var provoke_button_ready_text := "PROVOKE — READY"
 @export var status_complete_text := "CLEAR THE FIELD"
 @export_multiline var metabolism_complete_template := (
 	"LIFETIME BIOMASS {lifetime}
@@ -348,6 +393,8 @@ var _banner_remaining := 0.0
 ## The wave whose Provocation window has already been announced, so the prompt
 ## arrives once when it opens rather than every tenth of a second afterwards.
 var _provoke_prompt_wave := 0
+## Which face the Provoke button is currently wearing, as -1 for "not yet dressed".
+var _provoke_button_ready := -1
 ## Whether the run is currently choosing where to put a release, and which action is
 ## waiting on the answer. The run keeps running while it is: the doc treats a release
 ## as a decision made under pressure, not a pause to plan in.
@@ -388,14 +435,15 @@ var _base_small_fragment_decay := 0.0
 var save_enabled := false
 var _clover_enabled := true
 var _mechanics_help: MechanicsHelp
-## The Trial currently running, and its card. Built in code rather than authored in
-## the scene, the same way the glossary is: it is a prototype, and a prototype that
-## needs a scene edit before anyone can look at it is a prototype nobody looks at.
+## The Trial currently running, and its card, which is the side panel's `trial_card`
+## under the name the rest of this file already knew it by.
 var _trial_director: TrialDirector
 ## Whether the Trial that just resolved is owed its reward. Kept rather than paid
 ## immediately, because a Trial resolves on a wave boundary that may already be
 ## carrying a relic and a draft.
 var _owed_trial_relics := 0
+## How many Trials this run has actually set, which is what the cap is counted against.
+var _trials_offered := 0
 
 
 func _ready() -> void:
@@ -453,6 +501,7 @@ func _ready() -> void:
 		wave_label,
 		status_label,
 		hostile_label,
+		blight_label,
 		evolution_label,
 		result_panel,
 		result_header,
@@ -499,6 +548,9 @@ func _ready() -> void:
 	wave_director.evolution_reward_earned.connect(_on_evolution_reward_earned)
 	wave_director.growth_reward_earned.connect(_on_growth_reward_earned)
 	wave_director.wave_provoked.connect(_on_wave_provoked)
+	if provoke_button != null:
+		provoke_button.pressed.connect(_on_provoke_pressed)
+		provoke_button.mouse_entered.connect(_on_provoke_hovered)
 	wave_director.blight_changed.connect(_on_blight_changed)
 	wave_director.trial_wave_began.connect(_on_trial_wave_began)
 	wave_director.trial_wave_ended.connect(_on_trial_wave_ended)
@@ -650,11 +702,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_R:
 			reset_run()
 			return
-		KEY_E:
-			# A real mechanic rather than a debug key, so it answers whether or not
-			# the dev controls are on.
-			_provoke_next_wave()
-			return
 	# Everything past here is a debug key and answers only while the dev controls are on.
 	if not dev_controls_enabled:
 		return
@@ -697,6 +744,86 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_status("Debug: a relic reward is on the table.")
 		KEY_F11:
 			_report_man_eater_state()
+
+
+func _refresh_provoke_button() -> void:
+	## The button says the two things the mechanic has to say: that provocation exists,
+	## and whether the window is open. It stays pressable while the window is shut so
+	## that pressing it answers *why* -- `_provoke_next_wave` already distinguishes
+	## "hold this wave longer" from "the run has spent its compression allowance", and
+	## a greyed-out control would throw both answers away. Only the colour and the word
+	## change, because a control that appears and disappears is one the player stops
+	## looking for.
+	if provoke_button == null:
+		return
+	var campaign := wave_director.is_campaign_mode()
+	provoke_button.visible = campaign
+	if not campaign:
+		return
+	var ready := (
+		_run_state == RunState.RUNNING
+		and _choice_kind == ChoiceKind.NONE
+		and wave_director.can_provoke()
+	)
+	# Only on the change. The interface refreshes every frame and a theme override is
+	# a notification to the whole control, not a colour assignment.
+	if _provoke_button_ready == int(ready):
+		return
+	_provoke_button_ready = int(ready)
+	provoke_button.text = provoke_button_ready_text if ready else provoke_button_text
+	provoke_button.add_theme_color_override(
+		"font_color", PROVOKE_READY_COLOR if ready else PROVOKE_WAITING_COLOR
+	)
+
+
+func _on_provoke_hovered() -> void:
+	## What a Provocation gives and what it takes, with this wave's numbers in it.
+	##
+	## Provocation is the one control on the panel whose cost is entirely invisible --
+	## a Blight level is permanent, the surge arrives thirty seconds later, and the
+	## compression allowance is spent silently. A player who cannot see any of that is
+	## not making the decision the mechanic was built around, they are pressing a
+	## button that makes the wave arrive.
+	if _mechanics_help == null or provoke_button == null:
+		return
+	_mechanics_help.show_hud_tooltip(
+		"PROVOKE", _provoke_tooltip_body(), provoke_button.get_global_rect()
+	)
+
+
+func _provoke_tooltip_body() -> String:
+	var skipped := maxi(0, roundi(wave_director.get_seconds_left_in_wave()))
+	var spent := wave_director.get_provoked_seconds()
+	var allowance := maxi(0, roundi(wave_director.maximum_provoked_seconds - spent))
+	var lines := PackedStringArray()
+	lines.append(
+		"Calls the next wave in now, skipping the %ds left on this one." % skipped
+	)
+	lines.append(
+		"You gain a Growth reward for surviving the wave you called, and a run that "
+		+ "ends sooner. %ds of your compression allowance is left." % allowance
+	)
+	lines.append(
+		"You pay a Blight level, which is permanent, and a surge of extra threat at "
+		+ "the front of that wave -- larger the earlier you call it."
+	)
+	# The refusal belongs here too. The button stays pressable so that pressing it
+	# says why, but a player reading the card first should not have to press it to
+	# find out that the window is shut.
+	if not wave_director.can_provoke():
+		if not wave_director.has_provocation_budget():
+			lines.append(
+				"Not available: the garden has been hurried as far as it will go this run."
+			)
+		else:
+			lines.append(
+				"Not yet: hold this wave longer, or clear what it has already sent."
+			)
+	return "\n\n".join(lines)
+
+
+func _on_provoke_pressed() -> void:
+	_provoke_next_wave()
 
 
 func _provoke_next_wave() -> void:
@@ -855,6 +982,7 @@ func advance_run(delta: float) -> void:
 	canker_director.advance(delta)
 	if _trial_director != null:
 		_trial_director.advance(delta)
+		_refresh_trial_mark()
 	_update_territory_failure(delta)
 	_advance_banner(delta)
 
@@ -885,6 +1013,7 @@ func reset_run() -> void:
 	_damage_vignette_alpha = 0.0
 	_hit_freeze_remaining = 0.0
 	_provoke_prompt_wave = 0
+	_provoke_button_ready = -1
 	_update_damage_vignette()
 	_hud_accumulator = 999.0
 	choice_panel.hide_options()
@@ -922,7 +1051,9 @@ func reset_run() -> void:
 	canker_director.reset_director()
 	if _trial_director != null:
 		_trial_director.reset_trials()
+	overlay.clear_trial_mark()
 	_owed_trial_relics = 0
+	_trials_offered = 0
 	spore_director.reset_director()
 	bloom_director.reset_director()
 	bramble_director.reset_director()
@@ -1259,7 +1390,18 @@ func _on_path_draft_earned(_wave_number: int) -> void:
 	_drain_reward_queue()
 
 
-func _on_evolution_reward_earned(_wave_number: int) -> void:
+func _on_evolution_reward_earned(wave_number: int) -> void:
+	# The last of the three Campaign slots is a catch-up, and is described as such where it
+	# is authored: it exists "for a run whose second relationship matured late". Nothing
+	# enforced that, so a roster with three Adaptations -- three possible pairings, eligible
+	# at every checkpoint -- collected all three, which a played run and the pacing probe
+	# both did. Checked here rather than in the wave director because a wave offers and
+	# Progression decides, which is the rule that file states about itself.
+	if (
+		CampaignWaves.CATCH_UP_EVOLUTION_WAVES.has(wave_number)
+		and evolutions.active_evolutions.size() >= CampaignWaves.EVOLUTION_TARGET
+	):
+		return
 	_queue_reward(QueuedReward.EVOLUTION)
 	_drain_reward_queue()
 
@@ -2054,26 +2196,36 @@ func is_pause_menu_open() -> bool:
 
 
 func _build_trial_director() -> void:
-	_trial_director = TrialDirector.new()
-	interface_layer.add_child(_trial_director)
-	_trial_director.setup(territory_field, player)
+	## The card is authored in the side panel, so this wires it rather than builds it.
+	## Kept under the old name because what it does -- hand the Trial its field, its
+	## player and the two events it judges by -- has not changed.
+	_trial_director = trial_card
+	if _trial_director == null:
+		return
+	_trial_director.setup(territory_field, player, combat)
 	_trial_director.trial_started.connect(_on_trial_started)
 	_trial_director.trial_resolved.connect(_on_trial_resolved)
 	# A Trial counts what the run tells it happened rather than reading the combat
 	# director, so the two cannot disagree about a kill that a relic caused.
 	combat.enemy_killed.connect(_on_kill_for_trial)
 	player.damage_taken.connect(_on_damage_for_trial)
+	canker_director.canker_formed.connect(_on_canker_for_trial)
 
 
 func _on_kill_for_trial(
 	_position: Vector2,
 	_xp_value: int,
 	_role: int,
-	_death_source: int,
+	death_source: int,
 	_chain_depth: int
 ) -> void:
 	if _trial_director != null:
-		_trial_director.note_kill()
+		_trial_director.note_kill(death_source)
+
+
+func _on_canker_for_trial(_local_position: Vector2) -> void:
+	if _trial_director != null:
+		_trial_director.note_canker_formed()
 
 
 func _on_damage_for_trial(_amount: float) -> void:
@@ -2081,27 +2233,76 @@ func _on_damage_for_trial(_amount: float) -> void:
 		_trial_director.note_damage_taken()
 
 
-func _on_trial_wave_began(_wave_number: int) -> void:
+func _capture_trial_state() -> Dictionary:
+	## The live rule, what it is owed, and how many this run has already had -- the
+	## last of those because a continued run that forgot its count would start handing
+	## out Trials again from zero.
+	var state := {
+		"offered": _trials_offered,
+		"owed_relics": _owed_trial_relics,
+	}
+	if _trial_director != null:
+		state["card"] = _trial_director.capture_state()
+	return state
+
+
+func _apply_trial_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	_trials_offered = int(state.get("offered", 0))
+	_owed_trial_relics = int(state.get("owed_relics", 0))
+	if _trial_director != null:
+		_trial_director.apply_state(state.get("card", {}))
+	_refresh_trial_mark()
+
+
+func _on_trial_wave_began(wave_number: int) -> void:
 	if _trial_director == null:
 		return
 	# Drawn from the catalogue rather than authored per wave: which rule a Trial wave
 	# carries is a thing the run should be able to surprise the player with, and the
 	# wave table already decides the far more important question of *when*.
-	var trial_id := randi() % TrialCatalog.get_count()
-	_trial_director.begin_trial(trial_id)
+	# Eligible is not the same as offered. The wave table says where a Trial may
+	# appear; the roll here is what makes one an event rather than an appointment.
+	if _trials_offered >= maximum_trials_per_run or randf() >= trial_chance:
+		return
+	# Only from the Trials this wave can actually fail. A Trial about a system the run
+	# has not started yet would pay its relic for nothing.
+	var available := TrialCatalog.get_available(wave_number)
+	if available.is_empty():
+		return
+	var trial_id := available[randi() % available.size()]
+	_trials_offered += 1
+	_trial_director.begin_trial(trial_id, wave_number)
 
 
 func _on_trial_wave_ended(_wave_number: int) -> void:
 	if _trial_director != null:
 		_trial_director.resolve_trial()
+	# The answered Trial's ground stops being marked here rather than when the rule
+	# broke, so a player who lost it can see which circle it was.
+	overlay.clear_trial_mark()
+
+
+func _refresh_trial_mark() -> void:
+	## Last Garden is the only rule that is about a place, and a place the player
+	## cannot see is a rule they cannot play to. The ring is drawn on the arena rather
+	## than described on the card for the same reason the card exists at all.
+	if _trial_director.has_marked_region():
+		overlay.set_trial_mark(
+			_trial_director.get_marked_region(),
+			TrialCatalog.MARKED_REGION_RADIUS,
+			_trial_director.get_state() != TrialDirector.State.BROKEN
+		)
+		return
+	overlay.clear_trial_mark()
 
 
 func _on_trial_started(trial_id: int) -> void:
-	_show_banner("%s — %s" % [
-		TrialCatalog.get_trial_name(trial_id),
-		TrialCatalog.get_rule(trial_id).to_upper(),
-	])
-	_set_status("TRIAL — %s." % TrialCatalog.get_rule(trial_id))
+	## The banner points at the card rather than repeating it. The rule itself is on
+	## the panel for the whole wave now, and printing the sentence twice in two places
+	## is what made a Trial read as a notification instead of as a thing on the table.
+	_show_banner("TRIAL — %s" % TrialCatalog.get_trial_name(trial_id))
 
 
 func _on_trial_resolved(trial_id: int, success: bool) -> void:
@@ -2268,9 +2469,8 @@ func _update_hud() -> void:
 	# moved, coloured, or sized without editing code and counting spaces.
 	if is_wave_grace_period_active():
 		_authored.write_variant(wave_label, wave_grace_template, wave_values)
-	elif blight_level > 0:
-		# Blight is permanent and the player chose it, so it stays on screen for the
-		# rest of the run rather than being announced once and forgotten.
+	elif blight_level > 0 and blight_label == null:
+		# Only when the scene has no Blight node to write to. See `blight_label`.
 		_authored.write_variant(wave_label, wave_blight_template, wave_values)
 	else:
 		# The number and nothing else. Campaign waves still carry a display name in
@@ -2282,6 +2482,13 @@ func _update_hud() -> void:
 	# and only the visibility is switched, so what the scene declares is the shape
 	# it always carries.
 	_authored.write(hostile_label, {"hostiles": hostiles})
+	if blight_label != null:
+		# Written whatever the level, shown only once there is Blight to report -- the same
+		# rule the hostile count follows, so what the scene declares is the shape it always
+		# carries. Blight is permanent and the player chose it, so once it is on screen it
+		# stays for the rest of the run rather than being announced once and forgotten.
+		_authored.write_variant(blight_label, blight_label_template, wave_values)
+		blight_label.visible = blight_level > 0
 	hostile_label.visible = hostiles > 0
 	var threshold := spore_director.get_seed_kill_threshold()
 	_authored.write(
@@ -2309,6 +2516,7 @@ func _update_hud() -> void:
 			evolution_label.text = ""
 			evolution_label.modulate = Color("93aab0")
 	_announce_provocation_window()
+	_refresh_provoke_button()
 	_advance_all_in_countdown()
 	relic_tray.refresh()
 	adaptation_tree.refresh()
@@ -2376,6 +2584,7 @@ func capture_snapshot() -> RunSnapshot:
 	snapshot.set_system("waves", wave_director.capture_state())
 	snapshot.set_system("field", territory_field.capture_state())
 	snapshot.set_system("cankers", canker_director.capture_state())
+	snapshot.set_system("trial", _capture_trial_state())
 	return snapshot
 
 
@@ -2403,6 +2612,7 @@ func restore_snapshot(snapshot: RunSnapshot) -> bool:
 	# are measured against the cells restored above on the first evaluation afterwards,
 	# and a Knot put back onto a board that had not arrived yet would wither on that tick.
 	canker_director.apply_state(snapshot.get_system("cankers"))
+	_apply_trial_state(snapshot.get_system("trial"))
 	# The build is restored as levels and relics; what those levels *do* to the field,
 	# the player and the directors is applied from them rather than saved alongside
 	# them, so a resumed run gets this build's tuning for the upgrades it owns.

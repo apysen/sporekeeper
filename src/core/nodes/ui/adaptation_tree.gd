@@ -1,8 +1,8 @@
 class_name AdaptationTree
 extends Control
 
-## The Adaptation panel: two Core rows, the Evolution that joins them, and two
-## Branch rows, each showing its four lines as rank pips.
+## The Adaptation panel: the run's Adaptation rows, each showing its four lines as
+## rank pips, and the Evolutions grown out of them underneath.
 ##
 ## Every owned Adaptation shows all four of its lines, so the panel reads as what
 ## the run has grown rather than as a list of slots it has consumed. An empty pip
@@ -16,6 +16,16 @@ extends Control
 
 ## The pointer entered a filled slot. Carries the wording and the rect to anchor to.
 signal slot_hovered(title: String, body: String, anchor: Rect2)
+
+## Air between any two things stacked down the side panel: between two Adaptation
+## rows, between the last row and the Evolution sockets, and on past this node between
+## the sockets, the Provoke button and the Trial card. Named here because the panel is
+## authored in two scenes and shifted in a third place, and the number has to be the
+## same in all of them.
+##
+## A row is a 42px frame whose visible content sits 3px inside it, so rows 44 apart
+## show this gap and the scene is laid out on that pitch.
+const ROW_GAP := 8.0
 
 const ADAPTATION_ICON_SPORE := preload("res://assets/art/adaptation_icons/spore/spore.png")
 const ADAPTATION_ICON_BLOOM := preload("res://assets/art/adaptation_icons/bloom/bloom_512x512.png")
@@ -46,6 +56,21 @@ const ADAPTATION_ICON_FRUIT := preload("res://assets/art/adaptation_icons/fruit/
 @onready var branch_two_emblem_icon: TextureRect = %Branch2EmblemIcon
 @onready var branch_one_emblem_lock: TextureRect = %SupportEmblemLock
 @onready var branch_two_emblem_lock: TextureRect = %Branch2EmblemLock
+## The Branch rows' own frames, so a row the run mode has no slot for can be taken
+## off the panel rather than sat there locked. Campaign runs three Adaptations, not
+## four, and a second locked Branch row promised a slot the run would never open.
+@onready var branch_one_frame: Control = %SupportFrame
+@onready var branch_two_frame: Control = %Branch2Frame
+## The Evolution row's three pieces, moved together when a Branch row above them is
+## not on the panel. The scene authors where they sit under a full four-Adaptation
+## roster; this only ever closes the gap a hidden row leaves.
+@onready var evolution_connector_left: Control = %EvolutionConnectorLeft
+@onready var evolution_connector_right: Control = %EvolutionConnectorRight
+
+## Vertical pitch between two Adaptation rows, read off the scene at load so the two
+## cannot drift apart.
+var _row_pitch := 44.0
+var _evolution_row_base_y := {}
 ## The "ADAPTATIONS" heading, which the Clover cabinet sits on top of in Quick runs.
 @onready var heading_label: Label = %Slots
 
@@ -66,6 +91,11 @@ func _ready() -> void:
 		if row == null:
 			continue
 		row.slot_hovered.connect(_on_slot_hovered.bind(row))
+	if branch_one_frame != null and branch_two_frame != null:
+		_row_pitch = branch_two_frame.position.y - branch_one_frame.position.y
+	for node: Control in _evolution_row():
+		if node != null:
+			_evolution_row_base_y[node] = node.position.y
 
 
 ## Hands over the two things the panel reads. The run root calls this from its own
@@ -93,7 +123,8 @@ func refresh() -> void:
 			* _progression.maximum_upgrade_level
 		),
 	})
-	## Five rows: two Cores, the Evolution that joins them, then two Branches.
+	## Two Cores, the Evolutions they grow, and one Branch row per slot this run mode
+	## opens -- two in Quick, one in Campaign.
 	##
 	## Every owned Adaptation shows all four of its lines with their rank pips, so
 	## the panel reads as what the run has grown rather than as a list of slots it
@@ -101,6 +132,7 @@ func refresh() -> void:
 	## player has not bought yet, never one they can no longer reach.
 	if core_one_slots == null:
 		return
+	var branch_slots := _progression.get_branch_slot_limit()
 	_update_path_upgrade_row(
 		core_one_slots,
 		core_one_label,
@@ -118,16 +150,24 @@ func refresh() -> void:
 		"CORE 2"
 	)
 	_update_evolution_tree_slot()
-	_update_branch_upgrade_row(
-		branch_one_slots,
-		branch_one_label,
-		branch_one_emblem,
-		branch_one_emblem_icon,
-		branch_one_emblem_lock,
-		0,
-		"BRANCH 1"
-	)
-	if branch_two_slots != null:
+	if branch_one_frame != null:
+		branch_one_frame.visible = branch_slots > 0
+	if branch_slots > 0:
+		_update_branch_upgrade_row(
+			branch_one_slots,
+			branch_one_label,
+			branch_one_emblem,
+			branch_one_emblem_icon,
+			branch_one_emblem_lock,
+			0,
+			"BRANCH" if branch_slots == 1 else "BRANCH 1"
+		)
+	if branch_two_frame != null:
+		branch_two_frame.visible = branch_slots > 1
+	# Campaign runs three Adaptations, so the Evolutions come up a row to sit under
+	# the last one rather than under the hole where a fourth would have been.
+	_position_evolution_row(maxi(0, AdaptationTree._authored_branch_rows() - branch_slots))
+	if branch_slots > 1 and branch_two_slots != null:
 		_update_branch_upgrade_row(
 			branch_two_slots,
 			branch_two_label,
@@ -174,11 +214,8 @@ func _update_branch_upgrade_row(
 				row,
 				index,
 				(
-					"Branch Adaptation %d.\nDefeat the %s to choose it."
-					% [
-						branch_index + 1,
-						"Elite Rootbreaker" if branch_index == 0 else "Burrower Boss",
-					]
+					"Branch Adaptation.\nDefeat the %s to choose it."
+					% ["Elite Rootbreaker" if branch_index == 0 else "Burrower Boss"]
 				)
 			)
 
@@ -247,12 +284,30 @@ func _update_path_upgrade_row(
 			)
 
 
+static func _authored_branch_rows() -> int:
+	## How many Branch rows the scene draws. Named rather than written as 2 at the one
+	## place it is used, because the number is a fact about the panel.
+	return 2
+
+
+func _evolution_row() -> Array[Control]:
+	return [evolution_label, evolution_slot, evolution_connector_left, evolution_connector_right]
+
+
+func _position_evolution_row(rows_hidden: int) -> void:
+	for node: Control in _evolution_row():
+		if node == null or not _evolution_row_base_y.has(node):
+			continue
+		node.position.y = float(_evolution_row_base_y[node]) - _row_pitch * float(rows_hidden)
+
+
 func _update_evolution_tree_slot() -> void:
 	var active := _progression.get_active_evolutions()
-	# One socket per Evolution the run holds. A run can hold more than one now, and a
-	# single socket would have shown the first one it claimed for the rest of the run
-	# while the second quietly did its work unlabelled.
-	evolution_slot.slot_count = maxi(1, active.size())
+	# A socket for every Evolution the run is built to grow, filled or not. Sizing this
+	# to what the run *has* showed one socket until the moment a second was claimed,
+	# which is exactly the wrong way round: the empty socket is the part that tells the
+	# player there is another relationship still to develop.
+	evolution_slot.slot_count = maxi(Evolutions.TARGET_ACTIVE_EVOLUTIONS, active.size())
 	match _progression.evolution_status:
 		Progression.EvolutionStatus.EVOLVED:
 			var names := PackedStringArray()
@@ -274,11 +329,23 @@ func _update_evolution_tree_slot() -> void:
 					UpgradeSlots.SlotState.FILLED,
 					Color("d4a94f")
 				)
+			# Whatever is left is a relationship the run has not matured yet. Drawn as
+			# an open socket rather than a locked one: the run has evolved once, so
+			# nothing is gating the next but the pairs themselves.
+			for index in range(active.size(), evolution_slot.slot_count):
+				evolution_slot.set_slot(
+					index,
+					evolution_slot.empty_marker,
+					"",
+					"Another pairing can still mature into an Evolution.",
+					UpgradeSlots.SlotState.EMPTY,
+					Color("d4a94f")
+				)
 			evolution_label.text = " · ".join(names)
 		Progression.EvolutionStatus.READY:
 			# Named only once it has been claimed. Until then the slot says what it
 			# is for and nothing about what is waiting in it.
-			evolution_label.text = "EVOLUTION"
+			evolution_label.text = "EVOLUTIONS"
 			evolution_slot.set_slot(
 				0,
 				evolution_slot.empty_marker,
@@ -287,13 +354,20 @@ func _update_evolution_tree_slot() -> void:
 				UpgradeSlots.SlotState.EMPTY,
 				Color("d4a94f")
 			)
+			for index in range(1, evolution_slot.slot_count):
+				_set_locked_tree_slot(
+					evolution_slot,
+					index,
+					"A second Evolution, once another pairing matures."
+				)
 		_:
-			evolution_label.text = "EVOLUTION"
-			_set_locked_tree_slot(
-				evolution_slot,
-				0,
-				"Evolution unlocks once two lines in each Core Adaptation reach rank 3."
-			)
+			evolution_label.text = "EVOLUTIONS"
+			for index in range(evolution_slot.slot_count):
+				_set_locked_tree_slot(
+					evolution_slot,
+					index,
+					"Evolution unlocks once two lines in each Core Adaptation reach rank 3."
+				)
 
 
 func _set_path_emblem(

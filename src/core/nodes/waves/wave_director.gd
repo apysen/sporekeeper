@@ -653,6 +653,13 @@ func get_provocation_count() -> int:
 	return _provocations
 
 
+func get_seconds_left_in_wave() -> float:
+	## What a Provocation right now would skip, which is the number the button's own
+	## tooltip is about. Public because the cost of a call is stated to the player
+	## before they make it rather than reported after it.
+	return _seconds_left_in_wave()
+
+
 func get_provoked_seconds() -> float:
 	return _provoked_seconds
 

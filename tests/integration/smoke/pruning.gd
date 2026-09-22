@@ -123,18 +123,33 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 			+ "(%d above, %d below, furthest %.1fpx)" % [cut_above, cut_below, furthest_cut]
 	)
 
-	# And it takes the ground the player is standing on. This is the positional cost of
-	# the path: the cut is not a hole opened politely around her, it is the ground she
-	# is standing in going away, so a ring held in one spot starves itself. The harvest
-	# is gated on standing on Green, which is why `footing_grace_seconds` exists -- the
-	# ring survives long enough to reach more, and no longer.
+	# And it spares the ground she is standing on. This used to assert the opposite --
+	# that the cut took her footing outright -- and that was the positional cost as
+	# designed. It was also a closed loop: the harvest is the only source of leaves, a
+	# leaf can only join the ring if she has Green underfoot when it finishes gathering,
+	# and taking the cell under her meant harvesting destroyed the condition for
+	# harvesting to produce anything. She measured 55-60% of a bench off her own ground,
+	# and the path stayed playable only because a leaf with nowhere to go was launched at
+	# full damage -- which made running out of ground the optimal play and the ring itself
+	# worth 0.01% of the damage.
+	#
+	# The cost is unchanged in kind and now survives being paid: she keeps her footing,
+	# and standing still still ends the ring, because she strips the reachable ground and
+	# the harvest then finds nothing to cut. What the ring loses to stillness is its
+	# leaves, one at a time, not its existence in one stroke.
+	var nearest_cut := INF
+	for cut_position in centred_harvest.positions:
+		nearest_cut = minf(nearest_cut, cut_position.distance_to(centred_home))
 	report.check(
-		is_zero_approx(pruning.upkeep_inner_radius_pixels)
+		pruning.upkeep_inner_radius_pixels > 0.0
+		and nearest_cut >= pruning.upkeep_inner_radius_pixels - 1.0
 		and prototype.territory_field.get_control_at_local(centred_home)
-			<= prototype.territory_field.tuning.ownership_threshold
-		and not pruning.is_player_on_green()
+			> prototype.territory_field.tuning.ownership_threshold
+		and pruning.is_player_on_green()
 		and pruning.footing_grace_seconds > 0.0,
-		"the harvest cuts the ground out from under the player"
+		"the harvest works a ring around the player and leaves her footing standing "
+			+ "(inner %.1fpx, nearest cut %.1fpx)"
+			% [pruning.upkeep_inner_radius_pixels, nearest_cut]
 	)
 
 	# Cut ground comes back faster than ordinary neutral ground.
@@ -376,21 +391,40 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	var camp_rings_before := pruning.get_rings_released()
 	var camp_early_rate := 0.0
 	var camp_late_rate := 0.0
+	# Standing in one place costs her the ring's *area*, leaf by leaf, and pays her
+	# nothing for it. This used to assert that the ring fired: a held ring burned its own
+	# footing out and threw a volley. That was the path's whole output and it was a reward
+	# for failure -- 78% of a developed Pruning's damage against a boss came from leaves
+	# launched because she had no ground left to put them on, so the optimal play was to
+	# run dry. A tear now loses what it holds, and only a discharge she chose fires.
+	var camp_peak_leaves := 0
 	for camp_step in range(3600):
 		prototype.player.global_position = prototype.territory_field.to_global(camp)
 		pruning.advance(1.0 / 60.0)
 		prototype.territory_field.step_simulation()
-		if pruning.get_orbit_count() >= pruning.orbit_capacity and camp_early_rate <= 0.0:
+		camp_peak_leaves = maxi(camp_peak_leaves, pruning.get_orbit_count())
+		if (
+			pruning.get_orbit_count() >= pruning.get_orbit_capacity()
+			and camp_early_rate <= 0.0
+		):
 			camp_early_rate = pruning.get_upkeep_cells_per_second()
 		if pruning.get_hold_seconds() > 20.0:
 			camp_late_rate = maxf(camp_late_rate, pruning.get_upkeep_cells_per_second())
-		if pruning.get_rings_released() > camp_rings_before:
-			break
+	var camp_launched := 0
+	for cutting in pruning._cuttings:
+		if (
+			cutting.state == PruningDirector.CuttingState.LAUNCHED
+			and cutting.natural_release
+		):
+			camp_launched += 1
 	report.check(
-		pruning.get_rings_released() > camp_rings_before
-		and pruning.get_hold_seconds() < 60.0
+		camp_peak_leaves > pruning.minimum_orbit_leaves
+		and pruning.get_orbit_count() < camp_peak_leaves
+		and camp_launched == 0
 		and (camp_late_rate == 0.0 or camp_late_rate > camp_early_rate),
-		"a ring held on one patch of Green burns its own footing out and fires"
+		"a ring held on one patch of Green withers instead of firing "
+			+ "(peaked at %d leaves, ended at %d, launched %d)"
+			% [camp_peak_leaves, pruning.get_orbit_count(), camp_launched]
 	)
 
 	# Upkeep has to outgrow the ring's own damage, or a hold never ends. The check is
@@ -725,7 +759,9 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	report.check(
 		coppicing_cuttings > 0
 		and coppicing_regrowth > plain_regrowth,
-		"Coppicing pays out on ancient ground and drives it back faster"
+		"Coppicing pays out on ancient ground and drives it back faster "
+			+ "(cuttings %d, regrowth %.3f vs plain %.3f)"
+			% [coppicing_cuttings, coppicing_regrowth, plain_regrowth]
 	)
 	prototype.territory_field.reset_field()
 	prototype.combat.reset_combat()

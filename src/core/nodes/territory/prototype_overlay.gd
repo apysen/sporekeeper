@@ -237,6 +237,13 @@ var _isolated_colony_reserves := PackedFloat32Array()
 var _overgrow_aim_active := false
 var _overgrow_aim_position := Vector2.ZERO
 var _overgrow_aim_radius := 0.0
+## The ground a Trial has marked, for the one rule that is about a place. Unlike the
+## aim ring this does sit on the battlefield for a whole wave, because the rule it
+## belongs to cannot be played at all without knowing which ground it means.
+var _trial_mark_active := false
+var _trial_mark_position := Vector2.ZERO
+var _trial_mark_radius := 0.0
+var _trial_mark_held := true
 
 @export_group("Catalyst Art")
 ## Painted Seed. Optional: without it the Seed falls back to the authored circle.
@@ -405,6 +412,7 @@ func _draw() -> void:
 		_draw_annotation(Vector2(704.0, 380.0), "WEAK HOSTILE TERRITORY", Color("ffb071"))
 
 	_draw_overgrow_aim()
+	_draw_trial_mark()
 
 	for tether in _tethers:
 		_draw_tether(tether)
@@ -998,6 +1006,50 @@ func is_aiming_overgrow() -> bool:
 
 func get_overgrow_aim_position() -> Vector2:
 	return _overgrow_aim_position
+
+
+func set_trial_mark(local_position: Vector2, radius: float, held: bool) -> void:
+	_trial_mark_active = true
+	_trial_mark_position = local_position
+	_trial_mark_radius = radius
+	_trial_mark_held = held
+	queue_redraw()
+
+
+func clear_trial_mark() -> void:
+	if not _trial_mark_active:
+		return
+	_trial_mark_active = false
+	queue_redraw()
+
+
+func _draw_trial_mark() -> void:
+	## A dashed ring rather than a solid one, and a faint wash inside it, so a circle
+	## the player has to look at for a whole wave never reads as a wall or as a thing
+	## they can collide with. The colour is the Trial's own state: gold while the rule
+	## is being held, the hostile red once it has been broken.
+	if not _trial_mark_active:
+		return
+	var mark_colour := (
+		Color(0.769, 0.604, 0.314, 1.0) if _trial_mark_held else Color(0.43, 0.215, 0.305, 1.0)
+	)
+	draw_circle(
+		_trial_mark_position, _trial_mark_radius, Color(mark_colour, 0.05), true, -1.0, true
+	)
+	var dashes := 36
+	var span := TAU / float(dashes)
+	for index in range(dashes):
+		var start := float(index) * span
+		draw_arc(
+			_trial_mark_position,
+			_trial_mark_radius,
+			start,
+			start + span * 0.55,
+			6,
+			Color(mark_colour, 0.7),
+			2.0,
+			true
+		)
 
 
 func _draw_overgrow_aim() -> void:

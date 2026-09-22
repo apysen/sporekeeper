@@ -38,6 +38,8 @@ func _run() -> void:
 	prototype.combat.set_process(false)
 
 	_check_wave_table()
+	_check_trials_are_occasional(prototype)
+	_check_scaling_rules()
 	_check_every_rule_reads(prototype)
 	_check_hold_pays(prototype)
 	_check_break_costs_nothing(prototype)
@@ -55,9 +57,10 @@ func _run() -> void:
 
 
 func _check_wave_table() -> void:
-	## One Trial per act after Germination, and never on a wave that already owes a
-	## milestone: a relic landing in the same breath as a Trial's relic reads as one
-	## reward rather than two.
+	## Where a Trial is *allowed* to appear -- never during Germination, and never on a
+	## wave that already owes a milestone, because a relic landing in the same breath as
+	## a Trial's relic reads as one reward rather than two. Whether one actually appears
+	## is a roll, and `_check_trials_are_occasional` covers that.
 	_checks += 1
 	var specs := CampaignWaves.build_wave_specs()
 	var trial_waves := PackedInt32Array()
@@ -80,22 +83,136 @@ func _check_wave_table() -> void:
 				"TRIAL: wave %d owes a Trial and another reward at once" % wave
 			)
 			return
-	print("TRIAL      Trial waves %s, none in Act I, none doubled up" % str(trial_waves))
+		if spec.grants_path_draft:
+			_failures.append(
+				"TRIAL: wave %d owes a Trial and an Adaptation draft at once" % wave
+			)
+			return
+		if (
+			spec.elite_spawn_second >= 0.0
+			or spec.boss_spawn_second >= 0.0
+			or spec.hive_queen_spawn_second >= 0.0
+		):
+			_failures.append(
+				"TRIAL: wave %d sets a rule about how to play a wave a boss walks into"
+				% wave
+			)
+			return
+	print(
+		"TRIAL      Trials may appear on %s, none in Act I, none doubled up"
+		% str(trial_waves)
+	)
+
+
+func _check_trials_are_occasional(prototype: RunRoot) -> void:
+	## A Trial is meant to be an event, not an appointment. What this holds to is the
+	## two ends of the roll -- that the run can decline to set one at all, and that it
+	## stops at its own cap however many eligible waves go by -- because the interesting
+	## middle is a random variable and a test that asserts on one is a test that fails
+	## on a Tuesday.
+	_checks += 1
+	var eligible: Array = CampaignWaves.TRIAL_ELIGIBLE_WAVES
+	var chance_before := prototype.trial_chance
+
+	prototype.trial_chance = 0.0
+	prototype._trials_offered = 0
+	prototype._trial_director.reset_trials()
+	for wave in eligible:
+		prototype._on_trial_wave_began(int(wave))
+	if prototype._trials_offered != 0:
+		_failures.append(
+			"TRIAL: a run that rolled against every Trial still set %d"
+			% prototype._trials_offered
+		)
+		prototype.trial_chance = chance_before
+		return
+
+	prototype.trial_chance = 1.0
+	prototype._trials_offered = 0
+	for wave in eligible:
+		prototype._on_trial_wave_began(int(wave))
+	var cap := mini(prototype.maximum_trials_per_run, eligible.size())
+	if prototype._trials_offered != cap:
+		_failures.append(
+			"TRIAL: %d eligible waves at certainty set %d Trials rather than %d"
+			% [eligible.size(), prototype._trials_offered, cap]
+		)
+		prototype.trial_chance = chance_before
+		return
+
+	prototype.trial_chance = chance_before
+	prototype._trials_offered = 0
+	prototype._trial_director.reset_trials()
+	print(
+		"TRIAL      %d eligible waves, at most %d a run, none of them guaranteed"
+		% [eligible.size(), cap]
+	)
+
+
+func _check_scaling_rules() -> void:
+	## Three rules count something the wave itself produces, and the wave produces
+	## roughly twice as much of it by Wave 16 as by Wave 6. What this guards is that
+	## the number on the card moves with it -- and that the sentence the player reads
+	## is the sentence they are judged by, which is the failure that would be invisible
+	## in play until someone lost a Trial they had met.
+	_checks += 1
+	var scaling := [
+		TrialCatalog.Id.PATIENCE,
+		TrialCatalog.Id.PRESSURE,
+		TrialCatalog.Id.GROUNDWORK,
+	]
+	for trial_id in scaling:
+		var early := TrialCatalog.get_value(trial_id, 6)
+		var late := TrialCatalog.get_value(trial_id, 16)
+		if late <= early:
+			_failures.append(
+				"TRIAL: %s asks the same on Wave 16 as on Wave 6 (%.0f)"
+				% [TrialCatalog.get_trial_name(trial_id), early]
+			)
+			return
+		if TrialCatalog.get_rule(trial_id, 16) == TrialCatalog.get_rule(trial_id, 6):
+			_failures.append(
+				"TRIAL: %s prints Wave 6's number on Wave 16"
+				% TrialCatalog.get_trial_name(trial_id)
+			)
+			return
+	# And the rest must not move, or a rule about a percentage of the arena would
+	# quietly ask for more than the arena has.
+	for trial_id in range(TrialCatalog.get_count()):
+		if scaling.has(trial_id):
+			continue
+		if not is_equal_approx(
+			TrialCatalog.get_value(trial_id, 6), TrialCatalog.get_value(trial_id, 16)
+		):
+			_failures.append(
+				"TRIAL: %s scales with the wave and should not"
+				% TrialCatalog.get_trial_name(trial_id)
+			)
+			return
+	print("TRIAL      the three counted rules grow with the wave and the rest do not")
 
 
 func _check_every_rule_reads(prototype: RunRoot) -> void:
-	## Every Trial in the catalogue has to produce a sentence with its number already
-	## in it, and a progress line that does not crash on a board it has never seen.
+	## Every Trial in the catalogue has to produce its three sentences with their
+	## numbers already in them, and a progress line that does not crash on a board it
+	## has never seen.
 	_checks += 1
 	var director := prototype._trial_director
 	for trial_id in range(TrialCatalog.get_count()):
-		var rule := TrialCatalog.get_rule(trial_id)
-		if rule.is_empty() or rule.contains("{value}"):
-			_failures.append(
-				"TRIAL: %s prints an unfinished rule: '%s'"
-				% [TrialCatalog.get_trial_name(trial_id), rule]
-			)
-			return
+		# The rule, the failure condition under it and the line that leads into the
+		# reward: three sentences on the card, and any one of them left as a template
+		# would print a brace at the player.
+		for line in [
+			TrialCatalog.get_rule(trial_id),
+			TrialCatalog.get_fail_condition(trial_id),
+			TrialCatalog.get_reward_lead(trial_id),
+		]:
+			if line.is_empty() or line.contains("{"):
+				_failures.append(
+					"TRIAL: %s prints an unfinished line: '%s'"
+					% [TrialCatalog.get_trial_name(trial_id), line]
+				)
+				return
 		director.begin_trial(trial_id)
 		var progress := director.get_progress_text()
 		if progress.is_empty():
@@ -104,7 +221,7 @@ func _check_every_rule_reads(prototype: RunRoot) -> void:
 			)
 			return
 	director.reset_trials()
-	print("TRIAL      all %d rules print a finished sentence and a progress line"
+	print("TRIAL      all %d rules print finished sentences and a progress line"
 		% TrialCatalog.get_count())
 
 

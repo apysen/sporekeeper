@@ -118,13 +118,25 @@ class Cutting:
 ## Arena pixels around the player the harvest eats from. Deliberately tight, so the
 ## hole opens under the player's feet where it can be seen.
 @export_range(10.0, 240.0, 2.0) var upkeep_radius_pixels := 52.0
-## Ground immediately under the player the harvest will not cut. Zero on purpose:
-## the harvest takes the cell she is standing on, so holding the ring in one place
-## eats her own footing and the ring starves where it stands. That is the whole
-## positional cost of the path -- the ring is maintained by walking it onto fresh
-## Green, not by parking on a good spot. `footing_grace_seconds` is what makes it
-## survivable; raise this instead if the cut ever needs to spare a standing pad.
-@export_range(0.0, 60.0, 0.5) var upkeep_inner_radius_pixels := 0.0
+## Ground immediately under the player the harvest will not cut.
+##
+## Zero closed a loop that made the path impossible. The harvest is the only source of
+## spikes; a Cutting can only join the ring if she has Green underfoot when it finishes
+## gathering; and at zero the harvest took the cell she was standing on. So harvesting
+## destroyed the condition for harvesting to produce anything, and she measured 55-60%
+## of a bench off her own ground. The path stayed playable only because a Cutting with
+## nowhere to go was launched at full damage -- which made running out of ground the
+## optimal play, made the ring itself worth 0.01% of the damage, and made `Harvest Rate`
+## measure *below* the bare Adaptation the moment that payout was taken away.
+##
+## A spared pad opens the loop without softening the cost. The harvest now works an
+## annulus: she keeps her footing, so a Cutting she paid ground for actually becomes a
+## spike. Standing still still ends the ring -- she strips the reachable ground, the
+## harvest then finds nothing, and spikes wilt one at a time on
+## `orbit_wilt_interval_seconds` until the ring has receded to nothing. The cost is the
+## same cost, paid in a ring that shrinks rather than a ring that fires, and it is
+## still only answered by walking onto fresh Green.
+@export_range(0.0, 60.0, 0.5) var upkeep_inner_radius_pixels := 20.0
 ## Seconds the ring survives with no Green underfoot before it tears loose. She is
 ## now cutting the ground she stands on, so running dry is the normal end of every
 ## stationary moment rather than a mistake, and it has to leave enough time to walk
@@ -156,6 +168,36 @@ class Cutting:
 ## are told apart by the ground she is standing on: Pruned Ground means she ground her
 ## own footing away, bare ground means she walked off her garden and meant it.
 @export_range(0.0, 1.0, 0.05) var torn_ring_charge_share := 0.20
+## Superseded, kept as the record of what was tried: a launch she did not choose used
+## to pay this share of its damage. It is now worth nothing at all, because it does not
+## happen -- a ring she did not spend is lost rather than fired. Left at its measured
+## value so the reading below can be reproduced.
+##
+## Share of a Cutting's damage a launch she did not choose pays out.
+##
+## `torn_ring_charge_share` above is the first attempt at this and it attenuates the
+## wrong term on the wrong event. Wrong term: it scales the banked Charge, and a ring
+## that tore from starvation has no bank worth scaling -- against a boss the ring tears
+## every 0.43s while Charge fills over about 4.8s at rank 3, so some 9% of it is banked
+## when it goes, and sweeping the share across its whole range 0.00 to 1.00 moved a
+## rooted row by 1.3%. Wrong event: the tear is not where the volley comes from.
+##
+## `_advance_gathering_cutting` is. A Cutting that finishes spiralling in while she has
+## no Green underfoot has no ring to join, so it flies -- at full damage, without ever
+## entering the ring, and therefore without passing the release at all. The harvest
+## takes the cell she is standing on, so stripping her own footing is the *ordinary*
+## state of a stationary hold: measured, she is off her ground 58% of a rooted bench.
+## The positional cost is also the damage engine, and the engine pays full price.
+##
+## That is the whole path. Zeroing the aura cost a developed Pruning one point out of
+## 7,595 against a boss; zeroing the Cuttings cost it 78%. It was never a ring build --
+## it was a stream of free projectiles produced by running out of ground.
+##
+## So both routes that launch without being asked pay this share, and a deliberate
+## discharge pays none of it: that one is a decision, costs the ring and a quarter of
+## the ecosystem, and is still meant to be the largest number the path puts on screen.
+## The spikes still fly either way, because a ring coming apart has to look like one.
+@export_range(0.0, 1.0, 0.05) var unchosen_launch_damage_share := 0.30
 ## Cells of Green below which the harvest stops entirely. Counted in cells rather
 ## than as a share of the arena on purpose: a percentage floor gates the whole path
 ## on a state runs in this build rarely reach. What the floor is for is refusing to
@@ -195,7 +237,29 @@ class Cutting:
 @export_group("Orbit")
 ## Cuttings the ring may hold. A fuller harvest replaces the oldest spike rather
 ## than growing the ring forever, which keeps it legible.
-@export_range(1, 40, 1) var orbit_capacity := 16
+## Leaves the ring may hold before Cutting Yield. Eight is the undeveloped ring; the
+## line earns the rest back, which is what makes it the growth line.
+@export_range(1, 40, 1) var orbit_capacity := 8
+## Leaves a *fully developed* ring is measured against. Fullness -- which drives both
+## the radius and the damage ramp -- is the leaf count over this, never over capacity.
+##
+## They have to be different numbers or Cutting Yield cannot do anything. Dividing by
+## capacity means raising capacity raises the denominator too: eight leaves of eight
+## and sixteen of sixteen are both a full ring, so the upgrade would buy leaves that
+## are each worth proportionally less and the ring would end up exactly where it
+## started. Against a fixed reference, every leaf is worth the same and buying
+## capacity buys a bigger, harder ring.
+@export_range(1, 40, 1) var orbit_reference_leaves := 16
+## Leaves Cutting Yield adds to capacity per rank.
+@export_range(0.0, 8.0, 0.5) var cutting_yield_leaves_per_rank := 3.0
+## Seconds between raising one leaf, however fast the harvest is paying for them.
+##
+## The ring builds a leaf at a time and is meant to be watched doing it. Unthrottled,
+## a developed harvest takes sixty cells a second at `cuttings_per_cell`, which is
+## thirteen leaves a second -- a full ring in a little over one, appearing faster than
+## it can be read. Held slightly slower than `orbit_wilt_interval_seconds`, so a ring
+## is lost marginally faster than it is built and standing still is visibly expensive.
+@export_range(0.0, 3.0, 0.05) var leaf_raise_interval_seconds := 0.45
 ## Seconds between replacement spikes once the ring is full. The ring turning over
 ## is intended; doing it several times a second is what made holding a finished
 ## ring a free homing volley launcher instead of a disc.
@@ -207,7 +271,13 @@ class Cutting:
 ## Arena pixels from the player to the ring at one Cutting.
 @export_range(10.0, 200.0, 1.0) var orbit_radius_pixels := 44.0
 ## Extra radius at a full ring, so a big harvest reads as a big ring.
-@export_range(0.0, 200.0, 1.0) var orbit_radius_growth_pixels := 26.0
+## Pixels the ring's radius gains between an empty ring and a full one.
+##
+## Twenty-six on a base of forty-four was a detail. It is now the path's main
+## investment: what a developed Pruning buys is *area*, because damage per body does
+## not scale with a crowd and ground denied does. A full ring reaches 154px, which is a
+## place rather than a halo, and a starved one recedes to 44 as its spikes wilt.
+@export_range(0.0, 400.0, 1.0) var orbit_radius_growth_pixels := 110.0
 ## Radians per second the ring turns at zero Charge.
 @export_range(0.1, 12.0, 0.1) var orbit_speed_radians := 2.4
 ## Extra turn rate at full Charge, which is what makes a banked ring read as loaded.
@@ -225,7 +295,33 @@ class Cutting:
 ## 23,600 -- whichever source is left simply takes over the kills. The same held for
 ## the defence: either one alone was enough to keep damage taken at zero against sixty
 ## enemies, and only removing both let anything reach her.
-@export_range(0.5, 200.0, 0.5) var orbit_contact_damage := 12.0
+## Damage one pass of the ring deals before Cutting Damage and Charge.
+##
+## Cut hard, and deliberately. A ring whose damage is high enough to be a build's main
+## output kills a 42-point Hunter on first contact, which means nothing ever crosses it
+## and everything inside it is unreachable content. Low damage is what makes the space
+## the ring encloses a space at all. Early, when a wave is four Hunters, this is most of
+## what the path does; later it is a rounding error next to the ground it denies, which
+## is the arc the path is being built for rather than a weakness in it.
+## The ring's damage budget per pass, divided among everything standing in it.
+##
+## A budget rather than per-target damage, and this is the structural fix the path has
+## needed all along. `orbit_maximum_targets_per_tick` was written to bound an aura whose
+## output is per-enemy damage times enemy count -- but it caps bites per *frame*, and at
+## sixty enemies on 0.35s cooldowns the demand is ~171 bites a second against a cap that
+## permits 480, so it never binds. Ring output was fully proportional to density. With the
+## radius grown from 44 to 154 the enclosed area scales as r squared, and a 20-point flat
+## aura measured 151,732 on the siege bench against a Cane-only 15,248.
+##
+## Dividing by the bodies in reach makes total output constant: bites per second rise with
+## the count, damage per bite falls as its reciprocal, so the ring deals about
+## `2.86 * budget` a second whatever it is facing. That is what lets the radius grow
+## freely -- growth buys area, never damage.
+##
+## It also produces the path's arc without anyone imposing it. Four enemies in the ring
+## take a quarter of the budget each and die; sixty take a sixtieth and barely notice,
+## so the ring's worth moves from killing to covering as the run goes on.
+@export_range(0.5, 400.0, 0.5) var orbit_contact_damage := 16.0
 ## Seconds before the ring may strike the same enemy again.
 @export_range(0.05, 3.0, 0.05) var orbit_hit_cooldown_seconds := 0.35
 ## Enemies one tick of the thicket may bite, nearest first.
@@ -255,7 +351,14 @@ class Cutting:
 ##
 ## Scaled, the ring becomes the thing it looks like: a thicket she builds by cutting
 ## fresh ground and loses by standing on ground she has already cut.
-@export_range(0.0, 1.0, 0.01) var orbit_lone_spike_damage_share := 0.06
+## Raised from 0.06. That value was chosen when a single spike dealt the ring's full damage
+## and the ring was up 99% of every bench -- it exists to stop one spike hitting as hard as
+## sixteen, and 6% did that by making a small ring worth nothing at all. Now that the ring is
+## the path's damage and its size is a resource that has to be earned and held, the size a
+## real build sustains is a *small* ring, and a curve whose floor is 6% reports that build as
+## contributing almost nothing. The ceiling still belongs to a full ring; the floor no longer
+## has to be zero.
+@export_range(0.0, 1.0, 0.01) var orbit_lone_spike_damage_share := 0.25
 ## Seconds of harvesting that finds nothing before the ring loses a spike.
 ##
 ## The other half of the same rule. Without it a ring that had filled stayed filled:
@@ -264,6 +367,78 @@ class Cutting:
 ## a ring starving is not a discharge, and paying her a volley for stopping would
 ## reward the thing this is here to discourage.
 @export_range(0.05, 5.0, 0.05) var orbit_wilt_interval_seconds := 0.40
+## Leaves the ring keeps however long the harvest finds nothing.
+##
+## Standing still costs her the ring's *area*, not the ring. Area is the currency the
+## path trades in -- a full ring is 154px of denied ground and a bare one is 44 -- so
+## letting stillness strip eleven leaves down to one is already a heavy, legible price
+## paid continuously, which a binary loss is not. It also keeps the path present: a
+## Pruning that can be switched off entirely by a pause is a Pruning that cannot be
+## relied on to do anything, and every upgrade bought into it becomes conditional on
+## never standing still.
+##
+## Recovery is the other half. Regrowing a ring means reaching unharvested Green, which
+## is not always adjacent, so a ring that died outright would take longer to rebuild
+## than the pause that killed it -- which makes the cost a tax on pausing rather than a
+## decision about where to stand.
+@export_range(0, 8, 1) var minimum_orbit_leaves := 1
+## Whether the floor is *granted* as well as protected: a ring below its floor grows back
+## up to it without needing ground to cut.
+##
+## It has to be, or the path has a cliff instead of a curve. Leaves come only from the
+## harvest, the harvest needs Green in reach, and a wilting leaf is what replants Green --
+## so with no ground there is no leaf, with no leaf there is nothing to wilt, and with
+## nothing wilting there is never any ground. Measured on the 6% patch board, every Pruning
+## row came back byte-identical to the bare Cane: 0.00 leaves, the ring up 2.7% of the
+## bench, 100% of it with no Green underfoot. Not weak -- exactly nothing.
+##
+## One granted leaf is the seed that lets the loop turn over: it can wilt, its ground can be
+## cut, and a second leaf can be raised from that. What a territory Adaptation beside her
+## buys is then a *bigger* ring rather than the difference between a ring and none.
+@export var grant_minimum_orbit_leaves := true
+## Seconds the harvest may find nothing before the ring warns that a leaf is about to
+## wilt. Read by the draw, not by the simulation: this changes what the player is told,
+## never what happens.
+##
+## The point is that the ring is legible *before* it costs anything. Half a second of
+## stillness flashes the leaves; the leaf itself goes at
+## `orbit_wilt_interval_seconds`. So the ring is never lost to something the player
+## could not see coming, and the flash is the mechanic teaching itself.
+@export_range(0.0, 4.0, 0.05) var wilt_warning_seconds := 0.50
+## Seconds of standing still after which a ring running dry counts as starvation rather
+## than as a discharge she chose.
+##
+## The two have to be told apart, because one is the path's payout and the other is its
+## failure. They used to be told apart by the ground underfoot -- bare meant she walked
+## off and meant it, Pruned meant the harvest ate it while she stood there -- and the
+## note at that call site records the proxy failing: after a harvest the ground all
+## around her is Pruned, so stepping aside deliberately is indistinguishable from
+## starving in place. A previous attempt to make starvation withhold the volley was
+## reverted over exactly that.
+##
+## Asking whether she moved measures the thing itself instead of a consequence of it.
+## Walking off her Green fires the ring, because she walked; standing until the harvest
+## has eaten everything in reach withers it, because she did not.
+@export_range(0.05, 2.0, 0.05) var release_intent_seconds := 0.25
+## Green a wilting leaf sets down where it falls, as a share of an ordinary Seed's
+## growth. Zero plants nothing.
+##
+## The ring is harvested ground she is carrying. When the harvest runs dry the ring
+## recedes a leaf at a time, and a leaf that falls puts its ground back rather than
+## vanishing -- so running out of Green under her feet replants the ground she is
+## standing on, and the loop that starves the path also restores it. Failure is the
+## rhythm rather than the punishment: harvest until the ground is spent, drop leaves,
+## harvest the ground they made.
+##
+## Deliberately lossy, and this is the number that keeps the path honest. A leaf costs
+## about 4.5 cells at `cuttings_per_cell`, and a Seed *grows* after it lands, so a
+## generous share would make Pruning a net producer of territory and turn the ground
+## cost into a ground profit. Fresh growth rather than a Bloom for the same reason: if
+## a fallen leaf made Mature Green it would be manufacturing exactly what Root
+## amplifies from. Watch `green` and `mature` on the bench against the bare Cane -- if
+## Pruning ends a row with more ground than a build that never harvested, this is set
+## too high.
+@export_range(0.0, 1.0, 0.05) var wilted_leaf_growth_share := 0.55
 
 @export_group("Charge")
 ## Seconds of unbroken holding to reach full Charge.
@@ -385,6 +560,14 @@ var _full_charge_pulse := 0.0
 ## the top of the beat instead of starting one frame in.
 var _was_fully_charged := false
 var _orbit_angle := 0.0
+## Counts down to the next leaf; see `leaf_raise_interval_seconds`.
+var _leaf_raise_remaining := 0.0
+## Seconds she has been standing still, and where she was last seen. Used to tell a
+## discharge she chose from a ring that starved; see `release_intent_seconds`.
+var _still_seconds := 0.0
+var _last_player_position := Vector2.ZERO
+## Whether she was moving on the frame her footing ran out.
+var _left_deliberately := false
 var _orbit_sequence := 0
 var _hit_cooldowns := {}
 var _upkeep_debt := 0.0
@@ -475,6 +658,14 @@ func reset_director() -> void:
 	_starved_seconds = 0.0
 	_torn = false
 	_unfed_seconds = 0.0
+	# The leaf cadence and the movement bookkeeping reset with everything else. Left out,
+	# a stale `_leaf_raise_remaining` survives into the next run and its first harvest
+	# cycle raises nothing -- which is a new run silently opening on a throttle it did
+	# not earn, and is what the Coppicing smoke test caught.
+	_leaf_raise_remaining = 0.0
+	_still_seconds = 0.0
+	_last_player_position = Vector2.ZERO
+	_left_deliberately = false
 	queue_redraw()
 
 func advance(delta: float) -> void:
@@ -549,8 +740,18 @@ func get_orbit_count() -> int:
 			count += 1
 	return count
 
+func get_orbit_capacity() -> int:
+	## Leaves the ring may hold, with Cutting Yield's ranks on top of the base.
+	return mini(
+		orbit_reference_leaves,
+		orbit_capacity + int(round(
+			cutting_yield_leaves_per_rank
+			* float(progression.get_upgrade_level(Progression.UpgradeId.PRUNING_CUTTING_YIELD))
+		))
+	)
+
 func get_orbit_radius() -> float:
-	var fullness := float(get_orbit_count()) / float(maxi(1, orbit_capacity))
+	var fullness := float(get_orbit_count()) / float(maxi(1, orbit_reference_leaves))
 	return orbit_radius_pixels + orbit_radius_growth_pixels * clampf(fullness, 0.0, 1.0)
 
 func get_upkeep_cells_per_second() -> float:
@@ -562,7 +763,7 @@ func get_upkeep_cells_per_second() -> float:
 		upkeep_cells_per_second_at_charge,
 		_charge
 	)
-	if get_orbit_count() >= orbit_capacity:
+	if get_orbit_count() >= get_orbit_capacity():
 		rate = lerpf(
 			maintenance_cells_per_second,
 			maintenance_cells_per_second_at_charge,
@@ -572,9 +773,20 @@ func get_upkeep_cells_per_second() -> float:
 	# firing. Charge alone caps after a few seconds, which left a single patch of
 	# Green able to feed a ring indefinitely; this is what gives every hold an end.
 	rate += upkeep_escalation_per_second * _hold_seconds
-	# Root cuts deeper into old wood. This raises spikes faster and burns the Green
-	# faster with it, which is the same trade Harvest Rate itself is priced on -- the
-	# cap above is what keeps it from running away.
+	# Root cuts deeper into old wood: it raises leaves faster and burns the Green faster
+	# with it, and the cap above is what keeps that from running away.
+	#
+	# Harvest Rate stays here, and taking it out was measured and reverted: leaves fell
+	# from 1.40 to 1.14 without it, because the cells feed `_cutting_debt` and the
+	# cadence gate needs banked debt to have anything to raise. Both halves matter.
+	#
+	# What the line could not do by wiring alone is be *worth* anything. Under a ring
+	# capped in size by Cutting Yield, in damage by Cutting Edge and in fill rate by the
+	# throttle, "harvest faster" has no dimension left to push on -- two wirings measured
+	# 16,477 and 16,283 on siege against a bare 16,754, both of them negative. So the
+	# line's value now lives in `orbit_wilt_interval_seconds` instead: it buys how long
+	# the ring survives with no ground under it, which is the one axis a ring that can be
+	# lost still has free.
 	return (
 		minf(maximum_upkeep_cells_per_second, rate)
 		* get_pruning_harvest_rate_multiplier()
@@ -716,7 +928,7 @@ func grant_free_cuttings(wanted: int) -> int:
 	## and Second Harvest, where the regrowth itself is what pays.
 	if wanted <= 0:
 		return 0
-	var room := maxi(0, orbit_capacity - _get_committed_ring_count())
+	var room := maxi(0, get_orbit_capacity() - _get_committed_ring_count())
 	if room <= 0:
 		return 0
 	# A real harvest carries the positions its spikes rise from. This one is generated:
@@ -756,7 +968,13 @@ func _apply_regrowth() -> void:
 	# alive stays burned for as long as it is alive. The moment the ring fires, the
 	# cut ground starts coming back, which is the valve that keeps a run holding a
 	# ring most of the time from bleeding to nothing.
-	if _holding and get_orbit_count() > 0:
+	# Above its floor, not merely non-empty. The floor leaf is granted rather than cut for,
+	# so it has bought none of the ground this suppression is charging for -- and because it
+	# is always there, keying on `> 0` made the suppression permanent: cut ground never came
+	# back at all, for the whole run. The Coppicing smoke test caught it reading a reclaim
+	# rate of 0.000 where it expected 1.30, and it is the likeliest reason a Bloom-heavy
+	# probe run watched its territory fall from 33.8% to 9.2%.
+	if _holding and get_orbit_count() > minimum_orbit_leaves:
 		territory_field.set_pruned_regrowth(0.0)
 		return
 	var regrowth := pruned_regrowth_per_second
@@ -788,6 +1006,13 @@ func _advance_ring(delta: float) -> void:
 	if is_player_on_green():
 		_starved_seconds = maxf(0.0, _starved_seconds - delta * footing_recovery_rate)
 	else:
+		# Intent is captured on the frame the footing goes, not on the frame the ring
+		# gives out. The release is `footing_grace_seconds` later -- over a second -- and
+		# by then she is usually standing still whether she walked off deliberately or
+		# stood until the harvest ate everything in reach, so asking at release time
+		# reads the wrong moment and calls every discharge a starvation.
+		if _starved_seconds <= 0.0:
+			_left_deliberately = _still_seconds < release_intent_seconds
 		_starved_seconds = minf(footing_grace_seconds, _starved_seconds + delta)
 	# Losing the path outright, or spending the ecosystem down to the floor, ends the
 	# hold at once. Losing the ground underfoot does not: she cuts that ground herself,
@@ -810,11 +1035,9 @@ func _advance_ring(delta: float) -> void:
 			# or a failure depends on why the ground went: Pruned Ground underfoot means
 			# the harvest ate it while she stood there, which is the ring tearing; bare
 			# ground means she walked off her own garden, which is her spending it.
-			var chose_it := (
-				territory_field.get_pruned_ground_at_local(
-					combat.player.get_arena_position()
-				) <= 0.0
-			)
+			# Whether she was moving when the ground went, not what she is standing on
+			# now. See `release_intent_seconds`.
+			var chose_it := _left_deliberately
 			if chose_it:
 				_release_ring("PRUNING — you stepped off the Green; the ring fired.")
 				_torn = true
@@ -849,8 +1072,13 @@ func _advance_ring(delta: float) -> void:
 	# A ring nothing is feeding thins out. The harvest resets this whenever it finds
 	# ground; see `orbit_wilt_interval_seconds`.
 	_unfed_seconds += delta
-	while _unfed_seconds >= orbit_wilt_interval_seconds:
-		_unfed_seconds -= orbit_wilt_interval_seconds
+	# Harvest Rate lengthens this: the ring holds on longer with nothing to cut. See the
+	# note in `get_upkeep_cells_per_second`.
+	var wilt_interval := orbit_wilt_interval_seconds * maxf(
+		0.05, get_pruning_harvest_rate_multiplier()
+	)
+	while _unfed_seconds >= wilt_interval:
+		_unfed_seconds -= wilt_interval
 		if not _wilt_oldest_spike():
 			_unfed_seconds = 0.0
 			break
@@ -859,9 +1087,48 @@ func _advance_ring(delta: float) -> void:
 	# costs her the ground, and running the debt out already costs her the ring -- and
 	# it quietly made the discharge, which is the path's payout, unreachable from a
 	# short hold.
+	var here := combat.player.get_arena_position()
+	if here.distance_squared_to(_last_player_position) > 1.0:
+		_still_seconds = 0.0
+	else:
+		_still_seconds += delta
+	_last_player_position = here
+	_leaf_raise_remaining = maxf(0.0, _leaf_raise_remaining - delta)
 	_charge = minf(1.0, _charge + delta / maxf(0.05, get_charge_seconds()))
+	_grant_floor_leaves()
 	_run_harvest(delta)
 	_turn_ring(delta)
+
+func _grant_floor_leaves() -> void:
+	## Grows the ring back up to its floor without charging ground for it.
+	##
+	## See `grant_minimum_orbit_leaves`: the floor has to be given, not only defended, or a
+	## ring at zero can never reach one and the path is dead on any board too sparse to cut.
+	##
+	## Not while torn. A torn ring is earned back rather than resumed -- without that rule
+	## the ring re-formed on the first frame of Green after a discharge and sat at 99%
+	## uptime, which is most of why cutting its damage used to do so little.
+	if not grant_minimum_orbit_leaves or _torn:
+		return
+	if not progression.has_path_active(Progression.PathId.PRUNING):
+		return
+	while get_orbit_count() < minimum_orbit_leaves:
+		var cutting := _get_inactive_cutting()
+		if cutting == null:
+			return
+		cutting.state = CuttingState.ORBITING
+		# The granted leaf carries the ordinary Cutting damage, including its line, so the
+		# floor is a floor on the ring's size and not a second, weaker kind of leaf.
+		cutting.damage = cutting_damage * get_pruning_cutting_damage_multiplier()
+		cutting.pierce_remaining = cutting_pierce
+		cutting.last_hit_enemy_id = -1
+		cutting.remaining = cutting_lifetime_seconds
+		cutting.natural_release = false
+		cutting.has_ricocheted = false
+		cutting.sprout_generation = 0
+		_orbit_sequence += 1
+		cutting.orbit_slot = _orbit_sequence
+		_position_orbit(get_orbit_count())
 
 func _turn_ring(delta: float) -> void:
 	var orbiting := get_orbit_count()
@@ -878,7 +1145,7 @@ func _run_harvest(delta: float) -> void:
 	_upkeep_debt += get_upkeep_cells_per_second() * delta
 	if _upkeep_debt < 1.0:
 		return
-	if get_orbit_count() >= orbit_capacity and not is_above_safety_floor():
+	if get_orbit_count() >= get_orbit_capacity() and not is_above_safety_floor():
 		# A finished ring on an exhausted ecosystem simply stops eating rather than
 		# throwing itself away.
 		_upkeep_debt = 0.0
@@ -919,7 +1186,7 @@ func _harvest(wanted_cells: int) -> int:
 	# a second: unthrottled, holding a finished ring was a free homing volley on tap
 	# and the disc itself stopped being the damage. Between sheds the ground is
 	# still spent, so holding a full ring costs territory either way.
-	if _get_committed_ring_count() >= orbit_capacity:
+	if _get_committed_ring_count() >= get_orbit_capacity():
 		if _replacement_remaining > 0.0:
 			# Bank toward the next shed rather than discarding it, but never bank
 			# more than the one spike a shed is allowed to raise: a full ring must
@@ -976,10 +1243,38 @@ func _harvest(wanted_cells: int) -> int:
 	_cutting_debt += cuttings
 	# A ring with room fills as fast as the harvest pays for it; a full one takes
 	# exactly one replacement per shed rather than dumping whatever has banked.
-	var room := maxi(0, orbit_capacity - _get_committed_ring_count())
+	var room := maxi(0, get_orbit_capacity() - _get_committed_ring_count())
 	if room <= 0:
 		room = 1
-	var raised := _raise_cuttings(harvest, mini(int(floor(_cutting_debt)), room))
+	# One leaf per interval however much the harvest has banked. The debt keeps its
+	# balance, so a rich cut is not thrown away -- it arrives as a steady thickening
+	# rather than a ring that appears between two frames.
+	var allowance := 0
+	if progression.has_active_evolution(Progression.EvolutionId.DEADFALL):
+		# Deadfall is the throttle coming off, not a faster setting of it. Its stated
+		# contract is taking the ring "from shedding a thorn occasionally to firing them
+		# continuously, which is exactly what base Pruning must not do on its own" -- so
+		# the gate that makes base Pruning legible is what the evolution buys past.
+		#
+		# Quickening the interval was tried first and cannot work: the cap inside one
+		# cycle is one leaf either way, so the extra thorn yield banked and never
+		# arrived and the evolution measured identical to not owning it. This is the
+		# first instalment of a larger bill -- every relic and evolution written against
+		# the old launch stream has to be re-expressed against the ring.
+		allowance = room
+	elif _leaf_raise_remaining <= 0.0:
+		allowance = 1
+		# Harvest Rate buys cadence, not cells. It used to buy only a faster cut, which
+		# the throttle then refused to convert -- measured, the line was worth +0.0%
+		# against the bare Adaptation, identical to the digit, because banking more debt
+		# per second cannot raise more leaves per second. What the ring wants from it is
+		# recovery: how quickly a ring rebuilds after she has had to leave ground behind.
+		_leaf_raise_remaining = leaf_raise_interval_seconds / maxf(
+			0.05, get_pruning_harvest_rate_multiplier()
+		)
+	var raised := _raise_cuttings(
+		harvest, mini(mini(int(floor(_cutting_debt)), room), allowance)
+	)
 	_cutting_debt -= float(raised)
 	_bury_pioneer_seeds(harvest)
 	_fire_deadfall_volley(harvest)
@@ -1287,6 +1582,16 @@ func get_harvest_root_multiplier(harvest: TerritoryField.PruneHarvest) -> float:
 	)
 
 
+func is_wilt_imminent() -> bool:
+	## Whether the ring is about to lose a leaf, for the warning flash.
+	##
+	## False at the floor: a ring that cannot shrink any further has nothing to warn
+	## about, and a permanently flashing ring would teach the player to ignore it.
+	return (
+		_unfed_seconds >= wilt_warning_seconds
+		and get_orbit_count() > minimum_orbit_leaves
+	)
+
 func get_replacement_seconds() -> float:
 	# Deadfall's payoff is the rate itself. The Evolution takes the ring from
 	# shedding a thorn occasionally to firing them continuously, which is exactly
@@ -1341,10 +1646,21 @@ func _advance_gathering_cutting(
 	cutting.spin += delta * 12.0
 	if cutting.gather_remaining > 0.0:
 		return
-	# A player standing off their own ground has nothing to hold a ring together
-	# with, so whatever had gathered simply flies.
+	# A player standing off their own ground has nothing to hold a ring together with,
+	# so whatever had gathered is lost. It used to fly instead, at full damage, and that
+	# one branch was the entire path: the harvest takes the cell she stands on, so being
+	# off her own footing is the ordinary state of a stationary hold -- 58% of a rooted
+	# bench -- and every Cutting raised in that state became a free projectile that never
+	# touched the ring. Zeroing the ring's own damage cost a developed Pruning one point
+	# out of 7,595; zeroing the Cuttings cost it 78%.
+	#
+	# Charging the launch less did not fix it, it broke the upgrade tree: at a 30% share
+	# `Harvest Rate` measured *below* the bare Adaptation, because the harvest's output in
+	# that state is launches and nothing else. Harvesting has to buy ring, or buying more
+	# harvest cannot be worth anything. So the ground she spent is simply gone, which is
+	# what spending ground on nothing should mean.
 	if not is_player_on_green():
-		_launch_cutting(cutting)
+		cutting.state = CuttingState.INACTIVE
 		return
 	cutting.state = CuttingState.ORBITING
 	_orbit_sequence += 1
@@ -1400,7 +1716,7 @@ func _trim_orbit() -> void:
 	# A guard, not a mechanic: the harvest refuses to raise a spike the ring has no
 	# room for, so this only fires if the capacity itself shrinks underneath a ring
 	# that is already turning.
-	while get_orbit_count() > orbit_capacity:
+	while get_orbit_count() > get_orbit_capacity():
 		var oldest: Cutting = null
 		for cutting in _cuttings:
 			if cutting.state != CuttingState.ORBITING:
@@ -1453,9 +1769,14 @@ func _apply_orbit_damage() -> void:
 	# Linear in the spike count, so the ring she has actually built is the ring that
 	# bites. See `orbit_lone_spike_damage_share`.
 	var spikes := get_orbit_count()
-	var fullness := float(spikes) / float(maxi(1, orbit_capacity))
+	var fullness := float(spikes) / float(maxi(1, orbit_reference_leaves))
+	# Cutting Damage applies here now. It used to scale only loose Cuttings and the
+	# volley, so once the ring became the output the line was buying nothing a player
+	# could see: base Pruning and Pruning with every line bought measured within 3% of
+	# each other. The path's damage line has to scale the path's damage.
 	var damage := (
 		orbit_contact_damage
+		* get_pruning_cutting_damage_multiplier()
 		* (1.0 + orbit_charge_damage_bonus * _charge)
 		* lerpf(clampf(orbit_lone_spike_damage_share, 0.0, 1.0), 1.0, fullness)
 	)
@@ -1463,14 +1784,21 @@ func _apply_orbit_damage() -> void:
 	var ids := combat.get_active_enemy_ids()
 	var positions := combat.get_active_enemy_positions()
 	var candidates: Array = []
+	# Everything standing in the thicket, cooling down or not. The budget is divided by
+	# how crowded the ring *is*, not by how many bodies happen to be off cooldown this
+	# frame -- that second number is a handful at any density, so dividing by it would
+	# leave output proportional to the crowd exactly as before.
+	var in_reach := 0
 	for index in range(mini(ids.size(), positions.size())):
 		var enemy_id := ids[index]
-		if _hit_cooldowns.has(enemy_id):
-			continue
 		var distance := positions[index].distance_to(centre)
 		if distance > reach:
 			continue
+		in_reach += 1
+		if _hit_cooldowns.has(enemy_id):
+			continue
 		candidates.append([distance, enemy_id])
+	damage /= float(maxi(1, in_reach))
 	# Only sorted when the cap actually binds. Most frames every body in the disc is
 	# still on its own cooldown, so this is a handful of entries or none at all.
 	if candidates.size() > orbit_maximum_targets_per_tick:
@@ -1495,6 +1823,10 @@ func _wilt_oldest_spike() -> bool:
 	## Wilted rather than launched: a spike that falls off a starving ring is ground
 	## that ran out, not a shot she took, and `_launch_cutting` would hand her the
 	## damage anyway.
+	# The ring recedes toward its floor rather than through it. See
+	# `minimum_orbit_leaves`.
+	if get_orbit_count() <= minimum_orbit_leaves:
+		return false
 	var oldest: Cutting = null
 	for cutting in _cuttings:
 		if cutting.state != CuttingState.ORBITING:
@@ -1503,6 +1835,16 @@ func _wilt_oldest_spike() -> bool:
 			oldest = cutting
 	if oldest == null:
 		return false
+	# The leaf sets its ground down where it fell. See `wilted_leaf_growth_share`; this
+	# is what makes a receding ring replant the ground that will refill it.
+	if wilted_leaf_growth_share > 0.0 and territory_field != null:
+		territory_field.queue_seed_growth(
+			oldest.position,
+			wilted_leaf_growth_share,
+			wilted_leaf_growth_share,
+			wilted_leaf_growth_share,
+			wilted_leaf_growth_share
+		)
 	oldest.state = CuttingState.INACTIVE
 	_position_orbit(get_orbit_count())
 	return true
@@ -1524,6 +1866,15 @@ func _release_ring(message: String, intentional: bool = true) -> void:
 	var orbiting := get_orbit_count()
 	for cutting in _cuttings:
 		if cutting.state != CuttingState.ORBITING:
+			continue
+		# A ring that came apart is lost, not fired. Counted as released so the tear is
+		# still reported and still resets the hold, but nothing is thrown: paying her a
+		# volley for running out of ground is what made starvation the optimal play, and
+		# no share of that volley is small enough to stop being worth chasing while the
+		# harvest that causes it is also the thing that feeds it.
+		if not intentional:
+			cutting.state = CuttingState.INACTIVE
+			released += 1
 			continue
 		# A banked ring hits far harder than a loose Cutting, which is the whole
 		# reason to hold one.
@@ -1979,6 +2330,16 @@ func _draw() -> void:
 				true
 			)
 			draw_circle(cutting.position, 1.8 + 0.8 * _charge, loaded)
+			# About to lose a leaf: the whole ring flares so the warning reads as the
+			# ring's state rather than as one spike misbehaving. Drawn over the blade and
+			# under the Charge halo, so a charged ring that is also starving shows both.
+			if is_wilt_imminent():
+				var warn := 0.5 + 0.5 * sin(_orbit_angle * 9.0)
+				draw_circle(
+					cutting.position,
+					3.4 + 1.6 * warn,
+					Color(1.0, 0.72, 0.36, 0.30 + 0.45 * warn)
+				)
 			var spike_pulse := _get_full_charge_pulse()
 			if spike_pulse > 0.0:
 				var halo := full_charge_pulse_color

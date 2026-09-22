@@ -67,6 +67,9 @@ extends Resource
 @export var grants_wave_relic := false
 ## Beginning this wave offers every Evolution the run currently qualifies for.
 @export var grants_evolution_reward := false
+## Whether that reward is a second chance for a run still short of the target rather
+## than another grant. See `CampaignWaves.CATCH_UP_EVOLUTION_WAVES`.
+@export var evolution_reward_is_catch_up := false
 ## Beginning this wave hands the player a draft of Adaptations they do not own.
 @export var grants_path_draft := false
 ## Beginning this wave sets a Trial: one rule, held for this wave, for a relic.

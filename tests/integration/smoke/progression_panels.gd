@@ -11,8 +11,9 @@ extends RefCounted
 
 static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	# The Adaptation tree keeps each owned Adaptation's four authored lines together,
-	# with the Evolution between the two Cores and the unearned Branch rows locked
-	# beneath it.
+	# with the Evolutions between the two Cores and the unearned Branch rows locked
+	# beneath it. Quick opens both Branch slots, so both rows are on the panel here;
+	# Campaign opens one and `campaign_no_clover_probe` is where that shape is held.
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
 		Progression.PathId.BRAMBLE,
@@ -34,7 +35,9 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	report.check(
 		slot_row.get_slot_count() == 4
 		and prototype.adaptation_tree.core_two_slots.get_slot_count() == 4
-		and prototype.adaptation_tree.evolution_slot.get_slot_count() == 1
+		# Two sockets from the first frame of the run, both empty: a run is built to
+		# grow two Evolutions and an empty socket is how it says the second is coming.
+		and prototype.adaptation_tree.evolution_slot.get_slot_count() == 2
 		and prototype.adaptation_tree.branch_one_slots.get_slot_count() == 4
 		and prototype.adaptation_tree.branch_two_slots.get_slot_count() == 4
 		# Every row is named plainly; nothing marks one Adaptation over another.

@@ -42,6 +42,7 @@
 [ext_resource type="StyleBox" path="res://assets/ui/tray_style.tres" id="31_tray_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
+[ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/slot_style.tres" id="35_slot_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/divider_style.tres" id="36_divider_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_hp_track.tres" id="90_wx_hp_track"]
@@ -101,6 +102,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/drafts/choice_panel.tscn" id="204_choice_panel"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/adaptation_tree.tscn" id="205_adaptation_tree"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/relic_tray.tscn" id="206_relic_tray"]
+[ext_resource type="Script" uid="uid://0ffonjavm4b3" path="res://src/core/nodes/waves/trial_director.gd" id="207_trial_card"]
 
 [sub_resource type="ShaderMaterial" id="TerritoryCompositionMaterial"]
 shader = ExtResource("97_bar_composition_shader")
@@ -228,7 +230,7 @@ region = Rect2(138, 0, 627, 624)
 atlas = ExtResource("26_slot_lever_down")
 region = Rect2(138, 0, 627, 624)
 
-[node name="RunRoot" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "canker_director", "audio_settings", "health_bar", "health_label", "territory_bar", "territory_label", "territory_composition", "xp_bar", "xp_label", "wave_label", "status_label", "hostile_label", "evolution_label", "relic_tray", "slot_panel", "all_in_label", "banner_label", "result_panel", "result_header", "result_detail", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "pause_menu", "run_audio", "choice_panel", "adaptation_tree")]
+[node name="RunRoot" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "canker_director", "audio_settings", "health_bar", "health_label", "territory_bar", "territory_label", "territory_composition", "xp_bar", "xp_label", "wave_label", "status_label", "hostile_label", "blight_label", "evolution_label", "relic_tray", "slot_panel", "all_in_label", "banner_label", "result_panel", "result_header", "result_detail", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "pause_menu", "run_audio", "choice_panel", "adaptation_tree", "trial_card", "provoke_button")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -265,6 +267,7 @@ xp_label = NodePath("Interface/SidePanel/XPLabel")
 wave_label = NodePath("Interface/SidePanel/WaveLabel")
 status_label = NodePath("Interface/SidePanel/StatusLabel")
 hostile_label = NodePath("Interface/SidePanel/HostileLabel")
+blight_label = NodePath("Interface/SidePanel/BlightLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
 relic_tray = NodePath("Interface/RelicTray")
 slot_panel = NodePath("Interface/SidePanel/SlotMachinePanel")
@@ -277,6 +280,8 @@ display_settings = NodePath("GameplayComponents/DisplaySettings")
 clover_telemetry = NodePath("GameplayComponents/CloverTelemetry")
 interface_layer = NodePath("Interface")
 adaptation_tree = NodePath("Interface/SidePanel/AdaptationTree")
+trial_card = NodePath("Interface/SidePanel/TrialCard")
+provoke_button = NodePath("Interface/SidePanel/ProvokeButton")
 choice_panel = NodePath("Interface/ChoicePanel")
 run_audio = NodePath("RunAudio")
 pause_menu = NodePath("Interface/PauseMenu")
@@ -585,7 +590,7 @@ autowrap_mode = 2
 
 [node name="StatusLabel" type="Label" parent="Interface/SidePanel" unique_id=70920558]
 layout_mode = 0
-offset_left = -722.0
+offset_left = -560.0
 offset_top = 9.0
 offset_right = -339.0
 offset_bottom = 54.0
@@ -594,6 +599,17 @@ theme_override_font_sizes/font_size = 32
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
+
+[node name="BlightLabel" type="Label" parent="Interface/SidePanel" unique_id=70920559]
+layout_mode = 0
+offset_left = -706.0
+offset_top = 9.0
+offset_right = -570.0
+offset_bottom = 54.0
+theme_override_colors/font_color = Color(0.729, 0.769, 0.353, 1)
+theme_override_font_sizes/font_size = 26
+text = "BLIGHT {blight}"
+vertical_alignment = 1
 
 [node name="HostileLabel" type="Label" parent="Interface/SidePanel" unique_id=70920557]
 layout_mode = 0
@@ -784,3 +800,27 @@ horizontal_alignment = 1
 [node name="AdaptationTree" parent="Interface/SidePanel" instance=ExtResource("205_adaptation_tree")]
 
 [node name="RelicTray" parent="Interface" instance=ExtResource("206_relic_tray")]
+
+[node name="ProvokeButton" type="Button" parent="Interface/SidePanel" unique_id=451346812]
+visible = false
+layout_mode = 0
+offset_left = 16.0
+offset_top = 380.0
+offset_right = 236.0
+offset_bottom = 422.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.769, 0.604, 0.314, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "PROVOKE"
+
+[node name="TrialCard" type="Control" parent="Interface/SidePanel" unique_id=451346813]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 430.0
+offset_right = 238.0
+offset_bottom = 648.0
+mouse_filter = 2
+script = ExtResource("207_trial_card")

@@ -1603,6 +1603,19 @@ func drain_territory_in_radius(
 					continue
 				if _control[index] <= tuning.ownership_threshold:
 					continue
+				# Ground this cut has already taken is off the table until its mark has
+				# run out. Without this the harvest is a closed circuit: a cut cell drops
+				# to zero control, `_pruned_regrowth_per_second` pushes it back over the
+				# ownership threshold faster than ordinary ground recovers, and it is
+				# eligible to be cut again -- so a player standing still re-eats the same
+				# ring of cells indefinitely and never runs out of anything.
+				#
+				# Measured before this existed: sixty seconds of standing perfectly still
+				# ended with the ring still completely full, having wilted not one leaf.
+				# The escalating drain is supposed to give every hold an end and could not,
+				# because the supply it was draining refilled itself behind it.
+				if _pruned_ground[index] > 0.0:
+					continue
 				var maturity := _maturity[index]
 				if maturity < lower or maturity >= upper:
 					continue
@@ -3408,7 +3421,25 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 				_maturity[index] = 0.0
 			if distance > 0.001 and pressure_cells > 0.0:
 				var direction := offset / distance
-				var impulse := command.pressure_cells * falloff * support_scale
+				# Shove in proportion to the mass that actually landed, not the mass the
+				# command asked to place. `new_control` is clamped at 1.0, so on ground the
+				# run already holds outright the mass is discarded while the impulse used
+				# to fire at full strength -- a Bloom over its own saturated interior was
+				# pure outward advection with nothing added to replace what it moved.
+				#
+				# One Bloom is nothing. Second Flush and Floral Cascade put many of them
+				# over the same held ground, and the interior drains toward neutral: the
+				# reported bug is Bloom un-making territory late in a run. This also
+				# restores the stated intent -- a Bloom surges a *frontier*, where there is
+				# room for its mass to land, and leaves a finished interior alone.
+				var placed := absf(new_control - old_control)
+				var intended := absf(mass_delta)
+				var landed_share := 1.0 if intended <= 0.0001 else clampf(
+					placed / intended, 0.0, 1.0
+				)
+				var impulse := (
+					command.pressure_cells * falloff * support_scale * landed_share
+				)
 				_pressure_x[index] = clampf(
 					_pressure_x[index] + direction.x * impulse,
 					-tuning.max_pressure_cells,

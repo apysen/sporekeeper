@@ -4,6 +4,10 @@ extends SceneTree
 ## attention without a side game to gamble on, so the cabinet is gone, the
 ## Adaptation rows take the space it held, and nothing behind it turns. Quick
 ## still gets the whole machine, authored where the scene put it.
+##
+## The two modes also run different rosters -- Campaign three Adaptations, Quick four
+## -- and the panel has to say so. A locked Branch row is a promise that the slot will
+## open, and Campaign never opens the second one.
 
 var _failures := 0
 
@@ -53,12 +57,86 @@ func _run() -> void:
 		campaign.slot_machine.get_committed_cells().is_empty(),
 		"Campaign commits no ground to the machine",
 	)
+	campaign.adaptation_tree.refresh()
+	_check(
+		campaign.progression.get_branch_slot_limit() == 1
+		and campaign.adaptation_tree.branch_one_frame.visible
+		and not campaign.adaptation_tree.branch_two_frame.visible,
+		"Campaign shows one Branch row, because it only ever opens one Branch slot",
+	)
+	_check(
+		campaign.adaptation_tree.branch_one_label.text == "BRANCH",
+		"and names it plainly rather than numbering a row nothing follows",
+	)
+	_check(
+		campaign.adaptation_tree.evolution_slot.get_slot_count()
+		== Evolutions.TARGET_ACTIVE_EVOLUTIONS,
+		"and shows a socket for each Evolution the run is built to grow",
+	)
+
+	# One rhythm down the whole column. The panel is five stacked things authored in
+	# three different files -- the rows and sockets in the Adaptation scene, the button
+	# and the card in the run scene, and the Campaign shift in code -- so the gap
+	# between them is exactly the measurement nobody notices going wrong.
+	var column: Array[Control] = [
+		campaign.adaptation_tree.get_node("Path1Frame/Path1EmblemFrame"),
+		campaign.adaptation_tree.get_node("Path2Frame/Path2EmblemFrame"),
+		campaign.adaptation_tree.get_node("SupportFrame/SupportEmblemFrame"),
+		campaign.adaptation_tree.evolution_slot,
+		campaign.provoke_button,
+		campaign.trial_card,
+	]
+	var gaps := PackedFloat32Array()
+	for index in range(1, column.size()):
+		gaps.append(
+			column[index].get_global_rect().position.y
+			- column[index - 1].get_global_rect().end.y
+		)
+	var uniform := true
+	for gap in gaps:
+		uniform = uniform and is_equal_approx(gap, AdaptationTree.ROW_GAP)
+	_check(
+		uniform,
+		"the side panel keeps one gap between everything on it: %s" % str(gaps),
+	)
+
+	# Provocation is the Campaign's difficulty dial, and every part of what it costs is
+	# invisible: a Blight level is permanent, the surge lands half a minute later, and
+	# the compression allowance is spent silently. The button has to say all three
+	# before it is pressed.
+	var provoke_body := campaign._provoke_tooltip_body()
+	_check(
+		provoke_body.contains("Growth")
+		and provoke_body.contains("Blight")
+		and provoke_body.contains("surge")
+		and provoke_body.contains("allowance"),
+		"the Provoke tooltip states the reward, the permanent cost and the immediate one",
+	)
+	_check(
+		provoke_body.contains("Not yet"),
+		"and says why it cannot be pressed while the window is still shut",
+	)
+	# The card itself cannot be asserted on from here: a HUD tooltip dismisses itself
+	# the moment the pointer is not near what it belongs to, and the pointer in a probe
+	# is wherever the desktop left it. So what is held is the wiring -- that a hover
+	# reaches the run at all, which is the part a scene edit can silently drop.
+	_check(
+		campaign.provoke_button.mouse_entered.is_connected(campaign._on_provoke_hovered),
+		"and the button's hover is wired to the run that draws the card",
+	)
 
 	var quick: RunRoot = await _load_run(RunMode.Id.QUICK)
 	_check(quick.slot_panel.visible, "Quick still has the Clover cabinet")
 	_check(
 		quick.adaptation_tree.position.y > quick.slot_panel.position.y,
 		"Quick leaves the Adaptation rows where the scene authored them, below the cabinet",
+	)
+	quick.adaptation_tree.refresh()
+	_check(
+		quick.progression.get_branch_slot_limit() == 2
+		and quick.adaptation_tree.branch_two_frame.visible
+		and quick.adaptation_tree.branch_one_label.text == "BRANCH 1",
+		"Quick keeps both Branch rows, and numbers them",
 	)
 
 	if _failures == 0:

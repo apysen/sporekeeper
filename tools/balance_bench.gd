@@ -46,6 +46,9 @@ extends SceneTree
 ##      godot --headless --path . --script tools/balance_bench.gd -- --archetypes
 ##      godot --headless --path . --script tools/balance_bench.gd -- --build 6-5-4
 ##      godot --headless --path . --script tools/balance_bench.gd -- --isolate 6
+##      godot --headless --path . --script tools/balance_bench.gd -- --isolate 6 --with 4
+##      godot --headless --path . --script tools/balance_bench.gd -- --boss
+##      godot --headless --path . --script tools/balance_bench.gd -- --boss queen
 
 const BENCH_SECONDS := 40.0
 const STEP := 1.0 / 60.0
@@ -63,6 +66,35 @@ const SPAWN_RING_PIXELS := 230.0
 ## in that column, so the column has to be given something to measure.
 const SIEGE_POPULATION := 60
 const SIEGE_RING_PIXELS := 130.0
+## `--boss`: one tough target, replaced the instant it falls, instead of a crowd.
+##
+## Every number in the pair sweep so far comes from a sixty-Hunter siege, where every
+## build is overkill-bound: the difference between damage dealt and damage applied is
+## thrown away against bodies that were dying anyway, so a cut to a single-target value
+## costs nothing the table can see. Two Pruning decisions are parked on exactly that --
+## the 54% cut to `orbit_contact_damage`, chosen on a board that cannot read its cost,
+## and `torn_ring_charge_share` 0.20, which measured as *exactly* zero change because
+## the discharge landed entirely in overkill. Neither is a balance finding; both are the
+## instrument declining to answer.
+##
+## The headline here is therefore not damage. Damage applied against a lone body is
+## nearly quantised by that body's health, while damage *dealt* keeps counting, so the
+## reading is how long the build holds the target under fire and how much of what it
+## fired was wasted -- which is the eight-target ring cap stated as a number.
+##
+## Entering close, because the walk in is not the thing being measured. `--boss queen`
+## is the Hive Queen, who is deliberately *not* a single-target measurement: she summons,
+## so she reads as a boss with a brood around it. `--boss elite` is the Rootbreaker.
+##
+## Pair it with `--island`. On the default patch board all four Bramble lines measured
+## *byte-identical* to the Cane alone against the Burrower -- same damage, same kill, the
+## same 540 taken, control columns at exactly 0.000 -- and on the island the same rows
+## read slow 0.03-0.07, tangle 0.17-0.33 and 540 taken falling to 444 under Repulsion. So
+## the zero was the board, not the Adaptation: a boss that erupts stands in ground it has
+## just unmade, and six per cent of Green has nothing around that hole to keep coverage
+## under its feet. The patch board reads every territory Adaptation as absent against a
+## boss, which is the same defect `--island` was added to the crowd bench to fix.
+const BOSS_RING_PIXELS := 90.0
 const GREEN_ESTABLISH_STEPS := 420
 ## Seconds between control samples. Four a second is far finer than any control
 ## effect in the game turns over, and far coarser than the step loop, so it costs
@@ -70,14 +102,27 @@ const GREEN_ESTABLISH_STEPS := 420
 const CONTROL_SAMPLE_SECONDS := 0.25
 ## The seed every row is run on.
 ##
-## Pinned, and this matters more than it looks. `reset_run` rolls a fresh run seed
-## unless one is authored, so before this the bench gave every row its own RNG: its
-## own critical hits, its own Thistle placements, its own spawn jitter. Rows were
-## therefore only comparable to within whatever that spread happened to be -- and the
-## spread is large enough that two of Thistle's four lines measured *below* the
-## Adaptation with no lines bought at all, which is not a thing a line can do.
+## Pinned so that `reset_run` cannot roll a fresh one per row, which is worth doing and
+## is *not* what the comment here used to claim. It said the seed pinned each row's
+## critical hits, Thistle placements and spawn jitter. It pins none of those, because
+## none of them are random: `CombatDirector` holds no gameplay RNG at all -- its repeated
+## choices run off deterministic counters (`_briar_trap_sequence`, `_root_eruption_sequence`,
+## `_fruiting_body_sequence`) and its one `RandomNumberGenerator` is for audio. Of the
+## directors that do own one, Spore hardcodes `0x5EED10` and RelicDirector hardcodes
+## `0x0FF1CE5`, so the run seed never reaches either.
 ##
-## One seed for the whole sweep means the difference between two rows is the build.
+## What the seed does reach: Progression's draft and relic draws, which a bench that
+## writes `_upgrade_levels` directly never performs; the wave director, which this loop
+## does not run; the Canker director; and `AdaptationDirector._random`, whose rolls are
+## Apical and Wisteria -- Evolution and relic features, inactive unless `--evolved`.
+##
+## The measured consequence: two seeds produce byte-identical rows. 11,887 damage, 423
+## kills, 105 Seeds sown, every column to the digit, in two separate processes. So the
+## default sweep is fully deterministic, and that cuts both ways. No row needs a second
+## seed to be trusted -- but no row can be *checked* for seed-dependence either, and the
+## "two seeds agreeing is a result, one is an anecdote" rule the sweep documents invoke
+## cannot be exercised with this tool as it stands. `--seed` is not a variance control
+## here; treat a reading as one sample of one configuration.
 const DEFAULT_BENCH_SEED := 20260919
 ## `--island`: a board with real territory on it, instead of the single central patch.
 ##
@@ -100,6 +145,35 @@ const ISLAND_ANCHORS := [
 	Vector2(0.22, 0.16),
 ]
 const ISLAND_ESTABLISH_STEPS := 900
+## `--coverage N`: grow the board until N per cent of the arena is Green, rather than
+## stepping a fixed number of times and accepting whatever that produces.
+##
+## The two existing boards are the extremes and neither is a run. The patch settles near
+## six per cent, which starves every territory Adaptation -- all four Bramble lines
+## measured byte-identical to the bare Cane against a boss on it. The island reaches
+## ninety-one, which starves nothing: Pruning holds a ring 100% of a bench there, is off
+## its own ground 0.6% of the time and tears none, so anything paid for in *losing* the
+## ring reads as worth nothing there. Harvest Rate buys recovery and measured +0.2% on
+## siege for exactly that reason.
+##
+## Defined by the coverage it reaches rather than by a step count, so it stays the same
+## board whatever the field tuning does later, and two rows grown to the same coverage
+## are comparable by construction.
+##
+## It sets the *opening* coverage and does not hold it. Natural spread is pinned off for the
+## row -- see `_apply_spread_pin` -- and the board still reaches about 89% of the arena
+## inside forty seconds, because what grows it is the mass of the Blooms planted to
+## establish it rather than the spread rate. A Bloom with enough mass to reach 30% has
+## enough to reach 90%, so holding a coverage would mean establishing from many small
+## Blooms instead, which this does not do.
+##
+## That matters for anything whose output is linear in the ground it can reach. Pruning's
+## leaves come only from ground it can cut, so measuring it here reports a ring roughly
+## twice as full as a build sustains without a territory Adaptation beside it -- which is
+## what a played run found and what these boards could not show. The default patch board,
+## which settles near 6% and stays there, is the scarce case; this one and `--island` are
+## both abundant.
+const COVERAGE_STEP_CAP := 4000
 
 ## `--walk`: Grandma on a slow circuit instead of rooted to one spot.
 ##
@@ -152,6 +226,8 @@ const ARCHETYPES := [
 ]
 
 var _kills := 0
+## Bosses put down during a row, counted by role off `enemy_killed`.
+var _targets_felled := 0
 ## Seeds that actually broke ground during a row, and Blooms that actually went off.
 ##
 ## Territory Adaptations are paid in events the damage column cannot see, and a row
@@ -165,7 +241,23 @@ var _ranks := 3
 var _evolved := false
 var _pairs_only := ""
 var _siege := false
+## `--boss`: hold one tough target rather than a crowd, and which one.
+var _boss := false
+var _boss_role := EnemyKinds.Role.BOSS
 var _evolution_rank := 5
+## `--with`: an Adaptation held at full ranks underneath an `--isolate` sweep.
+##
+## `--isolate` answers "which of this Adaptation's lines carries it". It cannot answer
+## "which of its lines carries the *pair*", which is a different question and the one
+## the table's top seven all turn on. Vine contributes nothing whatever against a single
+## target alone -- owned with no lines bought it measures byte-identical to having no
+## Vine at all -- and yet Pruning+Vine is the strongest single-target build benched and
+## tears three times the rings Pruning does. That interaction sits in neither
+## Adaptation's own column, so neither sweep could see it.
+##
+## With a partner named, every row carries all of the partner's lines and varies only
+## the isolated Adaptation, so the difference between two rows is still one line.
+var _with_path := -1
 ## An explicit roster of two or three Paths, as "6-5" or "6-5-4".
 var _build_only := ""
 ## Sweep the five named archetypes instead of every pair.
@@ -175,6 +267,11 @@ var _archetypes := false
 var _isolate_path := -1
 var _seed := DEFAULT_BENCH_SEED
 var _island := false
+## Per cent of the arena to grow Green to before a row starts; <= 0 keeps the fixed
+## establish step counts.
+var _coverage_target := 0.0
+## The field's authored spread rate, captured once so a pinned row can restore it.
+var _authored_spread_rate := -1.0
 var _walk := false
 var _walk_radius := WALK_RADIUS_PIXELS
 ## `--ring`: report Pruning's hold rather than its damage. The held population sits at
@@ -210,6 +307,18 @@ func _read_arguments() -> void:
 					_evolution_rank = clampi(int(arguments[index + 1]), 1, 5)
 			"--siege":
 				_siege = true
+			"--boss":
+				_boss = true
+				# The role is optional and only known words are taken, so a flag
+				# following `--boss` falls through to its own case unharmed.
+				if index + 1 < arguments.size():
+					match arguments[index + 1]:
+						"burrower":
+							_boss_role = EnemyKinds.Role.BOSS
+						"queen":
+							_boss_role = EnemyKinds.Role.HIVE_QUEEN
+						"elite":
+							_boss_role = EnemyKinds.Role.ELITE
 			"--pair":
 				if index + 1 < arguments.size():
 					_pairs_only = arguments[index + 1]
@@ -218,10 +327,19 @@ func _read_arguments() -> void:
 				# three Adaptations it actually is rather than as a pair plus a guess.
 				if index + 1 < arguments.size():
 					_build_only = arguments[index + 1]
+			"--with":
+				if index + 1 < arguments.size():
+					_with_path = clampi(
+						int(arguments[index + 1]), 0, Progression.PathId.size() - 1
+					)
 			"--archetypes":
 				_archetypes = true
 			"--island":
 				_island = true
+			"--coverage":
+				if index + 1 < arguments.size():
+					_island = true
+					_coverage_target = clampf(float(arguments[index + 1]), 1.0, 95.0)
 			"--ring":
 				_ring_report = true
 			"--walk":
@@ -264,9 +382,16 @@ func _run() -> void:
 	run.overlay.set_process(false)
 	run.player.input_enabled = false
 	run.combat.debug_damage_accounting = true
-	run.combat.enemy_killed.connect(
-		func(_p: Vector2, _xp: int, _r: int, _s: int, _c: int) -> void: _kills += 1
-	)
+	run.combat.enemy_killed.connect(_count_kill)
+	# A boss dying in a run opens a relic, a Branch slot and an Evolution. In a bench
+	# that replaces one every few seconds that is not a reward, it is the row editing
+	# its own build halfway through being measured -- and `_on_boss_defeated` calls
+	# `unlock_branch_slot` before anything checks whether a run is even in progress, so
+	# a third Adaptation would arrive whether a panel could open or not. The bench is
+	# not a run and takes no milestones.
+	run.combat.elite_defeated.disconnect(run._on_elite_defeated)
+	run.combat.boss_defeated.disconnect(run._on_boss_defeated)
+	run.combat.hive_queen_defeated.disconnect(run._on_hive_queen_defeated)
 	run.overlay.seed_spawned.connect(
 		func(_id: int, _p: Vector2) -> void: _sown += 1
 	)
@@ -278,14 +403,16 @@ func _run() -> void:
 	)
 
 	print(
-		"BALANCE_BENCH: %.0fs per build, %d held targets, ranks=%d, evolution=%s, seed=%d, board=%s, player=%s"
+		"BALANCE_BENCH: %.0fs per build, %s held, ranks=%d, evolution=%s, seed=%d, board=%s, player=%s"
 		% [
 			BENCH_SECONDS,
-			SIEGE_POPULATION if _siege else TARGET_POPULATION,
+			("1 %s" % _target_label()) if _boss
+				else ("%d Hunters" % (SIEGE_POPULATION if _siege else TARGET_POPULATION)),
 			_ranks,
 			("rank %d" % _evolution_rank) if _evolved else "none",
 			_seed,
-			"island" if _island else "patch",
+			("%.0f%% grown" % _coverage_target) if _coverage_target > 0.0
+				else ("island" if _island else "patch"),
 			("walking r=%d" % int(_walk_radius)) if _walk else "rooted",
 		]
 	)
@@ -299,6 +426,22 @@ func _run() -> void:
 		await _sweep_pairs(run)
 	_report()
 	quit(0)
+
+
+func _count_kill(_position: Vector2, _xp: int, role: int, _source: int, _chain: int) -> void:
+	_kills += 1
+	if role == _boss_role:
+		_targets_felled += 1
+
+
+func _target_label() -> String:
+	match _boss_role:
+		EnemyKinds.Role.HIVE_QUEEN:
+			return "Hive Queen"
+		EnemyKinds.Role.ELITE:
+			return "Rootbreaker"
+		_:
+			return "Burrower"
 
 
 func _sweep_pairs(run: RunRoot) -> void:
@@ -348,14 +491,34 @@ func _sweep_lines(run: RunRoot) -> void:
 	# line that doubles its Adaptation's output reads as a rounding error, because it
 	# is being divided by a baseline that has nothing to do with it.
 	_rows.append(await _bench_build(run, [], "cane only", PackedInt32Array()))
-	_rows.append(await _bench_build(run, [_isolate_path], "base", PackedInt32Array()))
+	var roster: Array[int] = [_isolate_path]
+	# An Adaptation cannot partner itself, and asking for it would reach
+	# `debug_select_paths(n, n)` with a roster holding the same Path twice.
+	if _with_path >= 0 and _with_path != _isolate_path:
+		roster.append(_with_path)
+		# All of the partner and none of the isolated Adaptation. The sweep had no way
+		# to state this row before, and a pairing reading has no baseline without it:
+		# every other row here carries the partner, so whatever the partner is worth by
+		# itself was being folded into what the isolated line appeared to add.
+		_rows.append(await _bench_build(
+			run,
+			[_with_path],
+			"%s alone" % Progression.get_path_name(_with_path)
+		))
+	_rows.append(await _bench_build(run, roster, "base", PackedInt32Array()))
 	for upgrade_id in run.progression.get_adaptation_line_ids(_isolate_path):
 		_rows.append(await _bench_build(
 			run,
-			[_isolate_path],
+			roster,
 			Progression.get_upgrade_name(upgrade_id),
 			PackedInt32Array([upgrade_id])
 		))
+	# The whole Adaptation, every line bought. The sweep could produce the bare
+	# mechanic and each line alone but never the four together, so "one Adaptation at
+	# full ranks" was a row the bench could not state at all -- `--pair` and `--build`
+	# both require two. It is the natural top of this table, and the baseline any pair
+	# ought to be read against.
+	_rows.append(await _bench_build(run, roster, "all lines"))
 
 
 func _bench_build(
@@ -373,6 +536,7 @@ func _bench_build(
 	run.combat.debug_damage_dealt_total = 0.0
 	run.combat.debug_damage_number_total = 0.0
 	_kills = 0
+	_targets_felled = 0
 	_sown = 0
 	_germinations = 0
 	_detonations = 0
@@ -387,6 +551,15 @@ func _bench_build(
 	var ring_held := 0.0
 	var ring_starved := 0.0
 	var ring_spikes := 0.0
+	# Seconds a held boss spent alive having already been hit, totalled over the ones
+	# that actually died. Time under fire rather than time alive, because the walk in
+	# is paid by every row alike and is not what any row is being measured on; and
+	# closed on death rather than summed over the row, because the boss still standing
+	# when the bench ends has been under fire for seconds that bought no kill, and
+	# charging them to the kills before it reads as a build being slower than it is.
+	var felled_engaged := 0.0
+	var current_engaged := 0.0
+	var felled_closed := 0
 	var ring_samples := 0
 	var slow_total := 0.0
 	var tangle_total := 0.0
@@ -420,6 +593,7 @@ func _bench_build(
 		# `RunRoot._process` has no way to un-pause them again: the flag is cleared on
 		# a real frame this loop does not have. Asserted every step rather than once at
 		# the top, because anything the row does can set it.
+		_apply_spread_pin(run)
 		run.overlay.effects_paused = false
 		run.territory_field.simulation_paused = false
 		run.player.simulation_paused = false
@@ -455,6 +629,19 @@ func _bench_build(
 			ring_starved += STEP
 		ring_spikes += float(run.pruning_director.get_orbit_count())
 		ring_samples += 1
+		if _boss:
+			var engaged := false
+			for enemy in run.combat._enemies:
+				if not enemy.active or enemy.role != _boss_role:
+					continue
+				if enemy.health < enemy.maximum_health:
+					engaged = true
+			if engaged:
+				current_engaged += STEP
+			if _targets_felled > felled_closed:
+				felled_closed = _targets_felled
+				felled_engaged += current_engaged
+				current_engaged = 0.0
 		control_remaining -= STEP
 		if control_remaining <= 0.0:
 			control_remaining = CONTROL_SAMPLE_SECONDS
@@ -491,6 +678,8 @@ func _bench_build(
 		"ring_starved": 100.0 * ring_starved / BENCH_SECONDS,
 		"rings_torn": run.pruning_director.get_rings_released(),
 		"ring_spikes": ring_spikes / float(maxi(1, ring_samples)),
+		"felled": _targets_felled,
+		"felled_engaged": felled_engaged,
 	}
 
 
@@ -513,7 +702,14 @@ func _sample_control(run: RunRoot) -> Dictionary:
 	var pinned := 0.0
 	var counted := 0
 	for enemy in run.combat._enemies:
-		if not enemy.active or EnemyKinds.is_boss(enemy.role):
+		if not enemy.active:
+			continue
+		# A boss is left out of the crowd's control average on purpose -- it carries its
+		# own CC resistance and one body among twenty-two would read as the crowd being
+		# less held than it is. In `--boss` the boss is the only body there is, so the
+		# same exclusion would leave these three columns reading zero for every row, and
+		# a Bramble or Root row against a single target is paid in nothing else.
+		if EnemyKinds.is_boss(enemy.role) and not _boss:
 			continue
 		counted += 1
 		slow += clampf(1.0 - enemy.movement_speed_multiplier, 0.0, 1.0)
@@ -553,8 +749,23 @@ func _prepare_board(run: RunRoot) -> void:
 			)
 	else:
 		field.queue_bloom(centre, 9.0, 1.6, 9.0, 3.0)
-	for _step in range(ISLAND_ESTABLISH_STEPS if _island else GREEN_ESTABLISH_STEPS):
-		field.step_simulation()
+	if _authored_spread_rate < 0.0:
+		_authored_spread_rate = field.tuning.natural_spread_rate
+	_apply_spread_pin(run)
+	if _coverage_target > 0.0:
+		# Grown to a coverage rather than for a duration. Capped so a tuning that
+		# cannot reach the target fails as a slow row rather than as a hang.
+		var grown := 0
+		while grown < COVERAGE_STEP_CAP:
+			field.step_simulation()
+			grown += 1
+			if grown % 30 == 0:
+				field.recalculate_metrics_now()
+				if field.get_player_percent() >= _coverage_target:
+					break
+	else:
+		for _step in range(ISLAND_ESTABLISH_STEPS if _island else GREEN_ESTABLISH_STEPS):
+			field.step_simulation()
 	field.recalculate_metrics_now()
 	run.player.reset_player()
 	_walk_angle = 0.0
@@ -562,6 +773,19 @@ func _prepare_board(run: RunRoot) -> void:
 		centre + Vector2.RIGHT * _walk_radius if _walk else centre
 	)
 
+
+func _apply_spread_pin(run: RunRoot) -> void:
+	## Holds the field's spread rate where `--coverage` wants it.
+	##
+	## Asserted every step rather than set once, because several things put it back:
+	## `reset_run` restores it from `RunRoot`'s own copy, and
+	## `_apply_progression_modifiers` rewrites it as `base * expansion multiplier` --
+	## which `_commit_build` calls after the board is prepared, so a pin applied there is
+	## undone before the first step ever runs. Set once, the board grew to 89% anyway and
+	## the pin read as doing nothing at all.
+	run.territory_field.tuning.natural_spread_rate = (
+		0.0 if _coverage_target > 0.0 else _authored_spread_rate
+	)
 
 func _commit_build(run: RunRoot, paths: Array, only_lines: Variant = null) -> void:
 	## Puts the roster on the run and buys it to the bench's rank.
@@ -597,8 +821,14 @@ func _commit_build(run: RunRoot, paths: Array, only_lines: Variant = null) -> vo
 		progression.unlock_branch_slot()
 		progression.debug_select_tertiary_path(int(paths[index]))
 	for path_id in paths:
+		# Isolation applies to the isolated Adaptation and to nothing else. A partner
+		# named with `--with` is held at full ranks in every row, which is what makes it
+		# a constant rather than a second variable.
+		var isolate_this := (
+			only_lines is PackedInt32Array and int(path_id) == _isolate_path
+		)
 		for upgrade_id in progression.get_adaptation_line_ids(int(path_id)):
-			if only_lines is PackedInt32Array:
+			if isolate_this:
 				progression._upgrade_levels[upgrade_id] = (
 					_ranks if (only_lines as PackedInt32Array).has(upgrade_id) else 0
 				)
@@ -659,6 +889,23 @@ func _hold_population(run: RunRoot, spawn_cursor: int) -> int:
 	var combat := run.combat
 	var cursor := spawn_cursor
 	var guard := 0
+	if _boss:
+		# Replaced the instant it falls, so the board is never empty and never a crowd.
+		# Guarded rather than looped to satisfaction: the pool and the active cap can
+		# both refuse a spawn, and a bench that spun here would hang instead of report.
+		var attempts := 0
+		while combat.get_active_enemy_count_by_role(_boss_role) < 1 and attempts < 8:
+			attempts += 1
+			var boss_angle := float(cursor) * 2.39996
+			cursor += 1
+			var boss_position := (
+				run.player.get_arena_position()
+				+ Vector2.from_angle(boss_angle) * BOSS_RING_PIXELS
+			)
+			if not run.territory_field.contains_local_point(boss_position):
+				continue
+			combat.spawn_enemy(_boss_role, boss_position)
+		return cursor
 	var population := SIEGE_POPULATION if _siege else TARGET_POPULATION
 	var ring := SIEGE_RING_PIXELS if _siege else SPAWN_RING_PIXELS
 	while combat.get_active_enemy_count() < population and guard < population:
@@ -692,6 +939,37 @@ func _report() -> void:
 				% [
 					row["name"], row["ring_held"], row["ring_starved"],
 					row["rings_torn"], row["ring_spikes"]
+				]
+			)
+		print("")
+	if _boss:
+		print(
+			"BALANCE_BENCH: build | %s felled | mean s under fire each | applied | "
+			% _target_label()
+			+ "dealt | wasted %% | mean spikes of %d" % _reference_orbit_capacity
+		)
+		print(
+			"BALANCE_BENCH: (wasted = damage fired into health that was not there, which
+"
+			+ " is what an eight-target ring does to a lone body)"
+		)
+		for row in by_damage:
+			var felled: int = int(row["felled"])
+			var dealt := float(row["dealt"])
+			var applied := float(row["damage"])
+			print(
+				"BOSS_ROW	%s	%d	%s	%.0f	%.0f	%.1f	%.2f"
+				% [
+					row["name"],
+					felled,
+					# A row that never put one down reports so rather than reporting a
+					# time-to-kill it did not achieve; the applied column says how close.
+					("%.2f" % (float(row["felled_engaged"]) / float(felled)))
+						if felled > 0 else "never",
+					applied,
+					dealt,
+					100.0 * (dealt - applied) / maxf(1.0, dealt),
+					row["ring_spikes"],
 				]
 			)
 		print("")
