@@ -235,7 +235,7 @@ func _update_path_upgrade_row(
 		if selected
 		else fallback_label
 	)
-	var accent := _get_path_hud_color(path_id) if selected else Color("596052")
+	var accent := get_path_hud_color(path_id) if selected else Color("596052")
 	if selected and _progression.is_adaptation_mastered(path_id):
 		# The mastered row is brightened rather than given permanent extra space:
 		# mastery is completion, and completion should read at a glance without the
@@ -439,7 +439,7 @@ func _get_path_upgrade_ids(path_id: int) -> PackedInt32Array:
 	return ids
 
 
-func _get_path_hud_color(path_id: int) -> Color:
+static func get_path_hud_color(path_id: int) -> Color:
 	match path_id:
 		Progression.PathId.SPORE:
 			return Color("68a96a")

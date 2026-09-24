@@ -49,6 +49,8 @@ extends SceneTree
 ##      godot --headless --path . --script tools/balance_bench.gd -- --isolate 6 --with 4
 ##      godot --headless --path . --script tools/balance_bench.gd -- --boss
 ##      godot --headless --path . --script tools/balance_bench.gd -- --boss queen
+##      godot --headless --path . --script tools/balance_bench.gd -- --isolate 4 --relics
+##      godot --headless --path . --script tools/balance_bench.gd -- --build 4 --relic stubble
 
 const BENCH_SECONDS := 40.0
 const STEP := 1.0 / 60.0
@@ -193,6 +195,11 @@ const COVERAGE_STEP_CAP := 4000
 ## only reading the bench has on whether moving *well* is worth anything.
 const WALK_RADIUS_PIXELS := 70.0
 const WALK_RADIANS_PER_SECOND := 0.55
+## Seconds for one lap at the default speed: `TAU / WALK_RADIANS_PER_SECOND`, about
+## 11.4. It is stated because it is a *measurement window*, not only a pace -- anything
+## whose effect depends on coming back to a place has to be read against it, and Callus
+## was byte-identical on every board for the sole reason that its eight-second window
+## shuts three seconds before the walk returns. `--walk-lap` sets it directly.
 
 ## The five rosters section 33.3 of the Campaign rework asks for, now that a Campaign
 ## build is three Adaptations rather than two.
@@ -282,6 +289,29 @@ var _walk_radius := WALK_RADIUS_PIXELS
 var _ring_report := false
 var _reference_orbit_capacity := 16
 var _walk_angle := 0.0
+var _walk_lap_seconds := TAU / WALK_RADIANS_PER_SECOND
+## `--relic <name>`, repeatable, and `--relics`, which sweeps one Adaptation's whole
+## pool a relic at a time against a row holding none.
+##
+## The instrument had no way to state what a relic is worth, and the Pruning rework
+## left four of them written against a launch stream it had demoted -- so the bill it
+## opened could be argued about and not measured. A relic is granted the way the run
+## grants one, through `Progression.grant_relic`, so nothing here is a second path into
+## the same state.
+var _relics: PackedInt32Array = PackedInt32Array()
+var _relic_sweep := false
+## `--discharge`: spend Pruning's ring the moment it is full, instead of never.
+##
+## The bench has no hands, so it has never pressed the one button Pruning has. That was
+## harmless while the launch stream was the path's damage -- it fired itself -- and it
+## is not harmless now: six of the eight Pruning relics hang off a deliberate release,
+## and on a bench that never releases all six measure byte-identical to holding no relic
+## at all. Which is indistinguishable from being dead, and they are not the same thing.
+##
+## A full ring is the honest policy: it is what the hold-bank-spend loop is *for*, and
+## it needs no judgement about when a player would think the moment was right.
+var _discharge := false
+var _discharges := 0
 
 
 func _initialize() -> void:
@@ -296,6 +326,19 @@ func _read_arguments() -> void:
 			"--ranks":
 				if index + 1 < arguments.size():
 					_ranks = clampi(int(arguments[index + 1]), 0, 3)
+			"--relic":
+				if index + 1 < arguments.size():
+					var relic_id := _find_relic(arguments[index + 1])
+					if relic_id >= 0:
+						_relics.append(relic_id)
+					else:
+						push_error(
+							"BALANCE_BENCH: no relic named '%s'" % arguments[index + 1]
+						)
+			"--relics":
+				_relic_sweep = true
+			"--discharge":
+				_discharge = true
 			"--evolved":
 				_evolved = true
 			"--evo-rank":
@@ -344,6 +387,12 @@ func _read_arguments() -> void:
 				_ring_report = true
 			"--walk":
 				_walk = true
+			"--walk-lap":
+				# The lap the player walks, in seconds. Given rather than derived so a
+				# relic with a window can be read against a walk that fits inside it.
+				if index + 1 < arguments.size():
+					_walk = true
+					_walk_lap_seconds = maxf(1.0, float(arguments[index + 1]))
 			"--walk-radius":
 				if index + 1 < arguments.size():
 					_walk = true
@@ -403,7 +452,7 @@ func _run() -> void:
 	)
 
 	print(
-		"BALANCE_BENCH: %.0fs per build, %s held, ranks=%d, evolution=%s, seed=%d, board=%s, player=%s"
+		"BALANCE_BENCH: %.0fs per build, %s held, ranks=%d, evolution=%s, seed=%d, board=%s, player=%s, relics=%s, discharge=%s"
 		% [
 			BENCH_SECONDS,
 			("1 %s" % _target_label()) if _boss
@@ -413,10 +462,18 @@ func _run() -> void:
 			_seed,
 			("%.0f%% grown" % _coverage_target) if _coverage_target > 0.0
 				else ("island" if _island else "patch"),
-			("walking r=%d" % int(_walk_radius)) if _walk else "rooted",
+			(
+				("walking r=%d lap=%.1fs" % [int(_walk_radius), _walk_lap_seconds])
+				if _walk
+				else "rooted"
+			),
+			("sweeping the pool" if _relic_sweep else _relic_label()),
+			("at a full ring" if _discharge else "never"),
 		]
 	)
-	if _isolate_path >= 0:
+	if _relic_sweep:
+		await _sweep_relics(run)
+	elif _isolate_path >= 0:
 		await _sweep_lines(run)
 	elif not _build_only.is_empty():
 		await _sweep_explicit_build(run)
@@ -470,10 +527,50 @@ func _sweep_explicit_build(run: RunRoot) -> void:
 		var path_id := int(part)
 		if path_id >= 0 and path_id < Progression.PathId.size():
 			paths.append(path_id)
-	if paths.size() < 2:
-		push_error("BALANCE_BENCH: --build needs at least two Path ids, as 6-5 or 6-5-4")
+	if paths.is_empty():
+		push_error("BALANCE_BENCH: --build needs at least one Path id, as 6, 6-5 or 6-5-4")
 		return
+	# One Path is a legitimate row and `_commit_build` has always handled it: it is the
+	# baseline `--relics` reads a pool against, and the "Adaptation at full ranks" row
+	# the sweep documents are implicitly written against.
 	_rows.append(await _bench_build(run, paths, ""))
+
+
+func _sweep_relics(run: RunRoot) -> void:
+	## One Adaptation at full ranks, then that same build once per relic in its pool.
+	##
+	## The baseline row holds no relic, so every row below it is readable as what the
+	## relic added -- the same shape `--isolate` uses for lines, and for the same
+	## reason: a relic measured against the bare Cane is being divided by a number that
+	## has nothing to do with it.
+	##
+	## Takes the roster from `--build` or `--isolate`, so a relic can be read against
+	## the Adaptation alone or against the pair it is actually drafted into.
+	var roster: Array[int] = []
+	if not _build_only.is_empty():
+		for part in _build_only.split("-"):
+			roster.append(int(part))
+	elif _isolate_path >= 0:
+		roster.append(_isolate_path)
+	if roster.is_empty():
+		push_error("BALANCE_BENCH: --relics needs --build or --isolate to say whose pool")
+		return
+	# The roster names Paths and the catalogue sorts relics by Pool, which are two
+	# different enums that happen to run in a similar order -- passing one for the other
+	# swept the Plant pool for a Pruning row and every relic in it read as inert, which
+	# is exactly what a real dead relic looks like.
+	var pool := RelicCatalog.get_pool_for_path(roster[0])
+	var held := _relics
+	_relics = PackedInt32Array()
+	_rows.append(await _bench_build(run, roster, "no relic"))
+	for relic_id in range(RelicCatalog.get_count()):
+		if RelicCatalog.get_pool(relic_id) != pool:
+			continue
+		_relics = PackedInt32Array([relic_id])
+		_rows.append(
+			await _bench_build(run, roster, "+ %s" % RelicCatalog.get_relic_name(relic_id))
+		)
+	_relics = held
 
 
 func _sweep_lines(run: RunRoot) -> void:
@@ -540,6 +637,7 @@ func _bench_build(
 	_sown = 0
 	_germinations = 0
 	_detonations = 0
+	_discharges = 0
 
 	var field_accumulator := 0.0
 	var field_step := 1.0 / maxf(1.0, field.tuning.simulation_hz)
@@ -608,6 +706,7 @@ func _bench_build(
 		# doing it second leaves her facing the fight rather than her own path --
 		# which is what a competent player does and what every other row assumes.
 		_walk_player(run, STEP)
+		_spend_full_ring(run)
 		_aim(run)
 		run.combat.simulate_step(STEP)
 		field_accumulator += STEP
@@ -844,14 +943,73 @@ func _commit_build(run: RunRoot, paths: Array, only_lines: Variant = null) -> vo
 				progression._upgrade_levels[upgrade_id] = mini(
 					_evolution_rank, progression.evolution_maximum_upgrade_level
 				)
+	_grant_relics(run)
 	progression.upgrades_changed.emit()
 	run._apply_progression_modifiers()
+
+
+func _grant_relics(run: RunRoot) -> void:
+	## Cleared and re-granted per row, so a sweep's rows do not accumulate each other's
+	## relics -- the failure that would make every row after the first a different
+	## build than its label claims.
+	var progression := run.progression
+	for relic_id in range(RelicCatalog.get_count()):
+		progression._owned_relics[relic_id] = 0
+	for relic_id in _relics:
+		progression._owned_relics[relic_id] = 1
+	if not _relics.is_empty():
+		progression.relics_changed.emit()
+
+
+func _relic_label() -> String:
+	if _relics.is_empty():
+		return "none"
+	var names := PackedStringArray()
+	for relic_id in _relics:
+		names.append(RelicCatalog.get_relic_name(relic_id))
+	return ", ".join(names)
+
+
+func _find_relic(name: String) -> int:
+	## Matched on the catalogue's own display name, lowercased with spaces and
+	## apostrophes dropped, so `--relic "brush pile"`, `--relic brush_pile` and
+	## `--relic BrushPile` all reach the same relic.
+	var wanted := _relic_key(name)
+	for relic_id in range(RelicCatalog.get_count()):
+		if _relic_key(RelicCatalog.get_relic_name(relic_id)) == wanted:
+			return relic_id
+	return -1
+
+
+func _relic_key(value: String) -> String:
+	return (
+		value.to_lower()
+		.replace(" ", "")
+		.replace("_", "")
+		.replace("-", "")
+		.replace("'", "")
+	)
+
+
+func _spend_full_ring(run: RunRoot) -> void:
+	## Pruning's ring, released the moment it fills. Counted, because "the relic did
+	## nothing" and "the ring never fired" are two different readings and the header
+	## must not let them be confused.
+	if not _discharge:
+		return
+	var pruning := run.pruning_director
+	if pruning == null or not run.progression.owns_adaptation(Progression.PathId.PRUNING):
+		return
+	if pruning.get_orbit_count() < pruning.get_orbit_capacity():
+		return
+	if pruning.release_ring_now() > 0:
+		_discharges += 1
 
 
 func _walk_player(run: RunRoot, delta: float) -> void:
 	if not _walk:
 		return
-	_walk_angle += WALK_RADIANS_PER_SECOND * delta
+	_walk_angle += (TAU / maxf(_walk_lap_seconds, 0.001)) * delta
 	var centre := run.territory_field.tuning.arena_size * 0.5
 	var target := centre + Vector2.from_angle(_walk_angle) * _walk_radius
 	var offset := target - run.player.get_arena_position()

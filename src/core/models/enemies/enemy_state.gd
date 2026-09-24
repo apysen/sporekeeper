@@ -48,6 +48,10 @@ var summon_offset_pixels := 0.0
 var radius := 10.0
 var collision_radius := 6.0
 var xp_value := 1
+## Whether this body is the wave table's scheduled milestone (the Rootbreaker, the
+## Burrower, the Queen) rather than one drawn into a pack. Only a milestone pays a
+## milestone's reward.
+var milestone := false
 var spawn_wave_number := 1
 var territory_erosion_scale := 1.0
 ## Share of an incoming Ensnare duration, shove distance or slow this body ignores,

@@ -23,6 +23,7 @@ extends RefCounted
 ## constant so the snapshot, the round trip and the tests agree on the set.
 const SYSTEM_KEYS := [
 	"progression", "evolutions", "metabolism", "player", "waves", "field", "cankers",
+	"trial", "stats",
 ]
 
 var mode := RunMode.Id.QUICK

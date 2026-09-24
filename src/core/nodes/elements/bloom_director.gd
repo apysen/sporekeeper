@@ -510,6 +510,7 @@ func _advance_echo_blooms(delta: float) -> void:
 		)
 		if origin.x < 0.0:
 			continue
+		territory_field.attribution = RunStats.Source.BLOOM
 		territory_field.queue_bloom(
 			origin,
 			0.0,
@@ -1149,6 +1150,7 @@ func _splatter(
 	var central_mass := mass * central_share
 	var thrown_mass := mass * (1.0 - central_share)
 	if central_mass > 0.0:
+		territory_field.attribution = RunStats.Source.BLOOM
 		territory_field.queue_bloom(
 			local_position,
 			central_mass,
@@ -1259,6 +1261,7 @@ func _on_briar_trap_detonated(local_position: Vector2) -> void:
 	overlay.spawn_bloom(local_position)
 	if evolutions.briar_trap_pressure <= 0.0:
 		return
+	territory_field.attribution = RunStats.Source.BLOOM
 	territory_field.queue_bloom(
 		local_position,
 		evolutions.briar_trap_pressure,
@@ -1448,6 +1451,7 @@ func _advance_glob(glob: Glob, delta: float) -> void:
 		var trail_mass := glob.mass * glob_trail_mass_share
 		if trail_mass > 0.0:
 			glob.mass = maxf(0.0, glob.mass - trail_mass)
+			territory_field.attribution = RunStats.Source.BLOOM
 			territory_field.queue_splat(
 				glob.position,
 				trail_mass,
@@ -1484,6 +1488,7 @@ func _bounce_off_obstacle(glob: Glob, contact_position: Vector2) -> bool:
 	var splash_mass := glob.mass * head_on
 	if not was_attached and head_on > minimum_face_splash_share and splash_mass > 0.0:
 		glob.mass = maxf(0.0, glob.mass - splash_mass)
+		territory_field.attribution = RunStats.Source.BLOOM
 		territory_field.queue_splat(
 			glob.position,
 			splash_mass * landing_mass_scale,
@@ -1566,6 +1571,7 @@ func _land_glob(glob: Glob) -> void:
 		* landing_spread_scale
 		* (1.0 + landing_spread_per_root_speed * sqrt(maxf(0.0, speed)))
 	)
+	territory_field.attribution = RunStats.Source.BLOOM
 	territory_field.queue_splat(
 		glob.position,
 		glob.mass * landing_mass_scale,

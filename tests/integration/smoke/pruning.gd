@@ -595,7 +595,6 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		and green_after_regrowth > green_after_cut,
 		"Pruned Ground grows back once the ring is let go, so a burn is a loan"
 	)
-
 	# Three of the four lines buy efficiency out of the same ground. Harvest Rate is
 	# the one that spends more, and it is priced as a trade: more spikes per second
 	# and a faster burn in the same rank, never one without the other.
@@ -628,6 +627,77 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		Progression.UpgradeId.PRUNING_CHARGE,
 	]:
 		prototype.progression._upgrade_levels[pruning_line] = 0
+
+	# --- The relic pool must not pay for a tear ---------------------------------
+	#
+	# The rework stopped a torn ring firing its leaves because being paid for running
+	# out of ground made starving the ring the optimal play. Brush Pile and Callus were
+	# reading how many spikes came off the ring rather than whether she chose to spend
+	# it, so both handed the old reward straight back to anyone holding the relic --
+	# the exploit returning through a different door, which no damage column would show
+	# and which is exactly what this file is for.
+	prototype.territory_field.reset_field()
+	SmokeFixtures.grow_test_ecosystem(prototype)
+	pruning.reset_director()
+	prototype.progression._owned_relics[RelicCatalog.Id.BRUSH_PILE] = 1
+	prototype.progression._owned_relics[RelicCatalog.Id.CALLUS] = 1
+	var tear_home := SmokeFixtures.stand_on_owned_ground(prototype)
+	for tear_step in range(900):
+		SmokeFixtures.graze_owned_ground(prototype, tear_home, float(tear_step) * 0.04)
+		pruning.advance(1.0 / 60.0)
+		prototype.territory_field.step_simulation()
+	var tear_bundles := pruning.get_brush_bundles()
+	var tear_leaves := pruning.get_orbit_count()
+	pruning._release_ring("test tear", false)
+	var tear_paid := pruning.has_pending_brush_volley() or pruning.is_callus_armed()
+	# And the same ring, spent on purpose, still pays both.
+	pruning.reset_director()
+	for spend_step in range(900):
+		SmokeFixtures.graze_owned_ground(prototype, tear_home, float(spend_step) * 0.04)
+		pruning.advance(1.0 / 60.0)
+		prototype.territory_field.step_simulation()
+	var spend_bundles := pruning.get_brush_bundles()
+	pruning._release_ring("test discharge", true)
+	report.check(
+		tear_leaves > 0
+		and tear_bundles > 0
+		and spend_bundles > 0
+		and not tear_paid
+		and pruning.has_pending_brush_volley()
+		and pruning.is_callus_armed(),
+		"a torn ring pays no relic, and the same ring spent on purpose pays both"
+	)
+	prototype.progression._owned_relics[RelicCatalog.Id.BRUSH_PILE] = 0
+	prototype.progression._owned_relics[RelicCatalog.Id.CALLUS] = 0
+
+	# --- Stubble belongs to the cut, not to the launch ---------------------------
+	#
+	# "Pruned Ground stays sharp for 5s." It was planting its wound when the ring was
+	# released, which in sustained play happens two or three times a minute, so a relic
+	# about the ground Pruning cuts was idle for the whole time Pruning was cutting.
+	prototype.territory_field.reset_field()
+	SmokeFixtures.grow_test_ecosystem(prototype)
+	pruning.reset_director()
+	prototype.progression._owned_relics[RelicCatalog.Id.STUBBLE] = 1
+	var stubble_home := SmokeFixtures.stand_on_owned_ground(prototype)
+	var stubble_releases := pruning.get_rings_released()
+	var stubble_wounds := 0
+	for stubble_step in range(600):
+		SmokeFixtures.graze_owned_ground(prototype, stubble_home, float(stubble_step) * 0.04)
+		pruning.advance(1.0 / 60.0)
+		prototype.territory_field.step_simulation()
+		stubble_wounds = maxi(stubble_wounds, pruning.get_stubble_wound_count())
+	report.check(
+		stubble_wounds > 0 and pruning.get_rings_released() == stubble_releases,
+		"Pruned Ground stays sharp while she is cutting it, with no ring spent"
+	)
+	prototype.progression._owned_relics[RelicCatalog.Id.STUBBLE] = 0
+
+	# The two blocks above reset progression to re-establish Pruning, and the files
+	# that run after this one inherit the same prototype and expect the roster this
+	# file used to end on. Put it back rather than leaving the next suite to discover
+	# that Bramble is no longer drafted.
+
 
 	# The five Pruning pairings.
 	var pruning_pairings := [
@@ -684,14 +754,26 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype.territory_field.reset_field()
 	SmokeFixtures.grow_test_ecosystem(prototype)
 	var rebound_spot := SmokeFixtures.find_owned_cell_position(prototype)
-	var rebound_green_before := prototype.territory_field.get_player_percent()
+	var rebound_field := prototype.territory_field
+	rebound_field.recalculate_metrics_now()
+	var rebound_owned_before := rebound_field.get_player_cell_count()
+	var rebound_control_before := 0.0
+	for index in range(rebound_field.get_cell_count()):
+		rebound_control_before += maxf(0.0, rebound_field._control[index])
 	var rebound_force := pruning.prune_for_rebound(rebound_spot)
-	prototype.territory_field.recalculate_metrics_now()
+	rebound_field.recalculate_metrics_now()
+	var rebound_control_after := 0.0
+	for index in range(rebound_field.get_cell_count()):
+		rebound_control_after += maxf(0.0, rebound_field._control[index])
+	# It draws on the Green and pays it back as Force, and the ground it drew on is
+	# still the player's. It used to be cut to nothing, which left a crater on the
+	# front line every time a Bloom went off.
 	report.check(
 		rebound_force > 0.0
 		and rebound_force <= prototype.evolutions.rebound_maximum_force
-		and prototype.territory_field.get_player_percent() < rebound_green_before,
-		"Rebound collapses Green into the Bloom and pays it back as Force"
+		and rebound_control_after < rebound_control_before
+		and rebound_field.get_player_cell_count() == rebound_owned_before,
+		"Rebound thins the Green around a Bloom into Force without taking any of it"
 	)
 
 	# Deadfall: thorns torn out with the Green become extra Cuttings.

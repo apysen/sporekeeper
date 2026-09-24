@@ -109,13 +109,44 @@ func _run() -> void:
 		provoke_body.contains("Growth")
 		and provoke_body.contains("Blight")
 		and provoke_body.contains("surge")
-		and provoke_body.contains("allowance"),
+		and provoke_body.contains("no limit"),
 		"the Provoke tooltip states the reward, the permanent cost and the immediate one",
 	)
+	# There is no waiting any more, so there is nothing to tell the player to wait for.
+	# The button answers on the first frame of a run.
 	_check(
-		provoke_body.contains("Not yet"),
-		"and says why it cannot be pressed while the window is still shut",
+		campaign.wave_director.can_provoke()
+		and not provoke_body.contains("Not available"),
+		"and the button answers immediately, with no window to wait out",
 	)
+	# "A Blight level, which is permanent" is true and useless on its own: the player is
+	# being asked to make the rest of the run worse and has to be able to see by how
+	# much, and by how much again if they press it.
+	campaign.wave_director._blight_level = 2
+	var blight_body := campaign._provoke_tooltip_body()
+	_check(
+		blight_body.contains("Blight II now")
+		and blight_body.contains("+16% wave budget")
+		and blight_body.contains("+8% enemy health")
+		and blight_body.contains("+4% contact damage")
+		and blight_body.contains("92% price")
+		and blight_body.contains("Blight III would be")
+		and blight_body.contains("+24% wave budget"),
+		"and prints what this Blight does to the garden, and what the next one adds",
+	)
+	# And it keeps climbing past the levels the old table had glyphs for, because
+	# Provocation has no limit: a run that pressed twelve times reads a numeral and a
+	# multiplier that is still going up, not a ceiling that quietly stopped charging it.
+	campaign.wave_director._blight_level = 12
+	var deep_body := campaign._provoke_tooltip_body()
+	_check(
+		deep_body.contains("Blight XII now")
+		and deep_body.contains("+96% wave budget")
+		and deep_body.contains("Blight XIII would be")
+		and BlightTable.get_level_name(19) == "XIX",
+		"and keeps counting in numerals past the five the table used to stop at",
+	)
+	campaign.wave_director._blight_level = 0
 	# The card itself cannot be asserted on from here: a HUD tooltip dismisses itself
 	# the moment the pointer is not near what it belongs to, and the pointer in a probe
 	# is wherever the desktop left it. So what is held is the wiring -- that a hover

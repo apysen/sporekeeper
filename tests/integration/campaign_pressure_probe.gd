@@ -131,7 +131,9 @@ func _report_blight() -> void:
 	## player chose should arrive as harder encounters rather than as longer fights.
 	print("")
 	print("blight:")
-	for level in range(BlightTable.MAXIMUM_LEVEL + 1):
+	# Past the named levels too: Provocation is unlimited, so the table has to be read
+	# well beyond where it has numerals for.
+	for level in range(BlightTable.NAMED_LEVELS + 4):
 		print("  %-3s budget x%.2f  hp x%.2f  damage x%.2f  specialist price x%.2f" % [
 			BlightTable.get_level_name(level),
 			BlightTable.get_budget_multiplier(level),

@@ -25,22 +25,22 @@ extends RefCounted
 ## Worth stealing once Trials have been played; noted here rather than guessed at.
 
 enum Id {
-	## Constraints. None of these can be brute-forced by output.
 	ROOTED,
 	UNTOUCHED,
-	PATIENCE,
+	## Was Patience, a ceiling on kills. Every build kills on its own and more of them
+	## each wave, so a cap on killing was a rule the run's own growth broke for the
+	## player -- impossible late, and never fun early. Frenzy asks the opposite: kill a
+	## crowd all at once, which a stronger build can do and still has to set up.
+	FRENZY,
 	HIGH_WATER,
-	## Goals, from §27.
 	RECLAMATION,
 	LAST_GARDEN,
-	## The second draft. Six more, written after the first six had been read back:
-	## the set needed rules that ask about *where* the fight happens, *when* it
-	## happens and *what does the killing*, because four of the original six are
-	## answered by the same habit of standing on your own Green and holding still.
+	## Was Stillness, "kill nothing in the first ten seconds", which the Cane broke by
+	## swinging on its own. Momentum is the movement rule that was underneath it.
 	##
-	## Only ever appended to. A Trial's id is written into a save, so reordering this
-	## enum would hand a continued run somebody else's rule.
-	STILLNESS,
+	## Both slots were renamed in place rather than appended: a Trial's id is written
+	## into a save, and a slot keeps its number.
+	MOMENTUM,
 	PRESSURE,
 	FRONTIER,
 	CLEAN_GROUND,
@@ -48,190 +48,154 @@ enum Id {
 	GROUNDWORK,
 }
 
-## How a Trial is judged, which decides what the director has to watch.
-##
-## CONTINUOUS is checked every evaluation tick and fails the moment it is broken;
-## TALLY counts an event and fails when the count passes its allowance; FINAL is only
-## answered when the wave ends. The distinction matters for the card: a continuous
-## rule can say "holding", a tally can say "7 of 12", and a final can only say what it
-## is currently worth.
+## How a Trial is judged, which decides what the director watches and what the card's
+## meter shows.
 enum Judgement {
+	## A state that has to hold. Time spent breaking it drains the Trial's slack, and
+	## only running the slack out breaks the Trial: a rule that ended on the first
+	## misstep was a rule about where the player happened to be standing when it was
+	## handed to them.
 	CONTINUOUS,
-	TALLY,
+	## Events the wave allows `value` of. The next one breaks it.
+	COUNTED,
+	## Something to do once, any time in the wave. Done is done.
+	GOAL,
+	## Answered when the wave ends.
 	FINAL,
-	## Broken by an event, but only one that happens inside an opening window. The
-	## card counts the window down rather than up, because what the player is managing
-	## is how long is left of it.
-	WINDOW,
 }
 
+## Every rule is written twice. `short` is what the card and the banner print, and it
+## is held to five words or fewer, because it is read in a glance between two things
+## trying to kill Grandma. `detail` is the whole rule, and lives in the card's tooltip
+## for the player who stops to read it. `warning` is the one word shown over Grandma
+## while a live rule is draining its slack, so the moment she is breaking it is told to
+## her where she is looking rather than on the side panel.
 const TRIALS := {
 	Id.ROOTED: {
 		"name": "ROOTED",
-		## Aimed squarely at §2.4. A damage build answers a wave by going to it; this
-		## says the wave has to be answered from the ground you already hold, which is
-		## the one demand a bigger number cannot meet.
-		"rule": "Stay on your own Green for the whole wave",
-		"earn": "STAY ROOTED TO EARN",
-		"fail": "Breaks the moment you stand on Rot or bare ground.",
+		"short": "Stay on your Green",
+		"detail": "Time off your own Green drains a {slack}-second allowance. Run it out and the Trial breaks.",
+		"warning": "OFF GREEN",
 		"judgement": Judgement.CONTINUOUS,
+		"slack": 4.0,
 		"value": 0.0,
 	},
 	Id.UNTOUCHED: {
 		"name": "UNTOUCHED",
-		"rule": "Take no damage for the whole wave",
-		"earn": "FINISH UNTOUCHED TO EARN",
-		"fail": "Breaks on the first hit that lands on Grandma.",
-		"judgement": Judgement.CONTINUOUS,
-		"value": 0.0,
+		## One hit ending it asked for a flawless minute against a board that grows every
+		## wave. Three is still a wave played carefully.
+		"short": "Take {value} hits or fewer",
+		"detail": "Hit number {next} breaks the Trial.",
+		"warning": "HIT",
+		"judgement": Judgement.COUNTED,
+		"value": 3.0,
 	},
-	Id.PATIENCE: {
-		"name": "PATIENCE",
-		## The bluntest instrument in the set, and the most useful one. A build whose
-		## whole answer is clear speed has to find a different answer for a minute, and
-		## every Adaptation that slows, pins, pushes or reclaims is suddenly the good
-		## one. Deliberately generous: the number is meant to be a ceiling a damage
-		## build bumps into, not a chore a territory build has to work at.
-		"rule": "Defeat no more than {value} enemies this wave",
-		"earn": "KEEP YOUR PATIENCE TO EARN",
-		## The count is the whole rule, so the failure is stated as the kill that ends
-		## it. "Kill no more than 45" was read as "kill nothing for a while", which is
-		## a different and much worse Trial.
-		"fail": "Breaks on kill {next}. Killing fewer is always safe.",
-		"judgement": Judgement.TALLY,
-		## 56 on Wave 6, 76 on 11, 96 on 16, against a *played* run -- `pacing_probe`
-		## with a 5-6 pair taking its upgrades -- that kills 66, 83 and 117 on those
-		## waves. So the ceiling sits 15%, 8% and 18% under what the run does when it is
-		## not thinking about the Trial, which is a rule that asks the player to skip
-		## some fights rather than one that asks them to lose the wave.
-		##
-		## The flat 45 this started as was under the *passive* rate on every Trial wave
-		## and a third under the played rate by Wave 16. It could not be held.
-		"value": 56.0,
-		"per_wave": 4.0,
+	Id.FRENZY: {
+		"name": "FRENZY",
+		"short": "Kill {value} within 3 seconds",
+		"detail": "Land {value} kills inside any three seconds of the wave. Gather them up, then set them off.",
+		"judgement": Judgement.GOAL,
+		"window": 3.0,
+		## 13 on Wave 6, 16 on 11, 17 on 13, 19 on 16. A played run that is not trying
+		## lands at most 9-10, 12, 12 and 15 kills in any three seconds of those waves
+		## (`pacing_probe`, Bloom+Thistle+Vine and Pruning+Bramble+Root), so the ask is
+		## about a third over what the build does on its own: it has to be set up.
+		"value": 13.0,
+		"per_wave": 0.6,
 	},
 	Id.HIGH_WATER: {
 		"name": "HIGH WATER",
-		"rule": "Hold at least {value}% of the arena as Green, all wave",
-		"earn": "HOLD THE HIGH WATER TO EARN",
-		"fail": "Breaks the moment Green drops below {value}%.",
+		"short": "Hold {value}% Green",
+		"detail": "Time with less than {value}% of the arena Green drains a {slack}-second allowance.",
+		"warning": "LOW GREEN",
 		"judgement": Judgement.CONTINUOUS,
-		## A played run holds between 18% and 26% of the arena across the Trial waves,
-		## and is on the way *down* through the back half. The 25% this was written at
-		## sat above the run's own high-water mark on two of the three waves that can
-		## offer it, so it broke on the first evaluation tick and read as a bug.
+		"slack": 5.0,
+		## A played run holds 18-26% across the Trial waves and is falling through the
+		## back half; 25% sat above the run's own high-water mark.
 		"value": 15.0,
 	},
 	Id.RECLAMATION: {
 		"name": "RECLAMATION",
-		## Measured against per-wave movement of roughly a point either way, with the
-		## back half of a run losing ground rather than gaining it. The 6 points this
-		## asked for was two to three waves' worth of gain inside one wave.
-		"rule": "End the wave holding {value}% more of the arena than when it began",
-		"earn": "RECLAIM IT TO EARN",
-		## The one rule that cannot be broken early, which is worth saying on the card:
-		## ground lost in the first thirty seconds costs nothing if it is taken back.
-		"fail": "Judged once, when the wave ends. Ground lost early costs nothing.",
+		"short": "Gain {value}% Green",
+		"detail": "Judged when the wave ends, against the Green you started it with. Ground lost early costs nothing if you take it back.",
 		"judgement": Judgement.FINAL,
+		## Per-wave movement is about a point either way in a played run.
 		"value": 3.0,
 	},
 	Id.LAST_GARDEN: {
 		"name": "LAST GARDEN",
-		"rule": "Keep the ringed ground at least {value}% Green",
-		"earn": "DEFEND THE RING TO EARN",
-		"fail": "Breaks the moment the ring falls below {value}%.",
+		"short": "Keep the ring Green",
+		"detail": "Time with the ring under {value}% Green drains a {slack}-second allowance.",
+		"warning": "RING FALLING",
 		"judgement": Judgement.CONTINUOUS,
+		"slack": 5.0,
 		"value": 50.0,
 	},
-	Id.STILLNESS: {
-		"name": "STILLNESS",
-		## The Trial Patience was being misread as. Both are about killing less, and
-		## they are not the same rule: Patience is a ceiling on the whole wave, this is
-		## a window at the start of it where nothing dies at all. Worth having both,
-		## because the window is answered by running and the ceiling is answered by
-		## choosing, and those are different skills.
-		"rule": "Defeat nothing in the wave's first {value} seconds",
-		"earn": "KEEP STILL TO EARN",
-		"fail": "Breaks on the first kill inside the window. After it, kill freely.",
-		"judgement": Judgement.WINDOW,
-		## The hardest rule in the set and deliberately short because of it: the Cane
-		## swings itself, and the measured first kill of a wave lands inside two seconds
-		## on every wave past the first. Ten seconds is ten seconds of running, which is
-		## the point -- but twenty was a wave spent entirely in retreat.
-		"value": 10.0,
+	Id.MOMENTUM: {
+		"name": "MOMENTUM",
+		"short": "Keep moving",
+		"detail": "Standing still drains a {slack}-second allowance. Keep walking and it never runs.",
+		"warning": "MOVE",
+		"judgement": Judgement.CONTINUOUS,
+		"slack": 5.0,
+		"value": 0.0,
 	},
 	Id.PRESSURE: {
 		"name": "PRESSURE",
-		## Patience inverted, and the reason the set needed it: every other constraint
-		## here is answered by killing less or standing still, so a player who reads
-		## "Trial" as "play slower" is right four times out of six. This one breaks if
-		## they do.
-		"rule": "Never let more than {value} hostiles stand at once",
-		"earn": "KEEP THE BOARD CLEAR TO EARN",
-		"fail": "Breaks the moment hostile number {next} is standing.",
+		"short": "Keep under {value} enemies",
+		"detail": "Time with more than {value} hostiles on the board drains a {slack}-second allowance.",
+		"warning": "TOO MANY",
 		"judgement": Judgement.CONTINUOUS,
-		## 20 on Wave 6, 45 on 11, 70 on 16, against measured passive peaks of 21, 52
-		## and 71. The board grows by roughly five a wave and a cap that does not grow
-		## with it is a Trial that is merely difficult early and arithmetically
-		## impossible late.
+		"slack": 5.0,
+		## Measured passive peaks of 21, 52 and 71 on Waves 6, 11 and 16.
 		"value": 20.0,
 		"per_wave": 5.0,
 	},
 	Id.FRONTIER: {
 		"name": "FRONTIER",
-		## Rooted turned inside out, and it replaced a rule called Arm's Length that was
-		## Untouched wearing a different sentence: a hostile close enough to break that
-		## one is a hostile about to deal the damage that breaks this one, so the two
-		## were held and lost in the same moment and by the same play.
-		##
-		## This is the opposite demand. Green heals Grandma and Rot does not hurt her,
-		## so spending a wave off your own ground costs the regeneration and the safe
-		## retreat without being a death sentence -- and it asks the build to work at
-		## the frontier, which is where the wave is.
-		"rule": "Fight the whole wave off your own Green",
-		"earn": "STAY OUT THERE TO EARN",
-		"fail": "Breaks the moment you stand on ground you already own.",
+		"short": "Stay off your Green",
+		"detail": "Time on your own Green drains a {slack}-second allowance. Fight out where the wave is.",
+		"warning": "ON GREEN",
 		"judgement": Judgement.CONTINUOUS,
+		"slack": 5.0,
 		"value": 0.0,
 	},
 	Id.CLEAN_GROUND: {
 		"name": "CLEAN GROUND",
-		"rule": "Let no Canker form this wave",
-		"earn": "KEEP THE GROUND CLEAN TO EARN",
-		"fail": "Breaks the moment a warning ring becomes a Knot.",
-		"judgement": Judgement.TALLY,
+		"short": "Let no Canker form",
+		"detail": "Breaks the moment a warning ring becomes a Knot. Get to the rings before they finish.",
+		"warning": "CANKER",
+		"judgement": Judgement.COUNTED,
 		"value": 0.0,
-		## The wave Cankers start entrenching on. Offered before that, this is a free
-		## relic.
+		## The wave Cankers start entrenching on. Offered before that, this is free.
 		"from_wave": 6,
 	},
 	Id.THE_CULL: {
 		"name": "THE CULL",
-		## Was written as "no Corruptor or Saboteur standing", which needed the run to
-		## ask the wave table what it was about to spawn, and needed the Trial to be
-		## able to abandon itself when the roll came up without one -- two systems and a
-		## third outcome, for one rule. Every wave sends enemies. Asking about all of
-		## them costs nothing and says the same thing: finish what is in front of you
-		## before the clock does.
-		"rule": "End the wave with nothing left standing",
-		"earn": "FINISH THE CULL TO EARN",
-		"fail": "Judged once, when the wave ends. A single straggler breaks it.",
+		## "Nothing left standing" met waves that spawn up to their last second, so it
+		## asked for the one moment a wave cannot give. A few stragglers is the ask a
+		## strong clear can actually answer.
+		"short": "At most {value} left standing",
+		"detail": "The board was counted when the Trial began. End the wave with no more than half that -- {value} -- still standing.",
 		"judgement": Judgement.FINAL,
-		"value": 0.0,
+		## Half the board as it stood when the Trial began, and never under `value`.
+		##
+		## A fixed number per wave could not serve both kinds of build. A played
+		## Bloom+Thistle+Vine run ends Wave 16 with 16 standing; Pruning+Bramble+Root,
+		## which holds the board rather than clearing it, ends it with 59. Any one number
+		## was either free for the first or out of reach for the second. Measured against
+		## the board the player is actually facing, it asks the same of both: clear half
+		## of what is in front of you.
+		"board_share": 0.5,
+		"value": 3.0,
 	},
 	Id.GROUNDWORK: {
 		"name": "GROUNDWORK",
-		## The Cane only swings at what is in front of Grandma, so a run that answers
-		## everything at range or through the ground can go a whole wave barely landing
-		## one. This says the wave has to be fought at the Cane's length, which is the
-		## one demand a ranged roster cannot meet by building harder.
-		"rule": "Defeat {value} enemies with the Cane this wave",
-		"earn": "DO THE GROUNDWORK TO EARN",
-		"fail": "Judged when the wave ends. Only the Cane's own kills count.",
-		"judgement": Judgement.FINAL,
-		## 25 on Wave 6, 35 on 11, 45 on 16, against a measured 28, 39 and 54 Cane kills
-		## on those waves with a four-path roster standing still. So it asks for most of
-		## what the Cane already does when nothing is asking it to.
+		"short": "Kill {value} with the Cane",
+		"detail": "Only kills the Cane lands itself count. Done the moment you reach it.",
+		"judgement": Judgement.GOAL,
+		## 25 on Wave 6, 45 on 16, against 28 and 54 Cane kills measured from a standing
+		## four-path roster.
 		"value": 25.0,
 		"per_wave": 2.0,
 	},
@@ -254,30 +218,50 @@ static func get_trial_name(trial_id: int) -> String:
 	return String(_entry(trial_id).get("name", ""))
 
 
-static func get_rule(trial_id: int, wave_number := SCALING_REFERENCE_WAVE) -> String:
-	## The sentence the card prints, with its number already in it. One sentence, in
-	## the imperative, because a rule the player has to reconstruct from two numbers
-	## and a label is a rule they will not track while something is eating the garden.
-	##
-	## Every one of them names its window -- "this wave", "all wave", "when the wave
-	## ends" -- because a rule with no stated end is read as a rule about right now.
-	return _fill(trial_id, String(_entry(trial_id).get("rule", "")), wave_number)
-
-
-static func get_reward_lead(trial_id: int) -> String:
-	## The line above the reward, in each Trial's own words. One shared "hold it to
-	## earn" only ever described Reclamation, and a rule stated one way and rewarded in
-	## another reads as boilerplate -- which is the fastest way to stop being read.
-	return String(_entry(trial_id).get("earn", "COMPLETE IT TO EARN"))
-
-
-static func get_fail_condition(
-	trial_id: int, wave_number := SCALING_REFERENCE_WAVE
+static func get_rule(
+	trial_id: int, wave_number := SCALING_REFERENCE_WAVE, value := -1.0
 ) -> String:
-	## The second line: exactly what breaks the rule, or when it is judged. The rule
-	## says what to do and this says what counts, which is the half that was missing --
-	## "Kill no more than 45 enemies" does not say whether the 45th is the safe one.
-	return _fill(trial_id, String(_entry(trial_id).get("fail", "")), wave_number)
+	## The five words the card prints, with the number already in them. `value` is the
+	## number a live Trial settled on, for a rule that measures the board it began on.
+	return _fill(trial_id, String(_entry(trial_id).get("short", "")), wave_number, value)
+
+
+static func get_detail(
+	trial_id: int, wave_number := SCALING_REFERENCE_WAVE, value := -1.0
+) -> String:
+	## The whole rule, for the card's tooltip.
+	return _fill(trial_id, String(_entry(trial_id).get("detail", "")), wave_number, value)
+
+
+static func get_board_share(trial_id: int) -> float:
+	## Share of the board a rule asks for, measured when it begins, or zero for a rule
+	## whose number is fixed.
+	return float(_entry(trial_id).get("board_share", 0.0))
+
+
+static func get_value_for_board(trial_id: int, wave_number: int, standing: int) -> float:
+	## A board-measured rule's number, given what was standing when it began. Never
+	## under the catalog's own value, so an empty board still leaves something to do.
+	var floor_value := get_value(trial_id, wave_number)
+	var share := get_board_share(trial_id)
+	if share <= 0.0:
+		return floor_value
+	return maxf(floor_value, floorf(float(standing) * share))
+
+
+static func get_warning(trial_id: int) -> String:
+	## The word shown over Grandma while she is breaking a live rule. Empty for rules
+	## that are only answered at the end, which have no moment to warn about.
+	return String(_entry(trial_id).get("warning", ""))
+
+
+static func get_slack(trial_id: int) -> float:
+	## Seconds a CONTINUOUS rule may be broken for before the Trial is.
+	return float(_entry(trial_id).get("slack", 0.0))
+
+
+static func get_burst_window(trial_id: int) -> float:
+	return float(_entry(trial_id).get("window", 0.0))
 
 
 static func get_judgement(trial_id: int) -> int:
@@ -298,7 +282,8 @@ static func get_value(trial_id: int, wave_number := SCALING_REFERENCE_WAVE) -> f
 	var per_wave := float(entry.get("per_wave", 0.0))
 	if is_zero_approx(per_wave):
 		return base
-	return base + per_wave * float(maxi(0, wave_number - SCALING_REFERENCE_WAVE))
+	# Whole numbers, because they are counts and because the card prints them.
+	return roundf(base + per_wave * float(maxi(0, wave_number - SCALING_REFERENCE_WAVE)))
 
 
 static func is_available(trial_id: int, wave_number: int) -> bool:
@@ -325,13 +310,13 @@ static func _entry(trial_id: int) -> Dictionary:
 	return TRIALS.get(trial_id, {})
 
 
-static func _fill(trial_id: int, text: String, wave_number: int) -> String:
+static func _fill(trial_id: int, text: String, wave_number: int, override := -1.0) -> String:
 	## `{value}` is the rule's own number on this wave and `{next}` is the one past it,
 	## which is what a tally actually breaks on.
-	var value := get_value(trial_id, wave_number)
+	var value := override if override >= 0.0 else get_value(trial_id, wave_number)
 	return text.replace("{value}", _format_value(value)).replace(
 		"{next}", _format_value(value + 1.0)
-	)
+	).replace("{slack}", _format_value(get_slack(trial_id)))
 
 
 static func _format_value(value: float) -> String:

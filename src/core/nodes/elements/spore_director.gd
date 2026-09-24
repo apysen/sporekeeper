@@ -339,7 +339,8 @@ func _advance_pending_seeds(delta: float) -> void:
 			origin,
 			float(pending[2]),
 			0,
-			seed_durability
+			seed_durability,
+			RunStats.Source.RELICS
 		)
 		var mass_share := float(pending[3])
 		if not is_equal_approx(mass_share, 1.0):
@@ -626,6 +627,11 @@ func on_seed_germinated(local_position: Vector2, chain_depth: int) -> void:
 		# Pruning director would have to keep, so it works for any Seed that happens to
 		# germinate there and not only for the ones Pioneer buried.
 		inherited_mass += evolutions.second_flush_pruned_mass_bonus
+	# Every germinating Seed comes through here, owned Spore or not. Its Green goes to
+	# whatever made the Seed -- the kill that condensed it, the relic that threw it --
+	# and to the Seeds row when nothing did.
+	var credit := overlay.get_last_germinated_seed_credit()
+	territory_field.attribution = credit if credit >= 0 else RunStats.Source.SEEDS
 	territory_field.queue_seed_growth(
 		local_position,
 		get_seed_mass_multiplier() * inherited_mass * mass_share,
@@ -727,7 +733,9 @@ func _on_fruiting_body_ruptured(local_position: Vector2) -> void:
 		var site := local_position + offset
 		if not territory_field.contains_local_point(site):
 			site = local_position
-		overlay.spawn_seed(site, get_germination_seconds_at(site), 0, seed_durability)
+		overlay.spawn_seed(
+			site, get_germination_seconds_at(site), 0, seed_durability, RunStats.Source.SPORE
+		)
 	status_requested.emit("A Fruiting Body ruptured and scattered its Seeds.")
 
 
@@ -818,7 +826,8 @@ func _on_enemy_killed(
 				local_position,
 				get_germination_seconds_at(local_position),
 				chain_depth,
-				seed_durability
+				seed_durability,
+				RunStats.Source.BLOOM
 			)
 			status_requested.emit("Super Bloom propagated a secondary Seed.")
 		return
@@ -828,13 +837,16 @@ func _on_enemy_killed(
 		return
 
 	_try_volunteer(local_position)
-	credit_seed_kills(local_position, 1)
+	credit_seed_kills(local_position, 1, combat.get_stats_source(death_source))
 
 
-func credit_seed_kills(local_position: Vector2, count: int = 1) -> void:
+func credit_seed_kills(local_position: Vector2, count: int = 1, credit: int = -1) -> void:
 	## Public, bounded credit used by Mycelial Vine's Vector Harvest. The actual Seed
 	## threshold and spawn behavior stay owned here rather than being duplicated by
 	## the Evolution runtime.
+	##
+	## `credit` is the result-screen row of the kill that tipped the count over: the
+	## Seed it condenses is that kill's, and so is the Green it grows.
 	if count <= 0:
 		return
 	_kills_toward_seed += count
@@ -845,7 +857,8 @@ func credit_seed_kills(local_position: Vector2, count: int = 1) -> void:
 			local_position,
 			get_germination_seconds_at(local_position),
 			0,
-			seed_durability
+			seed_durability,
+			credit
 		)
 		status_requested.emit("%d kills condensed into a Seed at the death site." % threshold)
 

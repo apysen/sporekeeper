@@ -717,6 +717,7 @@ func _advance_suckers(delta: float) -> void:
 		var site: Vector2 = shoot[0]
 		if not territory_field.is_claimable_at_local(site):
 			continue
+		territory_field.attribution = RunStats.Source.RELICS
 		territory_field.queue_seed_growth(
 			site,
 			suckers_mass,
@@ -753,6 +754,7 @@ func notify_amplified_event(local_position: Vector2, amplification: float) -> vo
 		feeder_roots_maturity_granted,
 		feeder_roots_radius_pixels / 48.0
 	)
+	territory_field.attribution = RunStats.Source.RELICS
 	territory_field.queue_seed_growth(
 		target,
 		feeder_roots_control,
@@ -832,6 +834,7 @@ func _advance_rhizome(delta: float) -> void:
 		if _rhizome_route.size() == 2:
 			var along := _rhizome_route[0].lerp(_rhizome_route[1], progress)
 			if territory_field.is_claimable_at_local(along):
+				territory_field.attribution = RunStats.Source.RELICS
 				territory_field.queue_seed_growth(
 					along,
 					0.05,
@@ -943,6 +946,7 @@ func _advance_taproot(delta: float) -> void:
 			_taproot.timer -= delta
 			if _taproot.timer <= 0.0:
 				_taproot.timer = taproot_interval_seconds
+				territory_field.attribution = RunStats.Source.RELICS
 				territory_field.queue_seed_growth(
 					_taproot.position,
 					taproot_mass,
@@ -1044,6 +1048,7 @@ func _try_world_tree_echo(local_position: Vector2, is_bloom: bool) -> void:
 		return
 	_world_tree.charge = 0.0
 	if is_bloom:
+		territory_field.attribution = RunStats.Source.RELICS
 		territory_field.queue_bloom(
 			local_position,
 			0.0,
@@ -1052,6 +1057,7 @@ func _try_world_tree_echo(local_position: Vector2, is_bloom: bool) -> void:
 			world_tree_echo_strength
 		)
 	else:
+		territory_field.attribution = RunStats.Source.RELICS
 		territory_field.queue_seed_growth(
 			local_position,
 			world_tree_echo_strength,
@@ -1081,6 +1087,7 @@ func _advance_perennial(delta: float) -> void:
 		_perennial.active = false
 		return
 	# A re-bloom is Force only. It must never become a second source of Mass.
+	territory_field.attribution = RunStats.Source.RELICS
 	territory_field.queue_bloom(
 		_perennial.position,
 		0.0,
@@ -1249,6 +1256,7 @@ func _spray_garden_hose(origin: Vector2, strength: float) -> void:
 		if not territory_field.is_growth_path_clear(origin, site):
 			continue
 		# Fresh Green only. The spray creates territory; it never grants maturity.
+		territory_field.attribution = RunStats.Source.RELICS
 		territory_field.queue_seed_growth(
 			site,
 			garden_hose_mass_per_projectile * strength,
@@ -1298,6 +1306,7 @@ func _release_mulch(enemy_id: int, local_position: Vector2) -> void:
 		site = territory_field.find_player_frontier_near(local_position)
 		if site.x < 0.0:
 			return
+	territory_field.attribution = RunStats.Source.RELICS
 	territory_field.queue_seed_growth(
 		site,
 		stored,
@@ -1405,6 +1414,7 @@ func _erupt_compost(origin: Vector2, strength: float) -> void:
 		CombatDirector.DeathSource.RELIC
 	)
 	if territory_field.is_claimable_at_local(origin):
+		territory_field.attribution = RunStats.Source.RELICS
 		territory_field.queue_seed_growth(
 			origin,
 			compost_mass * strength,
@@ -1571,6 +1581,7 @@ func _try_superbloom(local_position: Vector2) -> void:
 			_superbloom_cooldown = superbloom_cooldown_seconds
 			var midpoint := other.lerp(local_position, 0.5)
 			# Force only. The secondary wave creates no Plant Mass of its own.
+			territory_field.attribution = RunStats.Source.RELICS
 			territory_field.queue_bloom(
 				midpoint,
 				0.0,

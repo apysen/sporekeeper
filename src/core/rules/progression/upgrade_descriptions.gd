@@ -268,10 +268,10 @@ func resolved_effect(upgrade_id: int) -> String:
 				_combat.cane_reach_pixels
 				* (1.0 + 0.20 * float(_progression.get_upgrade_level(upgrade_id)))
 			)
-		Progression.UpgradeId.VINE_LIGNIFICATION:
-			return "%.1f damage before Apical, Root, and relic modifiers" % (
-				_combat.cane_damage
-				* (1.0 + 0.25 * float(_progression.get_upgrade_level(upgrade_id)))
+		Progression.UpgradeId.VINE_FANNING:
+			return "%.0f-degree sweep arc" % (
+				_combat.cane_arc_degrees
+				* (1.0 + 0.18 * float(_progression.get_upgrade_level(upgrade_id)))
 			)
 		Progression.UpgradeId.VINE_TURGOR:
 			var vine_speed := 1.0 + 0.15 * float(_progression.get_upgrade_level(upgrade_id))
@@ -500,10 +500,10 @@ func _root_potency_effect(upgrade_id: int) -> String:
 				_combat.cane_reach_pixels
 				* (1.0 + _rooted_line_bonus(upgrade_id, 0.20, multiplier))
 			)
-		Progression.UpgradeId.VINE_LIGNIFICATION:
-			return "%.1f Vine damage before Apical and relic modifiers" % (
-				_combat.cane_damage
-				* (1.0 + _rooted_line_bonus(upgrade_id, 0.25, multiplier))
+		Progression.UpgradeId.VINE_FANNING:
+			return "%.0f-degree Vine sweep arc" % (
+				_combat.cane_arc_degrees
+				* (1.0 + _rooted_line_bonus(upgrade_id, 0.18, multiplier))
 			)
 		Progression.UpgradeId.VINE_TURGOR:
 			return "one automatic sweep every %.3fs before relic timing" % (
@@ -594,8 +594,8 @@ static func get_upgrade_name(upgrade_id: int) -> String:
 			return "Needlepoint"
 		Progression.UpgradeId.VINE_ELONGATION:
 			return "Elongation"
-		Progression.UpgradeId.VINE_LIGNIFICATION:
-			return "Lignification"
+		Progression.UpgradeId.VINE_FANNING:
+			return "Fanning"
 		Progression.UpgradeId.VINE_TURGOR:
 			return "Turgor"
 		Progression.UpgradeId.VINE_APICAL_DOMINANCE:

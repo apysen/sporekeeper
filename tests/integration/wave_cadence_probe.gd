@@ -163,19 +163,15 @@ func _check_provocation(prototype: RunRoot) -> void:
 	prototype.combat.reset_combat()
 	_checks += 1
 
-	if director.can_provoke():
-		_failures.append(
-			"WAVE_CADENCE: wave 1 is provokable at zero seconds, so the mechanic "
-			+ "skips waves rather than shortening them"
-		)
-		return
-	# Far enough in that the clock alone opens the call.
-	while director.get_seconds_into_wave() < director.provoke_unlock_seconds:
-		director.advance(STEP)
+	# Provokable on the first frame, and on every frame after it. The gate used to be
+	# forty seconds in or eighty per cent cleared, and the run also held a four-minute
+	# allowance across its whole length; all three were the game deciding how fast a run
+	# was allowed to be. What charges a reckless chain now is the surge, which scales
+	# with the seconds skipped and arrives immediately.
 	if not director.can_provoke():
 		_failures.append(
-			"WAVE_CADENCE: wave 1 is not provokable %.0fs in, past its own unlock"
-			% director.provoke_unlock_seconds
+			"WAVE_CADENCE: wave 1 is not provokable at zero seconds, and Provocation "
+			+ "is meant to have no gate at all"
 		)
 		return
 	var real_before := director.real_elapsed_seconds

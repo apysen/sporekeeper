@@ -49,6 +49,9 @@ class SeedVisual:
 	var id := 0
 	## Interruptions this Seed shrugs off before a hit can hurt it at all.
 	var shield_charges := 0
+	## The result-screen row this Seed's Green is credited to, or -1 for the Seeds row.
+	## Set by whatever made it: a Seed a Thistle kill condensed is the Thistle's growth.
+	var credit := -1
 	## Seconds before this Seed may receive relic germination progress again,
 	## which is what stops a chain of Seeds accelerating each other without end.
 	var grant_cooldown := 0.0
@@ -244,6 +247,20 @@ var _trial_mark_active := false
 var _trial_mark_position := Vector2.ZERO
 var _trial_mark_radius := 0.0
 var _trial_mark_held := true
+## The Trial's cue over Grandma: one word and a ring of what is left. See
+## `TrialDirector.get_world_cue`.
+var _trial_cue_active := false
+var _trial_cue_position := Vector2.ZERO
+var _trial_cue_text := ""
+var _trial_cue_fraction := 1.0
+var _trial_cue_urgent := false
+const TRIAL_CUE_FONT: Font = preload("res://assets/fonts/beholden/Beholden-Medium.ttf")
+## The pointer over Grandma toward something she should go and look at.
+var _pointer_cue_active := false
+var _pointer_from := Vector2.ZERO
+var _pointer_target := Vector2.ZERO
+var _pointer_text := ""
+var _pointer_alpha := 1.0
 
 @export_group("Catalyst Art")
 ## Painted Seed. Optional: without it the Seed falls back to the authored circle.
@@ -322,6 +339,7 @@ var _flight_radii := PackedFloat32Array()
 var _next_seed_id := 1
 var _default_seed_shield_charges := 0
 var _last_germinated_seed_id := -1
+var _last_germinated_seed_credit := -1
 
 
 func _process(delta: float) -> void:
@@ -413,6 +431,8 @@ func _draw() -> void:
 
 	_draw_overgrow_aim()
 	_draw_trial_mark()
+	_draw_trial_cue()
+	_draw_pointer_cue()
 
 	for tether in _tethers:
 		_draw_tether(tether)
@@ -563,9 +583,11 @@ func spawn_seed(
 	local_position: Vector2,
 	charge_seconds: float = -1.0,
 	chain_depth: int = 0,
-	durability: float = 1.0
+	durability: float = 1.0,
+	credit: int = -1
 ) -> int:
 	var seed := SeedVisual.new()
+	seed.credit = credit
 	seed.position = local_position
 	seed.duration = tuning.seed_charge_seconds if charge_seconds <= 0.0 else charge_seconds
 	seed.remaining = seed.duration
@@ -635,6 +657,11 @@ func get_last_germinated_seed_id() -> int:
 	return _last_germinated_seed_id
 
 
+## Who the Seed that just opened is credited to, read by the germination that grows it.
+func get_last_germinated_seed_credit() -> int:
+	return _last_germinated_seed_credit
+
+
 func advance_seed(seed_id: int, progress: float, cooldown_seconds: float) -> bool:
 	# Germination progress as a fraction of the Seed's own charge, so a long
 	# World Seed and an ordinary Seed both advance by the same share of themselves.
@@ -702,6 +729,7 @@ func force_germinate_seed(seed_id: int) -> bool:
 func _open_seed(index: int) -> void:
 	var seed := _seeds[index]
 	_last_germinated_seed_id = seed.id
+	_last_germinated_seed_credit = seed.credit
 	seed_germinated.emit(seed.position)
 	seed_germinated_with_context.emit(seed.position, seed.chain_depth)
 	_spawn_pulse(seed.position, 0.72, 76.0, Color("9cff63"))
@@ -1050,6 +1078,103 @@ func _draw_trial_mark() -> void:
 			2.0,
 			true
 		)
+
+
+func set_trial_cue(
+	local_position: Vector2, text: String, fraction: float, urgent: bool
+) -> void:
+	_trial_cue_active = true
+	_trial_cue_position = local_position
+	_trial_cue_text = text
+	_trial_cue_fraction = clampf(fraction, 0.0, 1.0)
+	_trial_cue_urgent = urgent
+	queue_redraw()
+
+
+func set_pointer_cue(from: Vector2, target: Vector2, text: String, alpha: float) -> void:
+	_pointer_cue_active = true
+	_pointer_from = from
+	_pointer_target = target
+	_pointer_text = text
+	_pointer_alpha = clampf(alpha, 0.0, 1.0)
+	queue_redraw()
+
+
+func clear_pointer_cue() -> void:
+	if not _pointer_cue_active:
+		return
+	_pointer_cue_active = false
+	queue_redraw()
+
+
+func _draw_pointer_cue() -> void:
+	## An arrowhead just outside Grandma, aimed at something she should go and see, with
+	## what it is written beside it. Hostile colour: every use of it is a threat.
+	if not _pointer_cue_active:
+		return
+	var offset := _pointer_target - _pointer_from
+	if offset.length() < 1.0:
+		return
+	var direction := offset.normalized()
+	var colour := Color(0.93, 0.42, 0.33, _pointer_alpha)
+	var tip := _pointer_from + direction * 58.0
+	var base := _pointer_from + direction * 40.0
+	var side := direction.orthogonal() * 9.0
+	draw_colored_polygon(PackedVector2Array([tip, base + side, base - side]), colour)
+	var font_size := 14
+	var text_size := TRIAL_CUE_FONT.get_string_size(_pointer_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var anchor := _pointer_from + direction * 78.0
+	var baseline := anchor + Vector2(-text_size.x * 0.5, text_size.y * 0.3)
+	draw_string_outline(
+		TRIAL_CUE_FONT, baseline, _pointer_text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, 5, Color(0.02, 0.03, 0.02, 0.9 * _pointer_alpha)
+	)
+	draw_string(
+		TRIAL_CUE_FONT, baseline, _pointer_text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, colour
+	)
+
+
+func clear_trial_cue() -> void:
+	if not _trial_cue_active:
+		return
+	_trial_cue_active = false
+	queue_redraw()
+
+
+func _draw_trial_cue() -> void:
+	## A ring around Grandma that empties as the allowance does, and the word for what
+	## she is doing wrong above her head. Drawn where she is, because the player is
+	## looking at her and not at the side panel.
+	if not _trial_cue_active:
+		return
+	var colour := Color(0.93, 0.42, 0.33, 1.0) if _trial_cue_urgent else Color(0.831, 0.663, 0.31, 1.0)
+	var radius := 26.0
+	draw_arc(_trial_cue_position, radius, 0.0, TAU, 40, Color(0.0, 0.0, 0.0, 0.45), 5.0, true)
+	if _trial_cue_fraction > 0.0:
+		draw_arc(
+			_trial_cue_position,
+			radius,
+			-PI * 0.5,
+			-PI * 0.5 + TAU * _trial_cue_fraction,
+			40,
+			colour,
+			3.0,
+			true
+		)
+	var font_size := 16
+	var text_size := TRIAL_CUE_FONT.get_string_size(
+		_trial_cue_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size
+	)
+	var baseline := _trial_cue_position + Vector2(-text_size.x * 0.5, -radius - 10.0)
+	draw_string_outline(
+		TRIAL_CUE_FONT, baseline, _trial_cue_text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, 5, Color(0.02, 0.03, 0.02, 0.9)
+	)
+	draw_string(
+		TRIAL_CUE_FONT, baseline, _trial_cue_text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, colour
+	)
 
 
 func _draw_overgrow_aim() -> void:

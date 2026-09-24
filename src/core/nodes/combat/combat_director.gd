@@ -291,6 +291,9 @@ class DamageNumberLayer:
 ## Fixed sector width. Base Cane centers on facing; Vine centers on the densest
 ## targetable sector at sweep start.
 @export_range(10.0, 180.0, 1.0) var cane_arc_degrees := 90.0
+## Ceiling on Vine's Fanning line. 90 degrees at 2.0 is a half-circle in front of her,
+## which is as wide as a *facing* can mean anything.
+const MAXIMUM_CANE_ARC_MULTIPLIER := 2.0
 ## Presentation time for the visible left-to-right or right-to-left stroke.
 @export_range(0.05, 0.8, 0.01) var cane_sweep_seconds := 0.20
 ## Outermost share of reach that counts as the Vine apical zone.
@@ -408,6 +411,9 @@ class DamageNumberLayer:
 ## arithmetic can drop things in ways no frame-time measurement would catch, so the
 ## accounting exists rather than the assurance.
 var debug_damage_accounting := false
+## The run's contribution record, handed in by the run. Optional: a probe that builds
+## a director on its own simply records nothing.
+var run_stats: RunStats
 var debug_damage_applied_total := 0.0
 ## Damage the build *produced*, before it was clipped to the health that was there.
 ##
@@ -536,11 +542,15 @@ const DAMAGE_DIGIT_METRICS_PATH := "res://assets/ui/damage_digits.json"
 
 @export_group("Experience Pickups")
 ## How close Grandma has to be before a dropped orb starts homing on her. Halved
-## from its original 165 px: walking the field is meant to be part of collecting.
+## from its original 165 px: walking the field is meant to be part of collecting, but
+## brushing past an orb should still collect it -- stepping squarely on every one is not.
 @export_range(20.0, 400.0, 1.0) var xp_attraction_radius_pixels := 82.0
-## An orb this old homes in regardless of distance, so nothing is ever stranded.
-## This is the real ceiling on how much a smaller radius can cost a run.
-@export_range(1.0, 60.0, 0.5) var xp_giveup_seconds := 11.0
+## A pack Elite's bonus XP, on top of its ordinary drop, as a multiple of that drop.
+## Only the scheduled Rootbreaker pays a relic; every other Elite pays this.
+@export_range(0.0, 20.0, 0.5) var elite_bonus_xp_multiplier := 3.0
+## How many orbs the bonus is split into, and how far from the corpse they land.
+@export_range(1, 24, 1) var elite_bonus_orb_count := 8
+@export_range(0.0, 80.0, 1.0) var elite_bonus_spill_radius_pixels := 26.0
 
 @export_group("Object Pools")
 ## Enemy-state objects preallocated when this node enters the scene tree.
@@ -618,6 +628,8 @@ var _cane_cooldown_multiplier := 1.0
 var _cane_reach_multiplier := 1.0
 var _cane_apical_damage_bonus := 0.0
 var _cane_auto_targets := false
+## Vine's Fanning line, as a multiplier on `cane_arc_degrees`.
+var _cane_arc_multiplier := 1.0
 var _cane_next_left_to_right := true
 var _cane_visual_remaining := 0.0
 var _cane_visual_origin := Vector2.ZERO
@@ -1190,6 +1202,7 @@ func spawn_enemy(role: int, local_position: Vector2 = Vector2(-99999.0, -99999.0
 	if enemy == null:
 		return -1
 	enemy.role = role
+	enemy.milestone = false
 	_configure_enemy_stats(enemy)
 	var exclusion := _get_spawn_exclusion(role)
 	if local_position.x < -90000.0:
@@ -1545,6 +1558,14 @@ func get_enemy_health(enemy_id: int) -> float:
 	return enemy.health if enemy != null else 0.0
 
 
+## Marks a spawned body as the wave table's milestone, which is what its death reward
+## reads. Called by the wave director on the one Elite it schedules.
+func mark_milestone(enemy_id: int) -> void:
+	var enemy := _find_enemy(enemy_id)
+	if enemy != null:
+		enemy.milestone = true
+
+
 func get_enemy_xp_value(enemy_id: int) -> int:
 	var enemy := _find_enemy(enemy_id)
 	return enemy.xp_value if enemy != null else 0
@@ -1601,6 +1622,13 @@ func get_cane_sweep_count() -> int:
 	return _cane_sweep_count
 
 
+func get_cane_arc_degrees() -> float:
+	## The sweep's width, after Vine's Fanning line. Read rather than the export wherever
+	## the sector is drawn or resolved, so the line reaches the sweep, the targeting and
+	## the overlay from one place.
+	return cane_arc_degrees * _cane_arc_multiplier
+
+
 func get_cane_reach() -> float:
 	return cane_reach_pixels * _cane_reach_multiplier
 
@@ -1652,17 +1680,30 @@ func set_cane_modifiers(
 	damage_multiplier: float,
 	cooldown_multiplier: float,
 	reach_multiplier: float = 1.0,
-	apical_damage_bonus: float = 0.0
+	apical_damage_bonus: float = 0.0,
+	arc_multiplier: float = 1.0
 ) -> void:
 	_cane_damage_multiplier = maxf(0.05, damage_multiplier)
 	_cane_cooldown_multiplier = maxf(0.05, cooldown_multiplier)
 	_cane_reach_multiplier = maxf(0.05, reach_multiplier)
 	_cane_apical_damage_bonus = maxf(0.0, apical_damage_bonus)
+	# Capped below a full circle. A sweep that reaches all the way round stops being a
+	# direction the player chose, which is the whole reason Vine gives facing back.
+	_cane_arc_multiplier = clampf(arc_multiplier, 0.05, MAXIMUM_CANE_ARC_MULTIPLIER)
+	# The rope resolves a Vine stroke instead of the authored sector, so Fanning has to
+	# reach it as well or the line is worth nothing to the Adaptation that sells it.
+	if vine_whip != null:
+		vine_whip.arc_multiplier = _cane_arc_multiplier
 
 
 func set_cane_auto_targeting(enabled: bool) -> void:
-	## Base Cane follows the player's facing. Vine replaces that input with the
-	## densest targetable sector while preserving every other Cane rule.
+	## Whether the sweep aims itself at the densest sector instead of following the
+	## player's facing.
+	##
+	## Vine used to switch this on, and no longer does: an Adaptation that improves the
+	## Cane *and* points it was the one thing in the roster asking nothing of the player.
+	## Kept because the branches that read it are the only description the codebase has
+	## of what auto-aim would mean, and because turning it back on is one line.
 	_cane_auto_targets = enabled
 
 
@@ -2422,7 +2463,7 @@ func _update_cane(delta: float) -> void:
 		facing = get_densest_target_direction(
 			player.get_arena_position(),
 			cane_reach_pixels * _cane_reach_multiplier * reach_multiplier,
-			cane_arc_degrees,
+			get_cane_arc_degrees(),
 			facing
 		)
 		PerfCounters.timer_end(PerfCounters.TIMER_CANE_TARGETING)
@@ -2506,7 +2547,7 @@ func _perform_cane_sweep(
 		_hand_sweep_to_vine(origin, facing, left_to_right, reach, base_damage, is_bonus)
 		PerfCounters.timer_end(PerfCounters.TIMER_CANE_PERFORM)
 		return 0
-	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
+	var half_angle := deg_to_rad(get_cane_arc_degrees() * 0.5)
 	var apical_fraction := clampf(
 		(
 			apical_fraction_override
@@ -2607,7 +2648,7 @@ func _draw_cane_sweep() -> void:
 	# it started, so the cane stays in her hands while she keeps walking.
 	var origin := player.get_arena_position()
 	var origin_drift := origin - _cane_visual_origin
-	var half_angle := deg_to_rad(cane_arc_degrees * 0.5)
+	var half_angle := deg_to_rad(get_cane_arc_degrees() * 0.5)
 	var start_angle := -half_angle if _cane_visual_left_to_right else half_angle
 	var end_angle := half_angle if _cane_visual_left_to_right else -half_angle
 	var current_offset := lerpf(start_angle, end_angle, progress)
@@ -2837,6 +2878,7 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 		enemy.bramble_ground_maturity = 0.0
 		enemy.bramble_damage_remaining = 0.0
 		enemy.movement_speed_multiplier = 0.0 if enemy.bramble_ensnare_remaining > 0.0 else 1.0
+		_record_movement_denied(enemy, delta)
 		return
 
 	enemy.bramble_frontier_strength = frontier_strength
@@ -2865,6 +2907,7 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 		# Grasping Thorns holds the enemy outright; the slow it was already under is
 		# irrelevant while it cannot move at all.
 		enemy.movement_speed_multiplier = 0.0
+	_record_movement_denied(enemy, delta)
 	if (
 		not enemy.was_on_bramble
 		and bramble_frontier_crossing_damage > 0.0
@@ -2893,6 +2936,13 @@ func _update_enemy_bramble_contact(enemy: EnemyState, delta: float) -> void:
 			return
 	enemy.was_on_bramble = true
 	_try_erupt_root_network(enemy)
+
+
+## Bramble's slow and hold, as enemy-seconds of walking taken away: a body held still
+## for a second costs one, a body at half speed for a second costs a half.
+func _record_movement_denied(enemy: EnemyState, delta: float) -> void:
+	if run_stats != null and enemy.movement_speed_multiplier < 1.0:
+		run_stats.bramble_movement_denied += (1.0 - enemy.movement_speed_multiplier) * delta
 
 
 func _get_entanglement_rate(enemy: EnemyState, contact_strength: float) -> float:
@@ -3408,6 +3458,8 @@ func ensnare_entangled_enemies_in_radius(
 		var resisted := ensnare_seconds * (1.0 - clampf(enemy.cc_resistance, 0.0, 0.95))
 		if resisted <= 0.0:
 			continue
+		if run_stats != null and enemy.bramble_ensnare_remaining <= 0.0:
+			run_stats.bramble_ensnares += 1
 		enemy.bramble_ensnare_remaining = maxf(enemy.bramble_ensnare_remaining, resisted)
 		enemy.bramble_ensnare_duration = maxf(
 			enemy.bramble_ensnare_duration,
@@ -3569,6 +3621,8 @@ func repel_territory_attacker(enemy: EnemyState) -> void:
 	var escape := _get_territory_escape_direction(enemy.position)
 	var shove_origin := enemy.position
 	_begin_knockback(enemy, escape, distance)
+	if run_stats != null:
+		run_stats.bramble_shove_pixels += distance
 	enemy.hit_flash_remaining = enemy_hit_flash_seconds
 	enemy.hit_flash_color = _get_damage_feedback_color(DeathSource.BRAMBLE)
 	enemy_repelled.emit(enemy.id, shove_origin, escape)
@@ -3673,6 +3727,8 @@ func _try_ensnare_entangled_enemy(enemy: EnemyState) -> void:
 		return
 	enemy.bramble_ensnare_remaining = ensnare_seconds
 	enemy.bramble_ensnare_duration = ensnare_seconds
+	if run_stats != null:
+		run_stats.bramble_ensnares += 1
 	enemy.bramble_ensnare_immunity_remaining = (
 		ensnare_seconds + _bramble_ensnare_immunity_seconds
 	)
@@ -4207,6 +4263,13 @@ func _update_projectiles(delta: float) -> void:
 
 
 func _update_pickups(delta: float) -> void:
+	## Orbs lie where they fell until Grandma comes within reach, then home in.
+	##
+	## There used to be a second rule: an orb old enough homed in from anywhere. That
+	## quietly made position free -- a fight in the far corner paid the same as a fight
+	## underfoot -- so it is gone and an orb out of reach stays out of reach. The age is
+	## still counted, because a saturated pool recycles the oldest orb rather than the
+	## newest drop.
 	var player_position := player.get_arena_position()
 	var attraction_radius_squared := (
 		xp_attraction_radius_pixels * xp_attraction_radius_pixels
@@ -4221,7 +4284,7 @@ func _update_pickups(delta: float) -> void:
 			continue
 		pickup.age += delta
 		var distance_squared := pickup.position.distance_squared_to(player_position)
-		if distance_squared < attraction_radius_squared or pickup.age > xp_giveup_seconds:
+		if distance_squared < attraction_radius_squared:
 			var distance := sqrt(distance_squared)
 			var speed := 120.0 + maxf(0.0, pull_ramp - distance) * 1.7
 			pickup.position = pickup.position.move_toward(player_position, speed * delta)
@@ -4541,6 +4604,10 @@ func _damage_enemy(
 		if critical:
 			PerfCounters.count(PerfCounters.COUNT_DAMAGE_CRITS)
 	var applied_damage := minf(damage, enemy.health)
+	var stats_source := -1
+	if run_stats != null:
+		stats_source = get_stats_source(death_source)
+		run_stats.record_damage(stats_source, applied_damage)
 	if debug_damage_accounting:
 		debug_damage_applied_total += applied_damage
 		debug_damage_dealt_total += damage
@@ -4598,12 +4665,15 @@ func _damage_enemy(
 	var death_position := enemy.position
 	var xp_value := enemy.xp_value
 	var was_overgrown := enemy.overgrown
+	var was_milestone := enemy.milestone
 	var death_entanglement := enemy.entanglement
 	_last_killed_enemy_id = enemy.id
 	enemy.active = false
 	enemy.state = EnemyKinds.StateKind.INACTIVE
 	_active_enemy_count = maxi(0, _active_enemy_count - 1)
 	_spawn_xp_pickup(death_position, xp_value)
+	if run_stats != null:
+		run_stats.record_kill(stats_source)
 	if was_overgrown:
 		# The outbreak spreads from the corpse however the corpse was made: an
 		# Overgrown enemy shot dead still bursts. The burst deals no damage, so it
@@ -4621,7 +4691,13 @@ func _damage_enemy(
 		enemy_died_entangled.emit(death_position, death_entanglement, role)
 	enemy_killed.emit(death_position, xp_value, role, death_source, chain_depth)
 	if role == EnemyKinds.Role.ELITE:
-		elite_defeated.emit()
+		# Only the scheduled Rootbreaker is a milestone. Elites drawn into late packs
+		# used to pay the same relic, and the endgame spawns enough of them to bury the
+		# run in relic screens -- so a pack Elite pays in XP instead, spilled as a burst.
+		if was_milestone:
+			elite_defeated.emit()
+		else:
+			_spill_elite_bonus_xp(death_position, xp_value)
 	elif role == EnemyKinds.Role.BOSS:
 		boss_defeated.emit()
 	elif role == EnemyKinds.Role.HIVE_QUEEN:
@@ -4634,6 +4710,45 @@ func _damage_enemy(
 		PerfCounters.timer_add_since(
 			PerfCounters.TIMER_DAMAGE_TOTAL, damage_began
 		)
+
+
+## A reward paid in XP at a place, worth this many Elite kills at the current wave's
+## scaling. Spilled as a ring of orbs like a pack Elite's, so collecting it means going
+## there. The Canker uses it for a Knot the player took back.
+func spill_reward_xp(local_position: Vector2, elite_kills: float) -> void:
+	var profile := _profile_for_role(EnemyKinds.Role.ELITE)
+	if profile == null or elite_kills <= 0.0:
+		return
+	var one_elite := _scaling.get_scaled_xp_reward(
+		profile.xp_reward, _scaling.get_spawn_wave_number()
+	)
+	_spill_orbs(local_position, roundi(float(one_elite) * elite_kills), elite_bonus_orb_count * 2)
+
+
+## A pack Elite's reward: a ring of extra orbs around the corpse, worth
+## `elite_bonus_xp_multiplier` times its own drop. Spread inside the pickup reach so
+## one step into the ring gathers the lot.
+func _spill_elite_bonus_xp(death_position: Vector2, xp_value: int) -> void:
+	_spill_orbs(
+		death_position,
+		roundi(float(xp_value) * elite_bonus_xp_multiplier),
+		elite_bonus_orb_count
+	)
+
+
+func _spill_orbs(death_position: Vector2, total: int, orb_count: int) -> void:
+	var count := mini(orb_count, total)
+	if count <= 0:
+		return
+	var arena := territory_field.tuning.arena_size
+	var remaining := total
+	for index in range(count):
+		var share := remaining / (count - index)
+		remaining -= share
+		var angle := TAU * float(index) / float(count)
+		var spot := death_position + Vector2.from_angle(angle) * elite_bonus_spill_radius_pixels
+		spot = Vector2(clampf(spot.x, 8.0, arena.x - 8.0), clampf(spot.y, 8.0, arena.y - 8.0))
+		_spawn_xp_pickup(spot, share)
 
 
 func _spawn_xp_pickup(local_position: Vector2, xp_value: int) -> void:
@@ -4656,8 +4771,26 @@ func _spawn_xp_pickup(local_position: Vector2, xp_value: int) -> void:
 				PerfCounters.TIMER_XP_PICKUP_SPAWN, began
 			)
 		return
-	# A saturated pickup pool resolves XP immediately rather than losing progression.
-	xp_collected.emit(xp_value)
+	# A saturated pool recycles its oldest orb for the new drop, and pays that oldest
+	# one out rather than losing it.
+	#
+	# Nothing homes any more, so orbs accumulate wherever the player has not been, and a
+	# full pool used to resolve every *new* drop invisibly -- which would have meant
+	# that past a hundred and eighty uncollected orbs the XP started coming to you
+	# again, which is the behaviour this change exists to remove. Recycling the oldest
+	# keeps the newest drop visible, keeps the field bounded, and loses no progression:
+	# what gets collected for you is the orb you walked away from longest ago.
+	var oldest: PickupState = null
+	for pickup in _pickups:
+		if oldest == null or pickup.age > oldest.age:
+			oldest = pickup
+	if oldest != null:
+		xp_collected.emit(oldest.xp_value)
+		oldest.position = local_position
+		oldest.xp_value = xp_value
+		oldest.age = 0.0
+	else:
+		xp_collected.emit(xp_value)
 	if measuring:
 		PerfCounters.count(
 			PerfCounters.COUNT_XP_PICKUP_SLOTS_WALKED, walked
@@ -4908,6 +5041,34 @@ func _roll_elite_modifier(role: int) -> int:
 	## drives it directly. The rule itself, and the state it rolls against, is
 	## `EliteModifiers`.
 	return _elite_modifiers.roll(role, _scaling)
+
+
+## Which result-screen row a hit belongs to. The Cane is Vine's once Vine is running
+## it: the rope is what swung, and a Vine build that showed its damage under "Cane"
+## would be crediting the weapon the Adaptation replaced.
+func get_stats_source(death_source: int) -> int:
+	match death_source:
+		DeathSource.CANE:
+			return RunStats.Source.VINE if is_vine_driven() else RunStats.Source.CANE
+		DeathSource.BLOOM, DeathSource.SUPER_BLOOM:
+			return RunStats.Source.BLOOM
+		DeathSource.BRAMBLE, DeathSource.THORNBURST:
+			return RunStats.Source.BRAMBLE
+		DeathSource.ROOT_ERUPTION:
+			return RunStats.Source.ROOT
+		DeathSource.CUTTING:
+			return RunStats.Source.PRUNING
+		DeathSource.MAN_EATER:
+			return RunStats.Source.MAN_EATER
+		DeathSource.RELIC:
+			return RunStats.Source.RELICS
+		DeathSource.SPORE:
+			return RunStats.Source.SPORE
+		DeathSource.THISTLE:
+			return RunStats.Source.THISTLE
+		DeathSource.FRUIT:
+			return RunStats.Source.FRUIT
+	return -1
 
 
 func _is_player_damage_source(death_source: int) -> bool:

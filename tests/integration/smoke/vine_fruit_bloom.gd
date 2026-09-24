@@ -36,45 +36,42 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		)
 	)
 	prototype.combat.reset_combat()
+	# Exactly Vine and Spore, and nothing bought. The arc is the measurement here, so a
+	# roster left over from an earlier file -- every Branch slot is open from the start
+	# of a run now -- would widen the sweep before Fanning had been asked to.
+	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
 		Progression.PathId.VINE,
 		Progression.PathId.SPORE
 	)
 	prototype._apply_progression_modifiers()
-	var vine_down_id := prototype.combat.spawn_enemy(
-		EnemyKinds.Role.HUNTER,
-		cane_target_origin + Vector2(0.0, 62.0)
-	)
-	var vine_cluster_ids := PackedInt32Array()
-	for vine_index in range(3):
-		vine_cluster_ids.append(prototype.combat.spawn_enemy(
-			EnemyKinds.Role.HUNTER,
-			cane_target_origin + Vector2(-14.0 + 14.0 * float(vine_index), -66.0)
-		))
-	prototype.combat._cane_remaining = 0.0
-	prototype.combat.simulate_step(0.0)
-	# Vine resolves through its simulated body, so the stroke lands over its driving
-	# window rather than on the frame it began.
-	for _vine_sweep_frame in range(24):
-		prototype.combat.simulate_step(1.0 / 60.0)
-	var vine_cluster_hit := true
-	for vine_enemy_id in vine_cluster_ids:
-		vine_cluster_hit = (
-			vine_cluster_hit
-			and prototype.combat.get_enemy_health(vine_enemy_id)
-			< prototype.combat.get_enemy_maximum_health(vine_enemy_id)
-		)
+	# Vine sweeps where she is looking, exactly as the bare Cane does, and what it sells
+	# instead is width.
+	#
+	# Held on the arc the stroke is driven at rather than on which body a 55-degree flank
+	# happens to catch: a Vine stroke resolves through the simulated rope, whose reach to
+	# any given point is a property of how the rope bends over its driving window, and a
+	# positional assertion would be testing the rope's physics rather than the line. What
+	# has to be true is that Fanning widens *both* arcs -- the authored sector the bare
+	# Cane uses and the rope's own driver -- because the rope is what Vine resolves
+	# through and a line that missed it would be worth nothing to the Adaptation
+	# selling it.
+	var narrow_cane_arc := prototype.combat.get_cane_arc_degrees()
+	var narrow_rope_arc := prototype.combat.vine_whip.get_sweep_arc_degrees()
+	prototype.progression._upgrade_levels[Progression.UpgradeId.VINE_FANNING] = 3
+	prototype._apply_progression_modifiers()
 	report.check(
 		base_follows_facing
-		and vine_cluster_hit
-		and is_equal_approx(
-			prototype.combat.get_enemy_health(vine_down_id),
-			prototype.combat.get_enemy_maximum_health(vine_down_id)
-		)
-		and absf(prototype.combat._cane_visual_facing.angle_to(Vector2.UP)) < 0.22
-		and prototype.combat.get_active_projectile_count() == 0,
-		"Vine auto-targets the densest valid sector while base Cane follows facing"
+		and not prototype.combat._cane_auto_targets
+		and is_equal_approx(narrow_cane_arc, prototype.combat.cane_arc_degrees)
+		and prototype.combat.get_cane_arc_degrees() > narrow_cane_arc
+		and prototype.combat.vine_whip.get_sweep_arc_degrees() > narrow_rope_arc,
+		"Vine follows facing like the Cane, and Fanning widens the sector and the rope"
 	)
+	prototype.progression._upgrade_levels[Progression.UpgradeId.VINE_FANNING] = 0
+	prototype._apply_progression_modifiers()
+	prototype.progression._upgrade_levels[Progression.UpgradeId.VINE_FANNING] = 0
+	prototype._apply_progression_modifiers()
 
 	# Fruit uses the same dense-sector choice, but every member of a release owns its
 	# roll, art choice, trail spacing, planted fuse, and post-burst cooldown state.
@@ -257,22 +254,20 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		"Fruit's release cooldown runs from the launch, not from the previous batch bursting"
 	)
 
-	# Weighted Harvest is the exception, because it stores its batch on the Vine tip
-	# instead of putting it in the air, and a second arming would overwrite it.
+	# Gourdvine is no exception to the cadence, and that is the whole repair. It used to
+	# take the release and hold it on the tip until a sweep threw it, so a Fruit build
+	# that evolved stopped getting fruit on its own clock -- the evolution made the
+	# Adaptation it grows out of worse. Its fruit is an extra one now, growing on the
+	# tip on a clock of its own, and the path's release is untouched by it.
 	adaptations.reset_adaptations()
 	prototype.combat.reset_combat()
-	adaptations._gourdvine_pending_count = 3
+	adaptations._gourdvine_growth = 0.6
 	var gourdvine_release_count := adaptations._fruit_release_count
-	adaptations._update_fruit_release_cadence(adaptations.fruit_release_interval * 3.0)
-	var gourdvine_holds_release := (
-		adaptations._fruit_release_count == gourdvine_release_count
-	)
-	adaptations._gourdvine_pending_count = 0
 	adaptations._update_fruit_release_cadence(adaptations.fruit_release_interval + 0.01)
 	report.check(
-		gourdvine_holds_release
-		and adaptations._fruit_release_count == gourdvine_release_count + 1,
-		"an armed Weighted Harvest holds the cadence until the sweep spends it"
+		adaptations._fruit_release_count == gourdvine_release_count + 1
+		and adaptations.get_gourdvine_growth() > 0.0,
+		"a fruit hanging on the Vine tip does not hold up the path's own release"
 	)
 	adaptations.reset_adaptations()
 	prototype.combat.reset_combat()

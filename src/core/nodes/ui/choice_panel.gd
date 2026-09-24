@@ -52,8 +52,17 @@ func _ready() -> void:
 ## Shows the panel with one card per entry. Each entry is `{"text": String}` and may
 ## carry `"modulate": Color`; anything past the fourth entry is not shown, and any
 ## card without an entry is hidden rather than left holding the last draft's wording.
-func show_options(header_text: String, entries: Array) -> void:
-	header.text = header_text
+func show_options(header_text: String, entries: Array, queued: int = 0) -> void:
+	## `queued` is how many more panels are waiting behind this one.
+	##
+	## A wave boundary can owe a draft, a relic, an Evolution and a Growth at once, and
+	## an unlimited Provocation can owe several Growths on top -- so a player answering
+	## one panel had no way to know whether they were finishing or a third of the way
+	## through. The count goes on the heading rather than beside it because the heading
+	## is the one thing on the panel they are already reading.
+	header.text = (
+		"%s   %d OF %d" % [header_text, 1, queued + 1] if queued > 0 else header_text
+	)
 	for index in range(buttons.size()):
 		var button := buttons[index]
 		if button == null:

@@ -49,6 +49,13 @@ signal enemy_struck(enemy_id: int, apical: bool, sweep_id: int)
 @export_group("Sweep")
 ## The authored driver arc. The rope is allowed to distort this; it is not clamped.
 @export_range(10.0, 180.0, 1.0) var sweep_arc_degrees := 90.0
+## Vine's Fanning line, pushed in from the Cane's modifiers.
+##
+## The rope carries its own arc because it is what resolves a Vine stroke -- the
+## authored sector is not consulted at all once Vine is driving. So a line that widens
+## the sweep has to reach *here*, or it widens a sector Vine never uses, which is
+## exactly what the suite caught the first time Fanning was wired.
+var arc_multiplier := 1.0
 ## How far past the authored endpoints the free tip may visibly overshoot.
 @export_range(0.0, 60.0, 1.0) var overshoot_allowance_degrees := 15.0
 ## Beyond this angle from the forward axis a strong restoring force is applied, so
@@ -281,7 +288,7 @@ func _guide_weight(index: int) -> float:
 
 
 func _current_guide_direction() -> Vector2:
-	var half := deg_to_rad(sweep_arc_degrees * 0.5)
+	var half := deg_to_rad(get_sweep_arc_degrees() * 0.5)
 	var start_angle := -half if _sweep_left_to_right else half
 	var end_angle := half if _sweep_left_to_right else -half
 	var progress := clampf(_sweep_elapsed / maxf(0.0001, _sweep_duration), 0.0, 1.0)
@@ -392,6 +399,11 @@ func get_wrap_index() -> int:
 
 func is_wrapped() -> bool:
 	return get_wrap_index() >= 0
+
+
+func get_sweep_arc_degrees() -> float:
+	## The arc this rope actually drives, after Fanning.
+	return sweep_arc_degrees * arc_multiplier
 
 
 func get_bend_count(tolerance_degrees: float = 25.0) -> int:

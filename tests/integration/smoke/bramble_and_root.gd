@@ -770,6 +770,12 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		"acquiring the second Core locks the run pairing and its Evolution"
 	)
 
+	# Both Cores committed and the Branch room filled, so the draft has nowhere left to
+	# put an unowned line and narrows to what the run holds. The room is open from the
+	# first level-up now, which is why it has to be filled here rather than assumed shut.
+	for _branch_slot in range(prototype.progression.get_branch_slot_limit()):
+		prototype.progression.acquire_adaptation(Progression.PathId.THISTLE)
+		prototype.progression.acquire_adaptation(Progression.PathId.VINE)
 	prototype.progression._upgrade_offer_cursor = (
 		Progression.UpgradeId.BLOOM_FORCE
 	)

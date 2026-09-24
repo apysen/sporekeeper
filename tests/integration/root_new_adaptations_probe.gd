@@ -6,9 +6,9 @@ extends SceneTree
 ## virtual ranks any more, which is what used to make a Fruit release look random.
 const BONUS_LINES := {
 	Progression.UpgradeId.VINE_ELONGATION: 0.20,
-	Progression.UpgradeId.VINE_LIGNIFICATION: 0.25,
+	Progression.UpgradeId.VINE_FANNING: 0.18,
 	Progression.UpgradeId.VINE_TURGOR: 0.15,
-	Progression.UpgradeId.VINE_APICAL_DOMINANCE: 0.25,
+	Progression.UpgradeId.VINE_APICAL_DOMINANCE: 0.40,
 	Progression.UpgradeId.FRUIT_RIPENING: 0.25,
 	Progression.UpgradeId.FRUIT_MOMENTUM: 0.20,
 	Progression.UpgradeId.FRUIT_GERMINATION: 0.20,
@@ -24,7 +24,7 @@ const COUNT_LINES := [
 
 const OWNED_LINES := [
 	Progression.UpgradeId.VINE_ELONGATION,
-	Progression.UpgradeId.VINE_LIGNIFICATION,
+	Progression.UpgradeId.VINE_FANNING,
 	Progression.UpgradeId.VINE_TURGOR,
 	Progression.UpgradeId.VINE_APICAL_DOMINANCE,
 	Progression.UpgradeId.FRUIT_SET,
@@ -262,20 +262,29 @@ func _test_vine_outputs(
 		is_equal_approx(combat._cane_reach_multiplier, 1.0 + 0.20 * amplification),
 		"Elongation reach is its own bonus times the Network"
 	)
-	# Lignification plus Root's own Cane floor. The floor is not a Vine line: it is
-	# what Root pays a run that has not yet found anything to amplify, and it lands on
-	# the Cane whether or not Vine is owned. It shows up here because this build owns
-	# both, and the two are checked together so neither can quietly absorb the other.
-	# The floor reads the *whole* Network, not a line's share of it: it is not a line.
+	_check(
+		is_equal_approx(combat._cane_arc_multiplier, 1.0 + 0.18 * amplification),
+		"Fanning arc is its own bonus times the Network"
+	)
+	# Root's own Cane floor, which is what Root pays a run that has not yet found
+	# anything to amplify; it lands on the Cane whether or not Vine is owned. It used to
+	# be checked together with Lignification so neither could quietly absorb the other --
+	# and now that Vine's damage line is an arc line, the floor is the *only* thing
+	# moving the Cane's damage, which is a cleaner statement of the same contract. The
+	# floor reads the whole Network, not a line's share of it: it is not a line.
 	var cane_floor := (
 		(network - 1.0) * prototype.adaptation_director.root_cane_network_share
 	)
+	# Root's floor plus the flat bonus Vine's rope carries for being owned. Neither is a
+	# line: the floor is what Root pays a run with nothing yet to amplify, and the rope
+	# bonus is what came back when Lignification became Fanning. What matters here is
+	# that no *line* is multiplying the Cane's damage any more.
 	_check(
 		is_equal_approx(
 			combat._cane_damage_multiplier,
-			1.0 + 0.25 * amplification + cane_floor
+			1.0 + cane_floor + prototype.adaptation_director.vine_sweep_damage_bonus
 		),
-		"Lignification damage is its own bonus times the Network, over Root's Cane floor"
+		"no Vine line moves Cane damage: only Root's floor and the rope's own bonus"
 	)
 	_check(
 		cane_floor > 0.0,
@@ -289,7 +298,7 @@ func _test_vine_outputs(
 		"Turgor cadence is its own bonus times the Network"
 	)
 	_check(
-		is_equal_approx(combat._cane_apical_damage_bonus, 0.25 * amplification),
+		is_equal_approx(combat._cane_apical_damage_bonus, 0.40 * amplification),
 		"Apical Dominance is its own bonus times the Network"
 	)
 

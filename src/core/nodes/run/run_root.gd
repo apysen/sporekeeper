@@ -305,6 +305,44 @@ enum QueuedReward {
 ## produced exactly three, in the same places, in every run -- which is a schedule the
 ## player learns once and then stops reading.
 @export_range(0.0, 1.0, 0.05) var trial_chance := 0.5
+
+@export_group("First Campaign Notes")
+## Shown once, on the first Campaign a player starts after Provocation became
+## unlimited, and never again. Written in the first person on purpose: it is a note
+## from the person who changed the rules, not a tutorial, and what it has to get across
+## is that the difficulty is theirs to set now.
+@export_multiline var provoke_intro_body := (
+	"Some runs were finishing themselves, so instead of balancing, I'll let you "
+	+ "choose your own difficulty.\n\n"
+	+ "PROVOKE sits on the right, under your Adaptations. Press it and the next wave "
+	+ "arrives immediately. Whatever the current wave still had left shows up at the "
+	+ "front of the new one as a surge, so the earlier you call it, the harder it "
+	+ "lands.\n\n"
+	+ "Every press also raises Blight by one, and Blight never comes back down. Each "
+	+ "level adds 8% to what a wave can afford to send, 4% enemy health and 2% contact "
+	+ "damage, and it makes the nastier packs cheaper for the garden to buy. You get "
+	+ "more enemies, and worse ones.\n\n"
+	+ "Press it once a run or press it eleven times and see how fast you can "
+	+ "finish.\n\n"
+	+ "Live through a wave you called and it owes you a permanent boost to one of "
+	+ "your stats."
+)
+@export var provoke_intro_heading := "YOU SET THE PACE NOW"
+## The second page. Short on purpose: a Trial explains itself on the card, and this only
+## has to say that the card is a thing and that ignoring it is free.
+@export_multiline var trial_intro_body := (
+	"Some waves hand you a rule. Stay on your own Green. Kill no more than fifty. "
+	+ "Keep the ringed ground alive.\n\n"
+	+ "Following it is optional, and breaking it costs you nothing at all. Hold it to "
+	+ "the end of the wave and the card owes you a relic. Click the card to take it.\n\n"
+	+ "You will not get one every wave, and you will not always get the same rule."
+)
+@export var trial_intro_heading := "TRIALS"
+@export var trial_intro_dismiss := "GOT IT"
+@export var provoke_intro_next := "NEXT"
+## The key these notes are remembered under. Changing it shows them again, which is what
+## a later rules change would want.
+@export var provoke_intro_key := "provoke_unlimited"
 @export_range(0, 6, 1) var maximum_trials_per_run := 3
 
 ## The provoke button's two faces: gold once the window is open, the panel's own
@@ -312,10 +350,6 @@ enum QueuedReward {
 const PROVOKE_READY_COLOR := Color(0.769, 0.604, 0.314, 1.0)
 const PROVOKE_WAITING_COLOR := Color(0.663, 0.69, 0.608, 1.0)
 
-## Announced once per wave, the first moment the next one can be called in early.
-## Provocation is the Campaign's main difficulty dial and the player chooses it, so
-## they have to be told it is available rather than left to discover the key.
-@export var provoke_ready_banner := "PROVOKE READY — CALL THE NEXT WAVE IN"
 ## What the button says while the window is shut, and while it is open. Two strings
 ## rather than one greyed-out control, because "not yet" and "now" are the whole of
 ## what provocation asks the player to read.
@@ -349,6 +383,18 @@ FULLY DEVELOPED"
 @export_multiline var choice_relic_template := "{name}   {rarity}
 {detail}"
 @export var result_victory_header := "FRONTIER HELD"
+## The large white line across the top of the arena for Provocation, Blight, Evolutions
+## and the Clover machine. Off: it sat over the fight and was read as clutter, and the
+## Trial -- which leaned on it most -- now says what it needs to over Grandma instead.
+## The calls are left in place, so turning this back on restores every one of them.
+@export var show_event_banner := false
+## What taking a Canker's ground back pays, in Elite kills' worth of XP at the current
+## wave, spilled where the Knot stood.
+@export_range(0.0, 20.0, 0.5) var canker_clear_elite_kills := 3.0
+## How long the pointer over Grandma aims at a Knot that is forming or has formed.
+@export_range(0.5, 10.0, 0.5) var canker_pointer_seconds := 4.0
+## How wide the result panel grows to hold the contribution table.
+@export_range(400.0, 1200.0, 10.0) var result_summary_width := 720.0
 @export var result_defeat_header := "THE FRONTIER WITHERED"
 @export_multiline var result_detail_template := (
 	"{detail}
@@ -392,7 +438,6 @@ var _hit_freeze_remaining := 0.0
 var _banner_remaining := 0.0
 ## The wave whose Provocation window has already been announced, so the prompt
 ## arrives once when it opens rather than every tenth of a second afterwards.
-var _provoke_prompt_wave := 0
 ## Which face the Provoke button is currently wearing, as -1 for "not yet dressed".
 var _provoke_button_ready := -1
 ## Whether the run is currently choosing where to put a release, and which action is
@@ -438,6 +483,14 @@ var _mechanics_help: MechanicsHelp
 ## The Trial currently running, and its card, which is the side panel's `trial_card`
 ## under the name the rest of this file already knew it by.
 var _trial_director: TrialDirector
+## What every part of the build contributed, for the result screen. The systems that
+## produce each number report into it; nothing reads it back into the game.
+var _run_stats := RunStats.new()
+## The table under the result heading. Built in code and parented to the result panel.
+var _run_summary: RunSummary
+var _canker_pointer_target := Vector2.ZERO
+var _canker_pointer_text := ""
+var _canker_pointer_remaining := 0.0
 ## Whether the Trial that just resolved is owed its reward. Kept rather than paid
 ## immediately, because a Trial resolves on a wave boundary that may already be
 ## carrying a relic and a draft.
@@ -635,6 +688,7 @@ func _ready() -> void:
 	_refresh_dev_controls()
 	_build_mechanics_help()
 	_build_trial_director()
+	_build_run_summary()
 
 	overlay.show_annotations = false
 	_apply_clover_presence()
@@ -793,33 +847,70 @@ func _on_provoke_hovered() -> void:
 
 func _provoke_tooltip_body() -> String:
 	var skipped := maxi(0, roundi(wave_director.get_seconds_left_in_wave()))
-	var spent := wave_director.get_provoked_seconds()
-	var allowance := maxi(0, roundi(wave_director.maximum_provoked_seconds - spent))
 	var lines := PackedStringArray()
 	lines.append(
-		"Calls the next wave in now, skipping the %ds left on this one." % skipped
+		(
+			"Calls the next wave in now, skipping the %ds left on this one. "
+			+ "There is no limit: press it as often as you dare."
+		)
+		% skipped
 	)
 	lines.append(
 		"You gain a Growth reward for surviving the wave you called, and a run that "
-		+ "ends sooner. %ds of your compression allowance is left." % allowance
+		+ "ends sooner. Chained calls owe a Growth each, paid one wave at a time."
 	)
 	lines.append(
 		"You pay a Blight level, which is permanent, and a surge of extra threat at "
 		+ "the front of that wave -- larger the earlier you call it."
 	)
-	# The refusal belongs here too. The button stays pressable so that pressing it
-	# says why, but a player reading the card first should not have to press it to
-	# find out that the window is shut.
+	lines.append(_blight_tooltip_lines())
+	# The only refusals left are structural -- the run is over, this is the last wave,
+	# or the opening grace has not finished -- so the card says which rather than
+	# advising a patience that would never pay off.
 	if not wave_director.can_provoke():
-		if not wave_director.has_provocation_budget():
-			lines.append(
-				"Not available: the garden has been hurried as far as it will go this run."
-			)
-		else:
-			lines.append(
-				"Not yet: hold this wave longer, or clear what it has already sent."
-			)
+		lines.append("Not available: there is no next wave to call.")
 	return "\n\n".join(lines)
+
+
+func _blight_tooltip_lines() -> String:
+	## What the Blight level the player is about to buy actually does to the garden.
+	##
+	## "A Blight level, which is permanent" is true and useless: the player is being
+	## asked to make the rest of the run worse and cannot see by how much. Every number
+	## here is read off `BlightTable` rather than restated, so the card cannot drift from
+	## the thing it describes.
+	var level := wave_director.get_blight_level()
+	var next_level := BlightTable.clamp_level(level + 1)
+	var described := (
+		"Blight %s now: %s."
+		% [BlightTable.get_level_name(level), _blight_effects(level)]
+	)
+	if next_level == level:
+		# At the ceiling Provocation still overlaps waves and still costs a surge; it
+		# simply stops making the run permanently worse, and saying so is what stops the
+		# last few calls reading as the most expensive ones.
+		return described + "
+Blight is at its ceiling: Provoking adds no more."
+	return (
+		described
+		+ "
+Blight %s would be: %s."
+		% [BlightTable.get_level_name(next_level), _blight_effects(next_level)]
+	)
+
+
+func _blight_effects(level: int) -> String:
+	## The four columns a Blight level moves, in the order they are felt: what the wave
+	## can afford, what it buys with it, and what the bodies it sends are worth.
+	return (
+		"%+d%% wave budget, expensive packs at %d%% price, %+d%% enemy health, %+d%% contact damage"
+		% [
+			roundi((BlightTable.get_budget_multiplier(level) - 1.0) * 100.0),
+			roundi(BlightTable.get_specialist_price_multiplier(level) * 100.0),
+			roundi((BlightTable.get_health_multiplier(level) - 1.0) * 100.0),
+			roundi((BlightTable.get_damage_multiplier(level) - 1.0) * 100.0),
+		]
+	)
 
 
 func _on_provoke_pressed() -> void:
@@ -839,17 +930,7 @@ func _provoke_next_wave() -> void:
 		return
 	if wave_director.provoke() > 0.0:
 		return
-	# Two different refusals, and telling the player the wrong one is worse than
-	# telling them nothing: "hold the wave longer" is advice they can act on, and it
-	# is false once the run has spent its compression allowance for good.
-	if not wave_director.has_provocation_budget():
-		_set_status(
-			"The garden has been hurried as far as it will go this run."
-		)
-		return
-	_set_status(
-		"Not yet. Hold this wave longer, or clear what it has already sent."
-	)
+	_set_status("There is no next wave to call in.")
 
 
 func _report_wager_debug() -> void:
@@ -949,6 +1030,10 @@ func advance_run(delta: float) -> void:
 	# much of it has matured. Earning is also what develops the three physical axes,
 	# so a run that holds ground is a run that becomes physically capable of holding
 	# more of it.
+	_run_stats.now = get_elapsed_seconds()
+	_run_stats.peak_mature_percent = maxf(
+		_run_stats.peak_mature_percent, territory_field.get_mature_percent_of_arena()
+	)
 	progression.tick_biomass(
 		delta,
 		territory_field.get_player_percent(),
@@ -980,6 +1065,7 @@ func advance_run(delta: float) -> void:
 	man_eater.advance(delta)
 	pruning_director.advance(delta)
 	canker_director.advance(delta)
+	_advance_canker_pointer(delta)
 	if _trial_director != null:
 		_trial_director.advance(delta)
 		_refresh_trial_mark()
@@ -1012,7 +1098,6 @@ func reset_run() -> void:
 	_damage_vignette_remaining = 0.0
 	_damage_vignette_alpha = 0.0
 	_hit_freeze_remaining = 0.0
-	_provoke_prompt_wave = 0
 	_provoke_button_ready = -1
 	_update_damage_vignette()
 	_hud_accumulator = 999.0
@@ -1051,7 +1136,11 @@ func reset_run() -> void:
 	canker_director.reset_director()
 	if _trial_director != null:
 		_trial_director.reset_trials()
+	_run_stats.reset()
 	overlay.clear_trial_mark()
+	overlay.clear_trial_cue()
+	_canker_pointer_remaining = 0.0
+	overlay.clear_pointer_cue()
 	_owed_trial_relics = 0
 	_trials_offered = 0
 	spore_director.reset_director()
@@ -1063,14 +1152,55 @@ func reset_run() -> void:
 	_refresh_simulation_pause()
 	_apply_progression_modifiers()
 	_set_status("The frontier is alive. Move with WASD; Cane sweeps automatically.")
-	# Campaign's first Adaptation is handed out rather than waited for. Wave 1 is on
-	# the wave table's grant list and no boundary is ever crossed into it, so the
-	# opening choice is opened here -- and it is the *only* thing the player is asked
-	# before the first enemy walks in.
-	if wave_director.is_campaign_mode():
-		_queue_reward(QueuedReward.ADAPTATION_DRAFT)
-		_drain_reward_queue()
+	# A run opens on the garden, not on a menu. The first Adaptation used to be handed
+	# out here, before a single enemy had walked in, which asked the player to commit to
+	# a build with nothing to base it on -- and made the first thing the game did a
+	# panel. It is earned at the first level-up now, like every choice after it.
 	_update_hud()
+	_maybe_show_provoke_intro()
+
+
+func _maybe_show_provoke_intro() -> void:
+	## Once, before the first Campaign this build ever starts, and never again.
+	##
+	## Shown here rather than on the menu because the thing it points at is on the
+	## panel behind it: a note about a button reads very differently when the button is
+	## on screen while you read it.
+	if _mechanics_help == null or not wave_director.is_campaign_mode():
+		return
+	if not save_enabled:
+		# The suite loads this scene in dozens of places and a probe is not a player.
+		# Only a run the player launched from the menu is a first launch.
+		return
+	if SettingsStore.has_seen(provoke_intro_key):
+		return
+	SettingsStore.mark_seen(provoke_intro_key)
+	# Each page leaves the thing it is about undimmed, and the Trial page needs a card
+	# on the panel to leave undimmed -- there is no live Trial on Wave 1, so it borrows
+	# one. `show_example` draws it and never judges it.
+	if _trial_director != null:
+		_trial_director.show_example(
+			TrialCatalog.Id.ROOTED, TrialCatalog.SCALING_REFERENCE_WAVE
+		)
+	_mechanics_help.show_notices([
+		{
+			"heading": provoke_intro_heading,
+			"body": provoke_intro_body,
+			"button": provoke_intro_next,
+			"highlight": (
+				provoke_button.get_global_rect() if provoke_button != null else Rect2()
+			),
+		},
+		{
+			"heading": trial_intro_heading,
+			"body": trial_intro_body,
+			"button": trial_intro_dismiss,
+			"highlight": (
+				_trial_director.get_global_rect() if _trial_director != null else Rect2()
+			),
+		},
+	])
+	_refresh_simulation_pause()
 
 
 func debug_advance_time(seconds: float) -> void:
@@ -1226,6 +1356,7 @@ func _on_compost_cache_granted() -> void:
 	## frontier. A reward event rather than a Seed germination, so nothing that
 	## counts Seeds counts this.
 	player.heal(player.get_max_health() * compost_cache_heal_fraction)
+	territory_field.attribution = RunStats.Source.RELICS
 	territory_field.queue_seed_growth(
 		_find_compost_cache_site(),
 		compost_cache_growth_mass_scale
@@ -1280,21 +1411,23 @@ func _on_elite_defeated() -> void:
 	# The Elite is the run's first build check, and its reward is both a relic and
 	# the first Branch: breadth arrives once the Core pair has been tested.
 	_queue_reward(QueuedReward.MILESTONE_RELIC)
-	# The Elite is the run's first build check, and beating it earns room for a
-	# third Adaptation. The room, not the Adaptation: what grows in it is still
-	# drafted, the same way the Core pair was.
-	if progression.unlock_branch_slot():
+	# The Elite is the run's first build check, and its Adaptation reward is a draft
+	# into whatever room the roster has left. The room is no longer what it sells --
+	# every slot is open from the first level-up now -- so the milestone offers the
+	# draft whenever there is somewhere to put it, rather than only on the beat where
+	# it happened to hand out the permission as well.
+	if progression.has_branch_slot_open() or progression.has_core_slot_open():
 		_queue_reward(QueuedReward.ADAPTATION_DRAFT)
-		_set_status("ROOTBREAKER FELLED — a relic, and room for a new Adaptation.")
+		_set_status("ROOTBREAKER FELLED — a relic, and a new Adaptation.")
 	_queue_milestone_evolution()
 	_drain_reward_queue()
 
 
 func _on_boss_defeated() -> void:
 	_queue_reward(QueuedReward.MILESTONE_RELIC)
-	if progression.unlock_branch_slot():
+	if progression.has_branch_slot_open() or progression.has_core_slot_open():
 		_queue_reward(QueuedReward.ADAPTATION_DRAFT)
-		_set_status("THE BURROWER FALLS — a relic, and room for your last Adaptation.")
+		_set_status("THE BURROWER FALLS — a relic, and your last Adaptation.")
 	else:
 		_set_status("BOSS DEFEATED — claim a relic from its remains.")
 	_queue_milestone_evolution()
@@ -1453,7 +1586,14 @@ func _show_choice(kind: int, options: PackedInt32Array) -> void:
 	var entries: Array = []
 	for option_id in _choice_ids:
 		entries.append(_build_choice_entry(kind, option_id))
-	choice_panel.show_options(header_text, entries)
+	# Everything still owed behind this panel: the queue, plus the two debts that are
+	# counted rather than queued. A player who can see "1 of 4" answers differently
+	# from one who thinks this is the last thing between them and the wave.
+	choice_panel.show_options(
+		header_text,
+		entries,
+		_reward_queue.size() + _owed_wave_relics + _owed_trial_relics
+	)
 	_refresh_simulation_pause()
 
 
@@ -1563,7 +1703,7 @@ func _on_display_settings_changed() -> void:
 func _show_banner(text: String) -> void:
 	# Major events get the battlefield's attention briefly and then give it back.
 	# Nothing here earns a permanent HUD section.
-	if banner_label == null:
+	if banner_label == null or not show_event_banner:
 		return
 	# The wording of an event is the event's own; how the banner frames it is the
 	# banner's, and that is on the node.
@@ -2017,17 +2157,46 @@ func _on_canker_warning_started(local_position: Vector2) -> void:
 	# is coming, and a pulse on the ground puts the warning where the player has to
 	# look anyway instead of at the top of the screen.
 	overlay.spawn_hostile_pulse(local_position, canker_director.sample_radius)
+	_point_at_canker(local_position, "CANKER FORMING")
 	_set_status("ROT TAKING ROOT — hostile ground is entrenching.")
 
 
 func _on_canker_formed(local_position: Vector2) -> void:
 	overlay.spawn_hostile_pulse(local_position, canker_director.sample_radius * 1.25)
-	_set_status("CANKER FORMING — reinforcements are coming through the interior.")
+	_point_at_canker(local_position, "CANKER")
+	_set_status("CANKER — it is spreading Rot. Take its ground back.")
 
 
 func _on_canker_withered(local_position: Vector2) -> void:
 	overlay.spawn_hostile_pulse(local_position, canker_director.knot_diameter * 0.6)
+	# Taking one back pays, where it stands: the reason to go and do it, not only the
+	# cost of leaving it.
+	combat.spill_reward_xp(local_position, canker_clear_elite_kills)
 	_set_status("The Canker withered. The ground under it is yours again.")
+
+
+## Points from Grandma toward a Knot for a few seconds. The arena is always wholly on
+## screen, so what the player lacks is not a way to find the Knot but a reason to look
+## away from the fight at it; the pointer is on her, where she is already looking.
+func _point_at_canker(local_position: Vector2, text: String) -> void:
+	_canker_pointer_target = local_position
+	_canker_pointer_text = text
+	_canker_pointer_remaining = canker_pointer_seconds
+
+
+func _advance_canker_pointer(delta: float) -> void:
+	if _canker_pointer_remaining <= 0.0:
+		return
+	_canker_pointer_remaining = maxf(0.0, _canker_pointer_remaining - delta)
+	if _canker_pointer_remaining <= 0.0:
+		overlay.clear_pointer_cue()
+		return
+	overlay.set_pointer_cue(
+		player.get_arena_position(),
+		_canker_pointer_target,
+		_canker_pointer_text,
+		clampf(_canker_pointer_remaining / 0.5, 0.0, 1.0)
+	)
 
 
 func _on_health_changed(current: float, maximum: float) -> void:
@@ -2181,6 +2350,56 @@ func _finish_run(victory: bool, detail: String) -> void:
 		result_detail.text += "
 
 " + _record_finished_run(victory)
+	_run_stats.now = get_elapsed_seconds()
+	_layout_result_panel()
+
+
+## Grows the result panel around the contribution table and centres it on the arena.
+##
+## The panel was sized for three lines of text. The table's height depends on how many
+## things in the build did anything, so the panel is measured to it here rather than
+## authored at a size that would be wrong for most runs.
+func _layout_result_panel() -> void:
+	if _run_summary == null:
+		return
+	_run_summary.show_stats(_run_stats, territory_field.get_claimable_cell_count())
+	var hint := result_panel.get_node_or_null("Hint") as Control
+	var width := result_summary_width
+	var margin := 28.0
+	var inner := width - margin * 2.0
+	var center_x := result_panel.position.x + result_panel.size.x * 0.5
+	result_header.position = Vector2(margin, 22.0)
+	result_header.size = Vector2(inner, result_header.size.y)
+	var detail_font := result_detail.get_theme_font("font")
+	var detail_size := result_detail.get_theme_font_size("font_size")
+	var detail_height := detail_font.get_multiline_string_size(
+		result_detail.text, HORIZONTAL_ALIGNMENT_CENTER, inner, detail_size
+	).y
+	result_detail.position = Vector2(margin, result_header.position.y + result_header.size.y + 6.0)
+	result_detail.size = Vector2(inner, detail_height)
+	var cursor := result_detail.position.y + detail_height + 16.0
+	_run_summary.position = Vector2(margin, cursor)
+	_run_summary.size = Vector2(inner, _run_summary.get_required_height())
+	cursor += _run_summary.size.y + 12.0
+	if hint != null:
+		hint.position = Vector2(margin, cursor)
+		hint.size = Vector2(inner, hint.size.y)
+		cursor += hint.size.y
+	var height := cursor + 18.0
+	var viewport := get_viewport_rect().size
+	result_panel.size = Vector2(width, height)
+	result_panel.position = Vector2(
+		clampf(center_x - width * 0.5, 8.0, maxf(8.0, viewport.x - width - 8.0)),
+		maxf(8.0, (viewport.y - height) * 0.5)
+	)
+
+
+func _build_run_summary() -> void:
+	_run_summary = RunSummary.new()
+	result_panel.add_child(_run_summary)
+	combat.run_stats = _run_stats
+	player.run_stats = _run_stats
+	territory_field.run_stats = _run_stats
 
 
 func _refresh_dev_controls() -> void:
@@ -2205,6 +2424,7 @@ func _build_trial_director() -> void:
 	_trial_director.setup(territory_field, player, combat)
 	_trial_director.trial_started.connect(_on_trial_started)
 	_trial_director.trial_resolved.connect(_on_trial_resolved)
+	_trial_director.reward_claimed.connect(_on_trial_reward_claimed)
 	# A Trial counts what the run tells it happened rather than reading the combat
 	# director, so the two cannot disagree about a kill that a relic caused.
 	combat.enemy_killed.connect(_on_kill_for_trial)
@@ -2282,12 +2502,23 @@ func _on_trial_wave_ended(_wave_number: int) -> void:
 	# The answered Trial's ground stops being marked here rather than when the rule
 	# broke, so a player who lost it can see which circle it was.
 	overlay.clear_trial_mark()
+	overlay.clear_trial_cue()
 
 
 func _refresh_trial_mark() -> void:
 	## Last Garden is the only rule that is about a place, and a place the player
 	## cannot see is a rule they cannot play to. The ring is drawn on the arena rather
 	## than described on the card for the same reason the card exists at all.
+	var cue := _trial_director.get_world_cue()
+	if cue.is_empty():
+		overlay.clear_trial_cue()
+	else:
+		overlay.set_trial_cue(
+			player.get_arena_position(),
+			String(cue["text"]),
+			float(cue["fraction"]),
+			bool(cue["urgent"])
+		)
 	if _trial_director.has_marked_region():
 		overlay.set_trial_mark(
 			_trial_director.get_marked_region(),
@@ -2298,23 +2529,35 @@ func _refresh_trial_mark() -> void:
 	overlay.clear_trial_mark()
 
 
-func _on_trial_started(trial_id: int) -> void:
-	## The banner points at the card rather than repeating it. The rule itself is on
-	## the panel for the whole wave now, and printing the sentence twice in two places
-	## is what made a Trial read as a notification instead of as a thing on the table.
-	_show_banner("TRIAL — %s" % TrialCatalog.get_trial_name(trial_id))
+func _on_trial_started(_trial_id: int) -> void:
+	## Nothing to announce here: the rule is shown over Grandma while the Trial arms --
+	## see `TrialDirector.get_world_cue` -- rather than across the top of the arena.
+	pass
 
 
-func _on_trial_resolved(trial_id: int, success: bool) -> void:
+func _on_trial_resolved(_trial_id: int, success: bool) -> void:
 	## A held Trial owes a relic. A broken one owes nothing and costs nothing, which
 	## is the whole contract: section 27 is explicit that failure should not end a run,
 	## and a constraint the player can simply stop honouring is one they can take a
 	## risk on rather than one they have to play around.
+	# Both outcomes are announced over Grandma by the Trial itself.
 	if not success:
-		_show_banner("%s BROKEN" % TrialCatalog.get_trial_name(trial_id))
 		return
+	# Owed, and left on the card until the player takes it. A wave boundary is the
+	# busiest moment the run has -- a draft, a relic, an Evolution and a Growth can all
+	# land on it -- and a Trial's relic queued into that could sit behind the lot and
+	# never be seen. The card says REAP YOUR REWARD and waits.
 	_owed_trial_relics += 1
-	_show_banner("%s HELD" % TrialCatalog.get_trial_name(trial_id))
+
+
+func _on_trial_reward_claimed(trial_id: int) -> void:
+	## The player pressed the card. Paid through the ordinary reward queue so a claim
+	## made while a draft is open waits its turn rather than being dropped -- the queue
+	## was never the problem, being pushed into it unasked at a wave boundary was.
+	if _owed_trial_relics <= 0:
+		return
+	_owed_trial_relics -= 1
+	_set_status("%s — the Trial pays out." % TrialCatalog.get_trial_name(trial_id))
 	_queue_reward(QueuedReward.TRIAL_RELIC)
 	_drain_reward_queue()
 
@@ -2323,17 +2566,45 @@ func _build_mechanics_help() -> void:
 	_mechanics_help = MechanicsHelp.new()
 	interface_layer.add_child(_mechanics_help)
 	_mechanics_help.glossary_closed.connect(_on_glossary_closed)
+	_mechanics_help.notice_closed.connect(_on_notice_closed)
 	if all_in_label != null:
 		all_in_label.visible = false
 	wager_layer.clear_wager()
 
 
-func _on_reward_hovered(_index: int, button: Button) -> void:
+func _on_reward_hovered(index: int, button: Button) -> void:
+	## What the reward is, and then what the words in it mean.
+	##
+	## It used to pass only the button's text to the glossary, which answers with a card
+	## per *mechanic term* it finds in that text -- so a reward whose name happened to
+	## contain no glossary word produced no card at all, and one that did produced an
+	## explanation of the word while never saying what the reward itself does. The hover
+	## leads with the option's own description now, which is the same shortened line the
+	## Adaptation panel puts on a slot, and the glossary cards stack under it.
 	if _choice_kind == ChoiceKind.NONE:
 		return
 	var panel_rect := choice_panel.get_global_rect()
 	var anchor := Rect2(panel_rect.end.x, button.get_global_rect().position.y, 0.0, 0.0)
-	_mechanics_help.show_reward_tooltips(button.text, anchor)
+	var source := button.text
+	if index >= 0 and index < _choice_ids.size():
+		var described := _describe_choice(_choice_kind, _choice_ids[index])
+		if not described.is_empty():
+			source = "%s
+%s" % [button.text, described]
+	_mechanics_help.show_reward_tooltips(source, anchor)
+
+
+func _describe_choice(kind: int, option_id: int) -> String:
+	## The shortened description for one thing on the reward screen, whatever kind of
+	## thing it is. Each pool already owns its own wording; this only asks the right one.
+	match kind:
+		ChoiceKind.RELIC:
+			return progression.get_relic_description(option_id)
+		ChoiceKind.EVOLUTION:
+			return Evolutions.get_evolution_description(option_id)
+		ChoiceKind.GROWTH:
+			return GrowthCatalog.get_description(option_id)
+	return progression.get_upgrade_description(option_id)
 
 
 func _apply_clover_presence() -> void:
@@ -2370,6 +2641,14 @@ func _open_glossary() -> void:
 
 func _close_glossary() -> void:
 	_mechanics_help.close_glossary()
+
+
+func _on_notice_closed() -> void:
+	## The example Trial goes with the note that borrowed it, so Wave 1 does not open
+	## with a card promising a relic nobody set.
+	if _trial_director != null:
+		_trial_director.clear_example()
+	_refresh_simulation_pause()
 
 
 func _on_glossary_closed() -> void:
@@ -2420,6 +2699,7 @@ func _refresh_simulation_pause() -> void:
 		pause_menu.is_open()
 		or _choice_kind != ChoiceKind.NONE
 		or _run_state != RunState.RUNNING
+		or (_mechanics_help != null and _mechanics_help.is_notice_open())
 		# The hit freeze stops everything, including the components that step
 		# themselves. A freeze that only paused half the simulation would be enemies
 		# sliding through a stationary player rather than a moment of impact.
@@ -2515,30 +2795,10 @@ func _update_hud() -> void:
 			# Nothing worth announcing until a pairing is actually in reach.
 			evolution_label.text = ""
 			evolution_label.modulate = Color("93aab0")
-	_announce_provocation_window()
 	_refresh_provoke_button()
 	_advance_all_in_countdown()
 	relic_tray.refresh()
 	adaptation_tree.refresh()
-
-
-func _announce_provocation_window() -> void:
-	## Says once, per wave, that the next one can now be called in.
-	##
-	## On the HUD's own clock rather than on a signal, because the window opens from
-	## two different directions -- the wave's fortieth second, or the player having
-	## cleared what it already sent -- and neither of those is an event the director
-	## emits. `can_provoke` answers the clock condition first, so the ordinary case
-	## costs a comparison.
-	if _run_state != RunState.RUNNING or _choice_kind != ChoiceKind.NONE:
-		return
-	if not wave_director.is_campaign_mode():
-		return
-	var wave := get_current_wave_number()
-	if _provoke_prompt_wave == wave or not wave_director.can_provoke():
-		return
-	_provoke_prompt_wave = wave
-	_show_banner(provoke_ready_banner)
 
 
 func _format_time(seconds: float) -> String:
@@ -2585,6 +2845,7 @@ func capture_snapshot() -> RunSnapshot:
 	snapshot.set_system("field", territory_field.capture_state())
 	snapshot.set_system("cankers", canker_director.capture_state())
 	snapshot.set_system("trial", _capture_trial_state())
+	snapshot.set_system("stats", _run_stats.capture_state())
 	return snapshot
 
 
@@ -2613,6 +2874,7 @@ func restore_snapshot(snapshot: RunSnapshot) -> bool:
 	# and a Knot put back onto a board that had not arrived yet would wither on that tick.
 	canker_director.apply_state(snapshot.get_system("cankers"))
 	_apply_trial_state(snapshot.get_system("trial"))
+	_run_stats.apply_state(snapshot.get_system("stats"))
 	# The build is restored as levels and relics; what those levels *do* to the field,
 	# the player and the directors is applied from them rather than saved alongside
 	# them, so a resumed run gets this build's tuning for the upgrades it owns.
@@ -2655,6 +2917,7 @@ func _record_finished_run(victory: bool) -> String:
 	var wave := wave_director.get_current_wave_number()
 	var previous_best := record.best_wave_by_mode[mode]
 	record.record_run(mode, victory, wave, progression.biomass_earned_total)
+	record.add_history(_history_entry(victory, mode, wave))
 	SaveStore.write_meta(record.to_dictionary())
 	SaveStore.clear_run()
 	if wave > previous_best:
@@ -2666,6 +2929,32 @@ func _record_finished_run(victory: bool) -> String:
 		"mode": RUN_MODE.mode_name(mode),
 		"best": record.best_wave_by_mode[mode],
 	})
+
+
+## The finished run as the Past Runs page shows it: the result line's numbers, the
+## build that got there, and the contribution table the result panel drew.
+func _history_entry(victory: bool, mode: int, wave: int) -> Dictionary:
+	var adaptations := PackedStringArray()
+	for path_id in progression.get_owned_adaptations():
+		adaptations.append(Progression.get_path_name(path_id))
+	var evolution_names := PackedStringArray()
+	for evolution_id in progression.get_active_evolutions():
+		evolution_names.append(Evolutions.get_evolution_name(evolution_id))
+	return {
+		"mode": mode,
+		"victory": victory,
+		"wave": wave,
+		"seconds": get_elapsed_seconds(),
+		"level": progression.current_level,
+		"green": territory_field.get_player_percent(),
+		"blight": wave_director.get_blight_level(),
+		"unix_time": int(Time.get_unix_time_from_system()),
+		"claimable_cells": territory_field.get_claimable_cell_count(),
+		"adaptations": adaptations,
+		"evolutions": evolution_names,
+		"relics": progression.get_owned_relic_names(),
+		"stats": _run_stats.capture_state(),
+	}
 
 
 ## Continues the saved run when the menu asked for it, and otherwise leaves the fresh

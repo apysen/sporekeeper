@@ -141,6 +141,7 @@ func _drive() -> void:
 	_check_redirection_is_topology_only(run, director)
 	_check_survives_a_save(director)
 	_check_reclaim_destroys(run, director, field)
+	_check_quiet_after_a_clear(director)
 	_check_variation(director)
 
 
@@ -378,6 +379,28 @@ func _check_variation(director: CankerDirector) -> void:
 		"with rotations that actually differ (%d distinct of %d)"
 			% [distinct_rotations.size(), rotations.size()]
 	)
+
+
+func _check_quiet_after_a_clear(director: CankerDirector) -> void:
+	## Taking a Knot back buys a wave of quiet. The board here is still almost wholly
+	## Rot, so dozens of sites are climbing: before the formation cooldown, the next Knot
+	## finished its hold and warned within seconds of the last one withering.
+	var warnings := [0]
+	var count_warning := func(_position: Vector2) -> void: warnings[0] += 1
+	director.canker_warning_started.connect(count_warning)
+	var after_clear := director.get_active_knot_count()
+	_advance(director, director.formation_cooldown - 5.0)
+	_check(
+		warnings[0] == 0 and director.get_active_knot_count() == after_clear,
+		"no new Knot warns inside the formation cooldown after one is cleared (%d warned)"
+			% [warnings[0]]
+	)
+	_advance(director, 5.0 + director.hold_time + director.warning_time + 3.0)
+	_check(
+		warnings[0] > 0,
+		"and once the cooldown has passed, held Rot can raise the next one"
+	)
+	director.canker_warning_started.disconnect(count_warning)
 
 
 func _advance(director: CankerDirector, seconds: float) -> void:

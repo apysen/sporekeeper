@@ -65,8 +65,11 @@ const LABEL_FONT: Font = preload("res://assets/fonts/beholden/Beholden-Medium.tt
 @export_range(0.0, 1.0, 0.01) var activation_rot_ratio := 0.65
 @export_range(0.0, 1.0, 0.01) var cancel_rot_ratio := 0.50
 ## Seconds of held Rot before a site starts warning, and how long the warning runs.
-@export_range(1.0, 60.0, 0.5) var hold_time := 10.0
-@export_range(0.5, 10.0, 0.1) var warning_time := 2.5
+## Doubled from 10 once Knots started costing Green: rot is almost everywhere, so
+## the hold is what sets how soon a freed slot fills again.
+@export_range(1.0, 60.0, 0.5) var hold_time := 20.0
+## Long enough for the pointer over Grandma to be read and turned toward.
+@export_range(0.5, 10.0, 0.1) var warning_time := 4.0
 ## Knots allowed at once at the Campaign's most permissive. Two is an interior front;
 ## more is a second perimeter, which is why only a heavily Blighted Act IV reaches it.
 ## Quick, and any run without a wave director, uses this number flat.
@@ -105,12 +108,41 @@ const LABEL_FONT: Font = preload("res://assets/fonts/beholden/Beholden-Medium.tt
 ## Seconds before ground that lost a Knot may grow another. The player won that fight
 ## and should get to use the room it bought.
 @export_range(0.0, 60.0, 0.5) var reestablish_cooldown := 8.0
+## Seconds after any Knot forms or withers before another may start warning, anywhere.
+##
+## Rot covers most of a late board, so dozens of sites sit climbing toward a Knot at
+## once, restarting their hold every time they are refused a slot. The moment the
+## player cleared one, the next finished its hold within seconds and formed somewhere
+## else about fourteen seconds after the first withered -- the reward for taking one
+## back was another. A wave's worth of quiet is what taking one back buys now.
+@export_range(0.0, 300.0, 5.0) var formation_cooldown := 60.0
 
 @export_group("Destruction")
 ## Rot share a Knot's ground must fall below to start withering, and how long it must
 ## stay there. Nothing else removes one.
 @export_range(0.0, 1.0, 0.01) var destroy_rot_ratio := 0.35
 @export_range(0.0, 10.0, 0.1) var destroy_hold_time := 1.0
+
+@export_group("Creep")
+## A Knot pushes Rot outward along a front that widens the longer it stands. Before
+## this a Knot changed only where some enemies entered, formed in ground the player had
+## already given up, and could stand from Wave 6 to the end of the run without costing
+## anything -- measured, both of a run's Knots did exactly that. Green is the run's
+## health, so a structure that eats it is the one that has to be answered.
+##
+## The push is ordinary hostile growth, so everything that already resists Rot --
+## maturity, Bramble's hedge, Root's Mature Strength -- resists a Knot as well.
+@export_range(0.1, 5.0, 0.05) var creep_interval_seconds := 0.4
+## Stamps laid across the fan each pulse, how wide the fan is, and how hard each one
+## pushes.
+@export_range(1, 16, 1) var creep_points := 5
+@export_range(0.0, 3.0, 0.05) var creep_fan_radians := 0.9
+@export_range(0.0, 5.0, 0.05) var creep_strength := 0.5
+## Size of each stamp, as a multiple of a Grazer's bite.
+@export_range(0.2, 4.0, 0.05) var creep_stamp_radius := 1.3
+## The front starts at the Knot's own edge and reaches this far after this long.
+@export_range(40.0, 600.0, 5.0) var creep_maximum_radius := 240.0
+@export_range(1.0, 600.0, 1.0) var creep_growth_seconds := 90.0
 
 @export_group("Spawn redirection")
 ## Share of ordinary reinforcements one Knot may pull inside, and the ceiling across
@@ -180,6 +212,7 @@ var _since_evaluation := 0.0
 var _active_knots := 0
 var _elapsed := 0.0
 var _redirects_served := 0
+var _formation_cooldown_remaining := 0.0
 var _label_layer: LabelLayer
 
 
@@ -231,6 +264,8 @@ class Site:
 	var age := 0.0
 	## Counts down after this Knot answers a spawn request, for the pulse.
 	var flash_remaining := 0.0
+	## Counts down to the next push of Rot.
+	var creep_remaining := 0.0
 
 
 func _ready() -> void:
@@ -273,6 +308,7 @@ func reset_director() -> void:
 	_active_knots = 0
 	_elapsed = 0.0
 	_redirects_served = 0
+	_formation_cooldown_remaining = 0.0
 	_evaluation_remaining = 0.0
 	_since_evaluation = 0.0
 	_build_sites()
@@ -290,12 +326,17 @@ func advance(delta: float) -> void:
 		return
 	_elapsed += delta
 	_since_evaluation += delta
+	_formation_cooldown_remaining = maxf(0.0, _formation_cooldown_remaining - delta)
 	for site in _sites:
 		if site.cooldown_remaining > 0.0:
 			site.cooldown_remaining = maxf(0.0, site.cooldown_remaining - delta)
 		if site.stage == CankerRules.Stage.ACTIVE:
 			site.age += delta
 			site.flash_remaining = maxf(0.0, site.flash_remaining - delta)
+			site.creep_remaining -= delta
+			if site.creep_remaining <= 0.0:
+				site.creep_remaining = creep_interval_seconds
+				_push_creep(site)
 	if not is_armed():
 		# Measured but not judged. Sites keep their clocks at zero until the gate wave,
 		# so the first thing that can happen once it arrives is a site starting to climb
@@ -536,6 +577,9 @@ func _can_open_knot(site: Site) -> bool:
 	## Knots themselves are worth.
 	if site.cooldown_remaining > 0.0:
 		return false
+	# A site already warning keeps its promise; the cooldown only stops new ones.
+	if site.stage != CankerRules.Stage.WARNING and _formation_cooldown_remaining > 0.0:
+		return false
 	if _committed_count(site) >= get_maximum_knots_now():
 		return false
 	var player_distance := (
@@ -583,8 +627,45 @@ func _open_knot(site: Site) -> void:
 	site.texture_index = _random.randi_range(0, CANKER_TEXTURES.size() - 1)
 	site.rotation = _random.randf() * TAU
 	_active_knots += 1
+	_formation_cooldown_remaining = formation_cooldown
 	canker_formed.emit(site.position)
 
+
+## How far a Knot's front has reached.
+func get_creep_radius(site_age: float) -> float:
+	var start := knot_diameter * 0.5
+	var progress := clampf(site_age / maxf(0.001, creep_growth_seconds), 0.0, 1.0)
+	return lerpf(start, maxf(start, creep_maximum_radius), progress)
+
+
+func _push_creep(site: Site) -> void:
+	## One pulse of Rot: on the Knot itself, so the ground it stands on stays its own,
+	## and along a fan aimed at the nearest Green within the front's reach.
+	##
+	## Aimed rather than spread round a ring. An even ring put its stamps on the Rot and
+	## bare ground around the Knot almost every time, and measured it cost a patch of
+	## Green beside it a handful of cells a minute -- which is the cosmetic Knot again.
+	## Reaching for the player's territory is also the thing it should read as doing.
+	if creep_strength <= 0.0:
+		return
+	territory_field.queue_hostile_growth(site.position, creep_strength, creep_stamp_radius)
+	var nearest := territory_field.find_nearest_owned_cell(site.position)
+	if nearest < 0:
+		return
+	var target := territory_field.get_cell_local_position(nearest)
+	var distance := site.position.distance_to(target)
+	var reach := get_creep_radius(site.age)
+	if distance > reach:
+		# Green beyond the front is safe for now. The front keeps widening.
+		return
+	var direction := (target - site.position).normalized()
+	for index in range(creep_points):
+		var spread := (
+			(float(index) / float(maxi(1, creep_points - 1)) - 0.5) * creep_fan_radians
+		)
+		var point := site.position + direction.rotated(spread) * distance
+		if territory_field.contains_local_point(point):
+			territory_field.queue_hostile_growth(point, creep_strength, creep_stamp_radius)
 
 func _wither_knot(site: Site) -> void:
 	site.stage = CankerRules.Stage.INACTIVE
@@ -594,6 +675,7 @@ func _wither_knot(site: Site) -> void:
 	site.flash_remaining = 0.0
 	site.cooldown_remaining = reestablish_cooldown
 	_active_knots = maxi(0, _active_knots - 1)
+	_formation_cooldown_remaining = formation_cooldown
 	canker_withered.emit(site.position)
 
 
@@ -639,6 +721,7 @@ func capture_state() -> Dictionary:
 		"texture_indices": texture_indices,
 		"rotations": rotations,
 		"redirects_served": _redirects_served,
+		"formation_cooldown": _formation_cooldown_remaining,
 	}
 
 
@@ -691,6 +774,7 @@ func apply_state(state: Dictionary) -> void:
 		if site.stage == CankerRules.Stage.ACTIVE:
 			_active_knots += 1
 	_redirects_served = maxi(0, int(state.get("redirects_served", 0)))
+	_formation_cooldown_remaining = maxf(0.0, float(state.get("formation_cooldown", 0.0)))
 	queue_redraw()
 
 
@@ -716,7 +800,11 @@ func _saved_ints(state: Dictionary, key: String, count: int) -> PackedInt32Array
 func _draw() -> void:
 	for site in _sites:
 		match site.stage:
-			CankerRules.Stage.ACCUMULATING, CankerRules.Stage.WARNING:
+			# Only the patch that is actually about to become a Knot is marked. Every
+			# accumulating site drew its own ring, and on a board that is mostly Rot that
+			# was twenty-odd pulsing circles for the whole back half of a run -- only two of
+			# which could ever become anything.
+			CankerRules.Stage.WARNING:
 				_draw_telegraph(site)
 			CankerRules.Stage.ACTIVE:
 				_draw_knot(site)

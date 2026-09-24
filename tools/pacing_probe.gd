@@ -68,8 +68,19 @@ var _seed := 20260920
 var _kills := 0
 var _picks := 0
 var _provocations := 0
+## The wave the policy last called from, so no wave is called twice.
+var _last_provoked_wave := -1
 var _pick_log: Array[String] = []
 var _damage_taken := 0.0
+## Trial calibration: kill times inside the current wave, the most any three-second
+## window of it held, and the wave those belong to. Printed once per wave as
+## PACING_TRIAL, so Frenzy's ask and The Cull's allowance are read off a played run
+## rather than guessed at.
+var _elapsed := 0.0
+var _wave_kill_times: Array[float] = []
+var _wave_best_burst := 0
+var _trial_wave := 1
+const BURST_WINDOW_SECONDS := 3.0
 
 
 func _initialize() -> void:
@@ -136,7 +147,12 @@ func _run() -> void:
 	run.player.input_enabled = false
 	run.combat.debug_damage_accounting = true
 	run.combat.enemy_killed.connect(
-		func(_p: Vector2, _xp: int, _r: int, _s: int, _c: int) -> void: _kills += 1
+		func(_p: Vector2, _xp: int, _r: int, _s: int, _c: int) -> void:
+			_kills += 1
+			_wave_kill_times.append(_elapsed)
+			while not _wave_kill_times.is_empty() and _wave_kill_times[0] < _elapsed - BURST_WINDOW_SECONDS:
+				_wave_kill_times.remove_at(0)
+			_wave_best_burst = maxi(_wave_best_burst, _wave_kill_times.size())
 	)
 
 	# Both, the way `RunRoot._ready` does it. Configuring only the wave director gave
@@ -209,6 +225,16 @@ func _run() -> void:
 		_damage_taken += run.player.get_max_health() - run.player.get_health()
 		run.player.heal(1000.0)
 		elapsed += STEP
+		_elapsed = elapsed
+		var wave_now := run.wave_director.get_current_wave_number()
+		if wave_now != _trial_wave:
+			print(
+				"PACING_TRIAL	wave %d	best %.0fs burst %d	standing at end %d"
+				% [_trial_wave, BURST_WINDOW_SECONDS, _wave_best_burst, run.combat.get_active_enemy_count()]
+			)
+			_trial_wave = wave_now
+			_wave_best_burst = 0
+			_wave_kill_times.clear()
 		if elapsed >= next_sample:
 			next_sample += SAMPLE_SECONDS
 			field.recalculate_metrics_now()
@@ -260,7 +286,17 @@ func _maybe_provoke(run: RunRoot) -> void:
 		# the next wave while still swamped is the aggressive policy, not this one.
 		if run.combat.get_active_enemy_count() > MODERATE_CLEAR_ENEMIES:
 			return
+	# At most one call per wave, whatever the policy.
+	#
+	# Provocation has no gate any more, so `can_provoke` answers true on every frame of
+	# every wave, and the aggressive policy read that as permission to press sixty times
+	# a second -- which is not a policy a player can carry out and is not what this is
+	# measuring. It is also what hung the first attempt at this run.
+	var wave := run.wave_director.get_current_wave_number()
+	if wave == _last_provoked_wave:
+		return
 	if run.wave_director.provoke() > 0.0:
+		_last_provoked_wave = wave
 		_provocations += 1
 
 

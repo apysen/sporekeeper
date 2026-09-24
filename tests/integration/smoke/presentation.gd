@@ -343,13 +343,23 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	prototype._on_display_settings_changed()
 
 	# A major event takes the battlefield briefly and then gives it back.
+	# Off by default: the line across the top of the arena was read as clutter over the
+	# fight. Nothing may put it back up while the switch is off.
+	prototype.banner_label.modulate.a = 0.0
+	prototype._show_banner("NEW ORGAN")
+	var banner_suppressed := prototype.banner_label.modulate.a <= 0.01
+	# And with it on, it still fades rather than becoming a HUD section.
+	var banner_setting := prototype.show_event_banner
+	prototype.show_event_banner = true
 	prototype._show_banner("NEW ORGAN")
 	var banner_shown := prototype.banner_label.modulate.a > 0.9
 	prototype._advance_banner(prototype.banner_seconds + 0.1)
+	prototype.show_event_banner = banner_setting
 	report.check(
-		banner_shown
+		banner_suppressed
+		and banner_shown
 		and prototype.banner_label.modulate.a <= 0.01,
-		"a major event banner fades off the battlefield instead of becoming a HUD section"
+		"the event banner stays off by default, and fades rather than sticking when enabled"
 	)
 	metabolism.reset_metabolism()
 	prototype.progression.reset_progression()

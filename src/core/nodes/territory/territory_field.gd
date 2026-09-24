@@ -98,6 +98,9 @@ class TerritoryCommand:
 	## Maturity this command adds to ground the player already holds. Material
 	## landing on established growth thickens it rather than resetting it.
 	var maturity_reinforcement := 0.0
+	## Which result-screen row grew this ground, or -1 for none. Taken from the field's
+	## `attribution` when the command is queued.
+	var source := -1
 
 class BrambleHarvest:
 	## Total Bramble power drawn from the ground: every covered cell contributes its
@@ -323,6 +326,24 @@ var _measured_steps := 0
 var _measured_renders := 0
 
 
+## The run's contribution record. Handed in by the run; a field built on its own
+## counts nothing.
+var run_stats: RunStats
+## Which result-screen row the next queued growth belongs to. A caller sets it on the
+## line before it queues, and the queue takes it and clears it, so a caller that does
+## not set it cannot inherit someone else's.
+var attribution := -1
+## Root's share of the field's regeneration rate, set by the Root director. The rest is
+## the field's own and is nobody's to claim.
+var regeneration_root_share := 0.0
+
+
+func _take_attribution() -> int:
+	var source := attribution
+	attribution = -1
+	return source
+
+
 func _ready() -> void:
 	assert(tuning != null, "TerritoryField requires TerritoryPrototypeTuning")
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -528,6 +549,8 @@ func step_simulation() -> void:
 	var step_maturity_resistance_bonus := tuning.maturity_resistance_bonus
 	var step_maturation_per_second := tuning.maturation_per_second
 	var step_diffusion_rate := tuning.diffusion_rate
+	# Green the regeneration put back this step, for the result screen's Root card.
+	var regrown := 0.0
 	for y in range(_height):
 		var row_start := y * _width
 		for x in range(_width):
@@ -641,7 +664,9 @@ func step_simulation() -> void:
 			if step_regeneration > 0.0 and next_control > step_ownership_threshold:
 				# Root's Regeneration heals ground the player still holds, so damaged
 				# interior recovers instead of waiting on diffusion alone.
-				next_control = minf(1.0, next_control + step_regeneration)
+				var healed := minf(1.0, next_control + step_regeneration)
+				regrown += healed - next_control
+				next_control = healed
 			if regrowth_active:
 				# Regrowth: ground the run has just lost remembers that it was ours
 				# and comes back on its own while nothing contests it. Hostile
@@ -701,6 +726,8 @@ func step_simulation() -> void:
 			_next_pressure_x[index] = pressure_x * step_pressure_damping
 			_next_pressure_y[index] = pressure_y * step_pressure_damping
 
+	if run_stats != null and regeneration_root_share > 0.0:
+		run_stats.root_green_regrown += regrown * regeneration_root_share
 	_swap_simulation_buffers()
 
 	_topology_accumulator += _fixed_delta
@@ -733,6 +760,7 @@ func queue_bloom(
 	conversion_multiplier: float = 1.0,
 	radius_multiplier: float = 1.0
 ) -> void:
+	var source := _take_attribution()
 	if not contains_local_point(local_position):
 		return
 	var command := TerritoryCommand.new()
@@ -744,6 +772,7 @@ func queue_bloom(
 	command.hostile_conversion_factor = (
 		tuning.bloom_hostile_conversion_factor * maxf(0.0, conversion_multiplier)
 	)
+	command.source = source
 	_commands.append(command)
 
 
@@ -754,6 +783,7 @@ func queue_seed_growth(
 	conversion_multiplier: float = 1.0,
 	radius_multiplier: float = 1.0
 ) -> void:
+	var source := _take_attribution()
 	if not contains_local_point(local_position):
 		return
 	var command := TerritoryCommand.new()
@@ -765,6 +795,7 @@ func queue_seed_growth(
 	command.hostile_conversion_factor = (
 		tuning.seed_hostile_conversion_factor * maxf(0.0, conversion_multiplier)
 	)
+	command.source = source
 	_commands.append(command)
 
 
@@ -780,6 +811,7 @@ func queue_splat(
 	maturity_ceiling: float = -1.0,
 	maturity_reinforcement: float = 0.0
 ) -> void:
+	var source := _take_attribution()
 	# A splat is a Bloom's thrown material landing somewhere. Unlike the central
 	# surge it does not need Plant beside it, so a glob that clears a wall can
 	# establish an island; unlike a Seed its Mass, Force, and radius are authored
@@ -802,6 +834,7 @@ func queue_splat(
 	command.impact_break = maxf(0.0, impact_break)
 	command.maturity_ceiling = maturity_ceiling
 	command.maturity_reinforcement = maxf(0.0, maturity_reinforcement)
+	command.source = source
 	_commands.append(command)
 
 
@@ -1287,6 +1320,10 @@ func apply_overgrow(
 			# What the ground took, not what was offered: a cell already at full
 			# control cannot accept more, and the result should say so.
 			result.mass_applied += _control[index] - before
+			if run_stats != null:
+				run_stats.record_green(
+					RunStats.Source.OVERGROW, maxf(0.0, _control[index] - maxf(before, 0.0))
+				)
 		if pressure_per_cell > 0.0 and outward != Vector2.ZERO:
 			_pressure_x[index] = clampf(
 				_pressure_x[index] + outward.x * pressure_per_cell,
@@ -1544,6 +1581,98 @@ func prune_territory_in_radius(
 			_maturity[index] = 0.0
 			_territory_age[index] = 0.0
 			_bramble_development[index] = 0.0
+			_pruned_ground[index] = pruned_seconds
+	if harvest.cell_count > 0:
+		refresh_visuals_now()
+	return harvest
+
+
+func strip_aftergrowth_in_radius(
+	local_position: Vector2,
+	radius_pixels: float,
+	target_cells: int
+) -> PruneHarvest:
+	## Pruning's cut, taken from Bloom's Aftergrowth shield instead of from the Green.
+	##
+	## The shield is disposable control laid over held ground, and Pruning is the path
+	## that turns disposable ground into blades -- so a harvest reaching shielded cells
+	## eats the shield first, nearest first, and leaves the Green under it standing. Each
+	## shielded cell stripped is worth what a cut cell is worth. Only when the shield in
+	## reach runs out does the harvest go back to cutting the ground itself.
+	var harvest := PruneHarvest.new()
+	if target_cells <= 0 or _aftergrowth_active <= 0 or not contains_local_point(local_position):
+		return harvest
+	var radius_squared := radius_pixels * radius_pixels
+	var candidates: Array = []
+	for index in _aftergrowth_cells:
+		if _aftergrowth[index] <= 0.0:
+			continue
+		var distance_squared := get_cell_local_position(index).distance_squared_to(local_position)
+		if distance_squared > radius_squared:
+			continue
+		candidates.append([distance_squared, index])
+	candidates.sort_custom(
+		func(a: Array, b: Array) -> bool:
+			if a[0] == b[0]:
+				return a[1] < b[1]
+			return a[0] < b[0]
+	)
+	for candidate in candidates:
+		if harvest.cell_count >= target_cells:
+			break
+		var index: int = candidate[1]
+		harvest.mass += _aftergrowth[index]
+		harvest.cell_count += 1
+		harvest.positions.append(get_cell_local_position(index))
+		_aftergrowth[index] = 0.0
+	return harvest
+
+
+func compress_territory_in_radius(
+	local_position: Vector2,
+	radius_pixels: float,
+	floor_control: float,
+	pruned_seconds: float
+) -> PruneHarvest:
+	## Rebound's collapse: every held cell in the radius gives up the control it has
+	## above `floor_control`, and keeps the rest.
+	##
+	## It used to be `prune_territory_in_radius`, which zeroes the cells. A Bloom's
+	## central surge only lands where Green already stands, so it could not refill a
+	## crater it had just emptied, and Blooms open on the frontier facing the enemy:
+	## every Rebound Bloom punched a hole up to ~150 cells wide into the front line and
+	## left it for the enemy to take. Thinned ground is still yours. It keeps its
+	## maturity, and the pruned-ground window regrows it at the accelerated rate.
+	_mark_field_changed()
+	var harvest := PruneHarvest.new()
+	if not contains_local_point(local_position) or radius_pixels <= 0.0:
+		return harvest
+	var floor_value := maxf(floor_control, tuning.ownership_threshold + 0.01)
+	var cell_width := tuning.arena_size.x / float(_width)
+	var cell_height := tuning.arena_size.y / float(_height)
+	var centre := local_to_cell(local_position)
+	var centre_x := clampi(int(round(centre.x)), 0, _width - 1)
+	var centre_y := clampi(int(round(centre.y)), 0, _height - 1)
+	var radius_x := maxi(1, ceili(radius_pixels / cell_width))
+	var radius_y := maxi(1, ceili(radius_pixels / cell_height))
+	var radius_squared := radius_pixels * radius_pixels
+	for y in range(maxi(0, centre_y - radius_y), mini(_height - 1, centre_y + radius_y) + 1):
+		for x in range(maxi(0, centre_x - radius_x), mini(_width - 1, centre_x + radius_x) + 1):
+			var index := y * _width + x
+			if _claimable_mask[index] == 0 or _control[index] <= tuning.ownership_threshold:
+				continue
+			var offset_x := (float(x) + 0.5) * cell_width - local_position.x
+			var offset_y := (float(y) + 0.5) * cell_height - local_position.y
+			if offset_x * offset_x + offset_y * offset_y > radius_squared:
+				continue
+			# Every held cell counts toward the Force, as it did when they were cut;
+			# only what is above the floor is actually drawn out of it.
+			harvest.cell_count += 1
+			if _maturity[index] >= tuning.mature_threshold:
+				harvest.mature_cell_count += 1
+			if _control[index] > floor_value:
+				harvest.mass += _control[index] - floor_value
+				_control[index] = floor_value
 			_pruned_ground[index] = pruned_seconds
 	if harvest.cell_count > 0:
 		refresh_visuals_now()
@@ -3209,6 +3338,9 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 	var ownership_threshold := tuning.ownership_threshold
 	var measuring := PerfCounters.enabled
 
+	# Green this stamp grew, for the result screen. Summed here and reported once.
+	var counting := run_stats != null and command.source >= 0
+	var grown := 0.0
 	for y in range(minimum_y, maximum_y + 1):
 		for x in range(minimum_x, maximum_x + 1):
 			var offset := Vector2(float(x), float(y)) - centre
@@ -3271,6 +3403,8 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 					)
 			var new_control := clampf(old_control + mass_delta, -1.0, 1.0)
 			_control[index] = new_control
+			if counting:
+				grown += maxf(0.0, new_control - maxf(old_control, 0.0))
 			var old_owner := 0
 			if old_control > ownership_threshold:
 				old_owner = 1
@@ -3312,6 +3446,9 @@ func _stamp_growth(command: TerritoryCommand) -> void:
 					-max_pressure,
 					max_pressure
 				)
+	if counting:
+		run_stats.record_green(command.source, grown)
+
 
 
 func _stamp_bloom_surge(command: TerritoryCommand) -> void:
@@ -3348,6 +3485,9 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 	var ownership_threshold := tuning.ownership_threshold
 	var measuring := PerfCounters.enabled
 
+	# Green this stamp grew, for the result screen. Summed here and reported once.
+	var counting := run_stats != null and command.source >= 0
+	var grown := 0.0
 	for y in range(minimum_y, maximum_y + 1):
 		for x in range(minimum_x, maximum_x + 1):
 			var offset := Vector2(float(x), float(y)) - cell_position
@@ -3407,6 +3547,8 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 					)
 			var new_control := clampf(old_control + mass_delta, -1.0, 1.0)
 			_control[index] = new_control
+			if counting:
+				grown += maxf(0.0, new_control - maxf(old_control, 0.0))
 			var old_owner := 0
 			if old_control > ownership_threshold:
 				old_owner = 1
@@ -3450,6 +3592,9 @@ func _stamp_bloom_surge(command: TerritoryCommand) -> void:
 					-tuning.max_pressure_cells,
 					tuning.max_pressure_cells
 				)
+	if counting:
+		run_stats.record_green(command.source, grown)
+
 
 
 func find_player_frontier_near(local_position: Vector2) -> Vector2:
@@ -3474,6 +3619,29 @@ func find_player_frontier_near(local_position: Vector2) -> Vector2:
 	return best_position
 
 
+## What Root's Mature Strength and Bramble's hedge each kept of one cell's Green.
+##
+## Each is measured against the same hit without its own factor: the Green that would
+## have gone, minus the Green that did. Only the Green the cell actually had can be
+## lost, so a hit that would have emptied the cell either way saved nothing.
+func _record_green_held(
+	control: float,
+	incoming: float,
+	resistance: float,
+	root_factor: float,
+	bramble_factor: float
+) -> void:
+	var lost := minf(control, incoming / resistance)
+	if root_factor > 1.0:
+		run_stats.root_green_held += (
+			minf(control, incoming / (resistance / root_factor)) - lost
+		)
+	if bramble_factor > 1.0:
+		run_stats.bramble_green_held += (
+			minf(control, incoming / (resistance / bramble_factor)) - lost
+		)
+
+
 func _stamp_erosion(command: TerritoryCommand) -> void:
 	var minimum_x := maxi(0, int(floor(command.cell_position.x - command.radius_cells)))
 	var maximum_x := mini(_width - 1, int(ceil(command.cell_position.x + command.radius_cells)))
@@ -3492,19 +3660,23 @@ func _stamp_erosion(command: TerritoryCommand) -> void:
 			var normalized_falloff := 1.0 - distance / command.radius_cells
 			var falloff := normalized_falloff * normalized_falloff * (3.0 - 2.0 * normalized_falloff)
 			var resistance := 1.0 + _maturity[index] * tuning.maturity_resistance_bonus
+			# Root's and Bramble's shares of the resistance, kept apart so the result
+			# screen can say how much Green each of them held.
+			var root_factor := 1.0
+			var bramble_factor := 1.0
 			if _maturity[index] >= tuning.mature_threshold:
-				resistance *= _mature_resistance_multiplier
+				root_factor = _mature_resistance_multiplier
 			if _bramble_enabled and _is_player_frontier_cell(x, y):
-				resistance *= lerpf(
+				bramble_factor = lerpf(
 					1.0,
 					_bramble_resistance_multiplier,
 					_bramble_development[index]
-				)
-				resistance *= (
+				) * (
 					1.0
 					+ _bramble_development[index]
 					* tuning.bramble_development_erosion_resistance
 				)
+			resistance *= root_factor * bramble_factor
 			var incoming := command.erosion * falloff
 			if _aftergrowth[index] > 0.0:
 				# The shield takes the hit at face value, before resistance. It is
@@ -3513,12 +3685,18 @@ func _stamp_erosion(command: TerritoryCommand) -> void:
 				var absorbed := minf(_aftergrowth[index], incoming)
 				_aftergrowth[index] -= absorbed
 				incoming -= absorbed
+				if run_stats != null:
+					run_stats.green_shielded += absorbed / resistance
 				if incoming <= 0.0:
 					# Nothing reached the Green, so nothing here counts as damage to
 					# it: no control lost, no maturity lost, and the thorns are not
 					# disturbed by a hit the shield ate.
 					continue
 			var erosion := incoming / resistance
+			if run_stats != null:
+				_record_green_held(
+					_control[index], incoming, resistance, root_factor, bramble_factor
+				)
 			_control[index] = maxf(0.0, _control[index] - erosion)
 			_disturb_bramble_development(index, erosion)
 			if _control[index] <= tuning.ownership_threshold:
@@ -3552,13 +3730,20 @@ func _stamp_hostile_growth(command: TerritoryCommand) -> void:
 			var hostile_delta := command.hostile_mass * falloff
 			if old_control > 0.0:
 				var resistance := 1.0 + _maturity[index] * tuning.maturity_resistance_bonus
+				var root_factor := 1.0
+				var bramble_factor := 1.0
 				if _maturity[index] >= tuning.mature_threshold:
-					resistance *= _mature_resistance_multiplier
+					root_factor = _mature_resistance_multiplier
 				if _bramble_enabled and _is_player_frontier_cell(x, y):
-					resistance *= lerpf(
+					bramble_factor = lerpf(
 						1.0,
 						_bramble_resistance_multiplier,
 						_bramble_development[index]
+					)
+				resistance *= root_factor * bramble_factor
+				if run_stats != null:
+					_record_green_held(
+						old_control, hostile_delta, resistance, root_factor, bramble_factor
 					)
 				hostile_delta /= resistance
 				_disturb_bramble_development(index, hostile_delta)

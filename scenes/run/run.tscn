@@ -14,44 +14,34 @@
 [ext_resource type="Texture2D" uid="uid://djue54v0ac7t1" path="res://assets/textures/rot_wash_v3.png" id="9_rot_wash"]
 [ext_resource type="Shader" uid="uid://boydds61d0rmy" path="res://assets/shaders/territory_field.gdshader" id="9_territory_shader"]
 [ext_resource type="Texture2D" uid="uid://c31bve02w1hos" path="res://assets/textures/watercolor_noise_v2.png" id="9_watercolor_noise"]
-[ext_resource type="AudioStream" uid="uid://devviiastanh0" path="res://assets/music/forest.wav" id="10_forest_music"]
 [ext_resource type="Script" uid="uid://cwuy2wawxa2cl" path="res://src/core/nodes/run/audio_settings.gd" id="11_audio_settings"]
 [ext_resource type="Script" uid="uid://bbn5l41vmpqxc" path="res://src/core/nodes/waves/wave_director.gd" id="12_wave_director"]
 [ext_resource type="Script" uid="uid://dfo6nwwpgk763" path="res://src/core/nodes/elements/spore_director.gd" id="13_spore_director"]
-[ext_resource type="Script" uid="uid://yqxu5w6nnq7v" path="res://src/core/nodes/enemies/enemy_profile.gd" id="14_enemy_profile"]
 [ext_resource type="AudioStream" uid="uid://bl1c1kpesm7s7" path="res://assets/sfx/shoot.wav" id="15_shoot_sfx"]
 [ext_resource type="AudioStream" uid="uid://dvukkv7doxiqt" path="res://assets/sfx/exp.wav" id="16_xp_sfx"]
 [ext_resource type="AudioStream" uid="uid://cqad5e137mxu8" path="res://assets/sfx/explode.wav" id="17_explosion_sfx"]
 [ext_resource type="AudioStream" uid="uid://c81lnf14x1lou" path="res://assets/sfx/oldgrowth.wav" id="18_old_growth_sfx"]
 [ext_resource type="Script" uid="uid://bp2pqfntwf63n" path="res://src/core/nodes/elements/man_eater.gd" id="19_man_eater"]
-[ext_resource type="Script" uid="uid://d228oue1fn11s" path="res://src/core/nodes/run/upgrade_slots.gd" id="20_upgrade_slots"]
-[ext_resource type="Texture2D" uid="uid://nknmqellq7dm" path="res://assets/icons/lock.svg" id="21_lock_icon"]
 [ext_resource type="Script" uid="uid://bd2hoddrefwq" path="res://src/core/nodes/elements/bloom_director.gd" id="22_bloom_director"]
 [ext_resource type="Script" uid="uid://cjlfkuuruxrrg" path="res://src/core/nodes/elements/bramble_director.gd" id="23_bramble_director"]
 [ext_resource type="Script" uid="uid://x2l20t6viy61" path="res://src/core/nodes/elements/root_director.gd" id="24_root_director"]
 [ext_resource type="Script" uid="uid://5mjj3pltekkb" path="res://src/core/nodes/elements/pruning_director.gd" id="25_pruning_director"]
 [ext_resource type="Script" uid="uid://syv3j1rcmi7v" path="res://src/core/nodes/economy/metabolism.gd" id="26_metabolism"]
-[ext_resource type="Texture2D" uid="uid://b2it052ync4ng" path="res://assets/art/slots/slot-machine1.png" id="26_slot_cabinet"]
-[ext_resource type="Texture2D" uid="uid://2h3ml2r0yx4k" path="res://assets/art/slots/slot-machine3.png" id="26_slot_lever_down"]
-[ext_resource type="Texture2D" uid="uid://dd17upet750cs" path="res://assets/art/slots/slot-machine2.png" id="26_slot_lever_up"]
 [ext_resource type="Script" uid="uid://dyt5tng8n1qhu" path="res://src/core/nodes/economy/slot_machine.gd" id="26_slot_machine"]
-[ext_resource type="Texture2D" uid="uid://c25w4a8ge316u" path="res://assets/art/slots/symbols/symbol_wild.svg" id="26_symbol_wild"]
 [ext_resource type="Script" uid="uid://d1vi2molriepg" path="res://src/core/nodes/progression/relic_director.gd" id="27_relic_director"]
 [ext_resource type="Script" uid="uid://box02ugcgrggx" path="res://src/core/nodes/progression/evolutions.gd" id="28_evolutions"]
 [ext_resource type="StyleBox" path="res://assets/ui/panel_style.tres" id="30_panel_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/tray_style.tres" id="31_tray_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_style.tres" id="32_button_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_hover_style.tres" id="33_button_hover_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/button_disabled_style.tres" id="34_button_disabled_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/slot_style.tres" id="35_slot_style"]
-[ext_resource type="StyleBox" path="res://assets/ui/divider_style.tres" id="36_divider_style"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_hp_track.tres" id="90_wx_hp_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_hp_fill.tres" id="91_wx_hp_fill"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_territory_track.tres" id="92_wx_territory_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_territory_fill.tres" id="93_wx_territory_fill"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_xp_track.tres" id="94_wx_xp_track"]
 [ext_resource type="StyleBox" path="res://assets/ui/wx_xp_fill.tres" id="95_wx_xp_fill"]
-[ext_resource type="Shader" uid="uid://c77hgm8vg3lm7" path="res://assets/shaders/slot_symbol.gdshader" id="99_slot_symbol_shader"]
+[ext_resource type="Script" uid="uid://dc3y4460sp7wk" path="res://src/core/nodes/ui/territory_composition.gd" id="96_territory_composition"]
+[ext_resource type="Shader" uid="uid://b6f2q1lltam2f" path="res://assets/shaders/territory_bar_composition.gdshader" id="97_bar_composition_shader"]
 [ext_resource type="Script" uid="uid://dgs51bp3axarv" path="res://src/core/nodes/economy/clover_odds.gd" id="100_clover_odds"]
 [ext_resource type="Script" uid="uid://c5cdk57s4o6nv" path="res://src/core/nodes/economy/wager_selector.gd" id="101_wager_selector"]
 [ext_resource type="Script" uid="uid://r3ttjiuffyc6" path="res://src/core/nodes/economy/clover_jackpots.gd" id="102_clover_jackpots"]
@@ -59,42 +49,16 @@
 [ext_resource type="Script" uid="uid://cfbyqkmkwaeig" path="res://src/core/nodes/territory/territory_wager_layer.gd" id="104_wager_layer"]
 [ext_resource type="Shader" uid="uid://b04bp7vurwds2" path="res://assets/shaders/wager_field.gdshader" id="105_wager_shader"]
 [ext_resource type="Script" uid="uid://ca800f7dbuwb1" path="res://src/core/nodes/run/display_settings.gd" id="106_display_settings"]
-[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_track.tres" id="106_wager_track"]
 [ext_resource type="Script" uid="uid://dqjt4xlhgg7la" path="res://src/core/nodes/economy/clover_telemetry.gd" id="107_clover_telemetry"]
-[ext_resource type="StyleBox" path="res://assets/ui/wx_wager_fill.tres" id="107_wager_fill"]
-[ext_resource type="Texture2D" uid="uid://lmti7co0xiyr" path="res://assets/ui/kenney/wager_grabber.png" id="108_wager_grabber"]
-[ext_resource type="Texture2D" uid="uid://chxr84qbg23ry" path="res://assets/ui/kenney/wager_grabber_hover.png" id="109_wager_grabber_hover"]
-[ext_resource type="Texture2D" uid="uid://douyogsg7iwsg" path="res://assets/ui/kenney/wager_grabber_pressed.png" id="110_wager_grabber_pressed"]
-[ext_resource type="Script" uid="uid://bgc6dxl7i1svk" path="res://src/core/nodes/run/wager_slider.gd" id="111_wager_slider"]
-[ext_resource type="Texture2D" uid="uid://brgx0c7yrekb" path="res://assets/ui/kenney/wager_knob_footprint.png" id="112_wager_knob_footprint"]
 [ext_resource type="StyleBox" path="res://assets/ui/empty_style.tres" id="113_empty_style"]
-[ext_resource type="AudioStream" uid="uid://ccskaego25mxw" path="res://assets/sfx/lever_pull.wav" id="114_lever_sfx"]
-[ext_resource type="AudioStream" uid="uid://d4b547i831715" path="res://assets/sfx/reel_click.wav" id="115_reel_sfx"]
-[ext_resource type="AudioStream" uid="uid://claxf5xw710a3" path="res://assets/sfx/jackpot.wav" id="116_jackpot_sfx"]
 [ext_resource type="Texture2D" uid="uid://c5i5acfk08rlo" path="res://assets/art/seed/seed.png" id="117_seed_art"]
 [ext_resource type="Texture2D" uid="uid://bjtqiob5lt3x1" path="res://assets/art/adaptation_icons/bloom/bloom_512x512_teal.png" id="118_bloom_art"]
 [ext_resource type="Script" uid="uid://dtiy1kqr3wume" path="res://src/core/nodes/territory/territory_aftergrowth_layer.gd" id="119_aftergrowth_layer"]
 [ext_resource type="Script" uid="uid://bpio5qxwy2x6h" path="res://src/core/nodes/territory/canker_director.gd" id="120_canker_director"]
 [ext_resource type="Script" uid="uid://bwe81wquypf6w" path="res://src/core/nodes/territory/territory_obstacle_layer.gd" id="120_obstacle_layer"]
-[ext_resource type="StyleBox" uid="uid://b5op5esvwk6sv" path="res://assets/ui/wx_fantasy_button.tres" id="121_btn"]
-[ext_resource type="StyleBox" uid="uid://bn7byuq70ndfl" path="res://assets/ui/wx_fantasy_button_hover.tres" id="122_btn_hover"]
-[ext_resource type="StyleBox" uid="uid://c4qacuvts2rif" path="res://assets/ui/wx_fantasy_button_pressed.tres" id="123_btn_pressed"]
 [ext_resource type="Script" uid="uid://bh1e2xkdue8q3" path="res://src/core/nodes/elements/adaptation_director.gd" id="124_adaptation_director"]
 [ext_resource type="Shader" uid="uid://521ery5p6wjw" path="res://assets/shaders/botanical_art_watercolor.gdshader" id="125_botanical_shader"]
 [ext_resource type="Texture2D" uid="uid://cont5v1jne8sq" path="res://assets/art/shared/watercolor_granulation.png" id="126_granulation"]
-[ext_resource type="Texture2D" uid="uid://ey44dnfyoi0r" path="res://assets/ui/kenney/frame_circle.png" id="127_circle_frame"]
-[ext_resource type="StyleBox" path="res://assets/ui/circle_slot_style.tres" id="128_circle_style"]
-[ext_resource type="Texture2D" uid="uid://clat12ctf147k" path="res://assets/ui/kenney/divider-fade-003.png" id="129_divider_fade"]
-[ext_resource type="Texture2D" uid="uid://d04lnhgnrgxss" path="res://assets/placeholder_art/vfx_particle.png" id="vfx_0"]
-[ext_resource type="Texture2D" uid="uid://q58fdohctaku" path="res://assets/placeholder_art/vfx_glow.png" id="vfx_1"]
-[ext_resource type="Texture2D" uid="uid://bwwftdqy810w5" path="res://assets/placeholder_art/vfx_ring.png" id="vfx_2"]
-[ext_resource type="Texture2D" uid="uid://crw6fpqd64qjv" path="res://assets/placeholder_art/vfx_shockwave.png" id="vfx_3"]
-[ext_resource type="Texture2D" uid="uid://xkchv5u6ke3n" path="res://assets/placeholder_art/vfx_streak.png" id="vfx_4"]
-[ext_resource type="Texture2D" uid="uid://2lubkivbn8ul" path="res://assets/placeholder_art/vfx_spark.png" id="vfx_5"]
-[ext_resource type="Texture2D" uid="uid://cia0s6g53yajr" path="res://assets/placeholder_art/vfx_burst.png" id="vfx_6"]
-[ext_resource type="Texture2D" uid="uid://daxxj0uh6aukd" path="res://assets/placeholder_art/vfx_swirl.png" id="vfx_7"]
-[ext_resource type="Script" uid="uid://dc3y4460sp7wk" path="res://src/core/nodes/ui/territory_composition.gd" id="96_territory_composition"]
-[ext_resource type="Shader" path="res://assets/shaders/territory_bar_composition.gdshader" id="97_bar_composition_shader"]
 [ext_resource type="PackedScene" path="res://scenes/ui/menus/pause_menu.tscn" id="200_pause_menu"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/slot_machine_panel.tscn" id="201_slot_panel"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_profiles.tscn" id="202_enemy_profiles"]
@@ -103,14 +67,14 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/adaptation_tree.tscn" id="205_adaptation_tree"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/relic_tray.tscn" id="206_relic_tray"]
 [ext_resource type="Script" uid="uid://0ffonjavm4b3" path="res://src/core/nodes/waves/trial_director.gd" id="207_trial_card"]
-
-[sub_resource type="ShaderMaterial" id="TerritoryCompositionMaterial"]
-shader = ExtResource("97_bar_composition_shader")
-shader_parameter/blend_width = 0.035
-shader_parameter/green_color = Color(0.514, 0.631, 0.345, 1)
-shader_parameter/hostile_color = Color(0.43, 0.215, 0.305, 1)
-shader_parameter/top_shade = 1.06
-shader_parameter/bottom_shade = 0.94
+[ext_resource type="Texture2D" uid="uid://d04lnhgnrgxss" path="res://assets/placeholder_art/vfx_particle.png" id="vfx_0"]
+[ext_resource type="Texture2D" uid="uid://q58fdohctaku" path="res://assets/placeholder_art/vfx_glow.png" id="vfx_1"]
+[ext_resource type="Texture2D" uid="uid://bwwftdqy810w5" path="res://assets/placeholder_art/vfx_ring.png" id="vfx_2"]
+[ext_resource type="Texture2D" uid="uid://crw6fpqd64qjv" path="res://assets/placeholder_art/vfx_shockwave.png" id="vfx_3"]
+[ext_resource type="Texture2D" uid="uid://xkchv5u6ke3n" path="res://assets/placeholder_art/vfx_streak.png" id="vfx_4"]
+[ext_resource type="Texture2D" uid="uid://2lubkivbn8ul" path="res://assets/placeholder_art/vfx_spark.png" id="vfx_5"]
+[ext_resource type="Texture2D" uid="uid://cia0s6g53yajr" path="res://assets/placeholder_art/vfx_burst.png" id="vfx_6"]
+[ext_resource type="Texture2D" uid="uid://daxxj0uh6aukd" path="res://assets/placeholder_art/vfx_swirl.png" id="vfx_7"]
 
 [sub_resource type="ShaderMaterial" id="BotanicalArtMaterial"]
 shader = ExtResource("125_botanical_shader")
@@ -166,6 +130,10 @@ shader_parameter/edge_distortion_px = 7.0
 shader_parameter/rot_edge_scale = 0.95
 shader_parameter/edge_softness_px = 2.5
 shader_parameter/paint_threshold_scale = 0.35
+shader_parameter/fresh_pigment_strength = 0.6
+shader_parameter/mature_pigment_strength = 1.0
+shader_parameter/fresh_detail_gain = 0.014
+shader_parameter/mature_detail_gain = 0.055
 shader_parameter/front_paint_bias = 6.0
 
 [sub_resource type="ShaderMaterial" id="WagerMaterial"]
@@ -182,55 +150,20 @@ shader_parameter/edge_noise_tile_px = 280.0
 shader_parameter/edge_distortion_px = 7.0
 shader_parameter/field_size_px = Vector2(960, 540)
 
-[sub_resource type="AtlasTexture" id="AtlasCabinet"]
-atlas = ExtResource("26_slot_cabinet")
-region = Rect2(138, 0, 627, 624)
+[sub_resource type="ShaderMaterial" id="TerritoryCompositionMaterial"]
+shader = ExtResource("97_bar_composition_shader")
+shader_parameter/bar_width_px = 220.0
+shader_parameter/art_width_px = 258.0
+shader_parameter/cap_width_px = 10.0
+shader_parameter/green_edge = 1.0
+shader_parameter/hostile_edge = 1.0
+shader_parameter/blend_width = 0.035
+shader_parameter/green_color = Color(0.514, 0.631, 0.345, 1)
+shader_parameter/hostile_color = Color(0.43, 0.215, 0.305, 1)
+shader_parameter/top_shade = 1.06
+shader_parameter/bottom_shade = 0.94
 
-[sub_resource type="ShaderMaterial" id="SlotSymbol1A"]
-shader = ExtResource("99_slot_symbol_shader")
-shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
-shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_texels = 9.0
-
-[sub_resource type="ShaderMaterial" id="SlotSymbol1B"]
-shader = ExtResource("99_slot_symbol_shader")
-shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
-shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_texels = 9.0
-
-[sub_resource type="ShaderMaterial" id="SlotSymbol2A"]
-shader = ExtResource("99_slot_symbol_shader")
-shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
-shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_texels = 9.0
-
-[sub_resource type="ShaderMaterial" id="SlotSymbol2B"]
-shader = ExtResource("99_slot_symbol_shader")
-shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
-shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_texels = 9.0
-
-[sub_resource type="ShaderMaterial" id="SlotSymbol3A"]
-shader = ExtResource("99_slot_symbol_shader")
-shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
-shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_texels = 9.0
-
-[sub_resource type="ShaderMaterial" id="SlotSymbol3B"]
-shader = ExtResource("99_slot_symbol_shader")
-shader_parameter/fill_color = Color(0.306, 0.788, 0.353, 1)
-shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_texels = 9.0
-
-[sub_resource type="AtlasTexture" id="AtlasLeverUp"]
-atlas = ExtResource("26_slot_lever_up")
-region = Rect2(138, 0, 627, 624)
-
-[sub_resource type="AtlasTexture" id="AtlasLeverDown"]
-atlas = ExtResource("26_slot_lever_down")
-region = Rect2(138, 0, 627, 624)
-
-[node name="RunRoot" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "canker_director", "audio_settings", "health_bar", "health_label", "territory_bar", "territory_label", "territory_composition", "xp_bar", "xp_label", "wave_label", "status_label", "hostile_label", "blight_label", "evolution_label", "relic_tray", "slot_panel", "all_in_label", "banner_label", "result_panel", "result_header", "result_detail", "display_settings", "clover_telemetry", "interface_layer", "damage_vignette", "pause_menu", "run_audio", "choice_panel", "adaptation_tree", "trial_card", "provoke_button")]
+[node name="RunRoot" type="Node2D" unique_id=1332912083 node_paths=PackedStringArray("territory_field", "overlay", "player", "combat", "progression", "evolutions", "metabolism", "slot_machine", "wager_layer", "aftergrowth_layer", "clover_odds", "wager_selector", "clover_jackpots", "all_in_grace", "relic_director", "wave_director", "spore_director", "bloom_director", "bramble_director", "root_director", "man_eater", "pruning_director", "adaptation_director", "canker_director", "audio_settings", "damage_vignette", "run_audio", "health_bar", "health_label", "territory_bar", "territory_composition", "territory_label", "xp_bar", "xp_label", "wave_label", "status_label", "hostile_label", "blight_label", "evolution_label", "relic_tray", "adaptation_tree", "trial_card", "provoke_button", "choice_panel", "slot_panel", "all_in_label", "banner_label", "result_panel", "result_header", "result_detail", "pause_menu", "display_settings", "clover_telemetry", "interface_layer")]
 script = ExtResource("1_controller")
 territory_field = NodePath("TerritoryField")
 overlay = NodePath("PrototypeOverlay")
@@ -257,6 +190,8 @@ pruning_director = NodePath("Paths/PruningDirector")
 adaptation_director = NodePath("Paths/AdaptationDirector")
 canker_director = NodePath("CankerDirector")
 audio_settings = NodePath("GameplayComponents/AudioSettings")
+damage_vignette = NodePath("Interface/DamageVignette")
+run_audio = NodePath("RunAudio")
 health_bar = NodePath("Interface/SidePanel/HealthBar")
 health_label = NodePath("Interface/SidePanel/HealthLabel")
 territory_bar = NodePath("Interface/SidePanel/TerritoryBar")
@@ -270,22 +205,20 @@ hostile_label = NodePath("Interface/SidePanel/HostileLabel")
 blight_label = NodePath("Interface/SidePanel/BlightLabel")
 evolution_label = NodePath("Interface/SidePanel/EvolutionLabel")
 relic_tray = NodePath("Interface/RelicTray")
+adaptation_tree = NodePath("Interface/SidePanel/AdaptationTree")
+trial_card = NodePath("Interface/SidePanel/TrialCard")
+provoke_button = NodePath("Interface/SidePanel/ProvokeButton")
+choice_panel = NodePath("Interface/ChoicePanel")
 slot_panel = NodePath("Interface/SidePanel/SlotMachinePanel")
 all_in_label = NodePath("Interface/AllInCountdown")
 banner_label = NodePath("Interface/Banner")
 result_panel = NodePath("Interface/ResultPanel")
 result_header = NodePath("Interface/ResultPanel/Header")
 result_detail = NodePath("Interface/ResultPanel/Detail")
+pause_menu = NodePath("Interface/PauseMenu")
 display_settings = NodePath("GameplayComponents/DisplaySettings")
 clover_telemetry = NodePath("GameplayComponents/CloverTelemetry")
 interface_layer = NodePath("Interface")
-adaptation_tree = NodePath("Interface/SidePanel/AdaptationTree")
-trial_card = NodePath("Interface/SidePanel/TrialCard")
-provoke_button = NodePath("Interface/SidePanel/ProvokeButton")
-choice_panel = NodePath("Interface/ChoicePanel")
-run_audio = NodePath("RunAudio")
-pause_menu = NodePath("Interface/PauseMenu")
-damage_vignette = NodePath("Interface/DamageVignette")
 
 [node name="GameplayComponents" type="Node" parent="." unique_id=8230641]
 
@@ -366,7 +299,7 @@ combat = NodePath("../../CombatDirector")
 territory_field = NodePath("../../TerritoryField")
 player = NodePath("../../Player")
 
-[node name="RunAudio" parent="." instance=ExtResource("203_run_audio")]
+[node name="RunAudio" parent="." unique_id=1641150481 instance=ExtResource("203_run_audio")]
 
 [node name="Background" type="ColorRect" parent="." unique_id=423038185]
 offset_right = 1280.0
@@ -413,10 +346,6 @@ combat = NodePath("../../CombatDirector")
 progression = NodePath("../../GameplayComponents/Progression")
 overlay = NodePath("../../PrototypeOverlay")
 base_resistance_multiplier = 1.0
-base_slow_fraction = 0.25
-slow_per_level = 0.05
-entanglement_potency_per_level = 0.1
-entanglement_rate_per_level = 0.1
 
 [node name="RootDirector" type="Node" parent="Paths" unique_id=684420913 node_paths=PackedStringArray("territory_field", "progression", "relic_director")]
 script = ExtResource("24_root_director")
@@ -540,7 +469,9 @@ old_growth_sfx = ExtResource("18_old_growth_sfx")
 script = ExtResource("5_vinewhip")
 territory_field = NodePath("../../TerritoryField")
 
-[node name="ObstacleLayer" type="Node2D" parent="." unique_id=1412417561 node_paths=PackedStringArray("territory_field")]
+[node name="EnemyProfiles" parent="CombatDirector" unique_id=120839621 instance=ExtResource("202_enemy_profiles")]
+
+[node name="ObstacleLayer" type="Node2D" parent="." unique_id=1598690992 node_paths=PackedStringArray("territory_field")]
 z_index = 10
 position = Vector2(24, 104)
 script = ExtResource("120_obstacle_layer")
@@ -681,9 +612,6 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("96_territory_composition")
 fill_style = ExtResource("93_wx_territory_fill")
-green_color = Color(0.514, 0.631, 0.345, 1)
-hostile_color = Color(0.43, 0.215, 0.305, 1)
-blend_fraction = 0.035
 
 [node name="XPLabel" type="Label" parent="Interface/SidePanel" unique_id=223406630]
 layout_mode = 0
@@ -720,7 +648,33 @@ theme_override_font_sizes/font_size = 10
 vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="SlotMachinePanel" parent="Interface/SidePanel" instance=ExtResource("201_slot_panel")]
+[node name="SlotMachinePanel" parent="Interface/SidePanel" unique_id=1427640007 instance=ExtResource("201_slot_panel")]
+
+[node name="AdaptationTree" parent="Interface/SidePanel" unique_id=548094743 instance=ExtResource("205_adaptation_tree")]
+
+[node name="ProvokeButton" type="Button" parent="Interface/SidePanel" unique_id=451346812]
+visible = false
+layout_mode = 0
+offset_left = 16.0
+offset_top = 380.0
+offset_right = 236.0
+offset_bottom = 422.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.769, 0.604, 0.314, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = ExtResource("32_button_style")
+theme_override_styles/hover = ExtResource("33_button_hover_style")
+theme_override_styles/disabled = ExtResource("34_button_disabled_style")
+text = "PROVOKE"
+
+[node name="TrialCard" type="Control" parent="Interface/SidePanel" unique_id=451346813]
+anchors_preset = 0
+offset_left = 14.0
+offset_top = 430.0
+offset_right = 238.0
+offset_bottom = 648.0
+mouse_filter = 2
+script = ExtResource("207_trial_card")
 
 [node name="Banner" type="Label" parent="Interface" unique_id=771320547]
 modulate = Color(1, 1, 1, 0)
@@ -747,7 +701,7 @@ RECLAIM {reclaim}%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ChoicePanel" parent="Interface" instance=ExtResource("204_choice_panel")]
+[node name="ChoicePanel" parent="Interface" unique_id=1974804144 instance=ExtResource("204_choice_panel")]
 
 [node name="ResultPanel" type="Panel" parent="Interface" unique_id=620631006]
 visible = false
@@ -793,34 +747,6 @@ theme_override_font_sizes/font_size = 10
 text = "Press R or use RESTART RUN to begin again."
 horizontal_alignment = 1
 
-[node name="PauseMenu" parent="Interface" instance=ExtResource("200_pause_menu")]
+[node name="PauseMenu" parent="Interface" unique_id=1967179241 instance=ExtResource("200_pause_menu")]
 
-[node name="EnemyProfiles" parent="CombatDirector" instance=ExtResource("202_enemy_profiles")]
-
-[node name="AdaptationTree" parent="Interface/SidePanel" instance=ExtResource("205_adaptation_tree")]
-
-[node name="RelicTray" parent="Interface" instance=ExtResource("206_relic_tray")]
-
-[node name="ProvokeButton" type="Button" parent="Interface/SidePanel" unique_id=451346812]
-visible = false
-layout_mode = 0
-offset_left = 16.0
-offset_top = 380.0
-offset_right = 236.0
-offset_bottom = 422.0
-focus_mode = 0
-theme_override_colors/font_color = Color(0.769, 0.604, 0.314, 1)
-theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = ExtResource("32_button_style")
-theme_override_styles/hover = ExtResource("33_button_hover_style")
-theme_override_styles/disabled = ExtResource("34_button_disabled_style")
-text = "PROVOKE"
-
-[node name="TrialCard" type="Control" parent="Interface/SidePanel" unique_id=451346813]
-layout_mode = 0
-offset_left = 14.0
-offset_top = 430.0
-offset_right = 238.0
-offset_bottom = 648.0
-mouse_filter = 2
-script = ExtResource("207_trial_card")
+[node name="RelicTray" parent="Interface" unique_id=362077554 instance=ExtResource("206_relic_tray")]

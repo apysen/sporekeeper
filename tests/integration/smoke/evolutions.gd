@@ -47,16 +47,12 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		"claiming Evolution grants rank 1 of a five-rank line while ordinary lines stop at three"
 	)
 
-	# Branches are complete Adaptations that never touch the Evolution. A Branch
-	# cannot be entered before its milestone has opened room for it.
-	var branch_before_milestone := prototype.progression.acquire_adaptation(
-		Progression.PathId.BRAMBLE
-	)
-	prototype.progression.unlock_branch_slot()
+	# Branches are complete Adaptations that never touch the Evolution. The room for
+	# them is open from the start of a run now -- what still bounds the roster is the
+	# roster, so the slot after the last one refuses.
 	var branch_one := prototype.progression.acquire_adaptation(
 		Progression.PathId.BRAMBLE
 	)
-	prototype.progression.unlock_branch_slot()
 	var branch_two := prototype.progression.acquire_adaptation(
 		Progression.PathId.THISTLE
 	)
@@ -64,8 +60,7 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		Progression.PathId.BLOOM
 	)
 	report.check(
-		not branch_before_milestone
-		and branch_one
+		branch_one
 		and branch_two
 		and fifth_refused
 		and prototype.progression.get_owned_adaptation_count() == 4
@@ -73,7 +68,7 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 		and prototype.progression.is_evolution_path(Progression.PathId.BRAMBLE)
 		and prototype.progression.get_pair_evolution_id() == claimed_evolution
 		and prototype.progression.active_evolution == claimed_evolution,
-		"a Branch waits for its milestone, then joins the roster as a relationship of its own"
+		"a Branch joins the roster as a relationship of its own, and the roster is what bounds it"
 	)
 	# A mastered Branch line must not satisfy the Core gate either.
 	for branch_line in prototype.progression.get_adaptation_line_ids(

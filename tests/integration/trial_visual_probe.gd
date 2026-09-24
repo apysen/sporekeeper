@@ -79,7 +79,11 @@ func _drive() -> void:
 
 	# And a broken one, which is the state every colour on the card changes for.
 	card.begin_trial(TrialCatalog.Id.UNTOUCHED)
-	card.note_damage_taken()
+	# Past the opening grace, then one hit more than the rule allows.
+	for _step in range(ceili(TrialDirector.ARMING_SECONDS * 60.0) + 1):
+		card.advance(1.0 / 60.0)
+	for _hit in range(roundi(TrialCatalog.get_value(TrialCatalog.Id.UNTOUCHED)) + 1):
+		card.note_damage_taken()
 	await _draw_frames()
 	await _save("res://.godot/trial_card_broken.png")
 	_check(

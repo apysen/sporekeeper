@@ -2,6 +2,8 @@ class_name MechanicsHelp
 extends Control
 
 signal glossary_closed
+## A one-off notice was dismissed. The run listens so it can start the simulation again.
+signal notice_closed
 
 const BORDER_TEXTURE := preload("res://assets/ui/kenney/panel-border-008.png")
 ## The run's own button art. The glossary builds its buttons in code rather than in a
@@ -12,6 +14,14 @@ const BUTTON_HOVER_STYLE := preload("res://assets/ui/button_hover_style.tres")
 const BUTTON_DISABLED_STYLE := preload("res://assets/ui/button_disabled_style.tres")
 const GOLD := Color(0.769, 0.604, 0.314, 1.0)
 const GOLD_BRIGHT := Color(0.96, 0.83, 0.48, 1.0)
+const NOTICE_DIM := Color(0.003, 0.008, 0.011, 0.86)
+## Air left around a highlighted control, so the frame sits off the thing rather than
+## on it.
+const NOTICE_HIGHLIGHT_PADDING := 6.0
+## How wide a notice is. Its height is whatever its words need.
+const NOTICE_WIDTH := 660.0
+const NOTICE_BUTTON_WIDTH := 200.0
+const NOTICE_BUTTON_GAP := 14.0
 const OLIVE := Color(0.09, 0.102, 0.082, 0.98)
 const TEXT := Color(0.91, 0.875, 0.784, 1.0)
 const MUTED := Color(0.663, 0.69, 0.608, 1.0)
@@ -299,6 +309,185 @@ func _is_word_character(codepoint: int) -> bool:
 		or codepoint >= 97 and codepoint <= 122
 		or codepoint == 95
 	)
+
+
+var _notice_overlay: Control
+var _notice_pages: Array = []
+var _notice_page := 0
+
+
+func show_notices(pages: Array) -> void:
+	## A short sequence of one-off notices, advanced by the button on each.
+	##
+	## Pages rather than one long panel because the two things a new Campaign has to
+	## explain -- the button that sets the difficulty, and the cards that hand out
+	## optional rules -- are unrelated, and a player reading about the second is no
+	## longer looking at the first.
+	if _notice_overlay != null or pages.is_empty():
+		return
+	_notice_pages = pages
+	_notice_page = 0
+	_show_notice_page()
+
+
+func _show_notice_page() -> void:
+	var page: Dictionary = _notice_pages[_notice_page]
+	var last := _notice_page >= _notice_pages.size() - 1
+	show_notice(
+		String(page.get("heading", "")),
+		String(page.get("body", "")),
+		String(page.get("button", "GOT IT" if last else "NEXT")),
+		page.get("highlight", Rect2())
+	)
+
+
+func _advance_notice() -> void:
+	if _notice_page >= _notice_pages.size() - 1:
+		_notice_pages = []
+		close_notice()
+		return
+	_notice_page += 1
+	_close_notice_overlay()
+	_show_notice_page()
+
+
+func show_notice(
+	heading_text: String,
+	body_text: String,
+	dismiss_text: String,
+	highlight := Rect2()
+) -> void:
+	## A single panel in the middle of the screen with one button on it.
+	##
+	## Built on demand rather than authored, because it is shown once per player and a
+	## scene node for it would sit in every run forever. It borrows the glossary's frame
+	## and column so a notice looks like the rest of the interface without a second set
+	## of styling to keep in step.
+	if _notice_overlay != null:
+		return
+	_notice_overlay = Control.new()
+	_notice_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_notice_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_notice_overlay)
+	_add_notice_dim(highlight)
+	# Centred by a container rather than by four offsets, so the panel is exactly as
+	# tall as its own text. A fixed height left the short page floating in a box with
+	# half of it empty, and would have clipped a longer one.
+	var centre := CenterContainer.new()
+	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_notice_overlay.add_child(centre)
+	var panel := _make_framed_panel(Vector2(NOTICE_WIDTH, 0.0))
+	centre.add_child(panel)
+	var column := _content_column(panel, 26)
+	var heading := Label.new()
+	heading.text = heading_text
+	heading.add_theme_color_override("font_color", GOLD_BRIGHT)
+	heading.add_theme_font_size_override("font_size", 22)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(heading)
+	var body := RichTextLabel.new()
+	body.bbcode_enabled = false
+	body.fit_content = true
+	body.scroll_active = false
+	body.text = body_text
+	body.custom_minimum_size.x = NOTICE_WIDTH - 52.0
+	body.add_theme_font_size_override("normal_font_size", 13)
+	column.add_child(body)
+	# Air between the last line and the button. The column's own separation is sized for
+	# lines of a paragraph, and a button sitting that close to a sentence reads as part
+	# of it.
+	var gap := Control.new()
+	gap.custom_minimum_size.y = NOTICE_BUTTON_GAP
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(gap)
+	# Centred at a button's width rather than stretched to the panel. A control as wide
+	# as the text it follows stops looking like something you press.
+	var button_row := CenterContainer.new()
+	column.add_child(button_row)
+	var dismiss := Button.new()
+	dismiss.text = dismiss_text
+	dismiss.custom_minimum_size = Vector2(NOTICE_BUTTON_WIDTH, 0.0)
+	_style_glossary_button(dismiss)
+	dismiss.pressed.connect(_advance_notice)
+	button_row.add_child(dismiss)
+
+
+func _add_notice_dim(highlight: Rect2) -> void:
+	## The dim, with a hole in it.
+	##
+	## A note that points at a button while covering the button is asking the player to
+	## take its word for where things are. Four bands around the rect rather than a
+	## shader: the hole is always a control's own rectangle, the bands are exact, and
+	## nothing here needs to survive a resize because the notice does not outlive one.
+	##
+	## Input is still blocked everywhere, including over the hole. The player is meant
+	## to see the thing, not press it while being told what it does.
+	var full := get_viewport_rect()
+	if highlight.size.x <= 0.0 or highlight.size.y <= 0.0:
+		_add_dim_band(full)
+		return
+	var hole := highlight.grow(NOTICE_HIGHLIGHT_PADDING).intersection(full)
+	_add_dim_band(Rect2(full.position, Vector2(full.size.x, hole.position.y - full.position.y)))
+	_add_dim_band(Rect2(
+		Vector2(full.position.x, hole.end.y),
+		Vector2(full.size.x, full.end.y - hole.end.y)
+	))
+	_add_dim_band(Rect2(
+		Vector2(full.position.x, hole.position.y),
+		Vector2(hole.position.x - full.position.x, hole.size.y)
+	))
+	_add_dim_band(Rect2(
+		Vector2(hole.end.x, hole.position.y),
+		Vector2(full.end.x - hole.end.x, hole.size.y)
+	))
+	# A blocker over the hole, invisible, so the thing being pointed at cannot be used
+	# while it is being explained.
+	var blocker := Control.new()
+	blocker.position = hole.position
+	blocker.size = hole.size
+	blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+	_notice_overlay.add_child(blocker)
+	# And a frame around it, because an undimmed rectangle in a dimmed screen reads as
+	# a gap until something says it is the subject.
+	var outline := ReferenceRect.new()
+	outline.position = hole.position
+	outline.size = hole.size
+	outline.border_color = GOLD_BRIGHT
+	outline.border_width = 2.0
+	outline.editor_only = false
+	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_notice_overlay.add_child(outline)
+
+
+func _add_dim_band(band: Rect2) -> void:
+	if band.size.x <= 0.0 or band.size.y <= 0.0:
+		return
+	var dim := ColorRect.new()
+	dim.position = band.position
+	dim.size = band.size
+	dim.color = NOTICE_DIM
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_notice_overlay.add_child(dim)
+
+
+func is_notice_open() -> bool:
+	return _notice_overlay != null
+
+
+func close_notice() -> void:
+	if _notice_overlay == null:
+		return
+	_close_notice_overlay()
+	_notice_pages = []
+	notice_closed.emit()
+
+
+func _close_notice_overlay() -> void:
+	if _notice_overlay == null:
+		return
+	_notice_overlay.queue_free()
+	_notice_overlay = null
 
 
 func _build_glossary() -> void:

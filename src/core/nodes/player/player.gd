@@ -75,6 +75,9 @@ var input_enabled := true
 var simulation_paused := false
 
 var _health := 0.0
+## The run's contribution record, for what she took, what was kept off her and what
+## she healed. Handed in by the run; a player built without one records nothing.
+var run_stats: RunStats
 ## What the universal Growth stats add. Held as three separate numbers rather than
 ## folded into the authored exports so a reset puts the authored values back without
 ## having to remember what was added to them, and so the Inspector keeps meaning what
@@ -242,6 +245,7 @@ func move_with_intent(intent: Vector2, delta: float) -> void:
 func apply_damage(amount: float) -> bool:
 	if amount <= 0.0 or _health <= 0.0 or _invulnerability_remaining > 0.0:
 		return false
+	var incoming := amount
 	# Canopy: standing on old ground means part of the hit lands in the canopy
 	# instead of in you. The condition is ground maturity, which the player
 	# already reads for its own healing rule, so no relic knowledge lives here.
@@ -257,6 +261,9 @@ func apply_damage(amount: float) -> bool:
 	# Bark, the Growth stat. Applied after Canopy, so the two stack without either
 	# being able to reach the total immunity each of them stops well short of.
 	amount *= 1.0 - _growth_damage_reduction
+	if run_stats != null:
+		run_stats.damage_prevented += incoming - amount
+		run_stats.damage_taken += minf(amount, _health)
 	_health = maxf(0.0, _health - amount)
 	_invulnerability_remaining = damage_invulnerability_seconds
 	_invulnerability_elapsed = 0.0
@@ -339,7 +346,10 @@ func heal(amount: float) -> void:
 	var ceiling := get_max_health()
 	if amount <= 0.0 or _health <= 0.0 or _health >= ceiling:
 		return
+	var before := _health
 	_health = minf(ceiling, _health + amount)
+	if run_stats != null:
+		run_stats.healing += _health - before
 	health_changed.emit(_health, ceiling)
 
 

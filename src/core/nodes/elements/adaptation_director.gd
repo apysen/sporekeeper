@@ -90,10 +90,41 @@ const SOLO_NETWORK_SHARE := 0.65
 ## Reach is the one under suspicion -- it multiplies into targets found rather than
 ## into damage dealt, which is the shape of every runaway this game has had -- but
 ## it keeps its authored 20% here. The sweep has to isolate it before it is cut.
-@export_range(0.0, 2.0, 0.01) var vine_lignification_damage_per_rank := 0.25
+## Fanning: how much wider the sweep gets per rank.
+##
+## This slot held Lignification, a flat damage multiplier on the Cane, and that single
+## line was the clearest expression of Vine's balance problem: `set_cane_modifiers` is
+## where every Vine line lands, so Vine was the only Adaptation that multiplied the
+## weapon every build already carries. Measured on 09-21, Vine owned with no lines was
+## +12.6% on a crowd and all four lines together were +89% -- the lines are the
+## dominance, and the damage line is the purest form of it.
+##
+## Width is the honest replacement rather than a smaller damage number. It buys the
+## sweep's *shape* instead of its output, so it cannot multiply a Cane that every other
+## build is also swinging; and now that Vine aims where Grandma looks, a wider arc is
+## the forgiveness stat the Adaptation was missing -- the thing that used to be given
+## away for free by auto-aim, sold back as something the player chooses to buy.
+## Seconds for a tip fruit to swell from nothing to ripe, at which point it launches
+## itself and the next one starts. Long enough that a ripe fruit is something the player
+## can see coming and position for, short enough that it is not a once-a-wave event.
+const GOURDVINE_ARENA_MARGIN := 24.0
+@export_range(1.0, 60.0, 0.5) var gourdvine_growth_seconds := 6.0
+## Contact damage a fully ripe tip fruit adds to an Apical hit, as a share of a Fruit's
+## own collision damage. Scaled by growth, so an Apical hit lands harder the longer the
+## fruit has been hanging there -- which is the whole reason to hold a sweep back.
+@export_range(0.0, 4.0, 0.05) var gourdvine_apical_damage_share := 0.80
+@export_range(0.0, 1.0, 0.01) var vine_fanning_arc_per_rank := 0.18
 @export_range(0.0, 2.0, 0.01) var vine_turgor_attack_speed_per_rank := 0.15
 @export_range(0.0, 2.0, 0.01) var vine_elongation_reach_per_rank := 0.20
-@export_range(0.0, 2.0, 0.01) var vine_apical_damage_per_rank := 0.25
+@export_range(0.0, 2.0, 0.01) var vine_apical_damage_per_rank := 0.40
+## What the rope itself is worth, before any line is bought.
+##
+## Trading Lignification for Fanning took Vine's pairs down about 17% on a walking board
+## and a playtest agreed: it stopped being dominant and went slightly past that. The
+## damage has to come back somewhere, and putting it here rather than back into a line
+## is the whole point of the trade -- a bonus the Adaptation carries is not a multiplier
+## every other build's Cane also gets, because every other build does not have the rope.
+@export_range(0.0, 1.0, 0.01) var vine_sweep_damage_bonus := 0.22
 
 @export_group("Root Cane Floor")
 ## Share of the Root Network that reaches the Cane itself.
@@ -413,9 +444,22 @@ var _inoculator_pulsed := {}
 var _cane_sweep_hits := PackedInt32Array()
 var _briar_cane_full_hit := false
 var _wisteria_armed := false
-var _gourdvine_pending_count := 0
-var _gourdvine_attached := false
-var _gourdvine_directions := PackedFloat32Array()
+## Gourdvine: one fruit growing on the Vine's tip, 0 to 1.
+##
+## It used to take the Fruit path's whole release and hold it: the normal cadence was
+## blocked outright while a batch sat waiting for a sweep to throw it, so fruit stopped
+## arriving on their own clock, appeared somewhere near the rope, sat there, and left at
+## whatever interval the next sweep happened to fall on. Played, that reads as broken,
+## and it made the Adaptation it evolves from worse than not having it.
+##
+## The Fruit path keeps its own release, untouched. This is a *second* fruit -- one, on
+## the tip, always there -- that swells as it hangs, hurts more the riper it is, and
+## launches itself when it is ripe.
+var _gourdvine_growth := 0.0
+## Which fruit art is growing on the tip. Rolled when a fruit starts growing and handed
+## to the fruit it launches, so what lets go is what was hanging there.
+var _gourdvine_visual_index := 0
+
 var _graft_cuttings := 0
 var _graft_all_fruit := false
 var _graft_prize := false
@@ -563,9 +607,8 @@ func reset_adaptations() -> void:
 	_cane_sweep_hits.clear()
 	_briar_cane_full_hit = false
 	_wisteria_armed = false
-	_gourdvine_pending_count = 0
-	_gourdvine_attached = false
-	_gourdvine_directions.clear()
+	_gourdvine_growth = 0.0
+	_gourdvine_visual_index = _random.randi_range(0, FRUIT_TEXTURES.size() - 1)
 	_graft_cuttings = 0
 	_graft_all_fruit = false
 	_graft_prize = false
@@ -586,7 +629,14 @@ func reset_adaptations() -> void:
 func apply_modifiers() -> void:
 	_refresh_vine_modifiers()
 	var vine_active := progression.has_path_active(Progression.PathId.VINE)
-	combat.set_cane_auto_targeting(vine_active)
+	# Vine sweeps where Grandma is looking, the same as the bare Cane.
+	#
+	# It used to take the input away and aim at the densest sector instead, which made
+	# it the one Adaptation that both improved the weapon every build carries and then
+	# pointed it for you -- least asked of the player, most given. Facing-based, the
+	# thing Vine sells is the sweep itself: longer, wider, faster, and yours to aim.
+	# Which is also what makes an arc line worth buying rather than worth ignoring.
+	combat.set_cane_auto_targeting(false)
 	combat.set_heartwood_rank(_evolution_rank(Progression.EvolutionId.HEARTWOOD))
 
 
@@ -595,21 +645,26 @@ func _refresh_vine_modifiers() -> void:
 	var damage_multiplier := 1.0
 	var cooldown_multiplier := 1.0
 	var reach_multiplier := 1.0
+	var arc_multiplier := 1.0
 	var apical_bonus := 0.0
 	# Root's floor, applied whether or not the run holds Vine. Mature ground under
 	# Grandma makes the Cane itself heavier, which is what stops a Root opening from
 	# measuring as no build at all.
 	damage_multiplier += _root_cane_bonus()
 	if vine_active:
+		# Owning the rope, before any line. Conditional on Vine in the way Lignification
+		# never was: it is paid for the Adaptation, not multiplied onto a weapon the
+		# whole roster shares.
+		damage_multiplier += vine_sweep_damage_bonus
 		var origin := player.get_arena_position()
 		# Each Vine line takes Root Potency on its own bonus, so the Network
 		# lengthens the reach, quickens the stroke, and hardens the tip rather than
 		# only inflating one damage figure. This refresh runs every frame and all
 		# four lines resolve at the same point, so they share one Network sample.
 		var network := _root_network_at(origin)
-		damage_multiplier += _root_scaled_bonus_with(
-			Progression.UpgradeId.VINE_LIGNIFICATION,
-			vine_lignification_damage_per_rank,
+		arc_multiplier += _root_scaled_bonus_with(
+			Progression.UpgradeId.VINE_FANNING,
+			vine_fanning_arc_per_rank,
 			network
 		)
 		cooldown_multiplier /= 1.0 + _root_scaled_bonus_with(
@@ -635,7 +690,8 @@ func _refresh_vine_modifiers() -> void:
 		damage_multiplier,
 		cooldown_multiplier / progression.get_growth_attack_speed_multiplier(),
 		reach_multiplier * progression.get_growth_area_multiplier(),
-		apical_bonus
+		apical_bonus,
+		arc_multiplier
 	)
 	# The rope is the Vine. Holding the Adaptation is what makes the Cane resolve
 	# through a simulated body instead of through its authored sector.
@@ -2000,6 +2056,7 @@ func _detonate_bloomshot(position: Vector2, force_share: float, critical: bool) 
 		damage,
 		CombatDirector.DeathSource.BLOOM
 	)
+	territory_field.attribution = RunStats.Source.BLOOM
 	territory_field.queue_bloom(
 		position,
 		force_share * amplification,
@@ -2080,8 +2137,6 @@ func _on_cane_sweep_started(
 	if _current_sweep_wisteria:
 		_wisteria_armed = false
 	_fire_thornwhip(origin, facing, left_to_right, reach)
-	if _gourdvine_pending_count > 0:
-		_gourdvine_attached = true
 	# Twining counts automatic sweeps only. Its repeated stroke is marked bonus and
 	# cannot advance this counter or retrigger any Evolution secondary.
 	if _has_relic(RelicCatalog.Id.TWINING):
@@ -2138,9 +2193,9 @@ func _on_cane_enemy_hit(
 	):
 		# Combat's ordinary kill signal already supplies the first credit. Vector
 		# Harvest contributes exactly one more, making the Vine kill worth two.
-		spore_director.credit_seed_kills(local_position, 1)
+		spore_director.credit_seed_kills(local_position, 1, RunStats.Source.VINE)
 	_apply_briar_cane_hit(enemy_id, local_position, apical, damage)
-	if _gourdvine_attached and apical:
+	if _gourdvine_growth > 0.0 and apical:
 		_apply_attached_gourdvine_hit(enemy_id, damage)
 
 
@@ -2196,8 +2251,6 @@ func _on_cane_sweep_finished(
 				0,
 				reach
 			)
-	if _gourdvine_attached:
-		_detach_gourdvine_fruit(origin, facing, left_to_right, reach)
 	# Trellis widens only after a completed sweep. A miss resets all stacks; a hit
 	# adds one to the next stroke, to the authored maximum of three.
 	if _has_relic(RelicCatalog.Id.TRELLIS):
@@ -2291,16 +2344,16 @@ func _fire_thornwhip(
 	if rank >= 4:
 		head_count += 1
 	var sector_facing := facing
-	var sector_degrees := combat.cane_arc_degrees
+	var sector_degrees := combat.get_cane_arc_degrees()
 	if rank >= 5:
 		# Raking Fire is two readable packets, one in each half of the animated
 		# sweep. Reverse sweeps visit those halves in reverse order.
 		var first_half_sign := -1.0 if left_to_right else 1.0
 		var half_sign := -first_half_sign if second_half else first_half_sign
 		sector_facing = facing.rotated(
-			deg_to_rad(combat.cane_arc_degrees * 0.25 * half_sign)
+			deg_to_rad(combat.get_cane_arc_degrees() * 0.25 * half_sign)
 		)
-		sector_degrees = combat.cane_arc_degrees * 0.50
+		sector_degrees = combat.get_cane_arc_degrees() * 0.50
 	for head_index in range(head_count):
 		var fraction := float(head_index + 1) / float(head_count + 1)
 		var head_position := origin + facing * reach * fraction
@@ -2432,7 +2485,7 @@ func _fire_wisteria_sequence(
 	if rank <= 0 or bloom_director == null:
 		return
 	var blossom_count := 4 if rank >= 2 else 3
-	var half_angle := deg_to_rad(combat.cane_arc_degrees * 0.5)
+	var half_angle := deg_to_rad(combat.get_cane_arc_degrees() * 0.5)
 	for index in range(blossom_count):
 		var progress := float(index + 1) / float(blossom_count)
 		var directional_progress := progress if left_to_right else 1.0 - progress
@@ -2477,6 +2530,7 @@ func _detonate_wisteria_blossom(
 		if root_director != null
 		else 1.0
 	)
+	territory_field.attribution = RunStats.Source.BLOOM
 	territory_field.queue_bloom(
 		position,
 		force * amplification,
@@ -2600,12 +2654,83 @@ func _update_fruits(delta: float) -> void:
 		for fruit in _fruits:
 			if fruit.active:
 				_advance_fruit(fruit, delta)
-		_gourdvine_pending_count = 0
-		_gourdvine_attached = false
+		_gourdvine_growth = 0.0
 		return
 	for fruit in _fruits:
 		if fruit.active:
 			_advance_fruit(fruit, delta)
+	_update_gourdvine(delta)
+
+
+func _update_gourdvine(delta: float) -> void:
+	## The tip fruit swells, and lets go when it is ripe.
+	##
+	## Independent of the sweep entirely: it grows on the wall clock whether or not the
+	## Cane is swinging, so nothing about the Fruit path's own cadence is touched and
+	## there is no state that a sweep has to arrive to clear.
+	if _evolution_rank(Progression.EvolutionId.GOURDVINE) <= 0:
+		_gourdvine_growth = 0.0
+		return
+	if gourdvine_growth_seconds <= 0.0:
+		return
+	_gourdvine_growth += delta / gourdvine_growth_seconds
+	if _gourdvine_growth < 1.0:
+		return
+	_gourdvine_growth = 0.0
+	_launch_gourdvine_fruit()
+
+
+func get_gourdvine_growth() -> float:
+	## How ripe the tip fruit is, 0 to 1. Read by the overlay that draws it and by the
+	## suite, which has to be able to see a thing that is otherwise one float.
+	return _gourdvine_growth
+
+
+func _gourdvine_tip() -> Vector2:
+	## Where the fruit hangs. The rope's own tip when Vine is driving, and the end of
+	## the authored reach when it is not, so the fruit is never left floating off the
+	## board -- which is what spawning it from a sweep's terminal angle used to do.
+	if combat.is_vine_driven() and combat.vine_whip != null:
+		return combat.vine_whip.get_tip()
+	var origin := player.get_arena_position()
+	return origin + player.get_facing_direction() * combat.get_cane_reach()
+
+
+func _launch_gourdvine_fruit() -> void:
+	## A ripe fruit lets go and rolls, as an ordinary Fruit does. It is thrown from the
+	## tip toward what the Fruit path would aim at, and clamped inside the arena: the
+	## old implementation threw from a sweep's terminal angle at full reach and could
+	## put a fruit outside the board, where its whole contribution was negative.
+	var rank := _evolution_rank(Progression.EvolutionId.GOURDVINE)
+	if rank <= 0:
+		return
+	# Kept inside the board with a margin. The old implementation threw from a sweep's
+	# terminal angle at full reach and could put a fruit outside the arena, where its
+	# whole contribution was negative.
+	var arena := territory_field.tuning.arena_size
+	var raw_tip := _gourdvine_tip()
+	var tip := Vector2(
+		clampf(raw_tip.x, GOURDVINE_ARENA_MARGIN, arena.x - GOURDVINE_ARENA_MARGIN),
+		clampf(raw_tip.y, GOURDVINE_ARENA_MARGIN, arena.y - GOURDVINE_ARENA_MARGIN)
+	)
+	var distance_scale := 1.0
+	if rank >= 3:
+		distance_scale += 0.10 * float(
+			_upgrade(Progression.UpgradeId.VINE_ELONGATION)
+		) * _root_bonus_scale(Progression.UpgradeId.VINE_ELONGATION, tip)
+	var speed_scale := 1.50 if rank >= 5 else 1.0
+	var fruit := _spawn_fruit(
+		tip,
+		_get_fruit_aim_direction(tip, distance_scale),
+		distance_scale,
+		1.0,
+		1.0,
+		speed_scale
+	)
+	if fruit != null:
+		fruit.visual_index = _gourdvine_visual_index
+	# The next fruit starts growing now, so it gets its own art now.
+	_gourdvine_visual_index = _random.randi_range(0, FRUIT_TEXTURES.size() - 1)
 
 
 func _update_fruit_release_cadence(delta: float) -> void:
@@ -2614,12 +2739,6 @@ func _update_fruit_release_cadence(delta: float) -> void:
 		# The clock is left where it stands rather than cleared, so reactivating the
 		# path cannot hand back a release the loan already paid for.
 		_fruit_release_remaining = minf(_fruit_release_remaining, fruit_release_interval)
-		return
-	if _gourdvine_pending_count > 0 or _gourdvine_attached:
-		# Weighted Harvest is the one release that is a stored object rather than a
-		# batch already in the air: it sits on the Vine tip until a sweep spends it,
-		# and arming a second would overwrite the first. So this case, and only this
-		# case, still waits for the previous release to clear.
 		return
 	_fruit_release_remaining -= delta
 	if _fruit_release_remaining <= 0.0:
@@ -2630,8 +2749,6 @@ func _has_live_normal_fruit_release() -> bool:
 	## Whether a normal release is still resolving somewhere on the field. The
 	## cadence no longer waits on this -- releases overlap freely now -- but Orchard
 	## and the probes still ask, and Dropped Seed is deliberately excluded.
-	if _gourdvine_pending_count > 0 or _gourdvine_attached:
-		return true
 	for fruit in _fruits:
 		if fruit.active and not fruit.dropped_seed:
 			return true
@@ -2651,16 +2768,6 @@ func _begin_normal_fruit_release() -> void:
 		+ _root_count_step(Progression.UpgradeId.FRUIT_SET, release_origin)
 	)
 	_fruit_release_count += 1
-	var gourdvine_rank := _evolution_rank(Progression.EvolutionId.GOURDVINE)
-	if gourdvine_rank > 0:
-		# The cadence has paid for these Fruit, but Weighted Harvest holds them for
-		# the next automatic sweep rather than creating another release.
-		_gourdvine_pending_count = fruit_count
-		_gourdvine_directions.clear()
-		for index in range(fruit_count):
-			_gourdvine_directions.append(_fruit_fan_offset(index, fruit_count, 0.42))
-		status_requested.emit("GOURDVINE — a weighted harvest is armed on the Vine tip.")
-		return
 	var origins := _get_normal_fruit_origins(fruit_count)
 	# Every Fruit in a release launches from one of a handful of origins, and the
 	# aim query is not cheap: it walks the whole enemy roster with a path test per
@@ -3354,6 +3461,7 @@ func _try_fruit_salad(fruit: FruitState, enemy_id: int) -> void:
 			fruit.damage * fruit_salad_damage_share,
 			CombatDirector.DeathSource.RELIC
 		)
+		territory_field.attribution = RunStats.Source.FRUIT
 		territory_field.queue_splat(
 			burst_position,
 			fruit_trail_mass * 0.6,
@@ -3451,6 +3559,7 @@ func _stamp_fruit_trail(fruit: FruitState, position: Vector2) -> void:
 		# this widens the trail, not the landing.
 		area *= bruised_fruit_area_multiplier
 	var radius_scale := sqrt(area)
+	territory_field.attribution = RunStats.Source.FRUIT
 	territory_field.queue_splat(
 		position,
 		fruit_trail_mass * area,
@@ -3679,6 +3788,7 @@ func _germinate_fruitseed(fruitseed: FruitseedState) -> void:
 		if _evolution_rank(Progression.EvolutionId.DURIAN) >= 4:
 			combat.add_entanglement_rate_zone(fruitseed.position, radius, 0.50, 4.0)
 		_apply_fruit_terminal_evolution(fruitseed)
+	territory_field.attribution = RunStats.Source.FRUIT
 	territory_field.queue_seed_growth(
 		fruitseed.position,
 		fruit_terminal_mass_multiplier * area,
@@ -3771,6 +3881,7 @@ func _create_fruit_bloom(
 		/ float(territory_field.tuning.field_size.x)
 	)
 	var radius := territory_field.tuning.bloom_radius_cells * pixels_per_cell * sqrt(force_share)
+	territory_field.attribution = RunStats.Source.FRUIT
 	territory_field.queue_bloom(
 		position,
 		force_share * amplification,
@@ -3799,6 +3910,7 @@ func _create_fruit_bloom(
 			if not territory_field.contains_local_point(landing):
 				continue
 			globs.append(landing)
+			territory_field.attribution = RunStats.Source.FRUIT
 			territory_field.queue_splat(
 				landing,
 				territory_field.tuning.bloom_mass * 0.18 * amplification,
@@ -3865,6 +3977,7 @@ func _update_saplings(delta: float) -> void:
 							* sapling_support_interval,
 						sapling_support_radius_multiplier
 					)
+					territory_field.attribution = RunStats.Source.FRUIT
 					territory_field.queue_seed_growth(
 						sapling.position,
 						sapling_control_support * sapling_support_interval,
@@ -3891,9 +4004,22 @@ func _update_saplings(delta: float) -> void:
 
 
 func _apply_attached_gourdvine_hit(enemy_id: int, cane_damage: float) -> void:
+	## The tip fruit, hit by an Apical stroke. Rank 1 is the fruit itself and is worth
+	## what it has grown: a fruit that has just set barely stings, a ripe one is most of
+	## another Fruit's collision, and holding a sweep back to let it swell is the
+	## decision the evolution is actually about.
 	var rank := _evolution_rank(Progression.EvolutionId.GOURDVINE)
 	if rank <= 0 or not combat.is_enemy_active(enemy_id):
 		return
+	var ripeness := clampf(_gourdvine_growth, 0.0, 1.0)
+	if ripeness > 0.0:
+		combat.damage_enemy_by_id(
+			enemy_id,
+			fruit_collision_damage * gourdvine_apical_damage_share * ripeness,
+			CombatDirector.DeathSource.FRUIT
+		)
+		if not combat.is_enemy_active(enemy_id):
+			return
 	if rank >= 2:
 		var weighted_damage := (
 			fruit_collision_damage
@@ -3922,48 +4048,6 @@ func _apply_attached_gourdvine_hit(enemy_id: int, cane_damage: float) -> void:
 		)
 
 
-func _detach_gourdvine_fruit(
-	origin: Vector2,
-	facing: Vector2,
-	left_to_right: bool,
-	reach: float
-) -> void:
-	var rank := _evolution_rank(Progression.EvolutionId.GOURDVINE)
-	if rank <= 0 or _gourdvine_pending_count <= 0:
-		_gourdvine_attached = false
-		return
-	var half_angle := deg_to_rad(combat.cane_arc_degrees * 0.5)
-	var terminal_angle := half_angle if left_to_right else -half_angle
-	var tip_direction := facing.rotated(terminal_angle)
-	var tip := origin + tip_direction * reach
-	var distance_scale := 1.0
-	if rank >= 3:
-		distance_scale += 0.10 * float(
-			_upgrade(Progression.UpgradeId.VINE_ELONGATION)
-		) * _root_bonus_scale(Progression.UpgradeId.VINE_ELONGATION, origin)
-	var speed_scale := 1.50 if rank >= 5 else 1.0
-	var fruit_aim := _get_fruit_aim_direction(tip, distance_scale)
-	for index in range(_gourdvine_pending_count):
-		var offset := (
-			float(_gourdvine_directions[index])
-			if index < _gourdvine_directions.size()
-			else _fruit_fan_offset(index, _gourdvine_pending_count, 0.42)
-		)
-		var fruit := _spawn_fruit(
-			tip,
-			fruit_aim.rotated(offset),
-			distance_scale,
-			1.0,
-			1.0,
-			speed_scale
-		)
-		if fruit != null and rank >= 5:
-			fruit.first_collision_damage_multiplier = 1.50
-	_gourdvine_pending_count = 0
-	_gourdvine_attached = false
-	_gourdvine_directions.clear()
-
-
 func fire_slot_jackpot(path_id: int, jackpot_scale: float) -> void:
 	## Immediate spectacle for the three new reel faces. The casino loan has already
 	## maxed the Path's four lines before this is called; these events simply make the
@@ -3977,7 +4061,7 @@ func fire_slot_jackpot(path_id: int, jackpot_scale: float) -> void:
 			var facing := combat.get_densest_target_direction(
 				player.get_arena_position(),
 				combat.get_cane_reach(),
-				combat.cane_arc_degrees,
+				combat.get_cane_arc_degrees(),
 				fallback
 			)
 			combat.perform_bonus_cane_sweep(
@@ -4021,25 +4105,19 @@ func _draw() -> void:
 	for fruit in _fruits:
 		if fruit.active:
 			_draw_fruit(fruit)
-	if _gourdvine_pending_count > 0:
-		var facing := player.get_facing_direction()
-		if progression.has_path_active(Progression.PathId.VINE):
-			facing = combat.get_densest_target_direction(
-				player.get_arena_position(),
-				combat.get_cane_reach(),
-				combat.cane_arc_degrees,
-				facing
-			)
-		var anchor := player.get_arena_position() + facing * combat.cane_reach_pixels * 0.72
-		for index in range(_gourdvine_pending_count):
-			var offset := Vector2.from_angle(float(index) * TAU / float(maxi(1, _gourdvine_pending_count))) * 7.0
-			_draw_centered_texture(
-				_get_fruit_texture(index),
-				anchor + offset,
-				fruit_art_diameter_pixels * 0.58,
-				float(index) * 0.9,
-				Color(1.0, 1.0, 1.0, 0.88)
-			)
+	if _gourdvine_growth > 0.0:
+		# One fruit on the tip, drawn at the size it has grown to. It used to be a ring
+		# of fruit floating at 72% of the Cane's reach along an auto-aimed direction,
+		# which is neither where the rope is nor where the player is looking -- most of
+		# why the evolution read as broken was that its object was never where it said.
+		var ripeness := clampf(_gourdvine_growth, 0.0, 1.0)
+		_draw_centered_texture(
+			_get_fruit_texture(_gourdvine_visual_index),
+			_gourdvine_tip(),
+			fruit_art_diameter_pixels * lerpf(0.22, 0.68, ripeness),
+			0.0,
+			Color(1.0, 1.0, 1.0, lerpf(0.55, 1.0, ripeness))
+		)
 
 
 ## Sample the Network at every point that takes a whole unit from it. Same two

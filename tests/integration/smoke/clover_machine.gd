@@ -453,7 +453,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	var vine_jackpot_fired := (
 		jackpots.is_active(Progression.PathId.VINE)
 		and prototype.combat.get_enemy_health(vine_jackpot_enemy) < vine_jackpot_health
-		and prototype.combat._cane_auto_targets
+		# The jackpot's claim is that the Vine is running the Cane, not that something
+		# is aiming it: Vine follows facing now, so the rope resolving the stroke is
+		# what a temporary Vine actually grants.
+		and prototype.combat.is_vine_driven()
 	)
 
 	jackpots.reset_jackpots()

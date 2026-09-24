@@ -292,7 +292,11 @@ static func run(report: SmokeReport, prototype: RunRoot, relics: RelicDirector, 
 	prototype.progression._owned_relics[RelicCatalog.Id.SNARE_VINE] = 0
 	prototype.combat.reset_combat()
 
-	# Gleaning Hook banks Charge off ring kills, capped per hold.
+	# Gleaning Hook spares the ground the ring would have cut, capped per hold. It
+	# banked Charge until the Pruning rework made the launch a minority of the path's
+	# damage; buying leaves with it instead measured byte-identical to holding no relic,
+	# because a walking ring runs at capacity and leaves are not what it is short of.
+	# Ground is, since the scarcity fix, and ground is what its own sentence saves.
 	prototype.progression.reset_progression()
 	prototype.progression.debug_select_paths(
 		Progression.PathId.PRUNING,
@@ -304,13 +308,18 @@ static func run(report: SmokeReport, prototype: RunRoot, relics: RelicDirector, 
 	var gleaning := prototype.pruning_director
 	gleaning.reset_director()
 	gleaning._charge = 0.0
-	var payouts := int(ceil(gleaning.gleaning_hook_maximum / gleaning.gleaning_hook_charge)) + 2
+	var payouts := int(
+		ceil(gleaning.gleaning_hook_maximum_cells / gleaning.gleaning_hook_cells)
+	) + 2
 	for _gleaning_kill in range(gleaning.gleaning_hook_kills * payouts):
 		gleaning.notify_ring_kill(false)
 	report.check(
-		gleaning.get_gleaning_banked_charge() > 0.0
-		and gleaning.get_gleaning_banked_charge()
-		<= gleaning.gleaning_hook_maximum + 0.0001,
-		"GLEANING HOOK banks Charge from ring kills and stops at its cap"
+		gleaning.get_gleaning_banked_cells() > 0.0
+		and gleaning.get_gleaning_banked_cells()
+		<= gleaning.gleaning_hook_maximum_cells + 0.0001
+		and is_equal_approx(
+			gleaning.get_upkeep_cells_spared(), gleaning.get_gleaning_banked_cells()
+		),
+		"GLEANING HOOK spares the ground the ring would have cut, and stops at its cap"
 	)
 	prototype.progression._owned_relics[RelicCatalog.Id.GLEANING_HOOK] = 0

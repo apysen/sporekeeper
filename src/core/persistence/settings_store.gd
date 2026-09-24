@@ -16,6 +16,10 @@ extends RefCounted
 const PATH := "user://settings.cfg"
 const DISPLAY_SECTION := "display"
 const AUDIO_SECTION := "audio"
+## Things the game has shown the player once and does not show again. Not a setting in
+## the sense the other two sections are -- nobody chose it -- but it belongs in the same
+## file for the same reason: it has to survive the session that wrote it.
+const SEEN_SECTION := "seen"
 
 
 ## Every display choice on file, keyed by name. Empty when there is no file yet,
@@ -54,4 +58,31 @@ static func write_volume(key: String, value: float) -> void:
 	var config := ConfigFile.new()
 	config.load(PATH)
 	config.set_value(AUDIO_SECTION, key, clampf(value, 0.0, 1.0))
+	config.save(PATH)
+
+
+static func has_seen(key: String) -> bool:
+	var config := ConfigFile.new()
+	if config.load(PATH) != OK:
+		return false
+	return bool(config.get_value(SEEN_SECTION, key, false))
+
+
+static func mark_seen(key: String) -> void:
+	var config := ConfigFile.new()
+	config.load(PATH)
+	config.set_value(SEEN_SECTION, key, true)
+	config.save(PATH)
+
+
+static func forget_seen(key: String) -> void:
+	## Shows a one-off note again. Nothing in the game calls this -- it is for a probe
+	## that has to photograph a note it can only be shown once, and for whoever needs to
+	## see the thing again without deleting the whole settings file.
+	var config := ConfigFile.new()
+	if config.load(PATH) != OK:
+		return
+	if not config.has_section_key(SEEN_SECTION, key):
+		return
+	config.erase_section_key(SEEN_SECTION, key)
 	config.save(PATH)

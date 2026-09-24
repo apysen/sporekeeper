@@ -71,6 +71,7 @@ func reset_director() -> void:
 	# from the untouched baselines it captured on ready.
 	territory_field.tuning.maturation_per_second = _base_maturation_per_second
 	territory_field.tuning.regeneration_per_second = _base_regeneration_per_second
+	territory_field.regeneration_root_share = 0.0
 	territory_field.set_mature_resistance_multiplier(1.0)
 
 
@@ -201,5 +202,9 @@ func apply_modifiers(field_maturation_multiplier: float) -> void:
 	)
 	territory_field.tuning.regeneration_per_second = (
 		_base_regeneration_per_second + get_regeneration_per_second()
+	)
+	var regeneration := territory_field.tuning.regeneration_per_second
+	territory_field.regeneration_root_share = (
+		get_regeneration_per_second() / regeneration if regeneration > 0.0 else 0.0
 	)
 	territory_field.set_mature_resistance_multiplier(get_mature_resistance_multiplier())

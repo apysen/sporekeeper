@@ -113,7 +113,9 @@ enum UpgradeId {
 	THISTLE_BURR,
 	THISTLE_NEEDLEPOINT,
 	VINE_ELONGATION,
-	VINE_LIGNIFICATION,
+	## Was Lignification, a flat Cane damage bonus. Renamed in place rather than
+	## appended, because a save stores an upgrade's *index* and this slot keeps its own.
+	VINE_FANNING,
 	VINE_TURGOR,
 	VINE_APICAL_DOMINANCE,
 	FRUIT_SET,
@@ -462,7 +464,12 @@ func reset_progression() -> void:
 	_casino_paths.clear()
 	core_adaptations.clear()
 	branch_adaptations.clear()
-	unlocked_branch_slots = 0
+	# Every slot the mode allows, open. It used to start at zero and be earned off the
+	# Elite and the Boss, which gated the *shape* of a build on the clock rather than on
+	# the player -- the run's most interesting decision unavailable for the stretch it
+	# would matter most in. The milestones still pay their relics; they no longer sell
+	# permission. `configure_mode` re-runs this whenever the limit changes.
+	unlocked_branch_slots = get_branch_slot_limit()
 	_mastered_adaptations.clear()
 	_screens_since_offered.clear()
 	_previous_offer = PackedInt32Array()
@@ -1036,10 +1043,16 @@ func configure_mode(mode: int) -> void:
 	if mode == RUN_MODE.Id.CAMPAIGN:
 		xp_requirement_growth = 1.18
 		branch_slot_limit = CAMPAIGN_OWNED_ADAPTATIONS - MAXIMUM_CORE_ADAPTATIONS
-		authored_path_drafts = true
+		# Off: every level-up may offer a line from a Path the run has not entered, so
+		# all three Adaptations are choosable from the first reward screen rather than
+		# waiting on the Elite and the Burrower. The wave table's Adaptation drafts
+		# still fire, and are simply refused once the roster is full.
+		authored_path_drafts = false
+		unlocked_branch_slots = branch_slot_limit
 	else:
 		xp_requirement_growth = 1.34
 		branch_slot_limit = MAXIMUM_BRANCH_ADAPTATIONS
+		unlocked_branch_slots = branch_slot_limit
 		authored_path_drafts = false
 
 func choose_upgrade(upgrade_id: int) -> bool:
@@ -1583,8 +1596,8 @@ func get_upgrade_description(upgrade_id: int) -> String:
 			return "+1x Thistle critical damage (10% critical chance)"
 		UpgradeId.VINE_ELONGATION:
 			return "+20% Vine sweep reach"
-		UpgradeId.VINE_LIGNIFICATION:
-			return "+25% Vine sweep damage"
+		UpgradeId.VINE_FANNING:
+			return "+18% Vine sweep arc"
 		UpgradeId.VINE_TURGOR:
 			return "+15% Vine attack speed"
 		UpgradeId.VINE_APICAL_DOMINANCE:
@@ -1853,7 +1866,7 @@ func _get_upgrade_path(upgrade_id: int) -> int:
 		UpgradeId.THISTLE_CLUSTERING, UpgradeId.THISTLE_DEHISCENCE, \
 		UpgradeId.THISTLE_BURR, UpgradeId.THISTLE_NEEDLEPOINT:
 			return PathId.THISTLE
-		UpgradeId.VINE_ELONGATION, UpgradeId.VINE_LIGNIFICATION, \
+		UpgradeId.VINE_ELONGATION, UpgradeId.VINE_FANNING, \
 		UpgradeId.VINE_TURGOR, UpgradeId.VINE_APICAL_DOMINANCE:
 			return PathId.VINE
 		UpgradeId.FRUIT_SET, UpgradeId.FRUIT_RIPENING, \

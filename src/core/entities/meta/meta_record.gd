@@ -13,6 +13,9 @@ extends RefCounted
 ## it converts to is what `SaveStore` writes, and nothing else knows its shape.
 
 const MODE_COUNT := 2
+## Finished runs kept in the history, newest first. Each carries its whole contribution
+## table, so the list is capped rather than left to grow with every run ever played.
+const HISTORY_LIMIT := 40
 
 var runs_finished := 0
 var victories := 0
@@ -25,6 +28,18 @@ var best_wave_by_mode := PackedInt32Array([0, 0])
 var best_biomass_by_mode := PackedFloat32Array([0.0, 0.0])
 ## When the last run ended, as Unix seconds. Zero when none has.
 var last_finished_unix_time := 0
+## One dictionary per finished run, newest first, for the Past Runs page. Shaped by
+## the run that wrote it -- mode, outcome, wave, time, level, Green, the build and its
+## `RunStats` -- and read back only by that page, so a field it does not know is kept
+## and a field it misses is shown as absent.
+var history: Array = []
+
+
+## Puts a finished run at the top of the history and drops the oldest past the cap.
+func add_history(entry: Dictionary) -> void:
+	history.push_front(entry)
+	if history.size() > HISTORY_LIMIT:
+		history.resize(HISTORY_LIMIT)
 
 
 ## Folds one finished run in. Returns nothing: the record is the accumulation, and a
@@ -50,6 +65,7 @@ func to_dictionary() -> Dictionary:
 		"best_wave_by_mode": best_wave_by_mode,
 		"best_biomass_by_mode": best_biomass_by_mode,
 		"last_finished_unix_time": last_finished_unix_time,
+		"history": history,
 	}
 
 
@@ -65,6 +81,11 @@ static func from_dictionary(data: Dictionary) -> MetaRecord:
 	record.best_wave_by_mode = _int_field(data, "best_wave_by_mode")
 	record.best_biomass_by_mode = _float_field(data, "best_biomass_by_mode")
 	record.last_finished_unix_time = int(data.get("last_finished_unix_time", 0))
+	var stored_history: Variant = data.get("history", [])
+	if stored_history is Array:
+		for entry in stored_history:
+			if entry is Dictionary:
+				record.history.append(entry)
 	return record
 
 

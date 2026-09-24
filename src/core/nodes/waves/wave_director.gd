@@ -167,6 +167,9 @@ signal trial_wave_ended(wave_number: int)
 ## Forty of sixty, so Provocation is reaching into the peak and the recovery rather
 ## than skipping the wave. A player who wants the run to go faster gives up the only
 ## part of it that was going to be quiet.
+## Unused: Provocation has no per-wave window any more.
+## Kept rather than deleted: it is the record of what the gate was, and putting a
+## limit back is a matter of reading it again.
 @export_range(0.0, 120.0, 1.0) var provoke_unlock_seconds := 40.0
 ## The other door: a wave whose released threat has mostly been cleared is provokable
 ## sooner. Both conditions are needed, so a lull thirty seconds in does not count as
@@ -175,7 +178,13 @@ signal trial_wave_ended(wave_number: int)
 ## Deliberately measured against threat the Director actually released and the player
 ## actually removed, never against theoretical build strength -- the Campaign is not
 ## allowed to read Grandma's damage and respond to it.
+## Unused: Provocation has no clearance condition any more.
+## Kept rather than deleted: it is the record of what the gate was, and putting a
+## limit back is a matter of reading it again.
 @export_range(0.0, 1.0, 0.01) var provoke_release_floor := 0.40
+## Unused: Provocation has no clearance condition any more.
+## Kept rather than deleted: it is the record of what the gate was, and putting a
+## limit back is a matter of reading it again.
 @export_range(0.0, 1.0, 0.01) var provoke_cleared_fraction := 0.80
 ## Seconds of Campaign a run may skip by Provoking, across the whole run.
 ##
@@ -184,6 +193,9 @@ signal trial_wave_ended(wave_number: int)
 ## seconds each would take a twenty-minute Campaign under thirteen, and the
 ## structure needs time to breathe however far ahead of it the player is: the point
 ## of Provocation is a faster, more dangerous run, not a different, shorter game.
+## Unused: Provocation has no run-level allowance any more.
+## Kept rather than deleted: it is the record of what the gate was, and putting a
+## limit back is a matter of reading it again.
 @export_range(0.0, 900.0, 5.0) var maximum_provoked_seconds := 240.0
 ## Surge credit granted per second of recovery given up.
 ##
@@ -543,19 +555,23 @@ func get_spawn_topology() -> SpawnTopology:
 ## responds to what the player has *done*, and a difficulty system that reads what
 ## they are capable of is the thing this rework exists to avoid.
 func can_provoke() -> bool:
+	## Whenever there is a wave left to call, as often as the player likes.
+	##
+	## There used to be three gates: forty seconds into the wave, or eighty per cent of
+	## its released threat cleared, and a four-minute compression allowance across the
+	## whole run. All three were the game deciding how fast a run was allowed to be.
+	##
+	## What stops a reckless chain is the surge, and it always did: `surge_credit_per
+	## _second` is charged on the seconds skipped, so pressing this five times at a
+	## wave's opening puts five waves' worth of threat at the front of the next one,
+	## immediately, in front of the player. That is a wall a build either eats or does
+	## not, which is a far better answer than a budget refusing on the run's behalf --
+	## and it is what lets somebody good at the game find out how fast they can finish.
 	if not _campaign_mode or cleanup_started or is_complete():
 		return false
 	if get_current_wave_number() >= get_final_wave_number():
 		return false
-	if is_grace_period_active():
-		return false
-	if not has_provocation_budget():
-		return false
-	if get_seconds_into_wave() >= provoke_unlock_seconds:
-		return true
-	if _threat.get_released_fraction() < provoke_release_floor:
-		return false
-	return get_cleared_threat_fraction() >= provoke_cleared_fraction
+	return not is_grace_period_active()
 
 
 ## Share of the threat this wave has released that is no longer standing.
@@ -600,31 +616,32 @@ func provoke() -> float:
 	elapsed_seconds = minf(run_duration_seconds, elapsed_seconds + skipped)
 	_provocations += 1
 	_pending_surge_credit += skipped * surge_credit_per_second
-	if _blight_level < BlightTable.MAXIMUM_LEVEL:
-		_blight_level += 1
-		# Owed to the wave this call is about to start, and paid when that wave ends.
+	# Every press raises Blight and every press is owed its Growth. Both used to sit
+	# behind a ceiling check, so a capped run paid the surge, skipped the wave and
+	# earned nothing -- the presses past Blight V were pure cost, which is most of why
+	# late Provocation felt pointless.
+	_blight_level += 1
+	# Owed to the wave this call is about to start, and paid when that wave ends.
+	# Owed, up to what the run can still pay out. A Growth is handed over one wave
+	# boundary at a time, so a debt longer than the boundaries remaining can never be
+	# collected, and banking it is a list that grows without a ceiling. Unlimited
+	# Provocation is what made that reachable: a caller pressing faster than the run
+	# turns over appends every time, and the boundary handler walks the whole list.
+	if _growth_owed_waves.size() < get_final_wave_number():
 		_growth_owed_waves.append(wave_number + 1)
-		blight_changed.emit(_blight_level)
+	blight_changed.emit(_blight_level)
 	wave_provoked.emit(wave_number, skipped)
 	_update_timeline_events()
 	return skipped
 
 
-## Whether the run has enough of its compression allowance left to call this wave.
+## Kept, and always true in Campaign.
 ##
-## Separate from `can_provoke` because the two refusals are not the same thing and
-## must not print the same sentence. "Not yet, hold the wave longer" is true when the
-## window has not opened; it is a lie when the window is open and the run has simply
-## spent its four minutes, and a player told to wait longer for something that will
-## never come again learns to distrust the prompt.
-##
-## The whole remainder has to fit: a partial skip would charge a Blight level and
-## leave the run mid-wave. As the allowance runs down this tapers -- only later,
-## smaller calls still fit -- rather than stopping dead.
+## Provocation has no allowance any more. This answers the question the interface still
+## asks -- "is there a reason beyond timing that this cannot be pressed" -- and there no
+## longer is one, so the run stops printing a refusal it cannot mean.
 func has_provocation_budget() -> bool:
-	if not _campaign_mode:
-		return false
-	return _provoked_seconds + _seconds_left_in_wave() <= maximum_provoked_seconds
+	return _campaign_mode
 
 
 func _seconds_left_in_wave() -> float:
@@ -722,9 +739,15 @@ func _on_wave_boundary_crossed(wave_number: int) -> void:
 		wave_relic_earned.emit(wave_number - 1)
 	# A Provocation's Growth is the reward for living through the wave it called,
 	# which is the wave that has just ended.
+	# One offer per boundary however many are due. Chaining eleven Provocations owes
+	# eleven Growths and they all come due on the same frame, which as eleven panels in
+	# a row is a stampede rather than a reward. The rest stay owed and arrive one wave
+	# at a time, so a hurried run is still paid in full -- just not all at once.
 	var still_owed := PackedInt32Array()
+	var paid := false
 	for owed_wave in _growth_owed_waves:
-		if wave_number > owed_wave:
+		if wave_number > owed_wave and not paid:
+			paid = true
 			growth_reward_earned.emit()
 		else:
 			still_owed.append(owed_wave)
@@ -750,7 +773,9 @@ func _on_wave_boundary_crossed(wave_number: int) -> void:
 func _update_quick_milestones() -> void:
 	var milestone_spawn_allowed := not is_grace_period_active()
 	if not elite_spawned and elapsed_seconds >= elite_time_seconds and milestone_spawn_allowed:
-		if combat.spawn_enemy(EnemyKinds.Role.ELITE) != -1:
+		var elite_id := combat.spawn_enemy(EnemyKinds.Role.ELITE)
+		if elite_id != -1:
+			combat.mark_milestone(elite_id)
 			elite_spawned = true
 			elite_arrived.emit()
 	if not boss_spawned and elapsed_seconds >= boss_time_seconds and milestone_spawn_allowed:
@@ -825,9 +850,11 @@ func _spawn_milestone(role: int) -> bool:
 	elif role == EnemyKinds.Role.HIVE_QUEEN:
 		milestone_wave = CampaignWaves.HIVE_QUEEN_WAVE
 	_apply_wave_scaling(get_wave_spec(milestone_wave))
-	var spawned := combat.spawn_enemy(role) != -1
+	var enemy_id := combat.spawn_enemy(role)
+	if enemy_id != -1:
+		combat.mark_milestone(enemy_id)
 	_apply_enemy_spawn_scaling()
-	return spawned
+	return enemy_id != -1
 
 
 func _update_grace_skip() -> void:

@@ -383,7 +383,7 @@ static func get_relic_description(relic_id: int) -> String:
 		Id.WORLD_TREE:
 			return "An ancient Mature region grows a World Tree. Every 6s, the next eligible Plant event on Mature Green echoes at 45% strength."
 		Id.GLEANING_HOOK:
-			return "Every 8 held-ring kills grants 5% Charge without cutting more Green, up to 15% per hold."
+			return "Every 8 held-ring kills spares 4 cells of Green the harvest would have cut, up to 12 per hold."
 		Id.SKIMMING_CUT:
 			return "The first time a released Cutting hits terrain, it ricochets toward a nearby enemy at 65% damage."
 		Id.CALLUS:

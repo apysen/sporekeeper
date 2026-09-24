@@ -75,10 +75,12 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	report.check(
 		prototype.progression.secondary_path == Progression.PathId.ROOT
 		and prototype.progression.get_pair_evolution_id() != Progression.EvolutionId.NONE
-		and not prototype.progression.has_branch_slot_open(),
-		"a second uncommitted line locks the Core pair, and no Branch slot exists yet"
+		and prototype.progression.has_branch_slot_open(),
+		"a second uncommitted line locks the Core pair, with the Branch slot already open"
 	)
-	# With both Cores committed and no Branch earned, drafts narrow to what is owned.
+	# With both Cores committed and a Branch still empty, unowned lines stay on offer:
+	# the roster's whole shape is available from the first level-up now, so a draft
+	# narrows when the *slots* are full rather than when the Campaign says so.
 	var narrowed := prototype.progression.get_ordinary_candidate_lines()
 	var narrowed_to_owned := not narrowed.is_empty()
 	for option_id in narrowed:
@@ -89,19 +91,21 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 			)
 		)
 	report.check(
-		narrowed_to_owned,
-		"drafts narrow to the owned Adaptations once no slot is open"
+		not narrowed.is_empty() and not narrowed_to_owned,
+		"an open Branch slot keeps unowned lines on offer"
 	)
-	# Running the clock out never offers an Adaptation: the room for a Branch is
-	# earned from the Elite and the Boss, not from a timer.
+	# The clock still hands out nothing by itself. What changed is that the *room* is
+	# there from the start: the Adaptation that fills it is drafted, and a run that never
+	# takes the draft never gains one however long it stands around.
 	prototype.debug_advance_time(600.0)
 	prototype.debug_advance_time(600.0)
 	report.check(
 		prototype.progression.get_owned_adaptation_count() == 2
-		and prototype.progression.unlocked_branch_slots == 0,
-		"no elapsed-time milestone ever opens a Branch slot"
+		and prototype.progression.has_branch_slot_open(),
+		"time alone fills no slot, and the open Branch waits to be drafted into"
 	)
-	# Beating the Elite does, and what fills it is drafted like everything else.
+	# The Elite pays its relic and its draft, and what fills the slot is drafted like
+	# everything else.
 	prototype.progression._pending_upgrade_options.clear()
 	prototype.progression._pending_relic_options.clear()
 	prototype._choice_kind = RunRoot.ChoiceKind.NONE
@@ -119,9 +123,10 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 				)
 			)
 	report.check(
-		prototype.progression.unlocked_branch_slots == 1
+		prototype.progression.unlocked_branch_slots
+		== prototype.progression.get_branch_slot_limit()
 		and prototype.progression.has_branch_slot_open(),
-		"defeating the Elite earns room for a third Adaptation"
+		"the Elite pays without needing to sell permission the run already had"
 	)
 	report.check(
 		branch_draft_offered and branch_draft_is_unowned,
@@ -307,9 +312,13 @@ static func run(report: SmokeReport, prototype: RunRoot) -> void:
 	var open_slot_keeps_unowned := prototype.progression._is_upgrade_draftable(
 		Progression.UpgradeId.BRAMBLE_ENTANGLEMENT
 	)
-	# Both Cores committed and no Branch earned: nothing is open, so the draft
-	# narrows to what the run holds.
+	# Every slot filled -- both Cores and the Branch the run now starts with -- so the
+	# draft narrows to what it holds. The narrowing is a property of the roster being
+	# full, not of a milestone the Campaign has yet to reach.
 	prototype.progression.acquire_adaptation(Progression.PathId.ROOT)
+	for _branch in range(prototype.progression.get_branch_slot_limit()):
+		prototype.progression.acquire_adaptation(Progression.PathId.THISTLE)
+		prototype.progression.acquire_adaptation(Progression.PathId.VINE)
 	report.check(
 		open_slot_keeps_unowned
 		and prototype.progression._is_upgrade_draftable(

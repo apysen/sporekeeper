@@ -219,6 +219,9 @@ signal evolution_changed(status: int)
 @export_range(0.0, 0.2, 0.001) var rebound_force_per_cell := 0.014
 ## Highest Force multiplier Rebound may add, so the collapse cannot compound.
 @export_range(0.0, 4.0, 0.05) var rebound_maximum_force := 1.30
+## How thin Rebound leaves the Green it draws on, as control. Above the ownership
+## threshold on purpose: the collapse thins the ground and never takes it.
+@export_range(0.19, 1.0, 0.01) var rebound_compression_floor := 0.40
 
 @export_group("Deadfall")
 ## Extra Cuttings per point of thorn development the harvest tore out with the Green.
@@ -270,6 +273,20 @@ signal evolution_changed(status: int)
 @export_range(0.0, 1.0, 0.01) var splinterstorm_shatter_threshold := 0.90
 @export_range(10.0, 400.0, 5.0) var splinterstorm_shatter_seek_pixels := 150.0
 ## Deadfall Volley: spikes launched by every cycle, and how hard they hit.
+## Seconds between Deadfall Volleys.
+##
+## The volley used to fire on *every harvest cycle*, which is several times a second
+## while she walks fresh Green -- eight heavy spikes at 1.6x with four pierce, costing
+## neither ring nor ground, at a rate an upgrade line buys more of. Measured, rank 5 was
+## +138% over its own unevolved pair and took zero damage across a whole bench: the
+## strongest thing on the board by a distance, and strong in the specific way that stops
+## a run being played.
+##
+## A cadence of its own is the fix rather than a smaller volley, because the volley is
+## the evolution's whole identity and the problem was never its size. Deadfall's contract
+## is the *ring* firing continuously; the volley is a second weapon on top of that, and a
+## second weapon does not also get to inherit the harvest's rate.
+@export_range(0.1, 10.0, 0.1) var splinterstorm_volley_interval_seconds := 2.0
 @export_range(0, 24, 1) var splinterstorm_volley_spikes := 8
 @export_range(0.5, 6.0, 0.05) var splinterstorm_volley_damage_scale := 1.60
 @export_range(0, 12, 1) var splinterstorm_volley_pierce := 4

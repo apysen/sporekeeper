@@ -19,6 +19,9 @@ const RUN_SCENE := "res://scenes/run/run.tscn"
 ## build flag because that is where it is wanted, and it is checked with OS.is_debug_build
 ## so an exported release can never ship past its own title screen.
 @export var skip_home_screen := false
+## Offers the QUICK button. Off while playtesting concentrates on the Campaign; the
+## mode itself is untouched, and a saved Quick run can still be continued.
+@export var quick_mode_enabled := false
 
 @export_group("Collaborators")
 ## Presentation options this screen edits. Its own instance, saved to disk on change.
@@ -48,6 +51,8 @@ const RUN_SCENE := "res://scenes/run/run.tscn"
 @export var continue_button: Button
 @export var play_button: Button
 @export var campaign_button: Button
+## Opens the history of finished runs, each with the table its result screen showed.
+@export var past_runs_button: Button
 @export var settings_button: Button
 @export var quit_button: Button
 
@@ -81,6 +86,7 @@ var _launch_requested := false
 ## asked for rather than whichever button was pressed last.
 var _pending_new_run_mode := RUN_MODE.Id.QUICK
 var _loading_overlay: ColorRect
+var _past_runs_page: PastRunsPage
 var _loading_label: Label
 
 
@@ -89,6 +95,8 @@ func _ready() -> void:
 		# Deferred: changing scene from inside _ready tears down the node that is
 		# still being readied.
 		RunLaunch.mark_launched_from_menu()
+		if not quick_mode_enabled:
+			RUN_MODE.set_selected(RUN_MODE.Id.CAMPAIGN)
 		get_tree().change_scene_to_file.call_deferred(RUN_SCENE)
 		return
 	NinePatchButtonBorder.install_under(self)
@@ -99,8 +107,13 @@ func _ready() -> void:
 		continue_button.pressed.connect(_on_continue_pressed)
 	if play_button != null:
 		play_button.pressed.connect(_on_quick_pressed)
+		if not quick_mode_enabled:
+			_hide_quick_button()
 	if campaign_button != null:
 		campaign_button.pressed.connect(_on_campaign_pressed)
+	if past_runs_button != null:
+		past_runs_button.pressed.connect(_show_past_runs.bind(true))
+		_build_past_runs_page()
 	if settings_button != null:
 		settings_button.pressed.connect(_show_settings.bind(true))
 	if settings_back_button != null:
@@ -183,6 +196,37 @@ func _on_continue_pressed() -> void:
 	RUN_MODE.set_selected(RunSnapshot.from_dictionary(stored).mode)
 	RunLaunch.request_resume()
 	_request_launch()
+
+
+## Hides QUICK and closes the gap it leaves, by lifting every menu button that sat
+## below it one row.
+func _hide_quick_button() -> void:
+	play_button.visible = false
+	var row := play_button.position.y - campaign_button.position.y
+	for button in [past_runs_button, settings_button, quit_button]:
+		if button != null and button.position.y > play_button.position.y:
+			button.position.y -= row
+
+
+func _build_past_runs_page() -> void:
+	_past_runs_page = PastRunsPage.new()
+	_past_runs_page.visible = false
+	add_child(_past_runs_page)
+	_past_runs_page.build()
+	_past_runs_page.closed.connect(_show_past_runs.bind(false))
+
+
+## Swaps the menu for the Past Runs page, or back. The page reads the record fresh on
+## every opening, so a run finished since the menu loaded is on it.
+func _show_past_runs(showing: bool) -> void:
+	if _past_runs_page == null:
+		return
+	if showing:
+		_past_runs_page.open(MetaRecord.from_dictionary(SaveStore.read_meta()))
+	else:
+		_past_runs_page.visible = false
+	if menu_page != null:
+		menu_page.visible = not showing
 
 
 func _on_quick_pressed() -> void:

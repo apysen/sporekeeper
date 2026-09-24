@@ -303,24 +303,14 @@ class Cutting:
 ## the ring encloses a space at all. Early, when a wave is four Hunters, this is most of
 ## what the path does; later it is a rounding error next to the ground it denies, which
 ## is the arc the path is being built for rather than a weakness in it.
-## The ring's damage budget per pass, divided among everything standing in it.
+## What one bite of the ring deals to each enemy standing in it, before Cutting Damage,
+## Charge and the ring's size.
 ##
-## A budget rather than per-target damage, and this is the structural fix the path has
-## needed all along. `orbit_maximum_targets_per_tick` was written to bound an aura whose
-## output is per-enemy damage times enemy count -- but it caps bites per *frame*, and at
-## sixty enemies on 0.35s cooldowns the demand is ~171 bites a second against a cap that
-## permits 480, so it never binds. Ring output was fully proportional to density. With the
-## radius grown from 44 to 154 the enclosed area scales as r squared, and a 20-point flat
-## aura measured 151,732 on the siege bench against a Cane-only 15,248.
-##
-## Dividing by the bodies in reach makes total output constant: bites per second rise with
-## the count, damage per bite falls as its reciprocal, so the ring deals about
-## `2.86 * budget` a second whatever it is facing. That is what lets the radius grow
-## freely -- growth buys area, never damage.
-##
-## It also produces the path's arc without anyone imposing it. Four enemies in the ring
-## take a quarter of the budget each and die; sixty take a sixtieth and barely notice,
-## so the ring's worth moves from killing to covering as the run goes on.
+## Every body in reach takes it in full on its own cooldown. It was a budget divided
+## among everything in reach for a while -- which held the ring's output constant
+## however many it held, and on the crowds a late run is made of left each enemy a
+## sliver. Measured then, a flat 20-point aura on the siege bench did 151,732 against a
+## Cane-only 15,248; `orbit_maximum_targets_per_tick` is what bounds it now.
 @export_range(0.5, 400.0, 0.5) var orbit_contact_damage := 16.0
 ## Seconds before the ring may strike the same enemy again.
 @export_range(0.05, 3.0, 0.05) var orbit_hit_cooldown_seconds := 0.35
@@ -474,11 +464,36 @@ class Cutting:
 
 @export_group("Relics")
 ## Ring kills between Gleaning Hook's free Charge.
+## Gleaning Hook: kills the ring makes itself, paid back as ring.
+##
+## It used to bank Charge, and Charge is the one currency the rework demoted -- its
+## only consumer is the payout multiplier on a deliberate discharge, and the discharge
+## is now a small share of a path whose damage is the ring standing there. Measured on
+## a walking 30% board with the ring spent at every fill, the relic was worth -0.6%:
+## the tightest zero in the pool, and the only Pruning relic that measured *below*
+## holding none.
+##
+## Its own sentence is "grants Charge without cutting more Green", and the thing that
+## sentence is really about is the second half -- the ring being paid in blood instead
+## of in ground.
+##
+## Buying leaves with it was tried first and measured byte-identical to holding no relic
+## at all, for the reason that has now caught three separate levers on this path: a ring
+## walking fresh Green runs at or near its capacity, so anything that adds to the
+## harvest's debt is adding to a queue that is already longer than the shed cadence can
+## spend. Leaves are not the scarce thing. **Ground is**, since the scarcity fix, and
+## ground is what the relic's own sentence says it saves.
+##
+## So a payout cancels harvest debt instead: kills pay the upkeep the ring would
+## otherwise have taken out of the run's own territory. Same promise, in the one
+## currency the reworked path is actually short of.
 @export_range(1, 40, 1) var gleaning_hook_kills := 8
-## Charge one Gleaning Hook payout is worth.
-@export_range(0.01, 0.5, 0.01) var gleaning_hook_charge := 0.05
-## Most Charge Gleaning Hook may add across a single hold.
-@export_range(0.01, 1.0, 0.01) var gleaning_hook_maximum := 0.15
+## Cells of upkeep a payout cancels, and the most a single hold can be spared. Capped
+## for the reason the Charge version was: a long hold against a crowd must not be able
+## to run its ring for free, or the ground cost that is the whole point of the path
+## stops being paid.
+@export_range(0.5, 20.0, 0.5) var gleaning_hook_cells := 4.0
+@export_range(1.0, 60.0, 1.0) var gleaning_hook_maximum_cells := 12.0
 ## Reclamation multiplier one Green Manure discharge kill is worth.
 @export_range(0.0, 1.0, 0.01) var green_manure_per_kill := 0.09
 ## Largest reclamation multiplier Green Manure may reach.
@@ -513,7 +528,7 @@ class Cutting:
 @export_range(10.0, 400.0, 2.0) var stubble_radius_pixels := 90.0
 @export_range(0.05, 5.0, 0.05) var stubble_tick_seconds := 0.65
 @export_range(0.0, 2.0, 0.01) var stubble_damage_share := 0.35
-@export_range(1, 8, 1) var stubble_maximum_wounds := 2
+@export_range(1, 8, 1) var stubble_maximum_wounds := 1
 ## Watersprouts: what a killing spike leaves behind, and the caps that stop it
 ## turning one release into an unbounded thicket.
 @export_range(1, 8, 1) var watersprout_children := 2
@@ -544,6 +559,9 @@ var _stool_watch_position := Vector2.ZERO
 var _stool_watch_cells := 0
 var _stool_watch_reward := 0
 var _gleaning_kills := 0
+var _upkeep_spared := 0.0
+## Deadfall's volley cooldown. Its own, not the harvest's.
+var _deadfall_volley_remaining := 0.0
 var _gleaning_banked := 0.0
 var _green_manure_kills := 0
 var _green_manure_remaining := 0.0
@@ -572,6 +590,8 @@ var _orbit_sequence := 0
 var _hit_cooldowns := {}
 var _upkeep_debt := 0.0
 var _upkeep_cells_taken := 0
+## Aftergrowth cells the harvest ate instead of Green.
+var _shield_cells_taken := 0
 var _rings_released := 0
 var _holding := false
 ## Seconds since there was last Green under her feet; see `footing_grace_seconds`.
@@ -627,6 +647,8 @@ func reset_director() -> void:
 	_stool_watch_reward = 0
 	_gleaning_kills = 0
 	_gleaning_banked = 0.0
+	_upkeep_spared = 0.0
+	_deadfall_volley_remaining = 0.0
 	_green_manure_kills = 0
 	_green_manure_remaining = 0.0
 	_brush_cells = 0
@@ -652,6 +674,7 @@ func reset_director() -> void:
 	_hit_cooldowns.clear()
 	_upkeep_debt = 0.0
 	_upkeep_cells_taken = 0
+	_shield_cells_taken = 0
 	_rings_released = 0
 	_holding = false
 	_hold_seconds = 0.0
@@ -676,6 +699,7 @@ func advance(delta: float) -> void:
 			_apply_regrowth()
 	_watersprouts_this_frame = 0
 	_advance_brush_volley(delta)
+	_deadfall_volley_remaining = maxf(0.0, _deadfall_volley_remaining - delta)
 	_advance_callus(delta)
 	_advance_stubble(delta)
 	_advance_ring(delta)
@@ -796,6 +820,10 @@ func get_upkeep_cells_per_second() -> float:
 func get_hold_seconds() -> float:
 	return _hold_seconds
 
+func get_shield_cells_taken() -> int:
+	return _shield_cells_taken
+
+
 func get_upkeep_cells_taken() -> int:
 	return _upkeep_cells_taken
 
@@ -845,8 +873,8 @@ func prune_for_rebound(local_position: Vector2) -> float:
 	if not is_above_safety_floor():
 		return 0.0
 	var rank := get_evolution_rank(Progression.EvolutionId.REBOUND)
-	# Elastic Growth: the crater keeps its accelerated reclaim for longer, so the ground
-	# Rebound spends comes back rather than being a permanent hole in the organism.
+	# Elastic Growth: the thinned ground keeps its accelerated regrowth for longer, so
+	# what Rebound draws out of it comes back sooner.
 	var pruned_window := pruned_ground_seconds
 	if rank >= 2:
 		pruned_window *= evolutions.compression_regrowth_window
@@ -858,9 +886,10 @@ func prune_for_rebound(local_position: Vector2) -> float:
 			evolutions.rebound_radius_pixels,
 			evolutions.compression_pull_pixels
 		)
-	var harvest := territory_field.prune_territory_in_radius(
+	var harvest := territory_field.compress_territory_in_radius(
 		local_position,
 		evolutions.rebound_radius_pixels,
+		evolutions.rebound_compression_floor,
 		pruned_window
 	)
 	if harvest.cell_count <= 0:
@@ -898,6 +927,7 @@ func _advance_compression(delta: float) -> void:
 	_compression_wave_remaining = 0.0
 	# Pressure and damage, no mass: the second wave shoves the frontier and hurts what is
 	# standing in it without growing a single new cell of Green.
+	territory_field.attribution = RunStats.Source.PRUNING
 	territory_field.queue_bloom(
 		_compression_wave_position,
 		0.0,
@@ -1165,13 +1195,25 @@ func _harvest(wanted_cells: int) -> int:
 		# The floor is not a failure: it is the path refusing to kill its own run.
 		_last_cycle_cells = 0
 		return 0
+	# Bloom's Aftergrowth shield is harvested before the ground is: the shield is
+	# disposable control, and eating it spares the Green underneath. Only what the
+	# shield in reach cannot pay for is cut out of the territory itself.
+	var shield := territory_field.strip_aftergrowth_in_radius(
+		combat.player.get_arena_position(),
+		upkeep_radius_pixels,
+		wanted_cells
+	)
 	var harvest := territory_field.drain_territory_in_radius(
 		combat.player.get_arena_position(),
 		upkeep_radius_pixels,
-		wanted_cells,
+		wanted_cells - shield.cell_count,
 		pruned_ground_seconds,
 		upkeep_inner_radius_pixels
 	)
+	# Only real ground counts as ground spent; the shield cells join the harvest after.
+	var ground_cells := harvest.cell_count
+	harvest.cell_count += shield.cell_count
+	harvest.positions.append_array(shield.positions)
 	_last_cycle_cells = harvest.cell_count
 	if harvest.cell_count <= 0:
 		return 0
@@ -1180,7 +1222,15 @@ func _harvest(wanted_cells: int) -> int:
 	# ground at all is the signal that she has moved onto something worth cutting.
 	_unfed_seconds = 0.0
 	_cycles_run += 1
-	_upkeep_cells_taken += harvest.cell_count
+	_upkeep_cells_taken += ground_cells
+	_shield_cells_taken += shield.cell_count
+	# Both harvest relics are counted here rather than at the bottom of this function.
+	# Below this point a full ring returns early on every frame between sheds, so a
+	# relic whose sentence is about "continued harvesting" was being paid on the small
+	# subset of cycles that finished by raising a leaf -- which, once the ring fills, is
+	# a few frames a second out of every cycle that actually cuts ground.
+	_note_brush_harvest(harvest.cell_count)
+	_note_stubble_harvest(harvest.cell_count, combat.player.get_arena_position())
 	# A full ring still sheds its oldest spike to take a new one — that is the ring
 	# turning over, and it should happen. What it must not do is happen three times
 	# a second: unthrottled, holding a finished ring was a free homing volley on tap
@@ -1278,17 +1328,30 @@ func _harvest(wanted_cells: int) -> int:
 	_cutting_debt -= float(raised)
 	_bury_pioneer_seeds(harvest)
 	_fire_deadfall_volley(harvest)
-	# Green cut past the halfway mark is stored as Brush rather than being spent on
-	# the ring, which is the risk the relic asks the player to take.
-	_note_brush_harvest(harvest.cell_count)
 	cycle_pruned.emit(harvest.cell_count, raised)
 	return raised
 
 func _has_relic(relic_id: int) -> bool:
 	return relic_director != null and relic_director.has(relic_id)
 
-func get_gleaning_banked_charge() -> float:
+func get_cutting_debt() -> float:
+	## Harvest banked toward the next leaf. Read by the suite, which has to be able to
+	## see a relic paying into the ring rather than into a number nothing spends.
+	return _cutting_debt
+
+
+func get_gleaning_banked_cells() -> float:
+	## Green this hold has been spared for its own kills. It banked Charge until the
+	## rework made Charge the wrong currency to pay a ring in, and leaves the wrong one
+	## to pay a ring that is already full.
 	return _gleaning_banked
+
+
+func get_upkeep_cells_spared() -> float:
+	## Ground the harvest did not have to take, across the run. The relic's whole effect
+	## is a subtraction, and a subtraction is invisible in every column the bench prints
+	## unless something counts it.
+	return _upkeep_spared
 
 func get_green_manure_kills() -> int:
 	return _green_manure_kills
@@ -1319,13 +1382,20 @@ func notify_ring_kill(outward: bool) -> void:
 	if _gleaning_kills < gleaning_hook_kills:
 		return
 	_gleaning_kills = 0
-	# Charge without harvesting: the ring is paid in blood instead of in Green.
-	var payout := minf(gleaning_hook_charge, gleaning_hook_maximum - _gleaning_banked)
+	# Ring without harvesting: it is paid in blood instead of in Green.
+	var payout := minf(
+		gleaning_hook_cells, gleaning_hook_maximum_cells - _gleaning_banked
+	)
 	if payout <= 0.0:
 		return
 	_gleaning_banked += payout
-	_charge = clampf(_charge + payout, 0.0, 1.0)
-	status_requested.emit("GLEANING HOOK — the ring banks Charge off its own kills.")
+	# Cancelled off the debt the harvest has yet to take, so the ground is spared before
+	# it is cut rather than repaid after. Never below zero: a relic may make the ring
+	# cheaper and may not make it free, and a negative debt would bank credit across the
+	# quiet stretches the scarcity exists to create.
+	_upkeep_debt = maxf(0.0, _upkeep_debt - payout)
+	_upkeep_spared += payout
+	status_requested.emit("GLEANING HOOK — the ring pays for itself in blood.")
 
 func _advance_brush_volley(delta: float) -> void:
 	# The stored clippings go out behind the ring rather than with it, so the volley
@@ -1377,6 +1447,7 @@ func _advance_callus(delta: float) -> void:
 	if not _callus_left_wound:
 		return
 	_callus_used = true
+	territory_field.attribution = RunStats.Source.PRUNING
 	territory_field.queue_seed_growth(
 		_callus_position,
 		callus_mass,
@@ -1430,12 +1501,44 @@ func get_stubble_wound_count() -> int:
 	return _stubble_wounds.size()
 
 
+func has_pending_brush_volley() -> bool:
+	## Whether a release has a Brush Pile volley still to arrive. Read by the suite,
+	## which has to be able to tell "paid nothing" from "paid a moment later".
+	return not _brush_volley.is_empty()
+
+
 func get_brush_bundles() -> int:
 	return _brush_bundles
 
 
 func is_callus_armed() -> bool:
 	return _callus_remaining > 0.0 and not _callus_used
+
+
+func _note_stubble_harvest(cells: int, position: Vector2) -> void:
+	## Stubble reads "Pruned Ground stays sharp for 5s, damaging enemies that cross the
+	## wound", and it was planting its wound at the moment the ring was released.
+	##
+	## That was a relic about the harvest wired to the launch, and the launch is what
+	## the rework demoted: in sustained play the ring is spent rarely and held for a
+	## long time, so a Stubble bought for the ground Pruning cuts fired two or three
+	## times a minute. Planted by the cut instead, it is worth what its own sentence
+	## promises -- the ground she has just worked is dangerous to walk over -- and it
+	## does it with every parameter it already had.
+	if cells <= 0 or not _has_relic(RelicCatalog.Id.STUBBLE):
+		return
+	# A wound marks a patch of ground she has cut, and the harvest happens under her
+	# several times a second -- so without this the two wounds were re-planted on top of
+	# her every cycle and the relic was a damage aura that followed her around, worth
+	# +55% on a crowd. Sharp ground is something you leave behind. One wound per patch,
+	# spaced by its own radius, and standing still refreshes nothing.
+	if not _stubble_wounds.is_empty():
+		var newest: Array = _stubble_wounds[_stubble_wounds.size() - 1]
+		if (newest[0] as Vector2).distance_to(position) < stubble_radius_pixels:
+			return
+	if _stubble_wounds.size() >= stubble_maximum_wounds:
+		_stubble_wounds.remove_at(0)
+	_stubble_wounds.append([position, stubble_seconds, {}])
 
 
 func _note_brush_harvest(cells: int) -> void:
@@ -1780,25 +1883,23 @@ func _apply_orbit_damage() -> void:
 		* (1.0 + orbit_charge_damage_bonus * _charge)
 		* lerpf(clampf(orbit_lone_spike_damage_share, 0.0, 1.0), 1.0, fullness)
 	)
+	# Every body anywhere in the ring takes the full bite on its own cooldown. It used
+	# to be a budget divided by how many stood in reach, which made the ring's output
+	# constant however many it held -- so on the crowds the late run is made of each
+	# enemy took a sliver, and the path read as doing nothing. The per-tick cap below
+	# still bounds how many it bites at once.
 	var reach := radius + orbit_reach_pixels
 	var ids := combat.get_active_enemy_ids()
 	var positions := combat.get_active_enemy_positions()
 	var candidates: Array = []
-	# Everything standing in the thicket, cooling down or not. The budget is divided by
-	# how crowded the ring *is*, not by how many bodies happen to be off cooldown this
-	# frame -- that second number is a handful at any density, so dividing by it would
-	# leave output proportional to the crowd exactly as before.
-	var in_reach := 0
 	for index in range(mini(ids.size(), positions.size())):
 		var enemy_id := ids[index]
 		var distance := positions[index].distance_to(centre)
 		if distance > reach:
 			continue
-		in_reach += 1
 		if _hit_cooldowns.has(enemy_id):
 			continue
 		candidates.append([distance, enemy_id])
-	damage /= float(maxi(1, in_reach))
 	# Only sorted when the cap actually binds. Most frames every body in the disc is
 	# still on its own cooldown, so this is a handful of entries or none at all.
 	if candidates.size() > orbit_maximum_targets_per_tick:
@@ -1838,6 +1939,7 @@ func _wilt_oldest_spike() -> bool:
 	# The leaf sets its ground down where it fell. See `wilted_leaf_growth_share`; this
 	# is what makes a receding ring replant the ground that will refill it.
 	if wilted_leaf_growth_share > 0.0 and territory_field != null:
+		territory_field.attribution = RunStats.Source.PRUNING
 		territory_field.queue_seed_growth(
 			oldest.position,
 			wilted_leaf_growth_share,
@@ -1926,6 +2028,14 @@ func _release_ring(message: String, intentional: bool = true) -> void:
 	_watersprouts_this_release = 0
 	if released <= 0:
 		return
+	# Everything below is paid for a release she *chose*. The rework stopped a tear
+	# firing its leaves for exactly one reason -- being paid for running out of ground
+	# made starving the ring the optimal play -- and these three were reading `released`
+	# rather than `intentional`, so the same reward came straight back through the relic
+	# pool. Brush Pile is the plain case: its own wording is "release to fire up to 8
+	# extra Cuttings", and a ring that came apart was not released.
+	if not intentional:
+		return
 	if bundles > 0 and _has_relic(RelicCatalog.Id.BRUSH_PILE):
 		_brush_volley = [
 			brush_pile_delay_seconds,
@@ -1938,10 +2048,6 @@ func _release_ring(message: String, intentional: bool = true) -> void:
 		_callus_used = false
 		# Standing in the wound at the moment of release does not count as returning.
 		_callus_left_wound = false
-	if _has_relic(RelicCatalog.Id.STUBBLE):
-		if _stubble_wounds.size() >= stubble_maximum_wounds:
-			_stubble_wounds.remove_at(0)
-		_stubble_wounds.append([wound_position, stubble_seconds, {}])
 	_rings_released += 1
 	ring_released.emit(released, release_charge, release_facing, intentional)
 	status_requested.emit(message)
@@ -2052,14 +2158,23 @@ func _advance_launched_cutting(cutting: Cutting, delta: float) -> void:
 
 
 func _fire_deadfall_volley(harvest: TerritoryField.PruneHarvest) -> void:
-	## Deadfall Volley: every cycle throws a ring of heavy spikes outward on top of
-	## whatever the harvest raised. They come from the cut rather than from the ring, so
-	## the volley does not eat the orbit the player is holding.
+	## Deadfall Volley: a ring of heavy spikes thrown outward on top of whatever the
+	## harvest raised. They come from the cut rather than from the ring, so the volley
+	## does not eat the orbit the player is holding.
+	##
+	## On its own clock rather than on the harvest's. Reading the cycle meant the rate
+	## was whatever the ground allowed -- several a second on fresh Green, and faster
+	## again with Harvest Rate bought -- for a weapon that costs neither ring nor
+	## territory. Nothing in the run should be strong enough to stop the run being
+	## played, and an uncapped free volley at the harvest's cadence was exactly that.
 	if get_evolution_rank(Progression.EvolutionId.DEADFALL) < 5:
+		return
+	if _deadfall_volley_remaining > 0.0:
 		return
 	var spikes := evolutions.splinterstorm_volley_spikes
 	if spikes <= 0:
 		return
+	_deadfall_volley_remaining = evolutions.splinterstorm_volley_interval_seconds
 	var origin := combat.player.get_arena_position()
 	var damage := (
 		cutting_damage
@@ -2269,7 +2384,9 @@ func _advance_pioneer(delta: float) -> void:
 	_last_pioneer_positions = _pioneer_sites.duplicate()
 	var planted := 0
 	for site in _pioneer_sites:
-		overlay.spawn_seed(site, charge, 0, evolutions.pioneer_seed_durability)
+		overlay.spawn_seed(
+			site, charge, 0, evolutions.pioneer_seed_durability, RunStats.Source.PRUNING
+		)
 		planted += 1
 	# Second Flush: every few eruptions the ground gives a second, smaller wave a moment
 	# later. Held here rather than buried again through the harvest, because it must not
@@ -2293,7 +2410,9 @@ func _advance_pioneer(delta: float) -> void:
 		)
 	if not pending.is_empty():
 		for site in pending:
-			overlay.spawn_seed(site, charge, 0, evolutions.pioneer_seed_durability)
+			overlay.spawn_seed(
+				site, charge, 0, evolutions.pioneer_seed_durability, RunStats.Source.PRUNING
+			)
 		status_requested.emit(
 			"SECOND FLUSH — the cut ground gives a second wave of %d Seeds." % pending.size()
 		)

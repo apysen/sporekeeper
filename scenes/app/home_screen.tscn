@@ -16,7 +16,7 @@
 [ext_resource type="StyleBox" uid="uid://bn7byuq70ndfl" path="res://assets/ui/wx_fantasy_button_hover.tres" id="16_btn_hover"]
 [ext_resource type="StyleBox" uid="uid://c4qacuvts2rif" path="res://assets/ui/wx_fantasy_button_pressed.tres" id="17_btn_pressed"]
 
-[node name="HomeScreen" type="Control" unique_id=1691155363 node_paths=PackedStringArray("display_settings", "audio_settings", "menu_page", "settings_page", "overwrite_page", "overwrite_label", "overwrite_confirm_button", "overwrite_cancel_button", "record_label", "continue_button", "play_button", "campaign_button", "settings_button", "quit_button", "settings_back_button", "fullscreen_button", "sfx_slider", "sfx_value", "music_slider", "music_value", "setting_buttons")]
+[node name="HomeScreen" type="Control" unique_id=1691155363 node_paths=PackedStringArray("display_settings", "audio_settings", "menu_page", "settings_page", "overwrite_page", "overwrite_label", "overwrite_confirm_button", "overwrite_cancel_button", "record_label", "continue_button", "play_button", "campaign_button", "past_runs_button", "settings_button", "quit_button", "settings_back_button", "fullscreen_button", "sfx_slider", "sfx_value", "music_slider", "music_value", "setting_buttons")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -36,6 +36,7 @@ record_label = NodePath("MenuPage/RecordLabel")
 continue_button = NodePath("MenuPage/ContinueButton")
 play_button = NodePath("MenuPage/PlayButton")
 campaign_button = NodePath("MenuPage/CampaignButton")
+past_runs_button = NodePath("MenuPage/PastRunsButton")
 settings_button = NodePath("MenuPage/SettingsButton")
 quit_button = NodePath("MenuPage/QuitButton")
 settings_back_button = NodePath("SettingsPage/BackButton")
@@ -104,7 +105,7 @@ layout_mode = 0
 offset_left = 490.0
 offset_top = 300.0
 offset_right = 790.0
-offset_bottom = 357.0
+offset_bottom = 352.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 20
@@ -117,9 +118,9 @@ text = "CONTINUE"
 [node name="PlayButton" type="Button" parent="MenuPage" unique_id=1239612251]
 layout_mode = 0
 offset_left = 490.0
-offset_top = 459.0
+offset_top = 424.0
 offset_right = 790.0
-offset_bottom = 516.0
+offset_bottom = 476.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 20
@@ -132,9 +133,9 @@ text = "QUICK"
 [node name="CampaignButton" type="Button" parent="MenuPage" unique_id=1239612252]
 layout_mode = 0
 offset_left = 490.0
-offset_top = 390.0
+offset_top = 362.0
 offset_right = 790.0
-offset_bottom = 447.0
+offset_bottom = 414.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 16
@@ -144,12 +145,27 @@ theme_override_styles/hover = ExtResource("16_btn_hover")
 theme_override_styles/focus = ExtResource("15_btn")
 text = "CAMPAIGN"
 
+[node name="PastRunsButton" type="Button" parent="MenuPage" unique_id=1239612254]
+layout_mode = 0
+offset_left = 490.0
+offset_top = 486.0
+offset_right = 790.0
+offset_bottom = 538.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("15_btn")
+theme_override_styles/pressed = ExtResource("17_btn_pressed")
+theme_override_styles/hover = ExtResource("16_btn_hover")
+theme_override_styles/focus = ExtResource("15_btn")
+text = "PAST RUNS"
+
 [node name="SettingsButton" type="Button" parent="MenuPage" unique_id=1079352698]
 layout_mode = 0
 offset_left = 490.0
-offset_top = 528.0
+offset_top = 548.0
 offset_right = 790.0
-offset_bottom = 585.0
+offset_bottom = 600.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 16
@@ -162,9 +178,9 @@ text = "SETTINGS"
 [node name="QuitButton" type="Button" parent="MenuPage" unique_id=1249133510]
 layout_mode = 0
 offset_left = 490.0
-offset_top = 597.0
+offset_top = 610.0
 offset_right = 790.0
-offset_bottom = 654.0
+offset_bottom = 662.0
 focus_mode = 0
 theme_override_colors/font_color = Color(0.91, 0.875, 0.784, 1)
 theme_override_font_sizes/font_size = 16
